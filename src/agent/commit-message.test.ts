@@ -140,7 +140,8 @@ describe("generateCommitMessage", () => {
       messages: Array<{ role: string; content: string }>;
     };
     expect(call.tools).toEqual([]);
-    expect(call.provider.maxTokens).toBe(400);
+    // 预算从 400 提到 1200：思考型模型 400 会被 reasoning 吃光，正文为空
+    expect(call.provider.maxTokens).toBe(1_200);
     expect(call.provider.reasoningEffort).toBeUndefined();
     expect(call.messages[0].role).toBe("system");
     expect(call.messages[1].content).toContain("chore: seed");
@@ -148,9 +149,39 @@ describe("generateCommitMessage", () => {
 
   it("throws when the model returns nothing usable", async () => {
     streamMock.mockReset();
-    streamMock.mockResolvedValueOnce({ message: { role: "assistant", content: "```\n```" } });
+    streamMock.mockResolvedValue({ message: { role: "assistant", content: "```\n```" } });
     await expect(
       generateCommitMessage({ provider, context: { recentSubjects: [] } }),
-    ).rejects.toThrow();
+    ).rejects.toThrow(/没有返回可用的提交信息/);
+    // 空正文会重试一次（更大预算），两次都空才失败
+    expect(streamMock).toHaveBeenCalledTimes(2);
+    const retry = streamMock.mock.calls[1][0] as { provider: { maxTokens?: number } };
+    expect(retry.provider.maxTokens).toBe(8_000);
+  });
+
+  it("retries with a bigger budget when thinking ate the output", async () => {
+    streamMock.mockReset();
+    streamMock.mockResolvedValueOnce({
+      message: { role: "assistant", content: "" },
+      finishReason: "length",
+    });
+    streamMock.mockResolvedValueOnce({ message: { role: "assistant", content: "feat: retry works" } });
+    const message = await generateCommitMessage({ provider, context: { recentSubjects: [] } });
+    expect(message).toBe("feat: retry works");
+    expect(streamMock).toHaveBeenCalledTimes(2);
+    // 重试时追加了一条「只输出正文」的 system 指令
+    const second = streamMock.mock.calls[1][0] as { messages: Array<{ role: string; content: string }> };
+    expect(second.messages.some((item) => item.content.includes("Do not think out loud"))).toBe(true);
+  });
+
+  it("reports the thinking volume when even the retry stays empty", async () => {
+    streamMock.mockReset();
+    streamMock.mockImplementation(async (options: { onThinking?: (delta: string) => void }) => {
+      options.onThinking?.("想".repeat(120));
+      return { message: { role: "assistant", content: "" }, finishReason: "length" };
+    });
+    await expect(
+      generateCommitMessage({ provider, context: { recentSubjects: [] } }),
+    ).rejects.toThrow(/思考约 240 字符.*思考内容占满了输出/);
   });
 });

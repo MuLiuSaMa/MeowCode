@@ -1185,7 +1185,8 @@ export async function startServer(options: { port?: number; token?: string } = {
             }
             const context = await git.commitContext();
             const controller = new AbortController();
-            const timer = setTimeout(() => controller.abort(), 30_000);
+            // 思考型模型可能先烧几千 token 再给正文；内部还会自动重试一次，给足 90s
+            const timer = setTimeout(() => controller.abort(), 90_000);
             try {
               const message = await runtime.generateCommitMessage(context, {
                 signal: controller.signal,

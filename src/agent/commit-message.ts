@@ -20,6 +20,17 @@ const MAX_STAT_LINES = 40;
 const MAX_RECENT_SUBJECTS = 10;
 const MAX_SUBJECT_CHARS = 72;
 const MAX_MESSAGE_CHARS = 2_000;
+/**
+ * 输出预算。
+ *
+ * 400 太低：思考型模型（GLM / Qwen / DeepSeek 的 thinking 变体）在没显式关闭
+ * 思考时会把预算全用在 reasoning_content 上，正文一个字符都不剩 —— 表现就是
+ * "AI 生成失败：Commit message generation returned empty output"。给足预算 +
+ * 一次加倍的自动重试，才能既不为此多花钱、又不在思考模型上直接失败。
+ */
+const COMMIT_MAX_TOKENS = 1_200;
+/** 正文为空（或被思考吃光）时的重试预算：给足思考 + 正文，只有失败路径才会花到 */
+const RETRY_MAX_TOKENS = 8_000;
 
 /** 噪音文件：不参与生成（lock 文件、构建产物、压缩产物） */
 const NOISE_PATTERN =
@@ -146,27 +157,61 @@ export function cleanCommitMessage(raw: string): string | null {
 }
 
 /**
- * 用当前服务商生成 commit message。失败抛错，由调用方降级为用户手写
- * （文案只是加速器，不该阻塞提交流程）。
+ * 用当前服务商生成 commit message。
+ *
+ * 失败抛错，由调用方降级为用户手写（文案只是加速器，不该阻塞提交流程）。
+ * 但「空正文」不是真实的失败 —— 思考型模型会把预算全烧在 reasoning 上，
+ * 所以这里自动用更大预算重试一次，并把原因写进错误文案，方便用户换模型。
  */
 export async function generateCommitMessage(options: {
   provider: ProviderConfig;
   context: CommitContext;
   signal?: AbortSignal;
 }): Promise<string> {
-  const messages: ChatMessage[] = [
+  const baseMessages: ChatMessage[] = [
     { role: "system", content: SYSTEM_PROMPT },
     { role: "user", content: buildUserPrompt(options.context) },
   ];
-  const result = await streamChatCompletion({
-    // 400 输出预算：一条 subject + 几行 bullet 足够；utilityProvider 同时关掉推理
-    provider: utilityProvider(options.provider, 400, "commit"),
-    messages,
-    tools: [],
-    signal: options.signal,
-    onDelta: () => undefined,
-  });
-  const message = cleanCommitMessage(result.message.content ?? "");
-  if (!message) throw new Error("Commit message generation returned empty output.");
-  return message;
+  const attempts: Array<{ maxTokens: number; extraSystem?: string }> = [
+    { maxTokens: COMMIT_MAX_TOKENS },
+    {
+      maxTokens: RETRY_MAX_TOKENS,
+      extraSystem:
+        "IMPORTANT: reply with the commit message only. Do not think out loud, do not explain, do not use code fences.",
+    },
+  ];
+
+  let reason: "empty" | "length" = "empty";
+  /** 累计思考字符数：排查"空正文"时最有用的信号 */
+  let thinkingChars = 0;
+  for (const attempt of attempts) {
+    const messages: ChatMessage[] = attempt.extraSystem
+      ? [
+          ...baseMessages,
+          { role: "system", content: attempt.extraSystem },
+        ]
+      : baseMessages;
+    // 网络/鉴权错误直接抛给调用方：重试同一个端点没有意义
+    const result = await streamChatCompletion({
+      provider: utilityProvider(options.provider, attempt.maxTokens, "commit"),
+      messages,
+      tools: [],
+      signal: options.signal,
+      onDelta: () => undefined,
+      onThinking: (delta) => {
+        thinkingChars += delta.length;
+      },
+    });
+    const message = cleanCommitMessage(result.message.content ?? "");
+    if (message) return message;
+    reason = result.finishReason === "length" ? "length" : "empty";
+  }
+
+  const model = options.provider.model || "当前模型";
+  const thought = thinkingChars > 0 ? `（本次思考约 ${thinkingChars} 字符）` : "";
+  throw new Error(
+    reason === "length"
+      ? `${model} 用 ${RETRY_MAX_TOKENS} token 的预算仍没产出正文${thought}：思考内容占满了输出。请换一个非思考模型，或在设置 → 模型里清空该模型的思考强度后重试。`
+      : `${model} 没有返回可用的提交信息${thought}。请换一个模型重试，或直接手写。`,
+  );
 }
