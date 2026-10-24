@@ -1,0 +1,19 @@
+/* theme: indigo-mint — 靛蓝薄荷 */
+/* 配色源: ui-ux-pro-max #2 Micro SaaS  字体源: #3 Tech Startup (Space Grotesk + DM Sans) */
+:root{
+  --bg:#F5F3FF;--bg-soft:#EDE9FE;--surface:#FFFFFF;--surface-2:#EBEFF9;
+  --border:rgba(99,102,241,.12);--border-strong:rgba(99,102,241,.28);
+  --text-1:#1E1B4B;--text-2:#312E81;--text-3:#64748B;
+  --accent:#6366F1;--accent-2:#818CF8;--accent-3:#059669;
+  --good:#059669;--warn:#D97706;--bad:#DC2626;
+  --grad:linear-gradient(135deg,#6366F1,#059669);
+  --grad-soft:linear-gradient(135deg,#F5F3FF,#ECFDF5);
+  --radius:12px;--radius-sm:8px;--radius-lg:18px;
+  --shadow:0 2px 8px rgba(99,102,241,.08),0 12px 32px rgba(99,102,241,.06);
+  --shadow-lg:0 8px 24px rgba(99,102,241,.12),0 30px 80px rgba(99,102,241,.08);
+  --font-sans:'DM Sans','Noto Sans SC',sans-serif;
+  --font-display:'Space Grotesk','DM Sans','Noto Sans SC',sans-serif;
+}
+.card{border:1px solid var(--border)}
+.kicker{color:var(--accent-3)}
+h1.title,.h1{font-family:var(--font-display);font-weight:700;letter-spacing:-.02em}

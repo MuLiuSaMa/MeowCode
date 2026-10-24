@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Glass Cards — presentation single-page</title>
+<link rel="stylesheet" href="../../assets/fonts.css">
+<link rel="stylesheet" href="../../assets/base.css">
+<link id="theme-link" rel="stylesheet" href="../../assets/themes/tokyo-night.css">
+<link rel="stylesheet" href="../../assets/animations/animations.css">
+<style>
+.glass-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:20px;margin-top:32px}
+.glass-card{position:relative;overflow:hidden;border-radius:var(--radius,16px);padding:28px 26px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);backdrop-filter:blur(20px) saturate(160%);box-shadow:0 8px 32px rgba(0,0,0,.3),inset 0 1px 0 rgba(255,255,255,.08)}
+.glass-card::before{content:'';position:absolute;top:0;left:0;right:0;height:50%;background:linear-gradient(180deg,rgba(255,255,255,.08),transparent);pointer-events:none}
+.glass-card.warm{background:rgba(232,168,124,.06);border-color:rgba(232,168,124,.25)}
+.glass-card.blue{background:rgba(126,184,218,.06);border-color:rgba(126,184,218,.25)}
+.glass-card.green{background:rgba(126,211,164,.06);border-color:rgba(126,211,164,.25)}
+.glass-card h3{margin:0 0 8px;font-size:20px;font-weight:700;color:var(--text-1)}
+.glass-card p{margin:0;font-size:14px;line-height:1.6;color:var(--text-2)}
+.glass-card .icon{font-size:48px;margin-bottom:14px;display:block}
+</style>
+</head>
+<body class="single">
+<deck-stage width="1920" height="1080">
+<section class="slide active" data-deck-label="Glass Cards">
+  <p class="kicker">Glass Cards</p>
+  <h1 class="h1">Platform Capabilities</h1>
+  <p class="lede">Frosted glass card grid — best on dark themes.</p>
+  <!-- === 可增删 .glass-card 条目；可用 .warm/.blue/.green 类区分色调 === -->
+  <div class="glass-grid anim-stagger-list" data-anim-target>
+    <div class="glass-card warm">
+      <span class="icon">🧠</span>
+      <h3>Intelligent Routing</h3>
+      <p>Automatically routes requests to the optimal model based on complexity and cost constraints.</p>
+    </div>
+    <div class="glass-card blue">
+      <span class="icon">🔗</span>
+      <h3>Tool Integration</h3>
+      <p>Connect 200+ APIs with zero-config adapters. MCP protocol support built-in.</p>
+    </div>
+    <div class="glass-card green">
+      <span class="icon">📊</span>
+      <h3>Observability</h3>
+      <p>Real-time token usage, latency percentiles, and cost dashboards out of the box.</p>
+    </div>
+  </div>
+  <div class="notes">Glass cards work best on dark themes (tokyo-night, dracula, catppuccin-mocha). Use .warm/.blue/.green variants for visual hierarchy. For light themes, consider macaron-grid instead.</div>
+</section>
+</deck-stage>
+<script src="../../assets/runtime.js"></script>
+</body>
+</html>

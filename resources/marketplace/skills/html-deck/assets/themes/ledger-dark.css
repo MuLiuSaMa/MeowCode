@@ -1,0 +1,20 @@
+/* theme: ledger-dark — 暗色账簿 */
+/* 配色源: ui-ux-pro-max #6 Financial Dashboard  字体源: #31 Financial Trust (IBM Plex Sans) */
+:root{
+  --bg:#020617;--bg-soft:#0E1223;--surface:#0E1223;--surface-2:#1A1E2F;
+  --border:rgba(148,163,184,.12);--border-strong:rgba(148,163,184,.25);
+  --text-1:#F8FAFC;--text-2:#CBD5E1;--text-3:#94A3B8;
+  --accent:#22C55E;--accent-2:#3B82F6;--accent-3:#FBBF24;
+  --good:#22C55E;--warn:#FBBF24;--bad:#EF4444;
+  --grad:linear-gradient(135deg,#22C55E,#3B82F6);
+  --grad-soft:linear-gradient(135deg,rgba(34,197,94,.15),rgba(59,130,246,.15));
+  --radius:8px;--radius-sm:4px;--radius-lg:14px;
+  --shadow:0 2px 8px rgba(0,0,0,.3),0 8px 24px rgba(0,0,0,.2);
+  --shadow-lg:0 8px 24px rgba(0,0,0,.4),0 24px 60px rgba(0,0,0,.3);
+  --font-sans:'IBM Plex Sans','Noto Sans SC',sans-serif;
+  --font-display:'IBM Plex Sans','Noto Sans SC',sans-serif;
+  --font-mono:'IBM Plex Mono',monospace;
+}
+.card{border:1px solid var(--border);background:rgba(14,18,35,.8)}
+.kicker{color:var(--accent)}
+h1.title,.h1{font-weight:600;letter-spacing:-.02em}

@@ -1,0 +1,34 @@
+.mc-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 20px;
+  padding: 0 8px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-full);
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-medium);
+  line-height: 1;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+}
+.mc-badge--neutral {
+  background: var(--surface);
+  border-color: var(--border);
+  color: var(--fg-subtle);
+}
+.mc-badge--success {
+  background: var(--success-surface);
+  border-color: color-mix(in oklab, var(--success) 40%, transparent);
+  color: var(--success);
+}
+.mc-badge--danger {
+  background: var(--danger-surface);
+  border-color: color-mix(in oklab, var(--danger) 40%, transparent);
+  color: var(--danger);
+}
+.mc-badge--running {
+  background: var(--surface);
+  border-color: var(--border);
+  color: var(--fg-subtle);
+}

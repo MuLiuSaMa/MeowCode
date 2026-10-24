@@ -1,0 +1,217 @@
+.mc-stream {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 14px 20px 8px;
+}
+.mc-stream__inner {
+  max-width: var(--content-max);
+  margin: 0 auto;
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+.mc-stream__list {
+  display: flex;
+  flex-direction: column;
+  padding-bottom: 8px;
+}
+/* 工具行成组平铺：文本与工具、工具与工具之间收紧间距 */
+.mc-stream__list > * + * {
+  margin-top: 18px;
+}
+.mc-stream__list > * + .mc-toolrow {
+  margin-top: 10px;
+}
+.mc-stream__list > .mc-toolrow + * {
+  margin-top: 14px;
+}
+.mc-stream__list > .mc-toolrow + .mc-toolrow {
+  margin-top: 2px;
+}
+
+.mc-empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+  text-align: center;
+  padding: 40px 0;
+}
+.mc-empty__logo {
+  width: 92px;
+  height: 92px;
+  object-fit: contain;
+  filter: drop-shadow(0 2px 12px rgb(0 0 0 / 0.28));
+}
+.mc-empty__text {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  max-width: 520px;
+  margin: 0;
+  font-size: clamp(24px, 5vw, 34px);
+  color: var(--fg-subtle);
+  line-height: var(--lh-normal);
+}
+.mc-empty__words {
+  display: grid;
+  grid-auto-columns: max-content;
+  grid-template-columns: max-content;
+  align-items: center;
+  justify-content: start;
+}
+.mc-empty__word {
+  grid-area: 1 / 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: "Noto Serif SC", "Source Han Serif SC", "SimSun", serif;
+  font-size: inherit;
+  font-weight: 700;
+  letter-spacing: 0;
+  line-height: var(--lh-normal);
+  opacity: 0;
+  transition:
+    opacity 520ms var(--ease),
+    transform 520ms var(--ease),
+    filter 520ms var(--ease);
+}
+.mc-empty__word[data-active="true"] {
+  opacity: 1;
+}
+.mc-empty__word[data-effect="wipe"] {
+  color: var(--brand);
+  transform: translateX(18px) scale(0.98);
+  filter: blur(3px);
+}
+.mc-empty__word[data-effect="wipe"][data-active="true"] {
+  transform: translateX(0) scale(1);
+  filter: blur(0);
+}
+.mc-empty__word[data-effect="glow"] {
+  color: var(--brand);
+  transform: scale(0.92);
+  filter: blur(2px) drop-shadow(0 0 12px color-mix(in oklab, var(--brand) 34%, transparent));
+}
+.mc-empty__word[data-effect="glow"][data-active="true"] {
+  transform: scale(1);
+  filter: blur(0) drop-shadow(0 0 12px color-mix(in oklab, var(--brand) 28%, transparent));
+}
+.mc-empty__word[data-effect="slide"] {
+  color: var(--brand);
+  transform: translateY(16px) scale(0.98);
+  filter: blur(3px);
+}
+.mc-empty__word[data-effect="slide"][data-active="true"] {
+  transform: translateY(0) scale(1);
+  filter: blur(0);
+}
+
+/* ---- 报错条目：跟着消息流展示（替代旧顶部横幅），低饱和红面板 ---- */
+.mc-erritem {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in oklab, var(--danger) 45%, transparent);
+  border-radius: var(--radius-lg);
+  corner-shape: superellipse(1.5);
+  background: var(--danger-surface);
+  font-size: var(--fs-caption);
+  line-height: var(--lh-normal);
+  animation: mc-fade-in var(--dur) var(--ease);
+}
+.mc-erritem__icon {
+  flex-shrink: 0;
+  margin-top: 3px;
+  color: var(--danger);
+}
+.mc-erritem__text {
+  min-width: 0;
+  color: var(--fg);
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.mc-noticeitem {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 9px 12px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-lg);
+  corner-shape: superellipse(1.5);
+  background: var(--bg-subtle, transparent);
+  font-size: var(--fs-caption);
+  line-height: var(--lh-normal);
+  color: var(--text-secondary);
+  animation: mc-fade-in var(--dur) var(--ease);
+}
+.mc-noticeitem__icon {
+  flex-shrink: 0;
+  margin-top: 3px;
+  color: var(--text-tertiary);
+}
+.mc-noticeitem__text {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* ---- 等待模型响应：三个错落起伏的小点 ---- */
+.mc-waiting {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  padding: 2px 0;
+}
+.mc-waiting__text {
+  font-size: var(--fs-sm);
+  color: var(--fg-subtlest);
+}
+.mc-waiting__dots {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.mc-waiting__dots i {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--fg-subtlest);
+  animation: mc-waiting-bounce 1.2s var(--ease) infinite;
+}
+.mc-waiting__dots i:nth-child(2) {
+  animation-delay: 0.15s;
+}
+.mc-waiting__dots i:nth-child(3) {
+  animation-delay: 0.3s;
+}
+@keyframes mc-waiting-bounce {
+  0%,
+  60%,
+  100% {
+    transform: translateY(0);
+    opacity: 0.4;
+  }
+  30% {
+    transform: translateY(-4px);
+    opacity: 1;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mc-empty__word {
+    animation: none;
+    background-image: none;
+    color: var(--brand);
+    filter: none;
+  }
+  .mc-waiting__dots i {
+    animation: none;
+    opacity: 0.6;
+  }
+}

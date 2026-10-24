@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="zh-CN"><head><meta charset="utf-8"><title>Duo Compare</title>
+<link rel="stylesheet" href="../../assets/fonts.css">
+<link rel="stylesheet" href="../../assets/base.css">
+<link rel="stylesheet" id="theme-link" href="../../assets/themes/minimal-white.css">
+<link rel="stylesheet" href="../../assets/animations/animations.css">
+<style>
+.duo{display:grid;grid-template-columns:1fr 1px 1fr;gap:0 40px;flex:1;align-items:stretch;margin-top:32px}
+.duo-vrule{background:var(--border-strong);width:1px;align-self:stretch}
+.duo-col{display:flex;flex-direction:column;gap:16px;padding:0 8px}
+.duo-col .tag-num{display:inline-flex;align-items:center;gap:8px;font-size:11px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--text-3)}
+.duo-col .tag-num span{display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border:1px solid var(--text-3);font-size:12px;font-weight:700;color:var(--text-1)}
+.duo-col.accent .tag-num span{border-color:var(--accent);color:var(--accent)}
+.duo-col .col-title{font-size:40px;font-weight:200;line-height:1;letter-spacing:-.02em}
+.duo-col.accent .col-title{color:var(--accent)}
+.duo-col .col-desc{font-size:15px;color:var(--text-2);line-height:1.6}
+.duo-col .col-img{width:100%;aspect-ratio:16/9;background:#1a2238;overflow:hidden;border-radius:var(--radius-sm)}
+.duo-col .col-img img{width:100%;height:100%;object-fit:cover;display:block}
+.duo-list{list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:10px;margin-top:auto;padding-top:16px;border-top:1px solid var(--border)}
+.duo-list li{font-size:14px;line-height:1.5;padding-left:16px;position:relative}
+.duo-list li::before{content:"";position:absolute;left:0;top:.65em;width:8px;height:1px;background:currentColor;opacity:.4}
+.duo-col.accent .duo-list li::before{background:var(--accent);opacity:1}
+</style>
+</head><body class="single">
+<deck-stage width="1920" height="1080" data-themes="minimal-white,aurora,tokyo-night" data-theme-base="../../assets/themes/">
+  <section class="slide active" data-deck-label="Duo Compare">
+    <p class="kicker">Compare · 路径对比</p>
+    <h2 class="h2">两种思路，一个目标</h2>
+    <!-- === 每个 .duo-list 内可增删 li 条目；添加 .accent 类到 .duo-col 可高亮该列 === -->
+    <div class="duo">
+      <div class="duo-col">
+        <div class="tag-num"><span>A</span> Approach</div>
+        <div class="col-title">Latent<br>Space</div>
+        <!-- 图片占位；替换为真实图片：<div class="col-img"><img src="images/xxx.jpg"></div> -->
+        <div class="col-img"></div>
+        <p class="col-desc">通过隐空间表示进行端到端学习，模型自动发现最优特征。</p>
+        <ul class="duo-list">
+          <li>无需手工特征工程</li>
+          <li>泛化能力强</li>
+          <li>训练成本较高</li>
+        </ul>
+      </div>
+      <div class="duo-vrule"></div>
+      <div class="duo-col accent">
+        <div class="tag-num"><span>B</span> Approach</div>
+        <div class="col-title">Rule<br>Engine</div>
+        <!-- 图片占位；替换为真实图片：<div class="col-img"><img src="images/xxx.jpg"></div> -->
+        <div class="col-img"></div>
+        <p class="col-desc">基于确定性规则的决策系统，结果可解释、可审计。</p>
+        <ul class="duo-list">
+          <li>完全可解释</li>
+          <li>零冷启动延迟</li>
+          <li>需要领域专家维护</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+</deck-stage>
+<script src="../../assets/runtime.js"></script>
+</body></html>

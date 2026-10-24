@@ -1,0 +1,13 @@
+{
+  "description": "GitCode 平台集成：仓库、Issue、PR、Fork、里程碑与看板（社区 Node MCP，npx 启动）。",
+  "server": {
+    "command": "npx",
+    "args": [
+      "-y",
+      "@yangxt65535/gitcode-mcp@1.4.0"
+    ],
+    "env": {
+      "GITCODE_TOKEN": "${MEOWCODE_GITCODE_TOKEN}"
+    }
+  }
+}

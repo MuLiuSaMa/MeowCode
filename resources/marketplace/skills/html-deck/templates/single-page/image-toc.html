@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="zh-CN"><head><meta charset="utf-8"><title>TOC Hero</title>
+<link rel="stylesheet" href="../../assets/fonts.css">
+<link rel="stylesheet" href="../../assets/base.css">
+<link rel="stylesheet" id="theme-link" href="../../assets/themes/minimal-white.css">
+<link rel="stylesheet" href="../../assets/animations/animations.css">
+<style>
+.toc-hero{display:grid;grid-template-columns:5fr 7fr;gap:40px;height:100%;min-height:calc(100vh - 112px);align-items:stretch}
+/* --- left: toc --- */
+.toc-col{display:flex;flex-direction:column;justify-content:center;gap:0}
+.toc-item{display:grid;grid-template-columns:44px 1fr;gap:14px;align-items:baseline;padding:18px 0;border-bottom:1px solid var(--border);cursor:default;transition:background .2s}
+.toc-item:first-child{border-top:1px solid var(--border)}
+.toc-item .n{font-size:18px;font-weight:800;color:var(--text-3);font-variant-numeric:tabular-nums}
+.toc-item h4{font-size:18px;font-weight:700;margin:0;line-height:1.3}
+.toc-item p{font-size:13px;color:var(--text-2);margin:4px 0 0;line-height:1.5}
+.toc-item.accent h4{color:var(--accent)}
+/* --- right: hero image --- */
+.toc-img{position:relative;overflow:hidden;min-height:100%}
+.toc-img .bg{position:absolute;inset:0;background-size:cover;background-position:center}
+.toc-img .bg img{width:100%;height:100%;object-fit:cover;display:block}
+</style>
+</head><body class="single">
+<deck-stage width="1920" height="1080" data-themes="minimal-white,aurora,tokyo-night" data-theme-base="../../assets/themes/">
+  <section class="slide active" data-deck-label="TOC Hero" style="padding:48px">
+    <div class="toc-hero">
+      <!-- === Left: TOC items（可增删条目） === -->
+      <div class="toc-col anim-stagger-list">
+        <p class="kicker" style="margin-bottom:12px">Contents · 目录</p>
+        <div class="toc-item accent">
+          <div class="n">01</div>
+          <div>
+            <h4>项目背景与目标</h4>
+            <p>为什么启动、要解决什么问题</p>
+          </div>
+        </div>
+        <div class="toc-item">
+          <div class="n">02</div>
+          <div>
+            <h4>核心方案设计</h4>
+            <p>架构选型与关键技术决策</p>
+          </div>
+        </div>
+        <div class="toc-item">
+          <div class="n">03</div>
+          <div>
+            <h4>里程碑与进展</h4>
+            <p>已完成节点和在途任务</p>
+          </div>
+        </div>
+        <div class="toc-item">
+          <div class="n">04</div>
+          <div>
+            <h4>数据验证</h4>
+            <p>A/B 实验结果与关键指标</p>
+          </div>
+        </div>
+        <div class="toc-item">
+          <div class="n">05</div>
+          <div>
+            <h4>下一步计划</h4>
+            <p>Q3 规划与资源需求</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- === Right: Hero Image === -->
+      <div class="toc-img">
+        <!-- 替换为真实图片：<div class="bg"><img src="images/xxx.jpg"></div> -->
+        <div class="bg" style="background:#1a2238"></div>
+      </div>
+    </div>
+  </section>
+</deck-stage>
+<script src="../../assets/runtime.js"></script>
+</body></html>

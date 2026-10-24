@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="zh-CN"><head><meta charset="utf-8"><title>Split Statement</title>
+<link rel="stylesheet" href="../../assets/fonts.css">
+<link rel="stylesheet" href="../../assets/base.css">
+<link rel="stylesheet" id="theme-link" href="../../assets/themes/minimal-white.css">
+<link rel="stylesheet" href="../../assets/animations/animations.css">
+<style>
+.split-stmt{display:grid;grid-template-columns:1fr 1fr;gap:0;height:100%;min-height:calc(100vh - 112px)}
+.split-left{position:relative;color:#fff;padding:56px 48px;display:flex;flex-direction:column;justify-content:flex-end;overflow:hidden}
+.split-left .bg{position:absolute;inset:0;background:#1a2238;background-size:cover;background-position:center}
+.split-left .bg img{width:100%;height:100%;object-fit:cover;display:block}
+.split-left .overlay{position:absolute;inset:0;background:linear-gradient(0deg,rgba(0,0,0,.72) 0%,rgba(0,0,0,.45) 50%,rgba(0,0,0,.18) 80%,transparent 100%)}
+.split-left .caption{position:relative;z-index:1}
+.split-left .h2{color:#fff;font-size:48px;font-weight:800;line-height:1.08;letter-spacing:-.02em;margin:0}
+.split-left .lede{color:rgba(255,255,255,.82);max-width:36ch}
+.split-left .eyebrow{color:rgba(255,255,255,.65)}
+.split-right{padding:56px 48px;display:flex;flex-direction:column;justify-content:center;gap:0}
+.takeaway{display:flex;gap:20px;align-items:flex-start;padding:24px 0;border-top:1px solid var(--border)}
+.takeaway:last-child{border-bottom:2px solid var(--accent)}
+.takeaway-num{font-size:48px;font-weight:200;line-height:.9;letter-spacing:-.02em;color:var(--text-3);min-width:56px}
+.takeaway:last-child .takeaway-num{color:var(--accent)}
+.takeaway h3{font-size:20px;font-weight:600;margin:0 0 6px;line-height:1.2}
+.takeaway:last-child h3{color:var(--accent)}
+.takeaway p{font-size:14px;color:var(--text-2);margin:0;line-height:1.6}
+</style>
+</head><body class="single">
+<deck-stage width="1920" height="1080" data-themes="minimal-white,aurora,tokyo-night" data-theme-base="../../assets/themes/">
+  <section class="slide active" data-deck-label="Split Statement" style="padding:0">
+    <div class="split-stmt">
+      <div class="split-left">
+        <!-- 替换为真实图片：<div class="bg"><img src="images/xxx.jpg"></div> -->
+        <div class="bg"></div>
+        <div class="overlay"></div>
+        <div class="caption">
+          <span class="eyebrow">Statement</span>
+          <h2 class="h2" style="color:#fff;margin-top:18px">Build a model.<br>Run forever.</h2>
+          <p class="lede" style="margin-top:18px">一句话注脚，把宣言落地到可执行的方向。</p>
+        </div>
+      </div>
+      <!-- === Right: 可增删 .takeaway 条目 === -->
+      <div class="split-right">
+        <div class="takeaway">
+          <div class="takeaway-num">01</div>
+          <div>
+            <h3>第一个要点</h3>
+            <p>一到两行展开说明，简明扼要点明价值。</p>
+          </div>
+        </div>
+        <div class="takeaway">
+          <div class="takeaway-num">02</div>
+          <div>
+            <h3>第二个要点</h3>
+            <p>一到两行展开说明，简明扼要点明价值。</p>
+          </div>
+        </div>
+        <div class="takeaway">
+          <div class="takeaway-num">03</div>
+          <div>
+            <h3>第三个要点 · 强调</h3>
+            <p>最后一条使用 accent 强调色突出显示。</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+</deck-stage>
+<script src="../../assets/runtime.js"></script>
+</body></html>

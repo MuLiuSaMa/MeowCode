@@ -1,0 +1,20 @@
+/* theme: scholar-teal — 学者青 */
+/* 配色源: ui-ux-pro-max #43 Online Course/E-learning (teal + orange)  字体源: #41 Academic/Research (Crimson Pro + Atkinson Hyperlegible) */
+:root{
+  --bg:#F0FDFA;--bg-soft:#CCFBF1;--surface:#FFFFFF;--surface-2:#E8F1F4;
+  --border:rgba(19,78,74,.1);--border-strong:rgba(19,78,74,.22);
+  --text-1:#134E4A;--text-2:#115E59;--text-3:#64748B;
+  --accent:#0D9488;--accent-2:#EA580C;--accent-3:#2DD4BF;
+  --good:#059669;--warn:#D97706;--bad:#DC2626;
+  --grad:linear-gradient(135deg,#0D9488,#EA580C);
+  --grad-soft:linear-gradient(135deg,#F0FDFA,#FFF7ED);
+  --radius:10px;--radius-sm:6px;--radius-lg:16px;
+  --shadow:0 1px 3px rgba(13,148,136,.06),0 4px 12px rgba(13,148,136,.04);
+  --shadow-lg:0 4px 12px rgba(13,148,136,.08),0 16px 40px rgba(13,148,136,.06);
+  --font-sans:'Atkinson Hyperlegible','Noto Sans SC',sans-serif;
+  --font-serif:'Crimson Pro','Noto Serif SC',serif;
+  --font-display:'Crimson Pro','Noto Serif SC',serif;
+}
+.card{border:1px solid var(--border)}
+.kicker{color:var(--accent);font-weight:500}
+h1.title,.h1{font-family:var(--font-display);font-weight:600}

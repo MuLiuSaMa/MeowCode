@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="zh-CN"><head><meta charset="utf-8"><title>Tech Spec</title>
+<link rel="stylesheet" href="../../assets/fonts.css">
+<link rel="stylesheet" href="../../assets/base.css">
+<link rel="stylesheet" id="theme-link" href="../../assets/themes/minimal-white.css">
+<link rel="stylesheet" href="../../assets/animations/animations.css">
+<style>
+.spec-layout{display:grid;grid-template-columns:5fr 7fr;gap:48px;flex:1;align-items:start;margin-top:24px}
+.spec-title h2{font-size:48px;font-weight:800;line-height:1.05;letter-spacing:-.02em;margin:0 0 16px}
+.spec-title p{font-size:16px;color:var(--text-2);line-height:1.65;max-width:36ch}
+.spec-kpis{display:grid;grid-template-columns:repeat(3,1fr);gap:24px}
+.spec-kpi{padding-top:16px;border-top:2px solid var(--border-strong)}
+.spec-kpi.accent{border-top-color:var(--accent)}
+.spec-kpi .label{font-size:11px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--text-3);margin-bottom:8px}
+.spec-kpi .num{font-size:40px;font-weight:800;line-height:.9;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.spec-kpi .num .unit{font-size:16px;font-weight:400;opacity:.5;margin-left:2px}
+.spec-kpi .note{font-size:13px;color:var(--text-2);margin-top:8px;line-height:1.5}
+.spec-hero{display:grid;grid-template-columns:1fr auto;gap:32px;align-items:end;margin-top:auto;padding-top:24px;border-top:1px solid var(--border)}
+.spec-hero .hero-num{font-size:96px;font-weight:800;line-height:.82;letter-spacing:-.04em;font-variant-numeric:tabular-nums}
+.spec-hero .hero-num .unit{font-size:28px;font-weight:400;opacity:.5}
+.spec-hero .desc{font-size:14px;color:var(--text-2);line-height:1.6;max-width:48ch}
+</style>
+</head><body class="single">
+<deck-stage width="1920" height="1080" data-themes="minimal-white,aurora,tokyo-night" data-theme-base="../../assets/themes/">
+  <section class="slide active" data-deck-label="Tech Spec">
+    <p class="kicker">Spec Sheet · 技术规格</p>
+    <div class="spec-layout">
+      <div class="spec-title">
+        <h2>推理引擎<br>v3.0</h2>
+        <p>全新架构重写，支持多模态输入和流式输出，端到端延迟降低 60%。</p>
+      </div>
+      <!-- === 可增删 .spec-kpi 条目；添加 .accent 类可高亮重点项 === -->
+      <div class="spec-kpis anim-stagger-list">
+        <div class="spec-kpi accent">
+          <div class="label">Throughput</div>
+          <div class="num">12K<span class="unit">QPS</span></div>
+          <div class="note">峰值吞吐量</div>
+        </div>
+        <div class="spec-kpi">
+          <div class="label">Latency P99</div>
+          <div class="num">48<span class="unit">ms</span></div>
+          <div class="note">端到端延迟</div>
+        </div>
+        <div class="spec-kpi">
+          <div class="label">Model Size</div>
+          <div class="num">7<span class="unit">B</span></div>
+          <div class="note">参数规模</div>
+        </div>
+      </div>
+    </div>
+    <div class="spec-hero">
+      <div class="desc">目标：到 Q3 实现全量业务线切换，覆盖 100% 在线推理流量，成本节省 40%+。</div>
+      <div class="hero-num">10<span class="unit">×</span></div>
+    </div>
+  </section>
+</deck-stage>
+<script src="../../assets/runtime.js"></script>
+</body></html>

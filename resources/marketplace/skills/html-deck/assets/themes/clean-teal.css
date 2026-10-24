@@ -1,0 +1,18 @@
+/* theme: clean-teal — 清新青绿 */
+/* 配色源: ui-ux-pro-max #8 Healthcare App  字体源: #30 Medical Clean (Figtree + Noto Sans) */
+:root{
+  --bg:#ECFEFF;--bg-soft:#E0F7FA;--surface:#FFFFFF;--surface-2:#E8F1F6;
+  --border:rgba(22,78,99,.1);--border-strong:rgba(22,78,99,.22);
+  --text-1:#164E63;--text-2:#0E7490;--text-3:#64748B;
+  --accent:#0891B2;--accent-2:#059669;--accent-3:#22D3EE;
+  --good:#059669;--warn:#D97706;--bad:#DC2626;
+  --grad:linear-gradient(135deg,#0891B2,#059669);
+  --grad-soft:linear-gradient(135deg,#ECFEFF,#ECFDF5);
+  --radius:12px;--radius-sm:8px;--radius-lg:18px;
+  --shadow:0 1px 3px rgba(8,145,178,.06),0 4px 12px rgba(8,145,178,.04);
+  --shadow-lg:0 4px 12px rgba(8,145,178,.08),0 16px 40px rgba(8,145,178,.06);
+  --font-sans:'Figtree','Noto Sans','Noto Sans SC',sans-serif;
+  --font-display:'Figtree','Noto Sans SC',sans-serif;
+}
+.card{border:1px solid var(--border)}
+.kicker{color:var(--accent)}

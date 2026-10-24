@@ -1,0 +1,19 @@
+/* theme: cinema-dark — 影院暗色 */
+/* 配色源: ui-ux-pro-max #46 Video Streaming/OTT  字体源: #7 Bold Statement (Bebas Neue + Source Sans 3) */
+:root{
+  --bg:#000000;--bg-soft:#0C0C0D;--surface:#0C0C0D;--surface-2:#181818;
+  --border:rgba(148,163,184,.1);--border-strong:rgba(148,163,184,.2);
+  --text-1:#F8FAFC;--text-2:#CBD5E1;--text-3:#94A3B8;
+  --accent:#E11D48;--accent-2:#7C3AED;--accent-3:#FBBF24;
+  --good:#22C55E;--warn:#FBBF24;--bad:#EF4444;
+  --grad:linear-gradient(135deg,#E11D48,#7C3AED);
+  --grad-soft:linear-gradient(135deg,rgba(225,29,72,.15),rgba(124,58,237,.15));
+  --radius:4px;--radius-sm:2px;--radius-lg:8px;
+  --shadow:0 2px 8px rgba(0,0,0,.5);
+  --shadow-lg:0 8px 24px rgba(0,0,0,.6),0 24px 60px rgba(0,0,0,.4);
+  --font-sans:'Source Sans 3','Noto Sans SC',sans-serif;
+  --font-display:'Bebas Neue','Source Sans 3',sans-serif;
+}
+.card{border:1px solid var(--border);background:rgba(12,12,13,.85)}
+.kicker{color:var(--accent);text-transform:uppercase;letter-spacing:.1em}
+h1.title,.h1{font-family:var(--font-display);font-weight:400;letter-spacing:.04em;text-transform:uppercase}

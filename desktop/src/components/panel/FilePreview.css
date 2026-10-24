@@ -1,0 +1,114 @@
+/* 文件预览（「文件」页签的预览区）：文本 / 图片 / 视频 / 音频 / PDF */
+
+.mc-preview {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-width: 0;
+}
+
+.mc-preview__head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  padding: 7px 8px 7px 12px;
+  border-bottom: 1px solid var(--border);
+}
+.mc-preview__path {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  color: var(--fg-subtle);
+}
+.mc-preview__btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--fg-subtle);
+  cursor: pointer;
+  transition: background-color var(--dur) var(--ease), color var(--dur) var(--ease);
+}
+.mc-preview__btn:hover:not(:disabled) {
+  background: var(--surface-hover);
+  color: var(--fg);
+}
+.mc-preview__btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.mc-preview__empty {
+  padding: 20px 12px;
+  text-align: center;
+  font-size: var(--fs-sm);
+  color: var(--fg-subtlest);
+}
+
+/* 文本 */
+.mc-preview__body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 8px 0 12px;
+}
+.mc-preview__line {
+  display: flex;
+  gap: 10px;
+  padding: 0 12px;
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  line-height: 1.7;
+  white-space: pre;
+}
+.mc-preview__no {
+  flex-shrink: 0;
+  width: 42px;
+  text-align: right;
+  color: var(--fg-subtlest);
+  user-select: none;
+}
+.mc-preview__text {
+  color: var(--fg-subtle);
+}
+.mc-preview__truncated {
+  padding: 10px 12px 0;
+  font-size: var(--fs-xs);
+  color: var(--fg-subtlest);
+}
+
+/* 图片 / 视频 / 音频 / PDF */
+.mc-preview__mediawrap {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 12px;
+  overflow: auto;
+}
+.mc-preview__media {
+  max-width: 100%;
+  max-height: 100%;
+  border-radius: var(--radius-md);
+  background: var(--bg);
+  object-fit: contain;
+}
+.mc-preview__audio {
+  width: 100%;
+}
+.mc-preview__frame {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  border: 0;
+  background: var(--bg);
+}

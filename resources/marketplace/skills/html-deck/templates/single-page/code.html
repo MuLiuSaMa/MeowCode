@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="zh-CN"><head><meta charset="utf-8"><title>Code</title>
+<link rel="stylesheet" href="../../assets/fonts.css">
+<link rel="stylesheet" href="../../assets/base.css">
+<link rel="stylesheet" id="theme-link" href="../../assets/themes/tokyo-night.css">
+<link rel="stylesheet" href="../../assets/animations/animations.css">
+<!-- In generated decks use ./_shared/hljs/tokyo-night-dark.min.css -->
+<link rel="stylesheet" href="../../assets/hljs/tokyo-night-dark.min.css">
+<!-- In generated decks use ./_shared/hljs/core.min.js -->
+<script src="../../assets/hljs/core.min.js"></script>
+<!-- In generated decks use ./_shared/hljs/javascript.min.js -->
+<script src="../../assets/hljs/javascript.min.js"></script>
+<script>addEventListener('DOMContentLoaded',()=>{hljs.registerLanguage('javascript',window.hljsLangJavascript||window.hljs.getLanguage('javascript'));document.querySelectorAll('pre code').forEach(el=>hljs.highlightElement(el))})</script>
+</head><body class="single">
+<deck-stage width="1920" height="1080"><section class="slide active" data-deck-label="Code">
+  <p class="kicker">Snippet · 运行时核心</p>
+  <h2 class="h2">按一下键盘，幻灯片就跑起来了</h2>
+<pre class="card mt-m" style="padding:24px"><code class="language-javascript">// runtime.js — keyboard-driven deck
+function go(n) {
+  n = Math.max(0, Math.min(total - 1, n));
+  slides.forEach((s, i) => {
+    s.classList.toggle('active', i === n);
+  });
+  idx = n;
+  barFill.style.width = ((n + 1) / total * 100) + '%';
+  history.replaceState(null, '', '#/' + (n + 1));
+}
+
+document.addEventListener('keydown', (e) =&gt; {
+  if (e.key === 'ArrowRight' || e.key === ' ') go(idx + 1);
+  if (e.key === 'ArrowLeft') go(idx - 1);
+  if (e.key === 't') cycleTheme();
+});</code></pre>
+</section></deck-stage>
+<script src="../../assets/runtime.js"></script>
+</body></html>

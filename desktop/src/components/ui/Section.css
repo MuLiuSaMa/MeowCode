@@ -1,0 +1,66 @@
+.mc-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.mc-section__head {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.mc-section__title {
+  margin: 0;
+  font-size: var(--fs-lg);
+  font-weight: var(--fw-medium);
+  letter-spacing: -0.01em;
+  color: var(--fg);
+}
+.mc-section__desc {
+  margin: 0;
+  font-size: var(--fs-caption);
+  line-height: var(--lh-normal);
+  color: var(--fg-subtle);
+}
+
+.mc-section__body {
+  display: flex;
+  flex-direction: column;
+  border-radius: var(--radius-lg);
+  corner-shape: superellipse(1.5);
+  background: var(--surface);
+  overflow: hidden;
+}
+
+/* ---- 一行字段 ---- */
+.mc-fieldrow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 12px 16px;
+}
+.mc-fieldrow + .mc-fieldrow {
+  border-top: 1px solid var(--border);
+}
+.mc-fieldrow__text {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+.mc-fieldrow__label {
+  font-size: var(--fs-base);
+  color: var(--fg);
+}
+.mc-fieldrow__hint {
+  font-size: var(--fs-sm);
+  line-height: var(--lh-normal);
+  color: var(--fg-subtlest);
+}
+.mc-fieldrow__control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}

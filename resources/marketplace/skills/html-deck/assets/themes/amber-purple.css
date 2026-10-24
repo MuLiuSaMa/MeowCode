@@ -1,0 +1,19 @@
+/* theme: amber-purple — 琥珀紫 */
+/* 配色源: ui-ux-pro-max #14 Fintech/Crypto  字体源: #36 Crypto/Web3 (Orbitron + Exo 2) */
+:root{
+  --bg:#0F172A;--bg-soft:#222735;--surface:#222735;--surface-2:#272F42;
+  --border:rgba(148,163,184,.12);--border-strong:rgba(148,163,184,.25);
+  --text-1:#F8FAFC;--text-2:#CBD5E1;--text-3:#94A3B8;
+  --accent:#F59E0B;--accent-2:#8B5CF6;--accent-3:#FBBF24;
+  --good:#22C55E;--warn:#F59E0B;--bad:#EF4444;
+  --grad:linear-gradient(135deg,#F59E0B,#8B5CF6);
+  --grad-soft:linear-gradient(135deg,rgba(245,158,11,.18),rgba(139,92,246,.18));
+  --radius:8px;--radius-sm:4px;--radius-lg:14px;
+  --shadow:0 2px 8px rgba(0,0,0,.3),0 8px 24px rgba(0,0,0,.2);
+  --shadow-lg:0 8px 24px rgba(0,0,0,.4),0 24px 60px rgba(0,0,0,.3);
+  --font-sans:'Exo 2','Noto Sans SC',sans-serif;
+  --font-display:'Orbitron','Exo 2',sans-serif;
+}
+.card{border:1px solid var(--border);background:rgba(34,39,53,.8)}
+.kicker{color:var(--accent);text-transform:uppercase;letter-spacing:.08em}
+h1.title,.h1{font-family:var(--font-display);font-weight:700;letter-spacing:.02em;text-transform:uppercase}

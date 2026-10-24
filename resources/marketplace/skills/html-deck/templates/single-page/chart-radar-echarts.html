@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="zh-CN"><head><meta charset="utf-8"><title>ECharts · Radar</title>
+<link rel="stylesheet" href="../../assets/fonts.css">
+<link rel="stylesheet" href="../../assets/base.css">
+<link rel="stylesheet" id="theme-link" href="../../assets/themes/minimal-white.css">
+<link rel="stylesheet" href="../../assets/animations/animations.css">
+<!-- In generated decks use ./_shared/echarts.min.js -->
+<script src="../../assets/echarts.min.js"></script>
+<script src="../../assets/echarts-theme-sync.js"></script>
+</head><body class="single">
+<deck-stage width="1920" height="1080"><section class="slide active" data-deck-label="ECharts Radar chart">
+  <p class="kicker">ECharts · 雷达图</p>
+  <h2 class="h2">presentation vs 传统 PPT</h2>
+  <div class="card mt-l" style="height:520px;padding:28px"><div id="c" style="width:100%;height:100%"></div></div>
+  <script>
+    addEventListener('DOMContentLoaded',()=>{
+      const chart=echarts.init(document.getElementById('c'),null,{renderer:'svg'});
+      window.__deckECharts.register(chart,function(c){
+        return {
+          color:[c['--accent'],c['--accent-2']],
+          tooltip:{},
+          legend:{data:['presentation','传统工具'],textStyle:{color:c['--text-2']}},
+          radar:{indicator:[
+            {name:'主题丰富度',max:100},{name:'交互性',max:100},{name:'动画支持',max:100},
+            {name:'协作效率',max:100},{name:'导出质量',max:100},{name:'上手难度',max:100}],
+            axisName:{color:c['--text-2'],fontSize:14},
+            splitArea:{areaStyle:{color:['transparent']}},
+            splitLine:{lineStyle:{color:c['--border']}},
+            axisLine:{lineStyle:{color:c['--border']}}},
+          series:[{type:'radar',
+            data:[
+              {value:[95,90,92,85,78,70],name:'presentation',
+                lineStyle:{width:3},symbolSize:6,areaStyle:{opacity:0.2}},
+              {value:[40,30,20,60,90,95],name:'传统工具',
+                lineStyle:{width:3},symbolSize:6,areaStyle:{opacity:0.15}}
+            ]}]
+        };
+      });
+      window.addEventListener('resize',()=>chart.resize());
+    });
+  </script>
+</section></deck-stage>
+<script src="../../assets/runtime.js"></script>
+</body></html>

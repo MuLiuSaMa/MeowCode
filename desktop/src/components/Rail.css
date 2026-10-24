@@ -1,0 +1,39 @@
+.mc-rail {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  width: var(--rail-w);
+  flex-shrink: 0;
+  padding: 6px 0 0;
+  /* 外框是一整块系统毛玻璃：导航条自身不再叠底色/描边/模糊，避免色差和割裂 */
+  background: transparent;
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+
+.mc-rail__btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  border: 0;
+  /* 圆润的圆角（42px 方形 + 15px 圆角 ≈ 柔和方圆形） */
+  border-radius: 15px;
+  corner-shape: superellipse(1.5);
+  background: transparent;
+  color: var(--fg-subtle);
+  cursor: pointer;
+  transition: background-color var(--dur) var(--ease), color var(--dur) var(--ease);
+}
+.mc-rail__btn:hover {
+  background: var(--surface);
+  color: var(--fg);
+}
+.mc-rail__btn[data-active="true"],
+.mc-rail__btn[data-active="true"]:hover {
+  background: var(--surface-hover);
+  color: var(--fg);
+}

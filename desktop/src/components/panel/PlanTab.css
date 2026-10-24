@@ -1,0 +1,244 @@
+/* 计划页签：plan 模式写出的 Markdown 计划文档预览 */
+
+.mc-plan {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+}
+
+.mc-plan__head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+  color: var(--fg-subtle);
+  font-size: var(--fs-xs);
+}
+
+.mc-plan__headicon {
+  flex-shrink: 0;
+}
+
+.mc-plan__path {
+  min-width: 0;
+  flex: 1;
+  font-family: var(--font-mono);
+  color: var(--fg-subtle);
+}
+
+/* 写入中：小转圈 + 文案；完成后消失 */
+.mc-plan__status {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex-shrink: 0;
+  color: var(--fg-subtle);
+  white-space: nowrap;
+}
+.mc-plan__spinner {
+  width: 9px;
+  height: 9px;
+  border: 1.5px solid var(--border);
+  border-top-color: var(--fg-subtle);
+  border-radius: 50%;
+  animation: mc-plan-spin 0.8s linear infinite;
+}
+@keyframes mc-plan-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.mc-plan__btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--fg-subtle);
+  cursor: pointer;
+  transition: background-color var(--dur) var(--ease), color var(--dur) var(--ease);
+}
+.mc-plan__btn:hover:not(:disabled) {
+  background: var(--surface-hover);
+  color: var(--fg);
+}
+.mc-plan__btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.mc-plan__body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 14px 16px 24px;
+  transition: opacity var(--dur) var(--ease);
+}
+/* 正在写入新版本：旧内容压暗，避免误以为已经是最终稿 */
+.mc-plan[data-writing="true"] .mc-plan__body {
+  opacity: 0.55;
+}
+
+.mc-plan__markdown {
+  color: var(--fg);
+}
+
+.mc-plan__hint {
+  margin: 0;
+  padding: 8px 0;
+  color: var(--fg-subtlest);
+  font-size: var(--fs-sm);
+}
+
+.mc-plan__empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 46px 20px;
+  text-align: center;
+}
+
+.mc-plan__emptyicon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  margin-bottom: 10px;
+  border-radius: var(--radius-lg);
+  corner-shape: superellipse(1.5);
+  background: var(--surface);
+  color: var(--fg-subtle);
+}
+
+.mc-plan__emptytitle {
+  margin: 0 0 6px;
+  font-size: var(--fs-sm);
+  color: var(--fg-subtle);
+}
+.mc-plan__emptyhint {
+  margin: 0;
+  font-size: var(--fs-xs);
+  line-height: 1.6;
+  color: var(--fg-subtlest);
+}
+
+/* ---- 治理 roadmap（lanes 与 gate 状态） ---- */
+.mc-plan__roadmap {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md, 8px);
+  margin: 10px 12px 0;
+}
+
+.mc-plan__roadmaphead {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--fs-caption);
+  font-weight: var(--fw-medium);
+  color: var(--fg);
+}
+
+.mc-plan__roadmapstate {
+  margin-left: auto;
+  color: var(--fg-subtle);
+  font-size: var(--fs-xs);
+}
+
+.mc-plan__roadmap[data-completed="true"] .mc-plan__roadmapstate {
+  color: var(--success-strong);
+}
+
+.mc-plan__lanes {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.mc-plan__lane {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm, 6px);
+}
+
+.mc-plan__lane[data-status="done"] {
+  opacity: 0.7;
+}
+
+.mc-plan__lane[data-status="blocked"] {
+  border-color: var(--danger, var(--fg-subtle));
+}
+
+.mc-plan__lanehead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  font-size: var(--fs-xs);
+}
+
+.mc-plan__laneid {
+  flex: none;
+  padding: 0 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  color: var(--fg-subtle);
+  line-height: 1.6;
+}
+
+.mc-plan__laneobjective {
+  flex: 1;
+  min-width: 0;
+  color: var(--fg);
+}
+
+.mc-plan__lanestate {
+  flex: none;
+  color: var(--fg-subtle);
+}
+
+.mc-plan__gates {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--fs-xs);
+}
+
+.mc-plan__gate {
+  flex: none;
+  padding: 0 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  color: var(--fg-subtle);
+  line-height: 1.6;
+}
+
+.mc-plan__gate[data-state="passed"] {
+  color: var(--success-strong);
+  border-color: currentColor;
+}
+
+.mc-plan__gate[data-state="failed"] {
+  color: var(--danger, var(--fg));
+  border-color: currentColor;
+}
+
+.mc-plan__repairs {
+  margin-left: auto;
+  color: var(--fg-subtle);
+}

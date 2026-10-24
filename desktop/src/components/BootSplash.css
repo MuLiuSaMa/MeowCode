@@ -1,0 +1,83 @@
+/*
+ * 启动画面：启动阶段不走主题色，始终黑底。
+ * 标题栏也要保持可拖动，所以把主题变量局部压成黑色而不是隐藏它。
+ */
+.mc-root--splash {
+  --bg-chrome: #000000;
+  --bg-root: #000000;
+  --bg: #000000;
+  --bg-panel: #000000;
+  --fg: #f5f5f5;
+  --fg-subtle: rgba(245 245 245 / 0.60);
+  --fg-subtlest: rgba(245 245 245 / 0.34);
+  --border: rgba(255 255 255 / 0.10);
+  --border-strong: rgba(255 255 255 / 0.16);
+  --surface: rgba(255 255 255 / 0.05);
+  --surface-hover: rgba(255 255 255 / 0.10);
+  --win-close-hover: #c42b1c;
+  --win-close-fg: #ffffff;
+}
+
+/* 亚克力模式下 .mc-root 默认是半透明的，启动画面仍要纯黑 */
+:root[data-backdrop="acrylic"] .mc-root.mc-root--splash {
+  background: #000000;
+}
+
+.mc-splash {
+  position: relative;
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  background: #000000;
+}
+
+.mc-splash__glow {
+  position: absolute;
+  width: clamp(300px, 36vw, 460px);
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle,
+    rgba(255 255 255 / 0.12) 0%,
+    rgba(255 255 255 / 0.04) 42%,
+    transparent 70%
+  );
+  animation: mc-splash-breathe 2.8s ease-in-out infinite;
+  pointer-events: none;
+}
+
+.mc-splash__logo {
+  position: relative;
+  width: clamp(72px, 10vw, 104px);
+  height: auto;
+  border-radius: 24%;
+  filter: drop-shadow(0 0 52px rgba(255 255 255 / 0.10));
+  animation: mc-splash-logo 720ms cubic-bezier(0.2, 0, 0.2, 1) both;
+  user-select: none;
+}
+
+@keyframes mc-splash-logo {
+  from {
+    opacity: 0;
+    transform: scale(0.92);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes mc-splash-breathe {
+  0%,
+  100% {
+    opacity: 0.55;
+    transform: scale(0.94);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.04);
+  }
+}

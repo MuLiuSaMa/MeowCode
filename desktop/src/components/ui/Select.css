@@ -1,0 +1,5 @@
+/* Select 已改为自绘的 CustomSelect（不再使用原生 <select>），
+   这里只保留宽度约束，外观见 CustomSelect.css 与 TextField.css 的 .mc-field 系列。 */
+.mc-field__select {
+  width: 100%;
+}

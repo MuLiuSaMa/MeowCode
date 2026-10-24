@@ -1,0 +1,176 @@
+/* 「文件」页签：预览（左）+ 逐层目录树（右） */
+
+.mc-wstree {
+  display: flex;
+  height: 100%;
+  min-width: 0;
+}
+
+.mc-wstree__main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.mc-wstree__empty {
+  margin: auto;
+  padding: 20px;
+  text-align: center;
+  font-size: var(--fs-sm);
+  color: var(--fg-subtlest);
+}
+
+/* ---- 预览与文件列表之间的拖拽把手 ---- */
+.mc-wstree__resize {
+  position: relative;
+  width: 6px;
+  flex-shrink: 0;
+  margin: 0 -3px;
+  cursor: col-resize;
+  touch-action: none;
+  z-index: 5;
+}
+.mc-wstree__resize::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 2px;
+  transform: translateX(-50%);
+  border-radius: 2px;
+  background: transparent;
+  transition: background-color var(--dur) var(--ease);
+}
+.mc-wstree__resize:hover::after,
+.mc-wstree__resize:active::after {
+  background: var(--border-strong);
+}
+
+/* ---- 右侧文件列表（逐层目录树，可拖拽调宽） ---- */
+.mc-wstree__side {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  border-left: 1px solid var(--border);
+  min-height: 0;
+}
+
+.mc-wstree__filter {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex-shrink: 0;
+  margin: 8px 8px 6px;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  background: var(--surface);
+  color: var(--fg-subtle);
+  transition: border-color var(--dur) var(--ease);
+}
+.mc-wstree__filter:focus-within {
+  border-color: var(--border-hover);
+}
+.mc-wstree__filter input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: var(--fg);
+  font-family: inherit;
+  font-size: var(--fs-xs);
+  outline: none;
+}
+.mc-wstree__filter input:focus-visible {
+  outline: none;
+}
+.mc-wstree__filter input::placeholder {
+  color: var(--fg-subtlest);
+}
+
+.mc-wstree__list {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 0 4px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.mc-wstree__hint {
+  padding: 14px 8px;
+  text-align: center;
+  font-size: var(--fs-xs);
+  color: var(--fg-subtlest);
+}
+
+.mc-wstree__row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  flex-shrink: 0;
+  padding: 4px 8px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--fg-subtle);
+  font-family: inherit;
+  font-size: var(--fs-xs);
+  text-align: left;
+  cursor: pointer;
+  transition: background-color var(--dur) var(--ease), color var(--dur) var(--ease);
+}
+.mc-wstree__row:hover {
+  background: var(--surface);
+  color: var(--fg);
+}
+.mc-wstree__row[data-active="true"] {
+  background: var(--surface-hover);
+  color: var(--fg);
+}
+
+.mc-wstree__name {
+  flex-shrink: 1;
+  min-width: 0;
+  font-weight: var(--fw-medium);
+}
+.mc-wstree__dir {
+  flex-shrink: 0;
+  max-width: 45%;
+  color: var(--fg-subtlest);
+}
+
+.mc-wstree__chevron {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
+  color: var(--fg-subtlest);
+  transition: transform var(--dur) var(--ease);
+}
+.mc-wstree__chevron[data-open="true"] {
+  transform: rotate(90deg);
+}
+
+.mc-wstree__icon {
+  flex-shrink: 0;
+  color: var(--fg-subtle);
+}
+.mc-wstree__row[data-dir="true"] {
+  color: var(--fg);
+}
+.mc-wstree__icon[data-cat="dir"] {
+  color: var(--fg-subtlest);
+}
+.mc-wstree__icon[data-cat="image"] {
+  color: var(--danger);
+}
+.mc-wstree__icon[data-cat="media"] {
+  color: var(--accent-violet);
+}

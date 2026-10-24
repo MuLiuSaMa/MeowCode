@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="zh-CN"><head><meta charset="utf-8"><title>Stacked Ledger</title>
+<link rel="stylesheet" href="../../assets/fonts.css">
+<link rel="stylesheet" href="../../assets/base.css">
+<link rel="stylesheet" id="theme-link" href="../../assets/themes/minimal-white.css">
+<link rel="stylesheet" href="../../assets/animations/animations.css">
+<style>
+.ledger{display:flex;flex-direction:column;gap:0;flex:1;justify-content:center;margin-top:24px}
+.ledger-row{display:grid;grid-template-columns:180px 1fr auto;gap:32px;align-items:center;padding:28px 0;border-top:1px solid var(--border)}
+.ledger-row:last-child{border-bottom:1px solid var(--border)}
+.ledger-num{font-size:56px;font-weight:800;line-height:.9;letter-spacing:-.03em;font-variant-numeric:tabular-nums}
+.ledger-num .unit{font-size:20px;font-weight:400;opacity:.5;margin-left:4px}
+.ledger-label h3{font-size:22px;font-weight:700;margin:0 0 4px;line-height:1.2}
+.ledger-label p{font-size:14px;color:var(--text-2);margin:0;line-height:1.5;max-width:48ch}
+.ledger-icon{width:48px;height:48px;border-radius:var(--radius-sm);background:var(--surface-2);display:flex;align-items:center;justify-content:center}
+.ledger-icon svg{width:24px;height:24px;stroke:var(--accent);fill:none;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+.ledger-row.accent .ledger-num{color:var(--accent)}
+</style>
+</head><body class="single">
+<deck-stage width="1920" height="1080" data-themes="minimal-white,aurora,tokyo-night" data-theme-base="../../assets/themes/">
+  <section class="slide active" data-deck-label="Stacked Ledger">
+    <p class="kicker">Performance · 关键账本</p>
+    <h2 class="h2">运营核心数据一览</h2>
+    <!-- === 可增删 .ledger-row 条目；添加 .accent 类可高亮重点项 === -->
+    <div class="ledger anim-stagger-list">
+      <div class="ledger-row">
+        <div class="ledger-num">1.2<span class="unit">M</span></div>
+        <div class="ledger-label">
+          <h3>累计注册用户</h3>
+          <p>较上季度增长 23%，主要来自社交裂变渠道。</p>
+        </div>
+        <div class="ledger-icon"><svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></div>
+      </div>
+      <div class="ledger-row accent">
+        <div class="ledger-num">98.6<span class="unit">%</span></div>
+        <div class="ledger-label">
+          <h3>服务可用率</h3>
+          <p>全年 SLA 达标，P99 延迟控制在 200ms 以内。</p>
+        </div>
+        <div class="ledger-icon"><svg viewBox="0 0 24 24"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg></div>
+      </div>
+      <div class="ledger-row">
+        <div class="ledger-num">¥86<span class="unit">M</span></div>
+        <div class="ledger-label">
+          <h3>年度总营收</h3>
+          <p>同比增长 41%，续费率达 92%。</p>
+        </div>
+        <div class="ledger-icon"><svg viewBox="0 0 24 24"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg></div>
+      </div>
+      <div class="ledger-row">
+        <div class="ledger-num">4.8<span class="unit">★</span></div>
+        <div class="ledger-label">
+          <h3>用户满意度</h3>
+          <p>基于 12,000+ 条评价，NPS 得分 72。</p>
+        </div>
+        <div class="ledger-icon"><svg viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg></div>
+      </div>
+    </div>
+  </section>
+</deck-stage>
+<script src="../../assets/runtime.js"></script>
+</body></html>

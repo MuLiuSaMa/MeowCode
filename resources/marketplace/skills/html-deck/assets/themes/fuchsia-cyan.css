@@ -1,0 +1,19 @@
+/* theme: fuchsia-cyan — 品红青 */
+/* 配色源: ui-ux-pro-max #10 Creative Agency  字体源: #18 Fashion Forward (Syne + Manrope) */
+:root{
+  --bg:#FDF2F8;--bg-soft:#FCE7F3;--surface:#FFFFFF;--surface-2:#F1EEF5;
+  --border:rgba(131,24,67,.12);--border-strong:rgba(131,24,67,.25);
+  --text-1:#831843;--text-2:#9D174D;--text-3:#64748B;
+  --accent:#EC4899;--accent-2:#0891B2;--accent-3:#F472B6;
+  --good:#059669;--warn:#D97706;--bad:#DC2626;
+  --grad:linear-gradient(135deg,#EC4899,#0891B2);
+  --grad-soft:linear-gradient(135deg,#FDF2F8,#ECFEFF);
+  --radius:14px;--radius-sm:8px;--radius-lg:22px;
+  --shadow:0 2px 8px rgba(236,72,153,.08),0 12px 32px rgba(236,72,153,.06);
+  --shadow-lg:0 8px 24px rgba(236,72,153,.12),0 30px 80px rgba(236,72,153,.08);
+  --font-sans:'Manrope','Noto Sans SC',sans-serif;
+  --font-display:'Syne','Manrope','Noto Sans SC',sans-serif;
+}
+.card{border:1px solid var(--border)}
+.kicker{color:var(--accent-2)}
+h1.title,.h1{font-family:var(--font-display);font-weight:700}

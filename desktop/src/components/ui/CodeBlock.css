@@ -1,0 +1,29 @@
+.mc-codeblock {
+  min-width: 0;
+}
+.mc-codeblock + .mc-codeblock {
+  margin-top: 14px;
+}
+.mc-codeblock__label {
+  display: block;
+  margin: 0 0 6px;
+  font-size: var(--fs-xs);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--fg-subtlest);
+}
+.mc-codeblock__code {
+  margin: 0;
+  padding: 10px 12px;
+  max-height: 280px;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  corner-shape: superellipse(1.5);
+  background: color-mix(in oklab, #000 24%, var(--bg));
+  font-size: var(--fs-sm);
+  line-height: 1.5;
+  color: var(--fg-subtle);
+  white-space: pre-wrap;
+  word-break: break-word;
+}

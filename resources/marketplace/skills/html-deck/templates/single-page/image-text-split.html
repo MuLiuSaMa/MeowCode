@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"><title>Image Text Split</title>
+<link rel="stylesheet" href="../../assets/fonts.css">
+<link rel="stylesheet" href="../../assets/base.css">
+<link rel="stylesheet" id="theme-link" href="../../assets/themes/minimal-white.css">
+<link rel="stylesheet" href="../../assets/animations/animations.css">
+<style>
+.split{display:grid;grid-template-columns:1fr 1fr;gap:0;height:100%;min-height:calc(100vh - 112px)}
+.split.reverse{direction:rtl}
+.split.reverse>*{direction:ltr}
+.split-img{position:relative;border-radius:var(--radius-lg);overflow:hidden;min-height:400px}
+.split-img img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.split-img .placeholder{position:absolute;inset:0;background:
+  radial-gradient(60% 50% at 30% 40%,var(--accent,.4),transparent 70%),
+  radial-gradient(50% 60% at 70% 60%,var(--accent-2,#c084fc),transparent 70%),
+  linear-gradient(135deg,var(--surface-2),var(--surface-1))}
+.split-body{display:flex;flex-direction:column;justify-content:center;padding:56px 48px}
+.split-body h2{font-size:44px;font-weight:800;line-height:1.15;letter-spacing:-.02em;margin:0}
+.split-body p{font-size:18px;color:var(--text-2);margin:20px 0 0;max-width:48ch;line-height:1.7}
+.split-body .meta{display:flex;gap:12px;margin-top:32px;flex-wrap:wrap}
+</style>
+</head>
+<body class="single">
+<deck-stage width="1920" height="1080" data-themes="minimal-white,editorial-serif,soft-pastel,tokyo-night,xiaohongshu-white" data-theme-base="../../assets/themes/">
+  <section class="slide active" data-deck-label="Image Text Split">
+    <div class="split">
+      <div class="split-img">
+        <!-- 替换为: <img src="assets/your-image_1024x768.png" alt="描述"> -->
+        <div class="placeholder"></div>
+      </div>
+      <div class="split-body" data-anim="fade-right">
+        <p class="kicker">Feature · 功能亮点</p>
+        <h2>左图右文<br>经典图文分栏</h2>
+        <p>将视觉焦点放在左侧图片区域，右侧承载关键信息。适用于产品介绍、功能说明、案例展示等场景。</p>
+        <div class="meta">
+          <span class="pill pill-accent">产品介绍</span>
+          <span class="pill">功能说明</span>
+          <span class="pill">案例展示</span>
+        </div>
+      </div>
+    </div>
+    <div class="notes">左图右文布局：通过 .split.reverse 类可切换为右图左文。图片区使用 object-fit:cover 自适应裁剪。</div>
+  </section>
+</deck-stage>
+<script src="../../assets/runtime.js"></script>
+</body></html>

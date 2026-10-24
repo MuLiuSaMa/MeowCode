@@ -1,0 +1,25 @@
+/* theme: crimson-night — 赤色之夜 */
+/* 配色源: ui-ux-pro-max #75 Sports Team (DC2626) + #66 News/Media  字体源: #16 Corporate Trust (Lexend + Source Sans 3) */
+:root{
+  --bg:#1a0505;--bg-soft:#2a0a0a;--surface:#2a0a0a;--surface-2:#3a1010;
+  --border:rgba(220,38,38,.2);--border-strong:rgba(220,38,38,.4);
+  --text-1:#FEF2F2;--text-2:#FCA5A5;--text-3:#94A3B8;
+  --accent:#EF4444;--accent-2:#CA8A04;--accent-3:#FBBF24;
+  --good:#86EFAC;--warn:#FDE68A;--bad:#FCA5A5;
+  --grad:linear-gradient(135deg,#EF4444,#CA8A04);
+  --grad-soft:linear-gradient(135deg,rgba(239,68,68,.18),rgba(202,138,4,.18));
+  --radius:0px;--radius-sm:0px;--radius-lg:2px;
+  --shadow:0 2px 8px rgba(0,0,0,.4);
+  --shadow-lg:0 8px 24px rgba(0,0,0,.5),0 0 40px rgba(220,38,38,.1);
+  --font-sans:'Source Sans 3','Noto Sans SC',sans-serif;
+  --font-display:'Lexend','Source Sans 3','Noto Sans SC',sans-serif;
+}
+body{background:
+  radial-gradient(ellipse at 30% 0%,rgba(220,38,38,.15),transparent 50%),
+  radial-gradient(ellipse at 70% 100%,rgba(202,138,4,.1),transparent 50%),
+  #1a0505}
+.card{border:1px solid var(--border);background:rgba(42,10,10,.7)}
+.divider{background:rgba(220,38,38,.3);height:1px}
+.divider-accent{background:var(--grad);height:3px;width:100%}
+.kicker{color:var(--accent-2);text-transform:uppercase;letter-spacing:.1em;font-weight:600}
+h1.title,.h1{font-family:var(--font-display);font-weight:700}

@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><title>Alert Callout — presentation single-page</title>
+<link rel="stylesheet" href="../../assets/fonts.css">
+<link rel="stylesheet" href="../../assets/base.css">
+<link rel="stylesheet" id="theme-link" href="../../assets/themes/minimal-white.css">
+<link rel="stylesheet" href="../../assets/animations/animations.css">
+<style>
+.alert-box{border-left:4px solid var(--bad,#e0314a);border-radius:var(--radius,14px);padding:24px 28px;background:var(--surface,#fff);position:relative;margin-top:20px}
+.alert-box::before{content:'';position:absolute;top:16px;right:20px;width:12px;height:12px;background:var(--bad,#e0314a);border-radius:50%;box-shadow:0 0 0 5px rgba(224,49,74,.18)}
+.alert-box.danger{border-color:var(--bad,#e0314a);background:color-mix(in srgb,var(--bad,#e0314a) 6%,var(--surface,#fff))}
+.alert-box.danger::before{background:var(--bad,#e0314a);box-shadow:0 0 0 5px rgba(224,49,74,.18)}
+.alert-box.warn{border-color:var(--warn,#d97706);background:color-mix(in srgb,var(--warn,#d97706) 6%,var(--surface,#fff))}
+.alert-box.warn::before{background:var(--warn,#d97706);box-shadow:0 0 0 5px rgba(217,119,6,.18)}
+.alert-box.success{border-color:var(--good,#067647);background:color-mix(in srgb,var(--good,#067647) 6%,var(--surface,#fff))}
+.alert-box.success::before{background:var(--good,#067647);box-shadow:0 0 0 5px rgba(6,118,71,.18)}
+.alert-box h3{font-size:22px;font-weight:800;margin:0 0 6px}
+.alert-box p{font-size:15px;line-height:1.65;color:var(--text-2);margin:0}
+.strike{position:relative;display:inline-block}
+.strike::after{content:'';position:absolute;left:-4%;right:-4%;top:50%;height:6px;background:var(--bad,#e0314a);transform:skewX(-12deg);opacity:.82}
+</style>
+</head><body class="single">
+<deck-stage width="1920" height="1080"><section class="slide active" data-deck-label="Alert Callout">
+  <p class="kicker">Alert Callout</p>
+  <h1 class="h1">Status Alerts</h1>
+  <p class="lede">Color-coded callout boxes for warnings, errors, and confirmations.</p>
+
+  <!-- === 可增删 .alert-box 条目；可用 .danger/.warn/.success 类切换样式 === -->
+  <div class="alert-box danger anim-fade-up" data-anim="fade-up">
+    <h3>We thought <span class="strike">this was safe</span> — it wasn't</h3>
+    <p>Critical security vulnerability detected in the authentication module. All API tokens issued before April 2026 must be rotated immediately.</p>
+  </div>
+
+  <div class="alert-box warn anim-fade-up" data-anim="fade-up">
+    <h3>Deprecation Notice</h3>
+    <p>The legacy <code>v1/auth</code> endpoint will be removed on 2026-06-01. Please migrate to <code>v2/auth</code> before the deadline to avoid service disruption.</p>
+  </div>
+
+  <div class="alert-box success anim-fade-up" data-anim="fade-up">
+    <h3>Deployment Confirmed</h3>
+    <p>Release <b>v3.8.2</b> has been successfully deployed to all production regions. Health checks passing, rollback window open for 24 h.</p>
+  </div>
+
+  <div class="notes">Use alert-callout for important notices, risk declarations, safety warnings. Three variants: danger (red), warn (amber), success (green). The strike-through text effect works well for "myth-busting" rhetoric.</div>
+</section></deck-stage>
+<script src="../../assets/runtime.js"></script>
+</body></html>

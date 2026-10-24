@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="zh-CN"><head><meta charset="utf-8"><title>ECharts · Sankey</title>
+<link rel="stylesheet" href="../../assets/fonts.css">
+<link rel="stylesheet" href="../../assets/base.css">
+<link rel="stylesheet" id="theme-link" href="../../assets/themes/minimal-white.css">
+<link rel="stylesheet" href="../../assets/animations/animations.css">
+<!-- In generated decks use ./_shared/echarts.min.js -->
+<script src="../../assets/echarts.min.js"></script>
+<script src="../../assets/echarts-theme-sync.js"></script>
+</head><body class="single">
+<deck-stage width="1920" height="1080"><section class="slide active" data-deck-label="Sankey chart">
+  <p class="kicker">ECharts · 桑基图</p>
+  <h2 class="h2">用户转化漏斗</h2>
+  <div class="card mt-l" style="height:560px;padding:28px"><div id="c" style="width:100%;height:100%"></div></div>
+  <script>
+    addEventListener('DOMContentLoaded', function () {
+      var chart = echarts.init(document.getElementById('c'), null, { renderer: 'svg' });
+      window.__deckECharts.register(chart, function (c) {
+        return {
+          tooltip: { trigger: 'item', triggerOn: 'mousemove' },
+          series: [{
+            type: 'sankey',
+            layout: 'none',
+            emphasis: { focus: 'adjacency' },
+            lineStyle: { color: 'gradient', curveness: 0.5 },
+            label: { color: c['--text-1'], fontSize: 14 },
+            itemStyle: { borderWidth: 1, borderColor: c['--border'] },
+            data: [
+              { name: '首页访问',  itemStyle: { color: c['--accent'] } },
+              { name: '注册页',    itemStyle: { color: c['--accent-2'] } },
+              { name: '完成注册',  itemStyle: { color: c['--accent'] } },
+              { name: '首次付费',  itemStyle: { color: c['--accent-3'] } },
+              { name: '续费',      itemStyle: { color: c['--accent-2'] } },
+              { name: '直接购买',  itemStyle: { color: c['--accent-3'] } },
+              { name: '流失-注册', itemStyle: { color: c['--bad'] || c['--text-3'] } },
+              { name: '流失-付费', itemStyle: { color: c['--bad'] || c['--text-3'] } }
+            ],
+            links: [
+              { source: '首页访问', target: '注册页',    value: 600 },
+              { source: '首页访问', target: '直接购买',  value: 150 },
+              { source: '注册页',   target: '完成注册',  value: 400 },
+              { source: '注册页',   target: '流失-注册', value: 200 },
+              { source: '完成注册', target: '首次付费',  value: 180 },
+              { source: '完成注册', target: '流失-付费', value: 220 },
+              { source: '首次付费', target: '续费',      value: 120 }
+            ]
+          }]
+        };
+      });
+      window.addEventListener('resize', function () { chart.resize(); });
+    });
+  </script>
+</section></deck-stage>
+<script src="../../assets/runtime.js"></script>
+</body></html>

@@ -1,0 +1,36 @@
+{
+  "name": "meowcode",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "license": "GPL-3.0-or-later",
+  "main": "dist/server/server.js",
+  "scripts": {
+    "build:agent": "tsc -p tsconfig.json",
+    "dev:server": "tsx watch src/server/server.ts",
+    "start:server": "node dist/server/server.js",
+    "dev:desktop": "pnpm --filter @meowcode/desktop dev",
+    "brand:dev": "node scripts/brand-electron.mjs",
+    "make:ico": "node scripts/make-meowcode-ico.mjs",
+    "build": "pnpm build:agent && pnpm --filter @meowcode/desktop build",
+    "test": "vitest run",
+    "package": "pnpm build && pnpm --filter @meowcode/desktop package:win"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.1",
+    "@vscode/ripgrep": "^1.18.0",
+    "jiti": "^2.7.0",
+    "pdfjs-dist": "^6.4.299",
+    "undici": "^7.16.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.1",
+    "@vscode/ripgrep-win32-x64": "1.18.0",
+    "png-to-ico": "^3.0.2",
+    "resedit": "^3.1.0",
+    "simple-icons": "^16.35.0",
+    "tsx": "^4.20.6",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.9"
+  }
+}

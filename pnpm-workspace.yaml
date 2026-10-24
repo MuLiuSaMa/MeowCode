@@ -1,0 +1,14 @@
+packages:
+  - desktop
+
+allowBuilds:
+  electron-winstaller: true
+  esbuild: true
+  node-pty: set this to true or false
+
+onlyBuiltDependencies:
+  - esbuild
+  - electron
+  - electron-winstaller
+  - electron-builder
+  - node-pty

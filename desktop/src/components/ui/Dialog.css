@@ -1,0 +1,114 @@
+.mc-dialog {
+  border: 0;
+  padding: 0;
+  background: transparent;
+  max-width: min(92vw, 560px);
+  max-height: 88vh;
+  overflow: visible;
+  animation: mc-fade-in var(--dur) var(--ease);
+}
+.mc-dialog::backdrop {
+  background: rgb(0 0 0 / 0.55);
+  backdrop-filter: blur(4px);
+}
+.mc-dialog__panel {
+  display: flex;
+  flex-direction: column;
+  max-height: 88vh;
+  overflow: auto;
+  background: var(--bg-elevated);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-2xl);
+  corner-shape: superellipse(1.5);
+  box-shadow: var(--shadow-lg);
+  padding: 22px 24px;
+}
+
+.mc-dialog__title {
+  font-size: var(--fs-lg);
+  font-weight: var(--fw-medium);
+  line-height: var(--lh-tight);
+}
+.mc-dialog__desc {
+  margin-top: 6px;
+  color: var(--fg-subtle);
+  font-size: var(--fs-caption);
+}
+.mc-dialog__body {
+  margin-top: 18px;
+}
+
+/* 审批弹窗的危险命令提示：仅在小面积使用语义红 */
+.mc-dialog__risk {
+  margin-top: 14px;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in oklab, var(--danger) 40%, var(--border));
+  border-radius: var(--radius-md);
+  corner-shape: superellipse(1.5);
+  background: color-mix(in oklab, var(--danger) 10%, transparent);
+  font-size: var(--fs-caption);
+  line-height: 1.5;
+}
+.mc-dialog__risktitle {
+  font-weight: var(--fw-medium);
+  color: var(--danger);
+}
+.mc-dialog__risk ul {
+  margin: 4px 0 0;
+  padding-left: 18px;
+  color: var(--fg-subtle);
+}
+.mc-dialog__footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 22px;
+}
+
+/* 关闭确认弹窗的「记住我的选择」行 */
+.mc-dialog__remember {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 18px;
+  font-size: var(--fs-caption);
+  color: var(--fg-subtle);
+  cursor: pointer;
+  user-select: none;
+}
+
+.mc-dialog__remember input {
+  width: 15px;
+  height: 15px;
+  margin: 0;
+  accent-color: var(--brand);
+  cursor: pointer;
+}
+
+/* 简单输入（重命名等） */
+.mc-dialog__input {
+  width: 100%;
+  margin-top: 16px;
+  padding: 9px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  corner-shape: superellipse(1.5);
+  background: var(--input-fill);
+  color: var(--fg);
+  font-family: inherit;
+  font-size: var(--fs-base);
+  transition: border-color var(--dur) var(--ease);
+}
+.mc-dialog__input:focus {
+  border-color: var(--border-hover);
+}
+/* 文本控件点击也会命中全局 :focus-visible 白圈，这里不要外框 */
+.mc-dialog__input:focus-visible {
+  outline: none;
+}
+
+/* 宽版弹窗（服务商选择器 / 模型表单用）—— 必须定义在 .mc-dialog 之后才能覆盖宽度 */
+.mc-dialog--wide {
+  max-width: min(92vw, 780px);
+}

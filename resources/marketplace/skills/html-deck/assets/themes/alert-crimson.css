@@ -1,0 +1,20 @@
+/* theme: alert-crimson — 警示红 */
+/* 配色源: ui-ux-pro-max #158 Emergency SOS & Safety (red + blue)  字体源: #16 Corporate Trust (Lexend + Source Sans 3) */
+:root{
+  --bg:#FFF1F2;--bg-soft:#FFE4E6;--surface:#FFFFFF;--surface-2:#FCF1F1;
+  --border:rgba(220,38,38,.12);--border-strong:rgba(220,38,38,.28);
+  --text-1:#0F172A;--text-2:#374151;--text-3:#64748B;
+  --accent:#DC2626;--accent-2:#2563EB;--accent-3:#EF4444;
+  --good:#059669;--warn:#D97706;--bad:#DC2626;
+  --grad:linear-gradient(135deg,#DC2626,#2563EB);
+  --grad-soft:linear-gradient(135deg,#FFF1F2,#EFF6FF);
+  --radius:6px;--radius-sm:4px;--radius-lg:10px;
+  --shadow:0 1px 3px rgba(220,38,38,.06),0 4px 12px rgba(220,38,38,.04);
+  --shadow-lg:0 4px 12px rgba(220,38,38,.1),0 16px 40px rgba(220,38,38,.06);
+  --font-sans:'Lexend','Source Sans 3','Noto Sans SC',sans-serif;
+  --font-display:'Lexend','Noto Sans SC',sans-serif;
+}
+.card{border:2px solid var(--border-strong)}
+.divider-accent{background:var(--accent);height:4px;width:100%}
+.kicker{color:var(--accent);font-weight:700;text-transform:uppercase;letter-spacing:.06em}
+h1.title,.h1{font-family:var(--font-display);font-weight:700;color:var(--accent)}

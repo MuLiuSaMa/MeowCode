@@ -1,0 +1,23 @@
+/* theme: crimson-gold — 赤金 */
+/* 配色源: ui-ux-pro-max #34 Restaurant/Food Service (DC2626 red + A16207 gold)  字体源: #29 Legal Professional (EB Garamond + Lato) */
+:root{
+  --bg:#FEF2F2;--bg-soft:#FEE2E2;--surface:#FFFFFF;--surface-2:#F0EDF1;
+  --border:rgba(69,10,10,.12);--border-strong:rgba(69,10,10,.28);
+  --text-1:#450A0A;--text-2:#7F1D1D;--text-3:#64748B;
+  --accent:#DC2626;--accent-2:#A16207;--accent-3:#EF4444;
+  --good:#059669;--warn:#D97706;--bad:#DC2626;
+  --grad:linear-gradient(135deg,#DC2626,#A16207);
+  --grad-soft:linear-gradient(135deg,#FEF2F2,#FEF3C7);
+  --radius:0px;--radius-sm:0px;--radius-lg:0px;
+  --shadow:none;
+  --shadow-lg:0 1px 3px rgba(0,0,0,.1);
+  --font-sans:'Lato','Noto Sans SC',sans-serif;
+  --font-serif:'EB Garamond','Noto Serif SC',serif;
+  --font-display:'EB Garamond','Noto Serif SC',serif;
+}
+.card{border:1px solid var(--border)}
+.divider{background:var(--accent);height:1px}
+.divider-accent{background:var(--grad);height:3px;width:100%}
+.kicker{color:var(--accent);font-weight:600;text-transform:uppercase;letter-spacing:.1em}
+h1.title,.h1{font-family:var(--font-display);font-weight:700;color:var(--accent)}
+h2.title,.h2{font-family:var(--font-display);font-weight:600}

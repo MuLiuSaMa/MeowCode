@@ -1,0 +1,96 @@
+{
+  "name": "@meowcode/desktop",
+  "version": "0.1.0",
+  "private": true,
+  "main": "main.cjs",
+  "scripts": {
+    "dev": "concurrently -k --success first \"vite\" \"node ../scripts/brand-electron.mjs --soft && wait-on tcp:5273 && cross-env VITE_DEV_SERVER_URL=http://localhost:5273 node ../scripts/dev-electron.mjs .\"",
+    "build": "vite build",
+    "start": "pnpm build && electron .",
+    "package:win": "pnpm build && electron-builder --win --x64",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "dompurify": "^3.3.0",
+    "marked": "^16.4.1",
+    "node-pty": "^1.1.0",
+    "react": "^19.2.1",
+    "react-dom": "^19.2.1",
+    "react-icons": "^5.7.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^5.1.2",
+    "@xterm/addon-fit": "^0.11.0",
+    "@xterm/xterm": "^6.0.0",
+    "concurrently": "^9.2.1",
+    "cross-env": "^10.1.0",
+    "electron": "44.7.0",
+    "electron-builder": "^26.17.0",
+    "typescript": "^5.9.3",
+    "vite": "^8.0.2",
+    "wait-on": "^9.0.3"
+  },
+  "build": {
+    "appId": "app.meowcode.desktop",
+    "productName": "MeowCode",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "main.cjs",
+      "preload.cjs",
+      "github-oauth.cjs",
+      "browser-host.cjs",
+      "terminals.cjs",
+      "renderer/**/*",
+      "package.json"
+    ],
+    "asarUnpack": [
+      "**/node_modules/node-pty/**",
+      "**/node_modules/pdfjs-dist/**"
+    ],
+    "extraResources": [
+      {
+        "from": "../dist/server",
+        "to": "agent-server"
+      },
+      {
+        "from": "../node_modules/@vscode/ripgrep-win32-x64/bin/rg.exe",
+        "to": "agent-server/ripgrep/rg.exe"
+      },
+      {
+        "from": "../resources",
+        "to": "icons",
+        "filter": [
+          "**/*",
+          "!marketplace/**"
+        ]
+      },
+      {
+        "from": "../resources/marketplace",
+        "to": "marketplace"
+      },
+      {
+        "from": "../MeowCode.ico",
+        "to": "icons/MeowCode.ico"
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "../resources/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    }
+  }
+}

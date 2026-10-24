@@ -1,0 +1,21 @@
+/* theme: luxury-noir — 奢品黑金 */
+/* 配色源: ui-ux-pro-max #33 Luxury/Premium Brand  字体源: #12 Luxury Serif (Cormorant + Montserrat) */
+:root{
+  --bg:#FAFAF9;--bg-soft:#F5F5F4;--surface:#FFFFFF;--surface-2:#E8ECF0;
+  --border:rgba(12,10,9,.12);--border-strong:rgba(12,10,9,.3);
+  --text-1:#0C0A09;--text-2:#44403C;--text-3:#78716C;
+  --accent:#1C1917;--accent-2:#A16207;--accent-3:#44403C;
+  --good:#059669;--warn:#D97706;--bad:#DC2626;
+  --grad:linear-gradient(135deg,#1C1917,#A16207);
+  --grad-soft:linear-gradient(135deg,#F5F5F4,#FEF3C7);
+  --radius:0px;--radius-sm:0px;--radius-lg:0px;
+  --shadow:none;
+  --shadow-lg:0 2px 8px rgba(0,0,0,.08);
+  --font-sans:'Montserrat','Noto Sans SC',sans-serif;
+  --font-serif:'Cormorant','Noto Serif SC',serif;
+  --font-display:'Cormorant','Noto Serif SC',serif;
+}
+.card{border:1px solid var(--border)}
+.divider,.divider-accent{background:var(--accent-2);height:1px}
+.kicker{color:var(--accent-2);text-transform:uppercase;letter-spacing:.12em;font-weight:500}
+h1.title,.h1{font-family:var(--font-display);font-weight:600;letter-spacing:-.02em}

@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="zh-CN"><head><meta charset="utf-8"><title>KPI Tower</title>
+<link rel="stylesheet" href="../../assets/fonts.css">
+<link rel="stylesheet" href="../../assets/base.css">
+<link rel="stylesheet" id="theme-link" href="../../assets/themes/minimal-white.css">
+<link rel="stylesheet" href="../../assets/animations/animations.css">
+<style>
+.towers{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:20px;align-items:end;flex:1;margin-top:32px}
+.tower{display:flex;flex-direction:column;gap:8px}
+.tower-bar{display:flex;flex-direction:column;justify-content:flex-end;padding:28px 20px;border:1px solid var(--border-strong);border-radius:var(--radius-sm);min-height:140px}
+.tower-bar.h1{min-height:200px}
+.tower-bar.h2{min-height:280px}
+.tower-bar.h3{min-height:340px}
+.tower-bar.h4{min-height:420px}
+.tower-bar.h5{min-height:500px}
+.tower-bar.accent{background:var(--accent);color:#fff;border-color:var(--accent)}
+.tower-bar .num{font-size:36px;font-weight:800;line-height:1;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.tower-bar .unit{font-size:14px;font-weight:400;opacity:.6;margin-left:4px}
+.tower-bar .sub{font-size:13px;opacity:.75;margin-top:10px;line-height:1.5;letter-spacing:.02em}
+.tower-bar.accent .num,.tower-bar.accent .sub{color:#fff}
+.tower-lbl{font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--text-3);text-align:center}
+.tower-cap{height:48px;background:var(--surface-2);border-radius:var(--radius-sm);display:flex;align-items:center;justify-content:center}
+.tower-cap svg{width:20px;height:20px;stroke:var(--text-3);fill:none;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+</style>
+</head><body class="single">
+<deck-stage width="1920" height="1080" data-themes="minimal-white,aurora,tokyo-night" data-theme-base="../../assets/themes/">
+  <section class="slide active" data-deck-label="KPI Tower">
+    <p class="kicker">Metrics · 数据纵览</p>
+    <h2 class="h2">关键指标的量级对比</h2>
+    <!-- === 可增删 .tower 条目；tower-bar 高度用 .h1~.h5 表示数据量级（h1 最矮 h5 最高），应与实际数值相关 === -->
+    <div class="towers anim-stagger-list">
+      <div class="tower">
+        <div class="tower-cap"><svg viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg></div>
+        <div class="tower-bar h1">
+          <div class="num">128<span class="unit">K</span></div>
+          <div class="sub">日活用户</div>
+        </div>
+        <div class="tower-lbl">Users</div>
+      </div>
+      <div class="tower">
+        <div class="tower-cap"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></div>
+        <div class="tower-bar h2">
+          <div class="num">3.2<span class="unit">s</span></div>
+          <div class="sub">平均响应</div>
+        </div>
+        <div class="tower-lbl">Latency</div>
+      </div>
+      <div class="tower">
+        <div class="tower-cap"><svg viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg></div>
+        <div class="tower-bar accent h4">
+          <div class="num">99.7<span class="unit">%</span></div>
+          <div class="sub">可用率 SLA</div>
+        </div>
+        <div class="tower-lbl">Uptime</div>
+      </div>
+      <div class="tower">
+        <div class="tower-cap"><svg viewBox="0 0 24 24"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg></div>
+        <div class="tower-bar h3">
+          <div class="num">¥42<span class="unit">M</span></div>
+          <div class="sub">季度营收</div>
+        </div>
+        <div class="tower-lbl">Revenue</div>
+      </div>
+    </div>
+  </section>
+</deck-stage>
+<script src="../../assets/runtime.js"></script>
+</body></html>

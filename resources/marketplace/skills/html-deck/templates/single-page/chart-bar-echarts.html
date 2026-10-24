@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="zh-CN"><head><meta charset="utf-8"><title>ECharts · Bar</title>
+<link rel="stylesheet" href="../../assets/fonts.css">
+<link rel="stylesheet" href="../../assets/base.css">
+<link rel="stylesheet" id="theme-link" href="../../assets/themes/minimal-white.css">
+<link rel="stylesheet" href="../../assets/animations/animations.css">
+<!-- In generated decks use ./_shared/echarts.min.js -->
+<script src="../../assets/echarts.min.js"></script>
+<script src="../../assets/echarts-theme-sync.js"></script>
+</head><body class="single">
+<deck-stage width="1920" height="1080"><section class="slide active" data-deck-label="ECharts Bar chart">
+  <p class="kicker">ECharts · 柱状图</p>
+  <h2 class="h2">季度 MRR 趋势</h2>
+  <div class="card mt-l" style="height:520px;padding:28px"><div id="c" style="width:100%;height:100%"></div></div>
+  <script>
+    addEventListener('DOMContentLoaded',()=>{
+      const chart=echarts.init(document.getElementById('c'),null,{renderer:'svg'});
+      window.__deckECharts.register(chart,function(c){
+        return {
+          color:[c['--accent']],
+          tooltip:{trigger:'axis'},
+          xAxis:{type:'category',data:['Q1','Q2','Q3','Q4','Q1 +1','Q2 +1','Q3 +1','Q4 +1'],
+            axisLabel:{color:c['--text-2']},axisLine:{lineStyle:{color:c['--border']}},
+            splitLine:{lineStyle:{color:c['--border']}}},
+          yAxis:{type:'value',axisLabel:{color:c['--text-2']},
+            splitLine:{lineStyle:{color:c['--border']}}},
+          series:[{name:'MRR (K)',type:'bar',data:[42,58,73,96,124,158,204,261],
+            barWidth:36,itemStyle:{borderRadius:[8,8,0,0]}}]
+        };
+      });
+      window.addEventListener('resize',()=>chart.resize());
+    });
+  </script>
+</section></deck-stage>
+<script src="../../assets/runtime.js"></script>
+</body></html>

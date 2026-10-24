@@ -1,0 +1,319 @@
+.mc-popover {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 10px);
+  width: 320px;
+  padding: 10px 12px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-2xl);
+  corner-shape: superellipse(1.5);
+  box-shadow: var(--shadow-lg);
+  z-index: 30;
+  animation: mc-fade-in var(--dur) var(--ease);
+}
+
+/* ---- 头部：两个视图共用 ---- */
+.mc-popover__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+/* 滑杆视图：26px | 1fr | 26px 三列，中间块严格居中，重置按钮贴右 */
+.mc-popover__head--slider {
+  display: grid;
+  grid-template-columns: 26px 1fr 26px;
+}
+.mc-popover__levelbtn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  min-width: 0;
+  padding: 2px 8px;
+  border: 0;
+  border-radius: var(--radius-md);
+  corner-shape: superellipse(1.5);
+  background: transparent;
+  color: inherit;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background-color var(--dur) var(--ease);
+}
+.mc-popover__levelbtn:hover {
+  background: var(--surface-hover);
+}
+.mc-popover__level {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: var(--fs-lg);
+  font-weight: var(--fw-medium);
+  letter-spacing: -0.01em;
+  line-height: 1.2;
+  color: var(--accent);
+  transition: color var(--dur) var(--ease);
+}
+.mc-popover__level[data-max="true"] {
+  color: var(--accent-violet);
+}
+.mc-popover__model {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  max-width: 100%;
+  font-size: var(--fs-caption);
+  color: var(--fg-subtlest);
+}
+.mc-popover__modelchev {
+  flex-shrink: 0;
+  color: var(--fg-subtlest);
+  transition: color var(--dur) var(--ease), transform var(--dur) var(--ease);
+}
+.mc-popover__levelbtn:hover .mc-popover__modelchev {
+  color: var(--fg);
+  transform: translateX(1px);
+}
+.mc-popover__reset {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--fg-subtle);
+  cursor: pointer;
+  transition: background-color var(--dur) var(--ease), color var(--dur) var(--ease);
+}
+.mc-popover__reset:hover {
+  background: var(--surface-hover);
+  color: var(--fg);
+}
+
+/* ---- 粗胶囊滑杆 + 刻度点 + 大圆滑块 ---- */
+.mc-slider {
+  position: relative;
+  height: 44px;
+  margin-top: 16px;
+}
+
+/* 轨道两端各内缩 3px：让 36px 的圆头正好落在 42px 滑块的圆心处，两端被完全盖住 */
+.mc-slider__track,
+.mc-slider__fill {
+  position: absolute;
+  top: 50%;
+  height: 36px;
+  transform: translateY(-50%);
+  border-radius: var(--radius-full);
+}
+.mc-slider__track {
+  left: 3px;
+  right: 3px;
+  background: rgba(255 255 255 / 0.07);
+}
+.mc-slider__fill {
+  left: 3px;
+  overflow: hidden;
+  background: var(--accent);
+  transition: background var(--dur) var(--ease);
+}
+/* 拉满时换成蓝紫渐变 */
+.mc-slider__fill[data-max="true"] {
+  background: var(--accent-gradient);
+}
+
+/*
+ * 满档粒子：从右往左飞。
+ * 用长手写属性（不用 animation 简写），否则会把内联的 duration / delay 重置掉。
+ * 飞出左端时由 .mc-slider__fill 的 overflow: hidden 裁掉。
+ */
+.mc-slider__particle {
+  position: absolute;
+  border-radius: 50%;
+  background: #ffffff;
+  pointer-events: none;
+  opacity: 0;
+  animation-name: mc-drift;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+  will-change: transform, opacity;
+}
+@keyframes mc-drift {
+  0% {
+    transform: translate3d(46px, 0, 0) scale(0.45);
+    opacity: 0;
+  }
+  12% {
+    opacity: var(--o);
+  }
+  55% {
+    transform: translate3d(-26px, 0, 0) scale(1);
+    opacity: var(--o);
+  }
+  86% {
+    opacity: var(--o);
+  }
+  100% {
+    transform: translate3d(-104px, 0, 0) scale(0.4);
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mc-slider__particle {
+    animation: none;
+    opacity: var(--o);
+  }
+}
+
+.mc-slider__dot {
+  position: absolute;
+  top: 50%;
+  width: 5px;
+  height: 5px;
+  margin-left: -2.5px;
+  transform: translateY(-50%);
+  border-radius: 50%;
+  background: rgba(255 255 255 / 0.20);
+  pointer-events: none;
+}
+/* 落在已填充区域内的点提亮，才在蓝色填充上看得到 */
+.mc-slider__dot[data-in="true"] {
+  background: rgba(255 255 255 / 0.55);
+}
+
+.mc-slider__thumb {
+  position: absolute;
+  top: 50%;
+  width: 42px;
+  height: 42px;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  background: #ffffff;
+  box-shadow: 0 3px 10px rgb(0 0 0 / 0.55);
+  pointer-events: none;
+}
+
+/* 透明的原生 range 覆盖在上面负责交互 */
+.mc-slider__input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+}
+
+/* ---- 视图 1：模型列表 ---- */
+.mc-popover__title {
+  flex: 1;
+  font-size: var(--fs-lg);
+  font-weight: var(--fw-medium);
+  letter-spacing: -0.01em;
+  line-height: 1.2;
+  color: var(--fg);
+}
+.mc-popover__count {
+  min-width: 22px;
+  height: 22px;
+  padding: 0 6px;
+  border-radius: var(--radius-full);
+  background: var(--surface);
+  color: var(--fg-subtle);
+  font-size: var(--fs-xs);
+  line-height: 22px;
+  text-align: center;
+}
+.mc-popover__list {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  margin-top: 6px;
+  max-height: 264px;
+  overflow-y: auto;
+}
+.mc-popover__item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 8px;
+  border: 0;
+  border-radius: var(--radius-md);
+  corner-shape: superellipse(1.5);
+  background: transparent;
+  color: var(--fg);
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color var(--dur) var(--ease);
+}
+.mc-popover__item:hover {
+  background: var(--surface-hover);
+}
+.mc-popover__item[data-active="true"] {
+  background: var(--surface);
+}
+.mc-popover__itemtext {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+  flex: 1;
+  line-height: 1.35;
+}
+.mc-popover__itemname {
+  font-size: var(--fs-base);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mc-popover__itemmeta {
+  font-size: var(--fs-xs);
+  color: var(--fg-subtlest);
+}
+.mc-popover__check {
+  color: var(--accent);
+  flex-shrink: 0;
+}
+.mc-popover__empty {
+  margin: 8px 0 0;
+  font-size: var(--fs-sm);
+  color: var(--fg-subtlest);
+}
+
+/* ---- 列表底部：管理模型（无模型时引导添加，有模型时固定在列表下方） ---- */
+.mc-popover__manage {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+.mc-popover__managebtn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: var(--radius-md);
+  corner-shape: superellipse(1.5);
+  background: transparent;
+  color: var(--fg);
+  font-family: inherit;
+  font-size: var(--fs-base);
+  text-align: left;
+  cursor: pointer;
+  transition: background-color var(--dur) var(--ease);
+}
+.mc-popover__managebtn svg {
+  flex-shrink: 0;
+  color: var(--fg-subtle);
+}
+.mc-popover__managebtn:hover {
+  background: var(--surface-hover);
+}

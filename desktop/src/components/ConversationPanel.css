@@ -1,0 +1,376 @@
+.mc-convpanel {
+  display: flex;
+  flex-direction: column;
+  padding: 10px;
+}
+
+/* ---- 顶部：新聊天（无底色行，hover 提亮） ---- */
+.mc-convpanel__top {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding-bottom: 8px;
+}
+
+.mc-convpanel__new {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: var(--radius-md);
+  corner-shape: superellipse(1.5);
+  background: transparent;
+  color: var(--fg);
+  font-family: inherit;
+  font-size: var(--fs-caption);
+  font-weight: var(--fw-medium);
+  text-align: left;
+  cursor: pointer;
+  transition: background-color var(--dur) var(--ease);
+}
+.mc-convpanel__new:hover {
+  background: var(--surface-hover);
+}
+
+/* ---- 列表：按项目分组 ---- */
+.mc-convpanel__scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+
+.mc-convpanel__section {
+  padding: 2px 10px 8px;
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-medium);
+  letter-spacing: 0.04em;
+  color: var(--fg-subtlest);
+}
+
+.mc-convpanel__group {
+  margin-bottom: 12px;
+}
+
+/* 项目行：文件夹图标 + 名称 + 悬停浮出的操作钮；当前工作区的行带圆角底高亮 */
+.mc-convpanel__grouprow {
+  position: relative;
+  display: flex;
+  align-items: center;
+  padding: 4px 6px 4px 10px;
+  border-radius: var(--radius-md);
+  corner-shape: superellipse(1.5);
+  transition: background-color var(--dur) var(--ease);
+}
+.mc-convpanel__grouprow:hover {
+  background: var(--surface);
+}
+.mc-convpanel__grouprow[data-active="true"] {
+  background: var(--surface-hover);
+}
+
+.mc-convpanel__groupname {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+  padding: 3px 0;
+  border: 0;
+  background: transparent;
+  font-family: inherit;
+  font-size: var(--fs-caption);
+  font-weight: var(--fw-medium);
+  color: var(--fg);
+  text-align: left;
+  cursor: pointer;
+}
+
+/* 折叠箭头：收起时转向右 */
+.mc-convpanel__chevron {
+  flex-shrink: 0;
+  color: var(--fg-subtlest);
+  transition: transform var(--dur) var(--ease);
+}
+.mc-convpanel__groupname[data-collapsed="true"] .mc-convpanel__chevron {
+  transform: rotate(-90deg);
+}
+
+/* 折叠时的会话数徽标 */
+.mc-convpanel__groupcount {
+  flex-shrink: 0;
+  min-width: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--surface-hover);
+  color: var(--fg-subtle);
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-normal);
+  line-height: 16px;
+  text-align: center;
+}
+/* 按钮子元素继承字体颜色；文件夹图标保持柔和色 */
+.mc-convpanel__groupname .mc-truncate {
+  min-width: 0;
+}
+.mc-convpanel__folder {
+  flex-shrink: 0;
+  color: var(--fg-subtle);
+}
+.mc-convpanel__grouprow[data-active="true"] .mc-convpanel__folder {
+  color: var(--fg);
+}
+
+/* 行内操作钮：悬停整行时淡入 */
+.mc-convpanel__groupactions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--dur) var(--ease);
+}
+.mc-convpanel__grouprow:hover .mc-convpanel__groupactions,
+.mc-convpanel__grouprow[data-menu="true"] .mc-convpanel__groupactions,
+.mc-convpanel__groupactions:focus-within {
+  opacity: 1;
+  pointer-events: auto;
+}
+.mc-convpanel__groupbtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--fg-subtle);
+  cursor: pointer;
+  transition: background-color var(--dur) var(--ease), color var(--dur) var(--ease);
+}
+.mc-convpanel__groupbtn:hover {
+  background: var(--surface-hover);
+  color: var(--fg);
+}
+
+/* 项目菜单：贴在行下方，自绘（不用原生） */
+.mc-convpanel__menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 4px;
+  z-index: 40;
+  width: 196px;
+  padding: 4px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  corner-shape: superellipse(1.5);
+  box-shadow: var(--shadow-lg);
+  animation: mc-fade-in var(--dur) var(--ease);
+}
+.mc-convpanel__menuitem {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 4px 8px;
+  border: 0;
+  border-radius: var(--radius-md);
+  corner-shape: superellipse(1.5);
+  background: transparent;
+  color: var(--fg);
+  font-family: inherit;
+  font-size: var(--fs-caption);
+  text-align: left;
+  cursor: pointer;
+  transition: background-color var(--dur) var(--ease);
+}
+.mc-convpanel__menuitem:hover:not(:disabled) {
+  background: var(--surface-hover);
+}
+.mc-convpanel__menuitem:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.mc-convpanel__menuitem > svg {
+  flex-shrink: 0;
+  color: var(--fg-subtle);
+}
+.mc-convpanel__menusep {
+  height: 1px;
+  margin: 3px 4px;
+  background: var(--border);
+}
+
+/* 空项目占位：与会话条目同缩进 */
+.mc-convpanel__nochats {
+  padding: 6px 10px 6px 32px;
+  font-size: var(--fs-caption);
+  color: var(--fg-subtlest);
+}
+
+/* 折叠容器：grid-rows 动画展开 / 收起 */
+.mc-convpanel__collapse {
+  display: grid;
+  grid-template-rows: 1fr;
+  opacity: 1;
+  transition:
+    grid-template-rows var(--dur) var(--ease),
+    opacity var(--dur) var(--ease);
+}
+.mc-convpanel__collapse[data-open="false"] {
+  grid-template-rows: 0fr;
+  opacity: 0;
+  pointer-events: none;
+}
+.mc-convpanel__collapse-inner {
+  min-height: 0;
+  overflow: hidden;
+}
+/* 菜单展开期间允许越过折叠容器边界，避免被文件夹行裁切 */
+.mc-convpanel__collapse[data-open="true"] .mc-convpanel__collapse-inner[data-menu-open="true"] {
+  overflow: visible;
+}
+
+.mc-convpanel__items {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin-top: 2px;
+}
+
+.mc-convpanel__item {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  padding: 6px 10px 6px 32px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  corner-shape: superellipse(1.5);
+  background: transparent;
+  color: var(--fg-subtle);
+  font-family: inherit;
+  font-size: var(--fs-caption);
+  text-align: left;
+  cursor: pointer;
+  /* 标题单行省略：旧会话里可能存有超长 AI 标题，不能让它换行撑高列表 */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: background-color var(--dur) var(--ease), color var(--dur) var(--ease);
+}
+.mc-convpanel__item:hover {
+  background: var(--surface-hover);
+  color: var(--fg);
+}
+.mc-convpanel__item[data-active="true"] {
+  background: var(--surface);
+  color: var(--fg);
+}
+
+.mc-convpanel__itemtitle {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 正在生成回复的主会话：小圆点脉冲 */
+.mc-convpanel__runningdot {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--fg);
+  animation: mc-conv-running 1.2s ease-in-out infinite;
+}
+
+.mc-convpanel__runningdot[data-approval="true"] {
+  background: var(--warning);
+}
+
+@keyframes mc-conv-running {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.3;
+    transform: scale(0.78);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mc-convpanel__runningdot {
+    animation: none;
+  }
+}
+
+.mc-convpanel__itemrow {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+.mc-convpanel__itemrow .mc-convpanel__item {
+  flex: 1;
+  min-width: 0;
+  /* 右侧给归档按钮留位，避免文字钻到按钮下面 */
+  padding-right: 30px;
+}
+
+/* 归档按钮：悬停整行时淡入 */
+.mc-convpanel__rowbtn {
+  position: absolute;
+  right: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--fg-subtlest);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity var(--dur) var(--ease), background-color var(--dur) var(--ease), color var(--dur) var(--ease);
+}
+.mc-convpanel__itemrow:hover .mc-convpanel__rowbtn,
+.mc-convpanel__rowbtn:focus-visible {
+  opacity: 1;
+}
+.mc-convpanel__rowbtn:hover {
+  background: var(--surface-hover);
+  color: var(--fg);
+}
+
+.mc-convpanel__empty {
+  padding: 10px;
+  font-size: var(--fs-sm);
+  color: var(--fg-subtlest);
+}
+
+/* 会话行操作菜单：默认向上；靠近顶部时由 data-dir="down" 改为向下，避免被文件夹行裁切 */
+.mc-convpanel__sessionmenu {
+  top: auto;
+  bottom: calc(100% + 4px);
+  right: 6px;
+  width: 158px;
+}
+.mc-convpanel__sessionmenu[data-dir="down"] {
+  top: calc(100% + 4px);
+  bottom: auto;
+}
+.mc-convpanel__menuitem--danger,
+.mc-convpanel__menuitem--danger > svg {
+  color: var(--danger);
+}

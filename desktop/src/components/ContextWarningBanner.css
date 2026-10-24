@@ -1,0 +1,72 @@
+.mc-ctxwarn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 22px;
+  border-top: 1px solid var(--line-soft);
+  border-bottom: 1px solid var(--line-soft);
+  background: var(--warning-surface);
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.mc-ctxwarn__icon {
+  display: inline-flex;
+  flex: none;
+  color: var(--warning);
+}
+
+.mc-ctxwarn__text {
+  flex: 1 1 auto;
+  min-width: 0;
+  line-height: 1.5;
+}
+
+.mc-ctxwarn__text b {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.mc-ctxwarn__compact {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex: none;
+  height: 26px;
+  padding: 0 10px;
+  border: 1px solid color-mix(in oklab, var(--warning) 38%, transparent);
+  border-radius: var(--radius-full);
+  background: var(--surface);
+  color: var(--warning);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.mc-ctxwarn__compact:hover:not(:disabled) {
+  background: var(--surface-hover, var(--bg-panel-soft));
+}
+
+.mc-ctxwarn__compact:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.mc-ctxwarn__dismiss {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-full);
+  background: transparent;
+  color: var(--text-tertiary);
+  cursor: pointer;
+}
+
+.mc-ctxwarn__dismiss:hover {
+  background: var(--surface-hover, var(--bg-panel-soft));
+  color: var(--text-secondary);
+}

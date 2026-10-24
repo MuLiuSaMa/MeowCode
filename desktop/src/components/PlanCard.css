@@ -1,0 +1,175 @@
+/* 输入框上方的任务计划：收起显示当前条，点击展开全部步骤 */
+
+.mc-plancard {
+  margin: 0 8px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  corner-shape: superellipse(1.5);
+  background: var(--input-fill);
+  overflow: hidden;
+}
+
+.mc-plancard__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 10px;
+  border: 0;
+  background: transparent;
+  color: var(--fg);
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color var(--dur) var(--ease);
+}
+.mc-plancard__head:hover {
+  background: var(--surface);
+}
+
+.mc-plancard__marker {
+  flex-shrink: 0;
+  width: 8px;
+  height: 8px;
+  border-radius: var(--radius-full);
+  background: var(--fg-subtlest);
+}
+.mc-plancard__marker[data-status="in_progress"] {
+  background: var(--fg);
+  animation: mc-plancard-pulse 1.2s var(--ease) infinite;
+}
+.mc-plancard__marker[data-status="completed"] {
+  background: var(--success);
+}
+.mc-plancard__marker[data-status="cancelled"] {
+  background: var(--danger);
+  opacity: 0.5;
+}
+
+.mc-plancard__state {
+  flex-shrink: 0;
+  font-size: var(--fs-xs);
+  color: var(--fg-subtle);
+}
+.mc-plancard__state[data-status="in_progress"] {
+  color: var(--fg);
+}
+
+.mc-plancard__current {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: var(--fs-caption);
+  font-weight: var(--fw-medium);
+}
+
+.mc-plancard__count {
+  flex-shrink: 0;
+  font-size: var(--fs-xs);
+  font-variant-numeric: tabular-nums;
+  color: var(--fg-subtlest);
+}
+
+.mc-plancard__chev {
+  flex-shrink: 0;
+  color: var(--fg-subtlest);
+  transition: transform var(--dur) var(--ease);
+}
+.mc-plancard[data-open="true"] .mc-plancard__chev {
+  transform: rotate(180deg);
+}
+
+.mc-plancard__body {
+  padding: 2px 6px 6px;
+  border-top: 1px solid var(--border);
+  animation: mc-fade-in var(--dur) var(--ease);
+}
+
+.mc-plancard__note {
+  padding: 6px 8px 4px;
+  font-size: var(--fs-sm);
+  color: var(--fg-subtle);
+}
+.mc-plancard__note.mc-markdown > :first-child {
+  margin-top: 0;
+}
+.mc-plancard__note.mc-markdown > :last-child {
+  margin-bottom: 0;
+}
+
+.mc-plancard__steps {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  max-height: 220px;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.mc-plancard__step {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: var(--radius-sm);
+  font-size: var(--fs-caption);
+  color: var(--fg);
+}
+.mc-plancard__step[data-current="true"] {
+  background: var(--surface);
+}
+
+.mc-plancard__dot {
+  flex-shrink: 0;
+  width: 6px;
+  height: 6px;
+  margin-top: 6px;
+  border-radius: var(--radius-full);
+  background: var(--fg-subtlest);
+}
+.mc-plancard__step[data-status="in_progress"] .mc-plancard__dot {
+  background: var(--fg);
+  animation: mc-plancard-pulse 1.2s var(--ease) infinite;
+}
+.mc-plancard__step[data-status="completed"] .mc-plancard__dot {
+  background: var(--success);
+}
+.mc-plancard__step[data-status="cancelled"] .mc-plancard__dot {
+  background: var(--danger);
+  opacity: 0.5;
+}
+
+.mc-plancard__text {
+  flex: 1 1 auto;
+  min-width: 0;
+  line-height: 1.55;
+}
+.mc-plancard__step[data-status="completed"] .mc-plancard__text,
+.mc-plancard__step[data-status="cancelled"] .mc-plancard__text {
+  color: var(--fg-subtlest);
+  text-decoration: line-through;
+  text-decoration-color: color-mix(in oklab, var(--fg-subtlest) 60%, transparent);
+}
+
+.mc-plancard__status {
+  flex-shrink: 0;
+  margin-top: 1px;
+  font-size: var(--fs-xs);
+  color: var(--fg-subtlest);
+}
+.mc-plancard__step[data-status="in_progress"] .mc-plancard__status {
+  color: var(--fg-subtle);
+}
+
+@keyframes mc-plancard-pulse {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.35;
+    transform: scale(0.85);
+  }
+}

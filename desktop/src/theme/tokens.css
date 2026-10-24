@@ -1,0 +1,213 @@
+/*
+ * MeowCode design tokens — black / white / gray only, no blue.
+ * Dark-first. Values grounded in:
+ *   - Codex  codex-rs/tui/assets/inline_visualization/visualize.css
+ *   - ZCode  packages/ui/src/styles.css (.theme-zai-dark) + DESIGN.md
+ */
+
+/* ---- MiSans (小米兰亭 Pro 可变字重) ---- */
+@font-face {
+  font-family: "MiSans";
+  src:
+    local("MiSans"),
+    local("MiSans VF"),
+    local("MiSans Normal"),
+    url("../assets/fonts/MiSansVF.ttf") format("truetype-variations"),
+    url("../assets/fonts/MiSansVF.ttf") format("truetype");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+:root,
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  /* ---- canvas / surfaces: 纯中性黑（R=G=B），整体以黑为主，无冷色偏移 ---- */
+  --bg-chrome: #0a0a0a;       /* 标题栏 + 左侧按钮栏（连成一体） */
+  --bg-root: #0a0a0a;         /* 窗口底色，从面板间隙透出（== main.cjs backgroundColor） */
+  --bg: #0d0d0d;              /* 内容面板画布 */
+  --bg-panel: #131313;        /* 对话列表 / 检查器面板 */
+  --bg-elevated: #1e1e1e;     /* 弹窗 / 浮层 */
+
+  /* ---- foreground ---- */
+  --fg: #f5f5f5;                             /* primary text (neutral near-white) */
+  --fg-subtle: rgba(245 245 245 / 0.60);     /* secondary text */
+  --fg-subtlest: rgba(245 245 245 / 0.34);   /* tertiary / placeholder / disabled */
+  --fg-inverse: #0a0a0a;                     /* text on light fills */
+  --ink: #1a1a1a;                            /* neutral ink */
+
+  /* ---- cards & overlays: Codex formula = foreground 5% over background ---- */
+  --card: color-mix(in oklab, #ffffff 5%, var(--bg));
+  --card-hover: color-mix(in oklab, #ffffff 8%, var(--bg));
+  --overlay: color-mix(in oklab, #ffffff 7%, var(--bg));
+  --surface: rgba(255 255 255 / 0.05);
+  --surface-hover: rgba(255 255 255 / 0.10);
+
+  --line-soft: var(--border);
+  --bg-panel-soft: var(--card);
+  --text-secondary: var(--fg-subtle);
+  --text-tertiary: var(--fg-subtlest);
+  --accent-soft: color-mix(in oklab, var(--accent) 22%, transparent);
+
+  /* ---- user bubble / composer fill: background overlaid with white ---- */
+  --user-fill: color-mix(in oklab, #ffffff 12%, var(--bg));
+  --input-fill: color-mix(in oklab, #ffffff 6%, var(--bg));
+
+  /* ---- borders: semi-transparent white overlay ---- */
+  --border: rgba(255 255 255 / 0.10);
+  --border-strong: rgba(255 255 255 / 0.16);
+  --border-hover: rgba(255 255 255 / 0.16);
+
+  /* ---- brand = pure white (ZCode) ---- */
+  --brand: #ffffff;
+  --brand-fg: #0a0a0a;
+
+  /* ---- semantic colors: low saturation, small-area status only ---- */
+  --success: #9ab894;
+  /* 工具行完成勾号：取自参考截图 rgb(115 205 148)，比 --success 更亮 */
+  --success-strong: #73cd94;
+  --success-surface: rgba(154 184 148 / 0.14);
+  --warning: #ff8549;
+  --warning-surface: rgba(255 133 73 / 0.14);
+  --danger: #d98a86;
+  --danger-fg: #ffffff;
+  --danger-surface: rgba(217 138 134 / 0.14);
+  /* 窗口关闭按钮 hover：沿用 Windows 原生红（仅 hover 瞬间出现） */
+  --win-close-hover: #c42b1c;
+  --win-close-fg: #ffffff;
+
+  /*
+   * Codex 风蓝紫强调色 —— 只用在「思考强度」滑杆上。
+   * 蓝 #0c77ff 与紫罗兰渐变都是从参考图里直接取样的。
+   */
+  --accent: #0c77ff;
+  --accent-violet: #8a69fd;
+  --accent-gradient: linear-gradient(
+    90deg,
+    #1d2ed1 0%,
+    #303ce5 10%,
+    #6656ef 22%,
+    #8a69fd 36%,
+    #a16ffd 52%,
+    #8d4cfd 68%,
+    #6c3bf8 84%,
+    #6034f0 100%
+  );
+
+  --running: rgba(255 255 255 / 0.45);
+
+  /* ---- focus ring: white, never blue ---- */
+  --ring: rgba(255 255 255 / 0.55);
+  --ring-strong: rgba(255 255 255 / 0.80);
+
+  /* ---- radius scale (Codex base 12.5 / 2xl 20) ---- */
+  --radius-xs: 6px;
+  --radius-sm: 8px;
+  --radius-md: 10px;
+  --radius-lg: 12.5px;
+  --radius-xl: 16px;
+  --radius-2xl: 20px;
+  --radius-full: 9999px;
+
+  /* ---- shadows: restrained ---- */
+  --shadow-sm: 0 1px 2px -1px rgb(0 0 0 / 0.50);
+  --shadow-md: 0 6px 24px -8px rgb(0 0 0 / 0.55);
+  --shadow-lg: 0 16px 48px -12px rgb(0 0 0 / 0.65);
+
+  /* ---- typography ---- */
+  --font-sans: "MiSans", "PingFang SC", "Microsoft YaHei", "Segoe UI", system-ui, -apple-system, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", "MiSans", monospace;
+  --fw-normal: 380;
+  --fw-medium: 450;
+  --fw-semibold: 520;
+  --fs-xs: 11px;
+  --fs-sm: 12px;
+  --fs-caption: 13px;
+  --fs-base: 14px;
+  --fs-lg: 16px;
+  --fs-xl: 18px;
+  --lh-normal: 1.55;
+  --lh-tight: 1.30;
+
+  /* ---- layout ---- */
+  --rail-w: 64px;
+  --list-w: 300px;
+  --inspector-w: 360px;
+  --content-max: 860px;
+
+  /* ---- motion ---- */
+  --ease: cubic-bezier(0.2, 0, 0.2, 1);
+  --dur: 160ms;
+}
+
+/* Optional light theme (dark remains the primary). */
+:root[data-theme="light"] {
+  color-scheme: light;
+
+  --bg-chrome: #ececec;
+  --bg-root: #e6e6e6;
+  --bg: #f7f7f7;
+  --bg-panel: #ffffff;
+  --bg-elevated: #ffffff;
+
+  --fg: #141414;
+  --fg-subtle: rgba(20 20 20 / 0.62);
+  --fg-subtlest: rgba(20 20 20 / 0.40);
+  --fg-inverse: #ffffff;
+  --ink: #141414;
+
+  --card: color-mix(in oklab, #141414 5%, var(--bg));
+  --card-hover: color-mix(in oklab, #141414 8%, var(--bg));
+  --overlay: #ffffff;
+  --surface: rgba(20 20 20 / 0.04);
+  --surface-hover: rgba(20 20 20 / 0.07);
+
+  --line-soft: var(--border);
+  --bg-panel-soft: var(--card);
+  --text-secondary: var(--fg-subtle);
+  --text-tertiary: var(--fg-subtlest);
+  --accent-soft: color-mix(in oklab, var(--accent) 22%, transparent);
+
+  --user-fill: color-mix(in oklab, #141414 8%, var(--bg));
+  --input-fill: #ffffff;
+
+  --border: rgba(20 20 20 / 0.10);
+  --border-strong: rgba(20 20 20 / 0.16);
+  --border-hover: rgba(20 20 20 / 0.16);
+
+  --brand: #141414;
+  --brand-fg: #ffffff;
+
+  --success: #4f8556;
+  --success-strong: #3a9d63;
+  --success-surface: rgba(79 133 86 / 0.12);
+  --warning: #c96e20;
+  --warning-surface: rgba(201 110 32 / 0.12);
+  --danger: #b4544f;
+  --danger-fg: #ffffff;
+  --danger-surface: rgba(180 84 79 / 0.10);
+  --win-close-hover: #c42b1c;
+  --win-close-fg: #ffffff;
+  --accent: #0c77ff;
+  --accent-violet: #8a69fd;
+  --accent-gradient: linear-gradient(
+    90deg,
+    #1d2ed1 0%,
+    #303ce5 10%,
+    #6656ef 22%,
+    #8a69fd 36%,
+    #a16ffd 52%,
+    #8d4cfd 68%,
+    #6c3bf8 84%,
+    #6034f0 100%
+  );
+  --running: rgba(20 20 20 / 0.40);
+
+  --ring: rgba(20 20 20 / 0.45);
+  --ring-strong: rgba(20 20 20 / 0.70);
+
+  --shadow-sm: 0 1px 2px -1px rgb(0 0 0 / 0.10);
+  --shadow-md: 0 6px 24px -8px rgb(0 0 0 / 0.14);
+  --shadow-lg: 0 16px 48px -12px rgb(0 0 0 / 0.18);
+}

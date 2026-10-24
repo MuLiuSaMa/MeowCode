@@ -1,0 +1,9 @@
+{
+  "description": "Gitee platform integration. Manage repositories, issues, pull requests, and notifications through Gitee's official Remote MCP Server.",
+  "server": {
+    "url": "https://api.gitee.com/mcp",
+    "headers": {
+      "Authorization": "Bearer ${MEOWCODE_GITEE_TOKEN}"
+    }
+  }
+}

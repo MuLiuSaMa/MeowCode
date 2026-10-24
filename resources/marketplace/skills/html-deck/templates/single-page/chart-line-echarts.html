@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="zh-CN"><head><meta charset="utf-8"><title>ECharts · Line</title>
+<link rel="stylesheet" href="../../assets/fonts.css">
+<link rel="stylesheet" href="../../assets/base.css">
+<link rel="stylesheet" id="theme-link" href="../../assets/themes/minimal-white.css">
+<link rel="stylesheet" href="../../assets/animations/animations.css">
+<!-- In generated decks use ./_shared/echarts.min.js -->
+<script src="../../assets/echarts.min.js"></script>
+<script src="../../assets/echarts-theme-sync.js"></script>
+</head><body class="single">
+<deck-stage width="1920" height="1080"><section class="slide active" data-deck-label="ECharts Line chart">
+  <p class="kicker">ECharts · 折线图</p>
+  <h2 class="h2">月活跃用户</h2>
+  <div class="card mt-l" style="height:520px;padding:28px"><div id="c" style="width:100%;height:100%"></div></div>
+  <script>
+    addEventListener('DOMContentLoaded',()=>{
+      const chart=echarts.init(document.getElementById('c'),null,{renderer:'svg'});
+      window.__deckECharts.register(chart,function(c){
+        return {
+          color:[c['--accent'],c['--accent-2']],
+          tooltip:{trigger:'axis'},
+          legend:{data:['App','Web'],textStyle:{color:c['--text-2']}},
+          xAxis:{type:'category',data:['1月','2月','3月','4月','5月','6月','7月','8月','9月','10月','11月','12月'],
+            axisLabel:{color:c['--text-2']},axisLine:{lineStyle:{color:c['--border']}},
+            splitLine:{lineStyle:{color:c['--border']}}},
+          yAxis:{type:'value',axisLabel:{color:c['--text-2'],formatter:'{value}K'},
+            splitLine:{lineStyle:{color:c['--border']}}},
+          series:[
+            {name:'App',type:'line',smooth:true,data:[12,16,21,28,35,42,51,60,68,75,82,89],
+              lineStyle:{width:3},symbolSize:6,
+              areaStyle:{color:new echarts.graphic.LinearGradient(0,0,0,1,[
+                {offset:0,color:c['--accent']+'44'},{offset:1,color:c['--accent']+'05'}])}},
+            {name:'Web',type:'line',smooth:true,data:[8,10,13,16,20,24,28,32,36,39,42,45],
+              lineStyle:{width:3},symbolSize:6,
+              areaStyle:{color:new echarts.graphic.LinearGradient(0,0,0,1,[
+                {offset:0,color:c['--accent-2']+'44'},{offset:1,color:c['--accent-2']+'05'}])}}
+          ]
+        };
+      });
+      window.addEventListener('resize',()=>chart.resize());
+    });
+  </script>
+</section></deck-stage>
+<script src="../../assets/runtime.js"></script>
+</body></html>

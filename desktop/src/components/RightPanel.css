@@ -1,0 +1,381 @@
+/*
+ * 右侧面板（RightPanel）：页签栏 + 工具栏 + 常挂载内容区。
+ * 宽度/底圆角/背景由 .mc-panel--inspector 提供（AppShell.css）。
+ */
+
+.mc-rtp {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+/* ---- 页签栏 ---- */
+.mc-rtp__tabs {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 8px 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+  flex-shrink: 0;
+}
+.mc-rtp__tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.mc-rtp__tab {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  max-width: 150px;
+  border-radius: var(--radius-md);
+  corner-shape: superellipse(1.5);
+  background: transparent;
+  transition: background-color var(--dur) var(--ease);
+}
+.mc-rtp__tab:hover {
+  background: var(--surface);
+}
+.mc-rtp__tab[data-active="true"] {
+  background: var(--surface-hover);
+}
+
+.mc-rtp__tabmain {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 6px 4px 6px 9px;
+  border: 0;
+  background: transparent;
+  color: var(--fg-subtle);
+  font-family: inherit;
+  font-size: var(--fs-sm);
+  cursor: pointer;
+}
+.mc-rtp__tab[data-active="true"] .mc-rtp__tabmain {
+  color: var(--fg);
+}
+.mc-rtp__tabicon {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  color: var(--fg-subtle);
+}
+.mc-rtp__tabtitle {
+  min-width: 0;
+}
+
+.mc-rtp__tabclose {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  margin-right: 4px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--fg-subtlest);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity var(--dur) var(--ease), background-color var(--dur) var(--ease), color var(--dur) var(--ease);
+}
+.mc-rtp__tab[data-active="true"] .mc-rtp__tabclose,
+.mc-rtp__tab:hover .mc-rtp__tabclose {
+  opacity: 1;
+}
+.mc-rtp__tabclose:hover {
+  background: var(--surface-hover);
+  color: var(--fg);
+}
+
+.mc-rtp__tabadd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--fg-subtle);
+  cursor: pointer;
+  transition: background-color var(--dur) var(--ease), color var(--dur) var(--ease);
+}
+.mc-rtp__tabadd:hover {
+  background: var(--surface-hover);
+  color: var(--fg);
+}
+
+/* ---- 工具栏 ---- */
+.mc-rtp__toolbar {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  padding: 8px;
+  flex-shrink: 0;
+}
+
+.mc-rtp__navbtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  flex-shrink: 0;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--fg-subtle);
+  cursor: pointer;
+  transition: background-color var(--dur) var(--ease), color var(--dur) var(--ease);
+}
+.mc-rtp__navbtn:hover:not(:disabled) {
+  background: var(--surface-hover);
+  color: var(--fg);
+}
+.mc-rtp__navbtn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.mc-rtp__address {
+  flex: 1;
+  min-width: 0;
+  height: 28px;
+  margin: 0 2px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  background: var(--surface);
+  color: var(--fg);
+  font-family: inherit;
+  font-size: var(--fs-sm);
+  outline: none;
+  transition: border-color var(--dur) var(--ease);
+}
+.mc-rtp__address::placeholder {
+  color: var(--fg-subtlest);
+}
+.mc-rtp__address:focus {
+  border-color: var(--border-hover);
+}
+/* 文本控件点击也会命中全局 :focus-visible（base.css 会把圆角改成 radius-xs），
+   这里必须把胶囊圆角按住，否则点击输入框会变成方角 */
+.mc-rtp__address:focus-visible {
+  outline: none;
+  border-radius: var(--radius-full);
+}
+
+/* ---- 内容区（页签常挂载） ---- */
+.mc-rtp__body {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  border-top: 1px solid var(--border);
+}
+.mc-rtp__tabbody {
+  position: absolute;
+  inset: 0;
+  overflow-y: auto;
+}
+.mc-rtp__tabbody[data-hidden="true"] {
+  display: none;
+}
+
+.mc-rtp__placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 100%;
+  font-size: var(--fs-sm);
+  color: var(--fg-subtlest);
+}
+.mc-rtp__placeholdericon {
+  display: inline-flex;
+  color: var(--fg-subtlest);
+}
+
+/* 内嵌浏览器页签 */
+.mc-rtp__webview {
+  display: inline-flex;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: #fff;
+}
+
+/* ---- 主页签：工具网格 + 会话信息 ---- */
+.mc-rtp__home {
+  padding: 12px;
+}
+
+.mc-rtp__section {
+  margin: 2px 0 8px;
+  padding: 0 2px;
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-medium);
+  letter-spacing: 0.04em;
+  color: var(--fg-subtlest);
+}
+.mc-rtp__section + .mc-rtp__grid + .mc-rtp__section {
+  margin-top: 20px;
+}
+
+.mc-rtp__grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  /* 卡片之间的缝隙收窄（原来 8px 显得松散） */
+  gap: 4px;
+}
+
+.mc-rtp__cardwrap {
+  position: relative;
+}
+
+.mc-rtp__card {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 9px 10px;
+  border: 0;
+  border-radius: var(--radius-lg);
+  corner-shape: superellipse(1.5);
+  background: var(--card);
+  color: var(--fg);
+  font-family: inherit;
+  font-size: var(--fs-caption);
+  text-align: left;
+  cursor: pointer;
+  transition: background-color var(--dur) var(--ease);
+}
+.mc-rtp__card:hover {
+  background: var(--card-hover);
+}
+.mc-rtp__cardicon {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  color: var(--fg-subtle);
+}
+.mc-rtp__cardlabel {
+  flex: 1;
+  min-width: 0;
+}
+.mc-rtp__cardkbd {
+  flex-shrink: 0;
+  font-size: var(--fs-xs);
+  color: var(--fg-subtlest);
+  white-space: nowrap;
+}
+
+/* 卡片「…」：悬停浮出 */
+.mc-rtp__cardmenu {
+  position: absolute;
+  right: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--fg-subtle);
+  cursor: pointer;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--dur) var(--ease), background-color var(--dur) var(--ease), color var(--dur) var(--ease);
+}
+.mc-rtp__cardwrap:hover .mc-rtp__cardmenu,
+.mc-rtp__cardmenu[data-open="true"],
+.mc-rtp__cardmenu:focus-visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+.mc-rtp__cardmenu:hover,
+.mc-rtp__cardmenu[data-open="true"] {
+  background: var(--surface-hover);
+  color: var(--fg);
+}
+/* 有「…」的卡片给 kbd 留位，避免 hover 时把 kbd 顶出视野 */
+.mc-rtp__cardwrap .mc-rtp__card {
+  padding-right: 28px;
+}
+
+.mc-rtp__cmenu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 60;
+  min-width: 180px;
+  padding: 4px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  corner-shape: superellipse(1.5);
+  box-shadow: var(--shadow-lg);
+  animation: mc-fade-in var(--dur) var(--ease);
+}
+.mc-rtp__cmenuitem {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 4px 8px;
+  border: 0;
+  border-radius: var(--radius-md);
+  corner-shape: superellipse(1.5);
+  background: transparent;
+  color: var(--fg);
+  font-family: inherit;
+  font-size: var(--fs-caption);
+  text-align: left;
+  cursor: pointer;
+  transition: background-color var(--dur) var(--ease);
+}
+.mc-rtp__cmenuitem:hover:not(:disabled) {
+  background: var(--surface-hover);
+}
+.mc-rtp__cmenuitem:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+/* 会话信息 */
+.mc-rtp__fields {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 0 2px;
+}
+.mc-rtp__field {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+.mc-rtp__fieldlabel {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--fs-xs);
+  color: var(--fg-subtlest);
+}
+.mc-rtp__fieldvalue {
+  font-size: var(--fs-caption);
+  color: var(--fg);
+  overflow-wrap: anywhere;
+}

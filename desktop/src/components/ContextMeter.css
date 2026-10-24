@@ -1,0 +1,42 @@
+.mc-ctxmeter {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  flex-shrink: 0;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-full);
+  background: var(--surface);
+  color: var(--fg-subtle);
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.mc-ctxmeter:hover {
+  background: var(--surface-hover, var(--bg-panel-soft));
+  color: var(--text-secondary);
+}
+
+.mc-ctxmeter__track {
+  fill: none;
+  stroke: var(--line-soft);
+  stroke-width: 2.4;
+}
+
+.mc-ctxmeter__fill {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.4;
+  stroke-linecap: round;
+  transition: stroke-dashoffset 0.3s ease;
+}
+
+.mc-ctxmeter[data-level="warn"] {
+  color: var(--accent);
+}
+
+.mc-ctxmeter[data-level="danger"] {
+  color: var(--danger);
+}

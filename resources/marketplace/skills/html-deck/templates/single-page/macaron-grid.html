@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Macaron Grid — presentation single-page</title>
+  <link rel="stylesheet" href="../../assets/fonts.css">
+  <link rel="stylesheet" href="../../assets/base.css">
+  <link id="theme-link" rel="stylesheet" href="../../assets/themes/minimal-white.css">
+  <link rel="stylesheet" href="../../assets/animations/animations.css">
+  <style>
+    /* macaron color tokens */
+    :root {
+      --mac-purple: #f4efff;
+      --mac-pink:   #fff0f6;
+      --mac-blue:   #eef4ff;
+      --mac-green:  #edfdf3;
+      --mac-orange: #fff5ea;
+    }
+    .macaron-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px; }
+    .macaron-card { border-radius: var(--radius, 16px); padding: 28px; position: relative; }
+    .macaron-card.soft-purple { background: var(--mac-purple); }
+    .macaron-card.soft-pink   { background: var(--mac-pink); }
+    .macaron-card.soft-blue   { background: var(--mac-blue); }
+    .macaron-card.soft-green  { background: var(--mac-green); }
+    .macaron-card.soft-orange { background: var(--mac-orange); }
+    .macaron-card .label { font-size: 12px; text-transform: uppercase; letter-spacing: .1em; color: var(--text-3); margin-bottom: 10px; }
+    .macaron-card .main  { font-size: 28px; font-weight: 700; color: var(--text-1); margin-bottom: 8px; }
+    .macaron-card .desc  { font-size: 15px; color: var(--text-2); line-height: 1.5; }
+  </style>
+</head>
+<body class="single">
+  <deck-stage width="1920" height="1080">
+    <section class="slide active" data-deck-label="Macaron Grid">
+      <p class="kicker">Macaron Grid</p>
+      <h1 class="h1">能力矩阵</h1>
+      <p class="lede">柔和马卡龙色卡片网格 — 适合亮色主题的分类展示。</p>
+      <!-- === 可增删 .macaron-card 条目；可用 .soft-purple/.soft-pink/.soft-blue/.soft-green/.soft-orange 类区分色调 === -->
+      <div class="macaron-grid mt-l anim-stagger-list" data-anim-target>
+        <div class="macaron-card soft-purple"><div class="label">设计</div><div class="main">品牌色彩</div><div class="desc">建立一致的视觉语言，统一产品体验</div></div>
+        <div class="macaron-card soft-pink"><div class="label">体验</div><div class="main">交互动效</div><div class="desc">流畅自然的过渡，提升用户感知质量</div></div>
+        <div class="macaron-card soft-blue"><div class="label">架构</div><div class="main">组件系统</div><div class="desc">可复用的原子化组件，提高开发效率</div></div>
+        <div class="macaron-card soft-green"><div class="label">质量</div><div class="main">自动化测试</div><div class="desc">端到端覆盖，保障每次发布的稳定性</div></div>
+        <div class="macaron-card soft-orange"><div class="label">效能</div><div class="main">CI/CD 流水线</div><div class="desc">从提交到部署，全流程自动化</div></div>
+        <div class="macaron-card soft-purple"><div class="label">数据</div><div class="main">埋点分析</div><div class="desc">实时监控关键指标，数据驱动决策</div></div>
+      </div>
+      <div class="notes">Macaron grid works best on light themes (minimal-white, soft-pastel, editorial-serif). 5 color variants: purple, pink, blue, green, orange. Use for categorized feature lists, capability maps, tool comparisons. For dark themes, consider glass-cards instead.</div>
+    </section>
+  </deck-stage>
+  <script src="../../assets/runtime.js"></script>
+</body>
+</html>

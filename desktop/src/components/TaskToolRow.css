@@ -1,0 +1,125 @@
+.mc-taskrow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  align-self: stretch;
+  min-width: 0;
+  min-height: 30px;
+  margin: 1px 0;
+  padding: 5px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  corner-shape: superellipse(1.5);
+  background: var(--surface);
+  color: var(--fg);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color var(--dur) var(--ease), border-color var(--dur) var(--ease);
+}
+
+.mc-taskrow:hover,
+.mc-taskrow:focus-visible {
+  background: var(--surface-hover);
+  border-color: var(--border-strong, var(--border));
+  outline: none;
+}
+
+.mc-taskrow__icon {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  color: var(--success-strong);
+}
+
+.mc-taskrow[data-status="running"] .mc-taskrow__icon {
+  color: var(--accent, var(--fg-subtle));
+}
+
+.mc-taskrow[data-status="failed"] .mc-taskrow__icon {
+  color: var(--danger);
+}
+
+.mc-taskrow[data-status="aborted"] .mc-taskrow__icon,
+.mc-taskrow[data-status="interrupted"] .mc-taskrow__icon {
+  color: var(--fg-subtlest);
+}
+
+.mc-taskrow__spin {
+  animation: mc-taskrow-spin 1s linear infinite;
+}
+
+@keyframes mc-taskrow-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.mc-taskrow__label {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--fs-caption);
+  font-weight: var(--fw-medium);
+  white-space: nowrap;
+}
+
+.mc-taskrow__type {
+  flex: none;
+  padding: 0 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  color: var(--fg-subtle);
+  font-size: var(--fs-xs);
+  line-height: 1.6;
+}
+
+.mc-taskrow__type[data-type="explore"],
+.mc-taskrow__type[data-type="reviewer"] {
+  color: var(--success-strong);
+}
+
+.mc-taskrow__type[data-type="implementer"] {
+  color: var(--accent, var(--fg));
+}
+
+.mc-taskrow__type[data-type="verifier"] {
+  color: var(--warning, var(--fg));
+}
+
+.mc-taskrow__desc {
+  flex: 1 1 auto;
+  min-width: 0;
+  color: var(--fg-subtle);
+  font-size: var(--fs-sm);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mc-taskrow__meta {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--fs-sm);
+  color: var(--fg-subtlest);
+  white-space: nowrap;
+}
+
+.mc-taskrow[data-status="failed"] .mc-taskrow__state {
+  color: var(--danger);
+}
+
+.mc-taskrow__open {
+  flex: none;
+  color: var(--fg-subtlest);
+  opacity: 0.55;
+  transition: opacity var(--dur) var(--ease);
+}
+
+.mc-taskrow:hover .mc-taskrow__open,
+.mc-taskrow:focus-visible .mc-taskrow__open {
+  opacity: 1;
+}

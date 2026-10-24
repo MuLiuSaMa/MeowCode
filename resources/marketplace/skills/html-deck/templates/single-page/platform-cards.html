@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="zh-CN"><head><meta charset="utf-8"><title>Platform Cards</title>
+<link rel="stylesheet" href="../../assets/fonts.css">
+<link rel="stylesheet" href="../../assets/base.css">
+<link rel="stylesheet" id="theme-link" href="../../assets/themes/minimal-white.css">
+<link rel="stylesheet" href="../../assets/animations/animations.css">
+<style>
+.plat-grid{display:grid;grid-template-columns:repeat(var(--cols,3),1fr);gap:20px;flex:1;margin-top:28px;align-content:center}
+.plat{display:flex;flex-direction:column;justify-content:flex-end;padding:24px 0;border-top:2px solid var(--border-strong);gap:8px}
+.plat .name{font-size:22px;font-weight:700;margin:0;line-height:1.2}
+.plat .nb{font-size:44px;font-weight:800;line-height:.9;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.plat .nb .unit{font-size:16px;font-weight:400;opacity:.5;margin-left:4px}
+.plat .sub{font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:var(--text-3)}
+.plat .desc{font-size:14px;color:var(--text-2);line-height:1.5;margin-top:4px}
+.plat.accent{border-top-color:var(--accent)}
+.plat.accent .nb{color:var(--accent)}
+</style>
+</head><body class="single">
+<deck-stage width="1920" height="1080" data-themes="minimal-white,aurora,tokyo-night" data-theme-base="../../assets/themes/">
+  <section class="slide active" data-deck-label="Platform Cards">
+    <p class="kicker">Channels · 平台矩阵</p>
+    <h2 class="h2">多渠道运营数据</h2>
+    <!-- === 可增删 .plat 条目；添加 .accent 类可高亮重点项 === -->
+    <div class="plat-grid anim-stagger-list">
+      <div class="plat accent">
+        <div class="sub">Primary</div>
+        <div class="name">App 主站</div>
+        <div class="nb">4.2<span class="unit">M</span></div>
+        <div class="desc">日活峰值，占全渠道 58% 流量</div>
+      </div>
+      <div class="plat">
+        <div class="sub">Social</div>
+        <div class="name">小红书</div>
+        <div class="nb">820<span class="unit">K</span></div>
+        <div class="desc">粉丝总量，月均互动率 12.4%</div>
+      </div>
+      <div class="plat">
+        <div class="sub">Video</div>
+        <div class="name">抖音</div>
+        <div class="nb">1.6<span class="unit">M</span></div>
+        <div class="desc">粉丝总量，单条最高播放 2400 万</div>
+      </div>
+      <div class="plat">
+        <div class="sub">E-commerce</div>
+        <div class="name">天猫旗舰店</div>
+        <div class="nb">¥38<span class="unit">M</span></div>
+        <div class="desc">年度 GMV，复购率 34%</div>
+      </div>
+      <div class="plat">
+        <div class="sub">International</div>
+        <div class="name">海外官网</div>
+        <div class="nb">560<span class="unit">K</span></div>
+        <div class="desc">月访客，覆盖 18 个国家</div>
+      </div>
+      <div class="plat">
+        <div class="sub">Enterprise</div>
+        <div class="name">B2B 渠道</div>
+        <div class="nb">1,200<span class="unit">+</span></div>
+        <div class="desc">企业客户，平均客单价 ¥86K</div>
+      </div>
+    </div>
+  </section>
+</deck-stage>
+<script src="../../assets/runtime.js"></script>
+<script>
+/* 自动计算列数：至少 2 行、每行最多 4 列，均匀分配 */
+document.querySelectorAll('.plat-grid').forEach(function(g){
+  var n=g.children.length;
+  var rows=Math.max(2,Math.ceil(n/4));
+  g.style.setProperty('--cols',Math.ceil(n/rows));
+});
+</script>
+</body></html>

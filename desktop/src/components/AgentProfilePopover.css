@@ -1,0 +1,23 @@
+/* 主 Agent 档位菜单：复用 .mc-permmenu 的视觉，只加宽并给三档各自的图标色 */
+.mc-agentmenu {
+  width: 300px;
+}
+
+/* 档位胶囊：与权限胶囊同尺寸，靠图标区分（标准=CPU / 极简=羽毛 / 复杂=层叠） */
+.mc-composer__agentwrap {
+  position: relative;
+  display: inline-flex;
+  flex-shrink: 0;
+}
+.mc-composer__agent[data-profile="minimal"] > svg {
+  color: var(--success-strong);
+}
+.mc-composer__agent[data-profile="complex"] > svg {
+  color: var(--accent-violet);
+}
+/* 自定义架构项与内置三档之间的分隔线 */
+.mc-agentmenu__sep {
+  height: 1px;
+  margin: 4px 6px;
+  background: var(--border);
+}

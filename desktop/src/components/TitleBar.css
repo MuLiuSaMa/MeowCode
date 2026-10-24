@@ -1,0 +1,63 @@
+.mc-titlebar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  height: 48px;
+  flex-shrink: 0;
+  /* 与左侧导航栏的按钮左缘对齐（rail 64px 宽 - 42px 按钮 = 两侧各 11px） */
+  padding-left: 11px;
+  /* 右侧不留白：让关闭按钮贴到窗口右上角，鼠标甩到角落就能点到 */
+  padding-right: 0;
+  -webkit-app-region: drag;
+  app-region: drag;
+  user-select: none;
+}
+
+.mc-titlebar__brand {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  pointer-events: none;
+}
+/* 「MeowCode」字标，明暗各一份（均为 2217×377，已裁掉透明留白） */
+.mc-titlebar__wordmark {
+  height: 18px;
+  width: auto;
+  display: block;
+}
+
+/* 窗口按钮：1:1 圆角矩形，撑满标题栏高度并贴死右上角（Windows 原生那样的可点区域） */
+.mc-titlebar__controls {
+  display: flex;
+  align-items: stretch;
+  height: 100%;
+  gap: 0;
+  flex-shrink: 0;
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+
+.mc-winbtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px; /* 1:1 */
+  border: 0;
+  border-radius: 10px;
+  corner-shape: superellipse(1.5);
+  background: transparent;
+  color: var(--fg-subtle);
+  cursor: pointer;
+  transition: background-color var(--dur) var(--ease), color var(--dur) var(--ease);
+}
+.mc-winbtn:hover {
+  background: var(--surface-hover);
+  color: var(--fg);
+}
+.mc-winbtn--close:hover {
+  /* Windows 原生的关闭按钮 hover 红 */
+  background: var(--win-close-hover);
+  color: var(--win-close-fg);
+}

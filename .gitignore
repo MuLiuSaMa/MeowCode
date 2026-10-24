@@ -1,0 +1,35 @@
+# MeowCode app
+node_modules/
+dist/
+/.meowcode/
+coverage/
+desktop/dist/
+desktop/release/
+desktop/renderer/
+desktop/.vite/
+*.local
+.env
+.env.*
+*.log
+
+# Reference repositories, never part of MeowCode source
+/codex-main/
+/deepseek-harness-master/
+/opencode-2/
+/ZCode-main/
+/metis-main/
+/AllAgent.NET-main/
+/LanAgent-main/
+
+# Local agent / editor state（本机 AI 工具的缓存与计划草稿，不进仓库）
+/.workbuddy/
+/.workbuddy-ai/
+/.trae/
+/.zcode/
+
+# 与 desktop/src/assets/fonts/MiSansVF.ttf 重复的 20MB 字体副本，构建不读它
+/MiSansVF.ttf
+
+# OS/editor
+.DS_Store
+Thumbs.db

@@ -1,0 +1,203 @@
+/*
+ * 定位：绝对锚在 .mc-composer__ctxwrap（圆圈按钮）正上方居中。
+ * 不用 fixed + JS 量 rect——量一次后窗口缩放 / 输入框长高都不重算，弹层会漂到别处；
+ * 纯 CSS 跟随锚点，永远贴在圆圈正上方。
+ */
+.mc-ctxpop {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 60;
+  width: 260px;
+  padding: 13px 14px 12px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--bg-elevated);
+  box-shadow: var(--shadow-lg);
+  animation: mc-ctxpop-in 140ms var(--ease);
+  /* 分类色：与分段条、图例圆点一一对应 */
+  --ctx-cat-system: #8a69fd;
+  --ctx-cat-tools: #52b788;
+  --ctx-cat-messages: #d4a24e;
+}
+
+/* 只动 opacity：keyframes 里写 transform 会覆盖居中用的 translateX(-50%) */
+@keyframes mc-ctxpop-in {
+  from {
+    opacity: 0;
+  }
+}
+
+.mc-ctxpop__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.mc-ctxpop__title {
+  font-size: var(--fs-caption);
+  font-weight: var(--fw-semibold);
+  color: var(--fg);
+}
+
+.mc-ctxpop__close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  margin-left: auto;
+  margin-right: -5px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--fg-subtle);
+  cursor: pointer;
+  transition: background-color var(--dur) var(--ease), color var(--dur) var(--ease);
+}
+
+.mc-ctxpop__close:hover {
+  background: var(--surface-hover);
+  color: var(--fg);
+}
+
+.mc-ctxpop__summary {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin: 10px 0;
+}
+
+.mc-ctxpop__pct {
+  font-size: 26px;
+  font-weight: 650;
+  line-height: 1.1;
+  color: var(--fg);
+  font-variant-numeric: tabular-nums;
+}
+
+.mc-ctxpop__pct[data-level="mid"] {
+  color: var(--accent);
+}
+
+.mc-ctxpop__pct[data-level="high"] {
+  color: var(--danger);
+}
+
+.mc-ctxpop__nums {
+  font-size: var(--fs-sm);
+  color: var(--fg-subtlest);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.mc-ctxpop__nums b {
+  color: var(--fg-subtle);
+  font-weight: var(--fw-medium);
+}
+
+.mc-ctxpop__bar {
+  display: flex;
+  gap: 2px;
+  height: 8px;
+  border-radius: var(--radius-full);
+  background: var(--line-soft);
+  overflow: hidden;
+}
+
+.mc-ctxpop__seg {
+  min-width: 2px;
+  border-radius: 2px;
+}
+
+.mc-ctxpop__seg[data-key="system"] {
+  background: var(--ctx-cat-system);
+}
+
+.mc-ctxpop__seg[data-key="tools"] {
+  background: var(--ctx-cat-tools);
+}
+
+.mc-ctxpop__seg[data-key="messages"] {
+  background: var(--ctx-cat-messages);
+}
+
+.mc-ctxpop__legend {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.mc-ctxpop__row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--fs-sm);
+}
+
+.mc-ctxpop__dot {
+  width: 8px;
+  height: 8px;
+  flex-shrink: 0;
+  border-radius: 50%;
+}
+
+.mc-ctxpop__dot[data-key="system"] {
+  background: var(--ctx-cat-system);
+}
+
+.mc-ctxpop__dot[data-key="tools"] {
+  background: var(--ctx-cat-tools);
+}
+
+.mc-ctxpop__dot[data-key="messages"] {
+  background: var(--ctx-cat-messages);
+}
+
+.mc-ctxpop__label {
+  color: var(--fg-subtle);
+}
+
+.mc-ctxpop__val {
+  margin-left: auto;
+  color: var(--fg);
+  font-variant-numeric: tabular-nums;
+}
+
+.mc-ctxpop__hint {
+  margin: 12px 0 10px;
+  font-size: var(--fs-xs);
+  line-height: 1.6;
+  color: var(--fg-subtlest);
+}
+
+.mc-ctxpop__compact {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  height: 30px;
+  border: 0;
+  border-radius: var(--radius-full);
+  background: var(--surface);
+  color: var(--fg-subtle);
+  font-size: var(--fs-sm);
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.mc-ctxpop__compact:hover:not(:disabled) {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.mc-ctxpop__compact:disabled {
+  opacity: 0.55;
+  cursor: default;
+}

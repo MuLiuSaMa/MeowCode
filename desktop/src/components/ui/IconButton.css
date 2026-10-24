@@ -1,0 +1,31 @@
+.mc-iconbtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  /* 清掉 button 的 UA 默认 padding，否则小尺寸按钮内容区过窄会压扁 svg 图标 */
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--fg-subtle);
+  cursor: pointer;
+  transition:
+    background-color var(--dur) var(--ease),
+    color var(--dur) var(--ease),
+    border-color var(--dur) var(--ease);
+}
+.mc-iconbtn:hover:not(:disabled) {
+  background: var(--surface-hover);
+  color: var(--fg);
+}
+.mc-iconbtn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.mc-iconbtn[data-active="true"] {
+  background: var(--surface);
+  color: var(--fg);
+}
+.mc-iconbtn--sm { width: 24px; height: 24px; }
+.mc-iconbtn--md { width: 30px; height: 30px; }

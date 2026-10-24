@@ -1,0 +1,38 @@
+.mc-toggle {
+  position: relative;
+  flex-shrink: 0;
+  width: 36px;
+  height: 20px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-full);
+  background: var(--surface-hover);
+  cursor: pointer;
+  transition: background-color var(--dur) var(--ease);
+}
+.mc-toggle[data-checked="true"] {
+  background: var(--brand);
+}
+.mc-toggle:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.mc-toggle:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+.mc-toggle__knob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--fg-subtle);
+  transition: transform var(--dur) var(--ease), background-color var(--dur) var(--ease);
+}
+.mc-toggle[data-checked="true"] .mc-toggle__knob {
+  transform: translateX(16px);
+  background: var(--brand-fg);
+}

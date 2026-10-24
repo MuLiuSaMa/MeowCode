@@ -1,0 +1,36 @@
+.mc-provicon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  overflow: hidden;
+}
+.mc-provicon > img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+}
+
+.mc-provicon--fallback {
+  background: var(--surface-hover);
+  color: var(--fg-subtle);
+  font-weight: var(--fw-medium);
+  letter-spacing: 0.02em;
+}
+
+/* 单色品牌字形：跟随文字色，两个主题都自适应 */
+.mc-provicon--glyph {
+  color: var(--fg);
+}
+.mc-provicon--glyph > svg {
+  display: block;
+}
+
+/* 品牌色字母标：无底色，品牌色字母即图标（颜色由组件内联给出） */
+.mc-provicon--letter {
+  align-items: center;
+  justify-content: center;
+  font-weight: var(--fw-medium);
+  line-height: 1;
+}

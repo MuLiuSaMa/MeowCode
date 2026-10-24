@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="zh-CN"><head><meta charset="utf-8"><title>ECharts · Tree</title>
+<link rel="stylesheet" href="../../assets/fonts.css">
+<link rel="stylesheet" href="../../assets/base.css">
+<link rel="stylesheet" id="theme-link" href="../../assets/themes/minimal-white.css">
+<link rel="stylesheet" href="../../assets/animations/animations.css">
+<!-- In generated decks use ./_shared/echarts.min.js -->
+<script src="../../assets/echarts.min.js"></script>
+<script src="../../assets/echarts-theme-sync.js"></script>
+</head><body class="single">
+<deck-stage width="1920" height="1080"><section class="slide active" data-deck-label="Tree chart">
+  <p class="kicker">ECharts · 树图</p>
+  <h2 class="h2">产品技术架构</h2>
+  <div class="card mt-l" style="height:560px;padding:28px"><div id="c" style="width:100%;height:100%"></div></div>
+  <script>
+    addEventListener('DOMContentLoaded', function () {
+      var treeData = {
+        name: 'presentation',
+        children: [
+          { name: 'assets/', children: [
+            { name: 'base.css' },
+            { name: 'runtime.js' },
+            { name: 'themes/ (36个)' },
+            { name: 'animations/ (47种)' }
+          ]},
+          { name: 'templates/', children: [
+            { name: 'single-page/ (39个)' },
+            { name: 'full-decks/ (15个)' }
+          ]},
+          { name: 'convert/', children: [
+            { name: 'convert.js' }
+          ]},
+          { name: 'scripts/', children: [
+            { name: 'new-deck.sh' },
+            { name: 'render.sh' }
+          ]}
+        ]
+      };
+
+      var chart = echarts.init(document.getElementById('c'), null, { renderer: 'svg' });
+      window.__deckECharts.register(chart, function (c) {
+        return {
+          tooltip: { trigger: 'item', triggerOn: 'mousemove' },
+          series: [{
+            type: 'tree',
+            data: [treeData],
+            orient: 'TB',
+            top: 20, bottom: 30, left: 60, right: 60,
+            symbol: 'roundRect', symbolSize: [80, 28],
+            edgeShape: 'polyline', edgeForkPosition: '63%',
+            initialTreeDepth: -1,
+            label: {
+              position: 'inside', verticalAlign: 'middle',
+              fontSize: 12, color: '#fff'
+            },
+            itemStyle: {
+              color: c['--accent'], borderColor: c['--accent-2'], borderWidth: 1
+            },
+            lineStyle: { color: c['--border'], width: 1.5 },
+            leaves: {
+              label: { position: 'inside', color: '#fff', fontSize: 11 },
+              itemStyle: { color: c['--accent-2'], borderColor: c['--accent-3'] }
+            },
+            emphasis: {
+              focus: 'descendant',
+              itemStyle: { color: c['--accent-3'] }
+            },
+            expandAndCollapse: true,
+            animationDuration: 550, animationDurationUpdate: 750
+          }]
+        };
+      });
+      window.addEventListener('resize', function () { chart.resize(); });
+    });
+  </script>
+</section></deck-stage>
+<script src="../../assets/runtime.js"></script>
+</body></html>

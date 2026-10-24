@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="zh-CN"><head><meta charset="utf-8"><title>Timeline Vertical</title>
+<link rel="stylesheet" href="../../assets/fonts.css">
+<link rel="stylesheet" href="../../assets/base.css">
+<link rel="stylesheet" id="theme-link" href="../../assets/themes/minimal-white.css">
+<link rel="stylesheet" href="../../assets/animations/animations.css">
+<style>
+.tl-v{position:relative;padding-left:32px;margin-top:36px}
+.tl-v::before{content:"";position:absolute;left:7px;top:0;bottom:0;width:2px;background:var(--border)}
+.tl-v-item{position:relative;margin-bottom:32px}
+.tl-v-item:last-child{margin-bottom:0}
+.tl-v-item::before{content:"";position:absolute;left:-29px;top:5px;width:12px;height:12px;border-radius:50%;background:var(--accent);border:3px solid var(--bg);box-shadow:0 0 0 2px var(--accent)}
+.tl-v-date{font-size:13px;font-weight:600;color:var(--accent);text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px}
+.tl-v-title{font-size:18px;font-weight:600;color:var(--text-1);margin-bottom:4px}
+.tl-v-text{font-size:14px;color:var(--text-2);line-height:1.55}
+.tl-v-item.highlight::before{background:var(--bad);box-shadow:0 0 0 2px var(--bad)}
+.tl-v-item.highlight .tl-v-date{color:var(--bad)}
+</style>
+</head><body class="single">
+<deck-stage width="1920" height="1080"><section class="slide active" data-deck-label="Timeline Vertical">
+  <p class="kicker">Milestones</p>
+  <h2 class="h2">项目里程碑</h2>
+  <!-- === 可增删 .tl-v-item 条目；添加 .highlight 类可标记关键节点 === -->
+  <div class="tl-v">
+    <div class="tl-v-item">
+      <div class="tl-v-date">2025 Q3</div>
+      <div class="tl-v-title">项目立项</div>
+      <div class="tl-v-text">完成需求调研与技术选型，组建核心团队</div>
+    </div>
+    <div class="tl-v-item">
+      <div class="tl-v-date">2025 Q4</div>
+      <div class="tl-v-title">MVP 发布</div>
+      <div class="tl-v-text">上线最小可用产品，首批内测用户接入</div>
+    </div>
+    <div class="tl-v-item">
+      <div class="tl-v-date">2026 Q1</div>
+      <div class="tl-v-title">公测上线</div>
+      <div class="tl-v-text">开放注册，日活突破 1 万</div>
+    </div>
+    <div class="tl-v-item">
+      <div class="tl-v-date">2026 Q2</div>
+      <div class="tl-v-title">生态接入</div>
+      <div class="tl-v-text">开放 API 与插件市场，合作伙伴超过 50 家</div>
+    </div>
+    <div class="tl-v-item highlight">
+      <div class="tl-v-date">2026 Q3</div>
+      <div class="tl-v-title">商业化</div>
+      <div class="tl-v-text">推出付费版本，实现盈亏平衡</div>
+    </div>
+  </div>
+</section></deck-stage>
+<script src="../../assets/runtime.js"></script>
+</body></html>

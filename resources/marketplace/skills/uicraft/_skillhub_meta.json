@@ -1,0 +1,8 @@
+{
+  "name": "UICraft（前端设计工具集）",
+  "source": "local",
+  "version": "2.0.0",
+  "skillName": "uicraft",
+  "description_zh": "面向生产环境的界面设计能力集：从视觉主张、版式与空间、动效与交互，到无障碍、性能与设计系统治理，帮助做出有观点且经得起验收的前端界面，摆脱千篇一律的 AI 感",
+  "description_en": "A production-oriented interface craft toolkit spanning visual direction, layout and type, motion and interaction, accessibility, performance, and design-system governance — for building web UI with a real point of view"
+}

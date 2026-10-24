@@ -1,0 +1,201 @@
+.mc-root {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  width: 100%;
+  overflow: hidden;
+  background: var(--bg-chrome);
+  color: var(--fg);
+}
+/* 亚克力窗口：外框（标题栏 / 导航栏 / 面板间隙）透出系统毛玻璃。
+   再按主题压一层色：深色加黑、浅色加白 —— 系统背板本身不保证跟随应用主题。 */
+:root[data-backdrop="acrylic"] .mc-root {
+  background: color-mix(in oklab, var(--bg-chrome) 72%, transparent);
+}
+
+/* 左边缘不留白，让按钮栏与标题栏连成一体 */
+.mc-body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  gap: 8px;
+  padding: 0 8px 8px 0;
+}
+
+.mc-columns {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  /* 面板之间的缝隙（右侧栏与聊天区靠得更紧） */
+  gap: 4px;
+}
+
+.mc-panel {
+  border-radius: var(--radius-xl);
+  corner-shape: superellipse(1.5);
+  overflow: hidden;
+}
+.mc-panel--conversations {
+  /* 宽度由外层 .mc-listcol 控制（可拖拽调节） */
+  width: 100%;
+  flex-shrink: 0;
+  /* 与聊天区同底色 */
+  background: var(--bg);
+}
+
+/* 左栏列容器：宽度由 App 行内样式写入，右边缘挂一条透明拖拽热区 */
+.mc-listcol {
+  position: relative;
+  display: flex;
+  flex-shrink: 0;
+  min-width: 0;
+}
+
+/* 热区骑在 4px 缝隙上：right -7px + 宽 10px → 中心正好落在缝隙中点 */
+.mc-listresize {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: -7px;
+  z-index: 6;
+  width: 10px;
+  overflow: hidden;
+  cursor: col-resize;
+  touch-action: none;
+}
+
+/* 拖拽指示线（左右两侧共用一套）：黑白、跟随鼠标纵向位置、两端渐隐。
+   App 在 pointermove 时把鼠标相对高度写进 --cursor-y。 */
+.mc-listresize::after,
+.mc-inspresize::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: var(--cursor-y, 50%);
+  width: 1px;
+  height: 320px;
+  background: var(--fg-subtle);
+  transform: translate(-50%, -50%);
+  /* 两端淡出，避免线条硬切 */
+  mask-image: linear-gradient(
+    to bottom,
+    transparent 0%,
+    #000 20%,
+    #000 80%,
+    transparent 100%
+  );
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    transparent 0%,
+    #000 20%,
+    #000 80%,
+    transparent 100%
+  );
+  opacity: 0;
+  transition:
+    opacity var(--dur) var(--ease),
+    top 60ms linear;
+  pointer-events: none;
+}
+
+.mc-listresize:hover::after,
+.mc-listresize[data-dragging="true"]::after,
+.mc-inspresize:hover::after,
+.mc-inspresize:active::after {
+  opacity: 1;
+}
+
+/*
+ * 右侧检查器展开/收起 —— keyframe 动画（data-collapsed 切换时
+ * animation-name 跟着切换，动画必定重新播放，不依赖 transition 机制）。
+ * data-animated 由 App 在首次手动切换后置 true，避免启动/进设置页时重播动画。
+ * keyframes 用 var(--inspector-w)（App 以行内样式写入，宽度可拖拽调节）。
+ */
+.mc-inspwrap {
+  display: flex;
+  width: var(--inspector-w);
+  flex-shrink: 0;
+  overflow: hidden;
+}
+
+/* 右侧面板宽度拖拽把手：骑在面板与正文之间的间隙上。
+   gap 4px + margin -5px 让它在布局上净占 0，最终缝隙与左侧一致（4px），
+   且热区中心正好落在缝隙中间。 */
+.mc-inspresize {
+  position: relative;
+  width: 6px;
+  flex-shrink: 0;
+  margin: 0 -5px;
+  overflow: hidden;
+  cursor: col-resize;
+  touch-action: none;
+  z-index: 5;
+}
+
+.mc-inspwrap > .mc-panel--inspector {
+  width: var(--inspector-w);
+  flex-shrink: 0;
+}
+/* 收起的静态终态（动画不可用时也保证功能正确） */
+.mc-inspwrap[data-collapsed="true"] {
+  width: 0;
+  margin-left: -4px; /* 连同 .mc-columns 的 gap 一起收走，内容面板贴到右缘 */
+  opacity: 0;
+  pointer-events: none;
+}
+.mc-inspwrap[data-animated="true"][data-collapsed="false"] {
+  animation: mc-insp-expand 240ms cubic-bezier(0.2, 0, 0.2, 1) both;
+}
+.mc-inspwrap[data-animated="true"][data-collapsed="true"] {
+  animation: mc-insp-collapse 240ms cubic-bezier(0.2, 0, 0.2, 1) both;
+}
+@keyframes mc-insp-collapse {
+  from {
+    width: var(--inspector-w);
+    margin-left: 0;
+    opacity: 1;
+  }
+  to {
+    width: 0;
+    margin-left: -8px;
+    opacity: 0;
+  }
+}
+@keyframes mc-insp-expand {
+  from {
+    width: 0;
+    margin-left: -8px;
+    opacity: 0;
+  }
+  to {
+    width: var(--inspector-w);
+    margin-left: 0;
+    opacity: 1;
+  }
+}
+.mc-panel--inspector {
+  width: var(--inspector-w);
+  flex-shrink: 0;
+  /* 与聊天区同底色 */
+  background: var(--bg);
+}
+.mc-panel--content {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  background: var(--bg);
+}
+
+/*
+ * 对话区。用 display:contents 让 ChatHeader / MessageList / Composer
+ * 仍然是 .mc-panel--content 的 flex 子项；切到设置页时整层 display:none，
+ * 这样返回对话时滚动位置和输入框高度都还在。
+ */
+.mc-contentview {
+  display: contents;
+}
+.mc-contentview[data-hidden="true"] {
+  display: none;
+}

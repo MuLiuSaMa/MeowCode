@@ -1,0 +1,57 @@
+.mc-userrow {
+  display: flex;
+  justify-content: flex-end;
+}
+.mc-userbubble {
+  max-width: 78%;
+  padding: 11px 15px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-2xl);
+  border-bottom-right-radius: var(--radius-sm);
+  corner-shape: superellipse(1.5);
+  background: var(--user-fill);
+  color: var(--fg);
+  font-size: var(--fs-base);
+  line-height: var(--lh-normal);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  box-shadow: var(--shadow-sm);
+}
+/* 用户附图：与文字同一气泡内，多张时换行 */
+.mc-userbubble__images {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.mc-userbubble__images:last-child {
+  margin-bottom: 0;
+}
+.mc-userbubble__image {
+  display: block;
+  max-width: 220px;
+  max-height: 220px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  object-fit: contain;
+  background: var(--surface);
+}
+
+/* 技能/插件引用 chips（可多选，自动换行）：气泡内首行标签 */
+.mc-userbubble__skillrow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+.mc-userbubble__skillrow .mc-skillchip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 9px;
+  border-radius: var(--radius-md);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+  line-height: 1.5;
+  user-select: none;
+}

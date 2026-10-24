@@ -1,0 +1,21 @@
+/* 浏览器页签：自带地址栏 + webview */
+
+.mc-browser {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.mc-browser__bar {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  flex-shrink: 0;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.mc-browser .mc-rtp__webview {
+  flex: 1;
+  min-height: 0;
+}

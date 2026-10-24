@@ -1,0 +1,212 @@
+.mc-subagents {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  padding: 10px;
+  overflow-y: auto;
+}
+
+.mc-subagents__hint {
+  flex: none;
+  padding: 0 4px 8px;
+  color: var(--fg-subtlest);
+  font-size: var(--fs-xs);
+}
+
+.mc-subagents__list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.mc-subagents__row {
+  display: flex;
+  align-items: stretch;
+  gap: 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  corner-shape: superellipse(1.5);
+  background: var(--surface);
+  transition: background-color var(--dur) var(--ease);
+}
+
+.mc-subagents__row:hover {
+  background: var(--surface-hover);
+}
+
+.mc-subagents__row[data-status="failed"] {
+  border-color: var(--danger-surface);
+}
+
+.mc-subagents__main {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 8px 6px 8px 10px;
+  border: 0;
+  background: transparent;
+  color: var(--fg);
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.mc-subagents__main:focus-visible {
+  outline: none;
+}
+
+.mc-subagents__icon {
+  display: inline-flex;
+  flex: none;
+  color: var(--success-strong);
+}
+
+.mc-subagents__row[data-status="running"] .mc-subagents__icon {
+  color: var(--accent, var(--fg-subtle));
+}
+
+.mc-subagents__row[data-status="failed"] .mc-subagents__icon {
+  color: var(--danger);
+}
+
+.mc-subagents__row[data-status="aborted"] .mc-subagents__icon,
+.mc-subagents__row[data-status="interrupted"] .mc-subagents__icon {
+  color: var(--fg-subtlest);
+}
+
+.mc-subagents__spin {
+  animation: mc-subagents-spin 1s linear infinite;
+}
+
+@keyframes mc-subagents-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.mc-subagents__body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.mc-subagents__title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font-size: var(--fs-caption);
+  font-weight: var(--fw-medium);
+}
+
+.mc-subagents__type,
+.mc-subagents__bg {
+  flex: none;
+  padding: 0 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  color: var(--fg-subtle);
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-regular);
+  line-height: 1.6;
+}
+
+.mc-subagents__type[data-type="explore"],
+.mc-subagents__type[data-type="reviewer"] {
+  color: var(--success-strong);
+}
+
+.mc-subagents__type[data-type="implementer"] {
+  color: var(--accent, var(--fg));
+}
+
+.mc-subagents__type[data-type="verifier"] {
+  color: var(--warning, var(--fg));
+}
+
+.mc-subagents__bg {
+  border-color: transparent;
+  background: var(--surface-hover);
+}
+
+.mc-subagents__meta {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  color: var(--fg-subtlest);
+  font-size: var(--fs-xs);
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.mc-subagents__dot {
+  opacity: 0.7;
+}
+
+.mc-subagents__open {
+  flex: none;
+  color: var(--fg-subtlest);
+  opacity: 0.6;
+}
+
+.mc-subagents__row:hover .mc-subagents__open {
+  opacity: 1;
+}
+
+.mc-subagents__stop {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  margin: 4px 4px 4px 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--fg-subtlest);
+  cursor: pointer;
+  transition: background-color var(--dur) var(--ease), color var(--dur) var(--ease);
+}
+
+.mc-subagents__stop:hover {
+  background: var(--danger-surface);
+  color: var(--danger);
+}
+
+.mc-subagents__empty {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  color: var(--fg-subtlest);
+  font-size: var(--fs-sm);
+}
+
+/* 契约角色（implementer/reviewer/verifier）的宿主校验徽章 */
+.mc-subagents__childresult {
+  flex: none;
+  padding: 0 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-regular);
+  line-height: 1.6;
+  color: var(--fg-subtle);
+}
+
+.mc-subagents__childresult[data-valid="true"] {
+  color: var(--success-strong);
+}
+
+.mc-subagents__childresult[data-valid="false"] {
+  color: var(--danger, var(--fg));
+  border-color: currentColor;
+}

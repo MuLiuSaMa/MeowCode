@@ -1,0 +1,14 @@
+/* 终端页签：xterm 容器 */
+
+.mc-rtp__term {
+  height: 100%;
+  padding: 6px 4px 6px 8px;
+  background: var(--bg-panel);
+}
+
+.mc-rtp__term .xterm {
+  height: 100%;
+}
+.mc-rtp__term .xterm-viewport {
+  background: transparent !important;
+}

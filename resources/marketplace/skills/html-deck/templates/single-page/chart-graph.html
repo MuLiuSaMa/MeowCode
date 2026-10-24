@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="zh-CN"><head><meta charset="utf-8"><title>ECharts · Graph</title>
+<link rel="stylesheet" href="../../assets/fonts.css">
+<link rel="stylesheet" href="../../assets/base.css">
+<link rel="stylesheet" id="theme-link" href="../../assets/themes/minimal-white.css">
+<link rel="stylesheet" href="../../assets/animations/animations.css">
+<!-- In generated decks use ./_shared/echarts.min.js -->
+<script src="../../assets/echarts.min.js"></script>
+<script src="../../assets/echarts-theme-sync.js"></script>
+</head><body class="single">
+<deck-stage width="1920" height="1080"><section class="slide active" data-deck-label="Graph chart">
+  <p class="kicker">ECharts · 关系图</p>
+  <h2 class="h2">前端技术依赖图</h2>
+  <div class="card mt-l" style="height:560px;padding:28px"><div id="c" style="width:100%;height:100%"></div></div>
+  <script>
+    addEventListener('DOMContentLoaded', function () {
+      var names = ['HTML','CSS','JavaScript','TypeScript','React','Vue','Svelte','Webpack','Vite','Node.js'];
+      var links = [
+        ['HTML','CSS'],['HTML','JavaScript'],
+        ['JavaScript','TypeScript'],['JavaScript','React'],['JavaScript','Vue'],
+        ['JavaScript','Svelte'],['JavaScript','Node.js'],
+        ['TypeScript','React'],['TypeScript','Vue'],
+        ['React','Webpack'],['React','Vite'],
+        ['Vue','Vite'],['Vue','Webpack'],
+        ['Node.js','Webpack'],['Node.js','Vite']
+      ];
+
+      // 计算每个节点连接数
+      var degreeMap = {};
+      names.forEach(function (n) { degreeMap[n] = 0; });
+      links.forEach(function (l) { degreeMap[l[0]]++; degreeMap[l[1]]++; });
+
+      var chart = echarts.init(document.getElementById('c'), null, { renderer: 'svg' });
+      window.__deckECharts.register(chart, function (c) {
+        var palette = [c['--accent'], c['--accent-2'], c['--accent-3']];
+        var nodes = names.map(function (name, i) {
+          var deg = degreeMap[name];
+          return {
+            name: name,
+            symbolSize: 20 + deg * 8,
+            itemStyle: { color: palette[i % 3] },
+            label: { show: true, color: c['--text-1'], fontSize: 13, fontWeight: 'bold' }
+          };
+        });
+        var edgeData = links.map(function (l) {
+          return { source: l[0], target: l[1] };
+        });
+        return {
+          tooltip: { formatter: function (p) { return p.dataType === 'edge' ? p.data.source + ' → ' + p.data.target : p.name; } },
+          series: [{
+            type: 'graph', layout: 'force',
+            roam: true, draggable: true,
+            force: { repulsion: 260, gravity: 0.1, edgeLength: [80, 180], layoutAnimation: true },
+            data: nodes,
+            links: edgeData,
+            edgeSymbol: ['none', 'arrow'], edgeSymbolSize: [0, 10],
+            lineStyle: { color: c['--border'], width: 1.5, curveness: 0.15 },
+            emphasis: {
+              focus: 'adjacency',
+              lineStyle: { width: 3 }
+            },
+            animationDuration: 1500, animationEasingUpdate: 'quinticInOut'
+          }]
+        };
+      });
+      window.addEventListener('resize', function () { chart.resize(); });
+    });
+  </script>
+</section></deck-stage>
+<script src="../../assets/runtime.js"></script>
+</body></html>

@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"><title>Image Caption Card</title>
+<link rel="stylesheet" href="../../assets/fonts.css">
+<link rel="stylesheet" href="../../assets/base.css">
+<link rel="stylesheet" id="theme-link" href="../../assets/themes/minimal-white.css">
+<link rel="stylesheet" href="../../assets/animations/animations.css">
+<style>
+.card-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:24px;margin-top:32px}
+.img-card{border-radius:var(--radius-lg);overflow:hidden;background:var(--surface-2);box-shadow:var(--shadow);transition:transform .2s}
+.img-card:hover{transform:translateY(-4px)}
+.img-card .thumb{position:relative;width:100%;aspect-ratio:4/3;overflow:hidden}
+.img-card .thumb img{width:100%;height:100%;object-fit:cover}
+.img-card .thumb .placeholder{width:100%;height:100%;background:
+  linear-gradient(135deg,var(--accent,.3),var(--surface-2))}
+.img-card .body{padding:20px 22px 24px}
+.img-card .body h3{font-size:18px;font-weight:700;margin:0;color:var(--text-1)}
+.img-card .body p{font-size:14px;color:var(--text-2);margin:8px 0 0;line-height:1.6}
+.img-card .body .tag{font-size:12px;color:var(--accent);font-weight:600;margin-top:12px;display:inline-block}
+</style>
+</head>
+<body class="single">
+<deck-stage width="1920" height="1080" data-themes="minimal-white,soft-pastel,xiaohongshu-white,editorial-serif,corporate-clean" data-theme-base="../../assets/themes/">
+  <section class="slide active" data-deck-label="Image Caption Card">
+    <p class="kicker">Team · 团队介绍</p>
+    <h2 class="h2">图文卡片网格</h2>
+    <!-- === 可增删 .img-card 条目 === -->
+    <div class="card-grid anim-stagger-list" data-anim="stagger-list">
+      <div class="img-card">
+        <div class="thumb">
+          <!-- <img src="assets/person-01_512x384.png" alt="名称"> -->
+          <div class="placeholder" style="background:linear-gradient(135deg,var(--accent),.3,var(--surface-2))"></div>
+        </div>
+        <div class="body">
+          <h3>张三 · 产品负责人</h3>
+          <p>10 年互联网产品经验，专注 B 端 SaaS 和增长策略。</p>
+          <span class="tag">Product</span>
+        </div>
+      </div>
+      <div class="img-card">
+        <div class="thumb">
+          <div class="placeholder" style="background:linear-gradient(135deg,#7a5cff,.3,var(--surface-2))"></div>
+        </div>
+        <div class="body">
+          <h3>李四 · 技术架构师</h3>
+          <p>全栈工程师，擅长分布式系统和云原生架构设计。</p>
+          <span class="tag">Engineering</span>
+        </div>
+      </div>
+      <div class="img-card">
+        <div class="thumb">
+          <div class="placeholder" style="background:linear-gradient(135deg,#ff7a90,.3,var(--surface-2))"></div>
+        </div>
+        <div class="body">
+          <h3>王五 · 设计总监</h3>
+          <p>视觉与交互兼修，曾主导多个千万级用户产品的体验升级。</p>
+          <span class="tag">Design</span>
+        </div>
+      </div>
+    </div>
+    <div class="notes">图文卡片网格：可调整 grid-template-columns 为 repeat(2,1fr) 做两列布局。图片使用 aspect-ratio:4/3 保持一致比例。</div>
+  </section>
+</deck-stage>
+<script src="../../assets/runtime.js"></script>
+</body></html>

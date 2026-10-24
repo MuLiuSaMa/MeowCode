@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MeowCode vs 6 个开源项目 · 对比排名看板</title>
+<style>
+  :root{
+    --bg:#0d1117; --panel:#161b22; --panel2:#1c2330; --border:#2b3442;
+    --text:#e6edf3; --dim:#8b949e; --accent:#f0883e; --good:#3fb950; --bad:#f85149;
+    --gold:#e3b341; --silver:#adbac7; --bronze:#c88a4b; --meow:#58d6ff;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--text);font-family:"Segoe UI","Microsoft YaHei",system-ui,sans-serif;padding:28px;line-height:1.55}
+  .wrap{max-width:1180px;margin:0 auto}
+  h1{font-size:24px;margin-bottom:4px}
+  h1 .meow{color:var(--meow)}
+  .sub{color:var(--dim);font-size:13px;margin-bottom:18px}
+  .badges{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:22px}
+  .badge{background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:8px 14px;font-size:13px}
+  .badge b{color:var(--good);font-size:16px;margin-right:4px}
+  .badge.warn b{color:var(--bad)}
+  h2{font-size:17px;margin:26px 0 12px;padding-left:10px;border-left:3px solid var(--accent)}
+  table{width:100%;border-collapse:collapse;background:var(--panel);border:1px solid var(--border);border-radius:10px;overflow:hidden;font-size:13px}
+  th{background:var(--panel2);text-align:left;padding:10px 12px;color:var(--dim);font-weight:600;white-space:nowrap}
+  td{padding:10px 12px;border-top:1px solid var(--border);vertical-align:top}
+  tr.hl td{background:rgba(88,214,255,.07)}
+  tr.hl td:first-child{box-shadow:inset 3px 0 0 var(--meow)}
+  .rank{font-weight:700;font-size:15px}
+  .r1{color:var(--gold)}.r2{color:var(--silver)}.r3{color:var(--bronze)}
+  .me{color:var(--meow);font-weight:700}
+  .dim{color:var(--dim)}
+  .scorebar{display:flex;gap:3px;align-items:center}
+  .scorebar i{display:block;width:9px;height:14px;border-radius:2px;background:#2b3442}
+  .scorebar i.on{background:var(--meow)}
+  .scale-row{display:grid;grid-template-columns:150px 1fr 90px;gap:10px;align-items:center;padding:7px 12px;background:var(--panel);border:1px solid var(--border);border-radius:8px;margin-bottom:6px;font-size:13px}
+  .scale-row.hl{border-color:var(--meow)}
+  .bar{height:14px;border-radius:4px;background:linear-gradient(90deg,#1f6feb,#58d6ff)}
+  .bar.dim2{background:linear-gradient(90deg,#3d444d,#6e7681)}
+  .num{text-align:right;color:var(--dim);font-variant-numeric:tabular-nums}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(350px,1fr));gap:14px}
+  .card{background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:16px}
+  .card.me{border-color:var(--meow)}
+  .card h3{font-size:15px;margin-bottom:2px;display:flex;justify-content:space-between;align-items:baseline}
+  .card .lang{font-size:11px;color:var(--dim);font-weight:400}
+  .card .tagline{font-size:12px;color:var(--dim);margin-bottom:10px}
+  .card h4{font-size:12px;margin:8px 0 4px}
+  .pro h4{color:var(--good)} .con h4{color:var(--bad)}
+  .card ul{list-style:none;font-size:12.5px}
+  .card li{padding:3px 0 3px 14px;position:relative;color:#c9d1d9}
+  .card li::before{content:"";position:absolute;left:0;top:10px;width:5px;height:5px;border-radius:50%}
+  .pro li::before{background:var(--good)} .con li::before{background:var(--bad)}
+  .gap{background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:14px 16px;font-size:13px;margin-bottom:8px;display:flex;gap:12px;align-items:baseline}
+  .gap .st{font-size:16px;width:20px;text-align:center;flex:none}
+  .gap .body b{color:var(--text)}
+  .gap .body .ref{color:var(--dim);font-size:12px}
+  .foot{color:var(--dim);font-size:12px;margin-top:26px;border-top:1px solid var(--border);padding-top:12px}
+  .kv{display:flex;gap:18px;flex-wrap:wrap;font-size:12px;color:var(--dim);margin-bottom:10px}
+  .kv b{color:var(--text)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1><span class="meow">MeowCode</span> vs 6 个参考开源项目 · 对比排名看板</h1>
+  <div class="sub">Codex CLI(Rust) / opencode-2(TS) / ZCode(TS) / DeepSeek Harness(TS) / Metis(TS) / AllAgent.NET(C#) · 2026-10-18 实测</div>
+
+  <div class="badges">
+    <div class="badge"><b>474</b>测试全部通过（33 文件 / 10.6s）</div>
+    <div class="badge"><b>0</b>tsc 类型错误</div>
+    <div class="badge"><b>0</b>源码 TODO/FIXME</div>
+    <div class="badge warn"><b>~2.1万</b>行总代码（七者最小）</div>
+  </div>
+
+  <h2>一、综合排名（工程成熟度 × Token 效率 × 功能广度 × 轻量度 × 开放性）</h2>
+  <table>
+    <tr><th>排名</th><th>项目</th><th>规模</th><th>工程</th><th>Token</th><th>功能</th><th>轻量</th><th>开放</th><th>定位</th></tr>
+    <tr class="hl"><td class="rank r1">🥇 1</td><td><b>codex-main</b> <span class="dim">Rust · OpenAI</span></td><td class="num">208 万行 / 186 crate</td>
+      <td><div class="scorebar"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i></div></td>
+      <td><div class="scorebar"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i></div></td>
+      <td><div class="scorebar"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i></div></td>
+      <td><div class="scorebar"><i class="on"></i><i class="on"></i></div></td>
+      <td><div class="scorebar"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i></div></td>
+      <td>工业级标杆，质量天花板</td></tr>
+    <tr><td class="rank r2">🥈 2</td><td><b>opencode-2</b> <span class="dim">TS</span></td><td class="num">85 万行 / 35 包</td>
+      <td><div class="scorebar"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i></div></td>
+      <td><div class="scorebar"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i></div></td>
+      <td><div class="scorebar"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i></div></td>
+      <td><div class="scorebar"><i class="on"></i><i class="on"></i><i class="on"></i></div></td>
+      <td><div class="scorebar"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i></div></td>
+      <td>现代架构 + 226 provider 生态最全</td></tr>
+    <tr><td class="rank r3">🥉 3</td><td><b>ZCode-main</b> <span class="dim">TS · 智谱</span></td><td class="num">205 万行</td>
+      <td><div class="scorebar"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i></div></td>
+      <td><div class="scorebar"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i></div></td>
+      <td><div class="scorebar"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i></div></td>
+      <td><div class="scorebar"><i class="on"></i><i class="on"></i></div></td>
+      <td><div class="scorebar"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i></div></td>
+      <td>测试超过源码，治理工具化</td></tr>
+    <tr><td class="rank">4</td><td><b>metis-main</b> <span class="dim">TS</span></td><td class="num">src 9 万 + 测试 7.4 万</td>
+      <td><div class="scorebar"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i></div></td>
+      <td><div class="scorebar"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i></div></td>
+      <td><div class="scorebar"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i></div></td>
+      <td><div class="scorebar"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i></div></td>
+      <td><div class="scorebar"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i></div></td>
+      <td>Token 效率工程化最深，核心只发 dist</td></tr>
+    <tr><td class="rank">5</td><td><b>deepseek-harness</b> <span class="dim">TS · DeepSeek</span></td><td class="num">~4.8 万行</td>
+      <td><div class="scorebar"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i></div></td>
+      <td><div class="scorebar"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i></div></td>
+      <td><div class="scorebar"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i></div></td>
+      <td><div class="scorebar"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i></div></td>
+      <td><div class="scorebar"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i></div></td>
+      <td>架构最现代，developer preview</td></tr>
+    <tr class="hl"><td class="rank me">6</td><td><span class="me">MeowCode</span> <span class="dim">TS · 本项目</span></td><td class="num"><b>~2.1 万行</b></td>
+      <td><div class="scorebar"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i></div></td>
+      <td><div class="scorebar"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i></div></td>
+      <td><div class="scorebar"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i></div></td>
+      <td><div class="scorebar"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i></div></td>
+      <td><div class="scorebar"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i></div></td>
+      <td>最小核心 + 国内生态，功能广度差距大</td></tr>
+    <tr><td class="rank">7</td><td><b>AllAgent.NET</b> <span class="dim">C#</span></td><td class="num">2.78 万行</td>
+      <td><div class="scorebar"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i></div></td>
+      <td><div class="scorebar"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i></div></td>
+      <td><div class="scorebar"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i></div></td>
+      <td><div class="scorebar"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i></div></td>
+      <td><div class="scorebar"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i></div></td>
+      <td>工程质量极高，Windows 深锁定</td></tr>
+  </table>
+
+  <h2>二、代码规模对比（对数刻度）</h2>
+  <div class="scale-row"><span>codex-main</span><div class="bar dim2" style="width:100%"></div><span class="num">208 万行</span></div>
+  <div class="scale-row"><span>ZCode-main</span><div class="bar dim2" style="width:98.6%"></div><span class="num">205 万行</span></div>
+  <div class="scale-row"><span>opencode-2</span><div class="bar dim2" style="width:96.7%"></div><span class="num">85 万行</span></div>
+  <div class="scale-row"><span>metis-main</span><div class="bar dim2" style="width:88.4%"></div><span class="num">src 9 万行</span></div>
+  <div class="scale-row"><span>deepseek-harness</span><div class="bar dim2" style="width:85%"></div><span class="num">4.8 万行</span></div>
+  <div class="scale-row"><span>AllAgent.NET</span><div class="bar dim2" style="width:80.6%"></div><span class="num">2.78 万行</span></div>
+  <div class="scale-row hl"><span class="me">MeowCode</span><div class="bar" style="width:79.5%"></div><span class="num"><b>2.1 万行</b></span></div>
+
+  <h2>三、省 Token 专项排名（用户核心关注）</h2>
+  <table>
+    <tr><th>排名</th><th>项目</th><th>核心手段</th></tr>
+    <tr class="hl"><td class="rank r1">🥇 1</td><td><b>codex-main</b></td><td>稳定前缀+内容哈希 item ID+prompt_cache_key+deferred tool loading(code mode)+三级压缩（本地/远程/token-budget）+输出截断，全链路</td></tr>
+    <tr><td class="rank r2">🥈 2</td><td><b>metis-main</b></td><td>Prompt 长度预算写成 CI 回归测试（system prompt &lt; 10k 字符）+缓存前缀字节级断言+零 token 学习过滤+截断分页引导+子代理隔离</td></tr>
+    <tr><td class="rank r3">🥉 3</td><td><b>AllAgent.NET</b></td><td>CodeAct 单工具范式（37 个宿主工具走系统提示词目录）+prompt 分段有序化+Anthropic 4 断点+三层输出预算</td></tr>
+    <tr><td class="rank">4</td><td><b>opencode-2</b></td><td>compaction 阶梯收缩(0.7/0.5/0.35)+code mode(2000 字符目录预算)+cache 血缘+动态工具指引</td></tr>
+    <tr><td class="rank">5</td><td><b>ZCode-main</b></td><td>auto compact 优先采信 provider 真实 usage+microcompact 免费剪枝+Bash 30KB artifact 落盘+skill 元数据预算</td></tr>
+    <tr><td class="rank">6</td><td><b>deepseek-harness</b></td><td>PTC run_code（代码编排工具）+tool-result-pruner+image-offload+spill</td></tr>
+    <tr class="hl"><td class="rank me">7</td><td><span class="me">MeowCode</span></td><td><b>单点不弱、系统性有缺口</b>：三点缓存布局+降级重试、双层压缩、usage 锚点、CJK 估算、三层触发链已齐；缺 stable/dynamic 分区、免费剪枝层、code mode</td></tr>
+  </table>
+  <div class="kv" style="margin-top:10px">
+    <span>📐 单位代码量的 token 优化密度：<b>MeowCode 第一</b></span>
+    <span>🇨🇳 中文场景 CJK 估算（1 字≈1 token）：<b>MeowCode 七者独有</b>，海外项目 4 字符一刀切会严重低估中文上下文</span>
+  </div>
+
+  <h2>四、每个项目的优缺点</h2>
+  <div class="grid">
+    <div class="card">
+      <h3>🥇 codex-main <span class="lang">Rust · OpenAI · 208 万行</span></h3>
+      <div class="tagline">工业级标杆。21,229 测试 + deny unwrap 40+ 项 + 多平台 CI</div>
+      <div class="pro"><h4>✓ 优点</h4><ul>
+        <li>架构分层彻底（186 crate，Session/Turn/Step 三级上下文）</li>
+        <li>质量门禁业界顶配，非测试代码几乎零 unwrap</li>
+        <li>Token 效率全链路系统化（7 项手段互相咬合）</li>
+        <li>安全体系深入（landlock/seatbelt/Windows sandbox）</li>
+        <li>压缩机制最全（本地/远程/token-budget 三实现）</li>
+      </ul></div>
+      <div class="con"><h4>✗ 缺点</h4><ul>
+        <li>208 万行认知成本极高，feature flag 膨胀</li>
+        <li>强绑定 OpenAI（仅 Responses wire，无 Anthropic）</li>
+        <li>已知问题未清：TRACE 日志磨损 SSD(#28224 未修)、V8 macOS 崩溃、Guardian 误报</li>
+        <li>文档严重脱节（config.md 6 行 stub）</li>
+      </ul></div>
+    </div>
+    <div class="card">
+      <h3>🥈 opencode-2 <span class="lang">TS · 85 万行</span></h3>
+      <div class="tagline">现代架构。Effect-TS + 持久化事件 session + 226 provider / 8,443 模型</div>
+      <div class="pro"><h4>✓ 优点</h4><ul>
+        <li>事件溯源 + 写前 claim，崩溃可恢复</li>
+        <li>provider/协议层自研且深（36+ 协议适配、4 breakpoint 缓存）</li>
+        <li>1,159 测试文件 + 自定义 lint 规则</li>
+        <li>产品形态完整（TUI + Electron + Web + ACP）</li>
+      </ul></div>
+      <div class="con"><h4>✗ 缺点</h4><ul>
+        <li>85 万行，session 单目录 38 文件，上手成本高</li>
+        <li>强绑定 Effect 4.0 beta + bun，选型激进排他</li>
+        <li>v2 剧烈演进：HTTP API 139 端点仍在审计收敛</li>
+        <li>provider 拼通过度碎片化，长尾行为靠白名单兜底</li>
+      </ul></div>
+    </div>
+    <div class="card">
+      <h3>🥉 ZCode-main <span class="lang">TS · 智谱 · 205 万行</span></h3>
+      <div class="tagline">测试超过源码。显式 turn 状态机 + 架构检查 0 violations</div>
+      <div class="pro"><h4>✓ 优点</h4><ul>
+        <li>core 测试 13 万行 &gt; 源码 10.4 万行</li>
+        <li>turn 状态机非法迁移即报错、工具调度器拓扑+并行</li>
+        <li>治理工具体系（knip + architecture-check + pre-push）</li>
+        <li>provider 抽象干净（三协议 + revision 热更新）</li>
+      </ul></div>
+      <div class="con"><h4>✗ 缺点</h4><ul>
+        <li>内部审计顽疾：fix:feat ≈ 3.7:1、CI job 曾被禁用、max-lines 被 162 文件绕过</li>
+        <li>69 文件持有模型选择状态副本、logger 5 套并存</li>
+        <li>强绑定智谱（Coding Plan 网关自动转发无逐次确认）</li>
+        <li>无 OS 沙箱（NOTICE 自述不提供默认沙箱）</li>
+      </ul></div>
+    </div>
+    <div class="card">
+      <h3>4 · metis-main <span class="lang">TS · src 9 万行 + 测试 7.4 万</span></h3>
+      <div class="tagline">Token 效率工程化最深。310 测试文件，真实 TODO 为 0</div>
+      <div class="pro"><h4>✓ 优点</h4><ul>
+        <li>Prompt 预算写成 CI 回归测试，膨胀直接被拦</li>
+        <li>缓存前缀字节级不变量断言</li>
+        <li>54 provider + OAuth 订阅登录</li>
+        <li>steering 插入、并行/顺序双模式、热切换模型</li>
+      </ul></div>
+      <div class="con"><h4>✗ 缺点</h4><ul>
+        <li>核心三包只发 dist 无源码，调试必须回上游 pi</li>
+        <li>巨型文件（interactive-mode 6,555 行）</li>
+        <li>概念膨胀（T0–T3 + G1–G7 + self-learning）</li>
+        <li>desktop UI 细节测试约 60 文件，维护不成比例</li>
+      </ul></div>
+    </div>
+    <div class="card">
+      <h3>5 · deepseek-harness <span class="lang">TS · DeepSeek · 4.8 万行</span></h3>
+      <div class="tagline">架构最现代。everything-is-a-plugin + Cordis，1,497 spec</div>
+      <div class="pro"><h4>✓ 优点</h4><ul>
+        <li>插件化彻底，55 个包职责单一</li>
+        <li>PTC run_code（模型写代码编排工具）</li>
+        <li>compaction 子包齐全（pruner / image-offload）</li>
+        <li>多端（cli/desktop/web/acp）+ 插件市场</li>
+      </ul></div>
+      <div class="con"><h4>✗ 缺点</h4><ul>
+        <li>developer preview，明示破坏性变更</li>
+        <li>概念多（plugin/surface/node/epoch），调试路径长</li>
+        <li>沙箱/权限体系文档化程度低</li>
+        <li>快照/评测产物目录留在仓库</li>
+      </ul></div>
+    </div>
+    <div class="card me">
+      <h3><span class="me">6 · MeowCode（本项目）</span> <span class="lang">TS · 2.1 万行</span></h3>
+      <div class="tagline">七者最小核心。474 测试全过 + tsc 零错误 + 0 TODO</div>
+      <div class="pro"><h4>✓ 优点</h4><ul>
+        <li>1/100 代码量保持一线卫生水平（对比 codex）</li>
+        <li>Token 核心单项齐：三点缓存+降级重试、双层压缩、usage 锚点、三层触发链</li>
+        <li>CJK 感知估算 + 国内服务商目录，差异化</li>
+        <li>写后验证闭环（verify.ts）七者中少有的</li>
+        <li>审批细节（diff 外部刷新、子 Agent 审批记父会话）</li>
+      </ul></div>
+      <div class="con"><h4>✗ 缺点</h4><ul>
+        <li><b>无 MCP / 无沙箱 / 无 LSP / 无分支 / 无 checkpoint</b>（6 个参考项目全支持 MCP）</li>
+        <li>token 效率系统性排第 7（提示词未分区、无免费剪枝层、无 code mode）</li>
+        <li>runtime.ts 单文件 3,294 行</li>
+        <li>AGENTS.md 单层读取；辅助请求无缓存亲和；无 CI/未初始化 git</li>
+      </ul></div>
+    </div>
+    <div class="card">
+      <h3>7 · AllAgent.NET <span class="lang">C# · 2.78 万行</span></h3>
+      <div class="tagline">工程质量极高。0 TODO + 448 测试（含真实 microVM）</div>
+      <div class="pro"><h4>✓ 优点</h4><ul>
+        <li>CodeAct 范式优雅（模型只见 execute_code + Hyperlight 隔离）</li>
+        <li>prompt 缓存有字节级回归测试</li>
+        <li>安全深入（路径边界、SHA256 审计、孤儿消息修补）</li>
+        <li>Roslyn 源码生成器消灭工具样板代码</li>
+      </ul></div>
+      <div class="con"><h4>✗ 缺点</h4><ul>
+        <li>平台深锁定：Windows x64 + Hyperlight + PowerShell 7.6，跨平台不可行</li>
+        <li>Hyperlight 1.24 preview 依赖风险</li>
+        <li>AgentEngine 单方法 ~300 行塞十余职责</li>
+        <li>Web 端 1.27 万行 TS 仅 3 个测试文件</li>
+      </ul></div>
+    </div>
+  </div>
+
+  <h2>五、MeowCode BUG / 漏洞排查结论</h2>
+  <div class="gap"><span class="st">✅</span><div class="body"><b>未发现功能性 BUG</b>：474 测试全过、tsc 零错误、源码 0 TODO；磁盘满 / prompt too long / journal 失败等异常路径均有对应用例且行为符合设计。</div></div>
+  <div class="gap"><span class="st">⚠️</span><div class="body"><b>设计级缺口（非 bug，但是安全/能力短板）</b>：<span class="ref">无 OS 沙箱（full 模式可写工作区外）· 无 MCP · runtime.ts 3,294 行单文件 · 系统提示词未分区 · AGENTS.md 单层</span></div></div>
+
+  <h2>六、优化路线（含已完成项）</h2>
+  <div class="gap"><span class="st">✅</span><div class="body"><b>三层上下文触发链</b> <span class="ref">预热压缩 → 85% 主动档 → 溢出四级降级（已完成 10-18）</span></div></div>
+  <div class="gap"><span class="st">✅</span><div class="body"><b>流中提前执行只读工具</b> <span class="ref">midstreamToolExec 实验开关（已完成 10-18）</span></div></div>
+  <div class="gap"><span class="st">✅</span><div class="body"><b>图片资产化 + SSE→IPC 合帧</b> <span class="ref">JSONL 不存 base64；16ms 微批（已完成 10-18）</span></div></div>
+  <div class="gap"><span class="st">❌</span><div class="body"><b>接下来最值得做</b>：<span class="ref">① 系统提示词 stable/dynamic 分区（缓存命中率）② 免费 tool-result 剪枝层（先于模型摘要触发）③ MCP stdio 支持（最大功能缺口）④ read_file head+tail+落盘 ⑤ 初始化 git + GitHub/Gitee 双远端</span></div></div>
+
+  <div class="foot">数据来源：2026-10-18 对 D:/MeowCode 七个代码库的实测（vitest / tsc / 源码阅读统计）。详细分析见 docs/MeowCode-对比6个开源项目-分析报告.md。</div>
+</div>
+</body>
+</html>

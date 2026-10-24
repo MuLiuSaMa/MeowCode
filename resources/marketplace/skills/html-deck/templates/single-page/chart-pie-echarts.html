@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="zh-CN"><head><meta charset="utf-8"><title>ECharts · Pie</title>
+<link rel="stylesheet" href="../../assets/fonts.css">
+<link rel="stylesheet" href="../../assets/base.css">
+<link rel="stylesheet" id="theme-link" href="../../assets/themes/minimal-white.css">
+<link rel="stylesheet" href="../../assets/animations/animations.css">
+<!-- In generated decks use ./_shared/echarts.min.js -->
+<script src="../../assets/echarts.min.js"></script>
+<script src="../../assets/echarts-theme-sync.js"></script>
+</head><body class="single">
+<deck-stage width="1920" height="1080"><section class="slide active" data-deck-label="ECharts Pie chart">
+  <p class="kicker">ECharts · 环形图</p>
+  <h2 class="h2">时间都花在了哪里</h2>
+  <div class="grid g2 mt-l" style="align-items:center">
+    <div class="card" style="height:460px;padding:28px"><div id="c" style="width:100%;height:100%"></div></div>
+    <div class="card">
+      <h4>Takeaways</h4>
+      <p class="dim">超过一半的时间都在写内容，动效只占 5%。说明值得把动效做成可复用模板。</p>
+      <ul class="mt-m dim">
+        <li>✍️ 写内容 &nbsp; 55%</li><li>🧩 挑版式 &nbsp; 18%</li><li>🎨 调样式 &nbsp; 14%</li>
+        <li>📸 出图 &nbsp; 8%</li><li>✨ 动效 &nbsp; 5%</li>
+      </ul>
+    </div>
+  </div>
+  <script>
+    addEventListener('DOMContentLoaded',()=>{
+      const chart=echarts.init(document.getElementById('c'),null,{renderer:'svg'});
+      window.__deckECharts.register(chart,function(c){
+        return {
+          color:[c['--accent'],c['--accent-2'],c['--accent-3'],c['--good'],c['--warn']],
+          tooltip:{trigger:'item',formatter:'{b}: {d}%'},
+          legend:{orient:'vertical',right:10,top:'center',textStyle:{color:c['--text-2']}},
+          series:[{type:'pie',radius:['50%','75%'],center:['40%','50%'],
+            label:{show:false},emphasis:{label:{show:true,fontSize:16,fontWeight:'bold'}},
+            data:[
+              {value:55,name:'写内容'},
+              {value:18,name:'挑版式'},
+              {value:14,name:'调样式'},
+              {value:8,name:'出图'},
+              {value:5,name:'动效'}
+            ]}]
+        };
+      });
+      window.addEventListener('resize',()=>chart.resize());
+    });
+  </script>
+</section></deck-stage>
+<script src="../../assets/runtime.js"></script>
+</body></html>

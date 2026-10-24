@@ -1,0 +1,20 @@
+/* theme: navy-formal — 海军蓝正式 */
+/* 配色源: ui-ux-pro-max #5 B2B Service (navy + blue CTA)  字体源: #16 Corporate Trust (Lexend + Source Sans 3) */
+:root{
+  --bg:#F8FAFC;--bg-soft:#F1F5F9;--surface:#FFFFFF;--surface-2:#E8ECF1;
+  --border:rgba(2,6,23,.1);--border-strong:rgba(2,6,23,.22);
+  --text-1:#020617;--text-2:#334155;--text-3:#64748B;
+  --accent:#0F172A;--accent-2:#0369A1;--accent-3:#334155;
+  --good:#0e9f6e;--warn:#d97706;--bad:#DC2626;
+  --grad:linear-gradient(135deg,#0F172A,#0369A1);
+  --grad-soft:linear-gradient(135deg,#F1F5F9,#E0F2FE);
+  --radius:8px;--radius-sm:4px;--radius-lg:12px;
+  --shadow:0 1px 3px rgba(2,6,23,.06),0 4px 12px rgba(2,6,23,.04);
+  --shadow-lg:0 4px 12px rgba(2,6,23,.08),0 16px 40px rgba(2,6,23,.06);
+  --font-sans:'Lexend','Source Sans 3','Noto Sans SC',sans-serif;
+  --font-display:'Lexend','Noto Sans SC',sans-serif;
+}
+.card{border:1px solid var(--border)}
+.divider-accent{background:var(--accent-2);height:3px;width:56px}
+.kicker{color:var(--accent-2);font-weight:500}
+h1.title,.h1{font-family:var(--font-display);font-weight:700;color:var(--accent)}

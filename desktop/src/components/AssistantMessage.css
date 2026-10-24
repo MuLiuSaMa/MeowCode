@@ -1,0 +1,78 @@
+.mc-assistant {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: 100%;
+}
+.mc-assistant__label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--fs-xs);
+  color: var(--fg-subtlest);
+  letter-spacing: 0.02em;
+}
+.mc-assistant__logo {
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+.mc-assistant__body {
+  position: relative;
+  color: var(--fg);
+  font-size: var(--fs-base);
+}
+.mc-assistant__caret {
+  display: inline-block;
+  width: 7px;
+  height: 15px;
+  margin-left: 2px;
+  vertical-align: text-bottom;
+  border-radius: 1px;
+  background: var(--fg);
+  animation: mc-blink 1s steps(1, end) infinite;
+}
+
+/* ---- 思考过程：可折叠灰字块 ---- */
+.mc-thinking {
+  margin-bottom: 10px;
+  border-left: 2px solid var(--border);
+  padding-left: 10px;
+}
+.mc-thinking__summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  list-style: none;
+  cursor: pointer;
+  user-select: none;
+  font-size: var(--fs-xs);
+  color: var(--fg-subtlest);
+  transition: color var(--dur) var(--ease);
+}
+.mc-thinking__summary::-webkit-details-marker {
+  display: none;
+}
+.mc-thinking__summary:hover {
+  color: var(--fg-subtle);
+}
+.mc-thinking__icon {
+  flex-shrink: 0;
+}
+.mc-thinking__chevron {
+  flex-shrink: 0;
+  transition: transform var(--dur) var(--ease);
+}
+.mc-thinking__chevron[data-open="true"] {
+  transform: rotate(180deg);
+}
+.mc-thinking__body {
+  margin-top: 6px;
+  font-size: var(--fs-sm);
+  line-height: var(--lh-normal);
+  color: var(--fg-subtlest);
+  white-space: pre-wrap;
+  word-break: break-word;
+}

@@ -1,0 +1,52 @@
+/* 侧边聊天页签：头栏 + 与主聊天完全同款的消息区/输入区（复用 MessageList / Composer 样式） */
+
+.mc-sidechat {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+.mc-sidechat__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+  padding: 7px 8px 7px 12px;
+  border-bottom: 1px solid var(--border);
+}
+.mc-sidechat__state {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--fs-xs);
+  color: var(--fg-subtlest);
+}
+.mc-sidechat__newbtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+  height: 24px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: var(--radius-full);
+  background: var(--surface);
+  color: var(--fg-subtle);
+  font-family: inherit;
+  font-size: var(--fs-xs);
+  cursor: pointer;
+  transition: background-color var(--dur) var(--ease), color var(--dur) var(--ease);
+}
+.mc-sidechat__newbtn:hover:not(:disabled) {
+  background: var(--surface-hover);
+  color: var(--fg);
+}
+.mc-sidechat__newbtn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* 主聊天同款的 Composer 在窄面板里收紧左右留白 */
+.mc-sidechat .mc-composerwrap {
+  padding: 6px 10px 10px;
+}

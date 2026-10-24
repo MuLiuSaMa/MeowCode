@@ -1,0 +1,247 @@
+/*
+ * Agent 架构页 = 左侧角色列表（占对话列表槽位）
+ *              + 右侧全屏架构图（mc-panel--content 的唯一 flex 子项）。
+ */
+
+/* ---- 左侧角色列表 ---- */
+.mc-arch__nav {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 18px 12px 12px;
+  overflow-y: auto;
+}
+
+.mc-arch__head {
+  padding: 0 8px;
+}
+
+.mc-arch__heading {
+  margin: 0;
+  font-size: var(--fs-lg);
+  font-weight: var(--fw-medium);
+  letter-spacing: -0.01em;
+  color: var(--fg);
+}
+
+.mc-arch__roles {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.mc-arch__grouplabel {
+  margin: 4px 0 0;
+  padding: 0 10px;
+  color: var(--fg-subtle);
+  font-size: var(--fs-xs);
+  letter-spacing: 0.02em;
+}
+
+/* 「主 Agent」分组标题行：标题 + 右侧添加按钮 */
+.mc-arch__grouprow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  margin: 4px 0 0;
+  padding: 0 6px 0 10px;
+}
+
+.mc-arch__grouprow .mc-arch__grouplabel {
+  margin: 0;
+  padding: 0;
+}
+
+.mc-arch__groupadd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm, 4px);
+  background: transparent;
+  color: var(--fg-subtle);
+  cursor: pointer;
+  transition:
+    background-color 120ms var(--ease),
+    border-color 120ms var(--ease),
+    color 120ms var(--ease);
+}
+
+.mc-arch__groupadd:hover {
+  border-color: var(--accent, var(--fg));
+  background: var(--surface-hover, var(--surface));
+  color: var(--accent, var(--fg));
+}
+
+.mc-arch__groupadd:active {
+  transform: translateY(1px);
+}
+
+/* 主 Agent 列表项：自定义架构右侧的删除按钮绝对定位 */
+.mc-arch__roleli {
+  position: relative;
+}
+
+.mc-arch__roledelete {
+  position: absolute;
+  top: 50%;
+  right: 6px;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm, 4px);
+  background: var(--bg, var(--surface));
+  color: var(--fg-subtle);
+  cursor: pointer;
+  opacity: 0;
+  transform: translateY(-50%);
+  transition:
+    opacity 120ms var(--ease),
+    border-color 120ms var(--ease),
+    color 120ms var(--ease);
+  pointer-events: none;
+}
+
+.mc-arch__roleli:hover .mc-arch__roledelete {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.mc-arch__roledelete:hover {
+  border-color: var(--danger, #e5484d);
+  color: var(--danger, #e5484d);
+}
+
+/* 双击改名时的行内输入框 */
+.mc-arch__renameinput {
+  width: 100%;
+  min-width: 0;
+  padding: 0 4px;
+  border: 1px solid var(--accent, var(--border));
+  border-radius: var(--radius-sm, 4px);
+  background: var(--bg, var(--surface));
+  color: var(--fg);
+  font: inherit;
+  font-size: var(--fs-base);
+  font-weight: var(--fw-medium);
+  outline: none;
+}
+
+.mc-arch__navempty {
+  margin: 0;
+  padding: 0 10px;
+  color: var(--fg-subtle);
+  font-size: var(--fs-xs);
+  line-height: 1.6;
+}
+
+.mc-arch__roleitem {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 7px 10px;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--fg-subtle);
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background-color var(--dur) var(--ease),
+    color var(--dur) var(--ease);
+}
+
+.mc-arch__roleitem:hover {
+  background: var(--surface-hover);
+  color: var(--fg);
+}
+
+.mc-arch__roleitem[data-active="true"] {
+  background: var(--surface);
+  color: var(--fg);
+}
+
+.mc-arch__roleicon {
+  flex: none;
+  display: flex;
+  color: var(--fg-subtle);
+}
+
+.mc-arch__roleitem[data-active="true"] .mc-arch__roleicon {
+  color: var(--accent, var(--fg));
+}
+
+.mc-arch__roletext {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.mc-arch__rolelabel {
+  font-size: var(--fs-base);
+  line-height: 1.3;
+  color: var(--fg);
+}
+
+.mc-arch__roleitem[data-active="true"] .mc-arch__rolelabel {
+  font-weight: var(--fw-medium);
+}
+
+.mc-arch__roleid {
+  font-family: var(--font-mono, monospace);
+  font-size: var(--fs-xs);
+  line-height: 1.3;
+  color: var(--fg-subtle);
+}
+
+.mc-arch__rolebadges {
+  flex: none;
+  display: flex;
+  gap: 4px;
+}
+
+.mc-arch__badge {
+  padding: 0 5px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  color: var(--fg-subtle);
+  font-size: var(--fs-xs);
+  line-height: 1.6;
+  white-space: nowrap;
+}
+/* 当前档位派不出的角色：架构图里有节点，但运行时 task 会拒绝 */
+.mc-arch__badge[data-tone="muted"] {
+  border-style: dashed;
+  color: var(--fg-subtlest);
+}
+
+/* ---- 右侧全屏架构图 ---- */
+.mc-arch__body {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
+
+.mc-arch__body > .mc-harness {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}

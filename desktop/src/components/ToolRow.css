@@ -1,0 +1,159 @@
+.mc-toolrow {
+  align-self: stretch;
+  min-width: 0;
+}
+.mc-toolrow__head {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 100%;
+  min-height: 28px;
+  /* 负边距让图标与正文左缘对齐，hover 胶囊向外扩 8px */
+  margin-left: -8px;
+  padding: 4px 8px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--fg);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color var(--dur) var(--ease);
+}
+/* 悬停/聚焦整行一枚底色，图标与文字不再各自分段 */
+.mc-toolrow__head:hover,
+.mc-toolrow__head:focus-visible {
+  background: var(--surface);
+  outline: none;
+}
+.mc-toolrow[data-status="failed"] .mc-toolrow__head:hover,
+.mc-toolrow[data-status="failed"] .mc-toolrow__head:focus-visible {
+  background: var(--danger-surface);
+}
+/* 写入中 / 修改中：不可展开，也就不该有可点击的 hover 反馈 */
+.mc-toolrow[data-static="true"] .mc-toolrow__head,
+.mc-toolrow[data-static="true"] .mc-toolrow__head:hover {
+  background: none;
+  cursor: default;
+}
+.mc-toolrow__icon {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  color: var(--success-strong);
+}
+.mc-toolrow[data-status="running"] .mc-toolrow__icon {
+  color: var(--fg-subtlest);
+}
+.mc-toolrow[data-status="failed"] .mc-toolrow__icon {
+  color: var(--danger);
+}
+.mc-toolrow__spin {
+  animation: mc-toolrow-spin 1s linear infinite;
+}
+@keyframes mc-toolrow-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.mc-toolrow__label {
+  flex: none;
+  font-size: var(--fs-caption);
+  font-weight: var(--fw-medium);
+  color: var(--fg);
+  white-space: nowrap;
+}
+.mc-toolrow__chip {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 55%;
+  padding: 1px 7px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xs);
+  corner-shape: superellipse(1.5);
+  background: var(--surface);
+  color: var(--fg-subtle);
+  font-size: var(--fs-sm);
+  line-height: 1.5;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.mc-toolrow__meta {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  overflow: hidden;
+}
+.mc-toolrow__note {
+  flex: none;
+  font-size: var(--fs-sm);
+  color: var(--fg-subtlest);
+  white-space: nowrap;
+}
+.mc-toolrow[data-status="failed"] .mc-toolrow__note {
+  color: var(--danger);
+}
+.mc-toolrow__dot {
+  flex: none;
+  font-size: var(--fs-sm);
+  color: var(--fg-subtlest);
+}
+.mc-toolrow__detail {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: var(--fs-sm);
+  color: var(--fg-subtle);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.mc-toolrow__chev {
+  flex: none;
+  color: var(--fg-subtlest);
+  opacity: 0;
+  transition: opacity var(--dur) var(--ease), transform var(--dur) var(--ease);
+}
+.mc-toolrow__head:hover .mc-toolrow__chev,
+.mc-toolrow__head:focus-visible .mc-toolrow__chev,
+.mc-toolrow__chev[data-open="true"] {
+  opacity: 1;
+}
+.mc-toolrow__chev[data-open="true"] {
+  transform: rotate(90deg);
+}
+
+.mc-toolrow__collapse {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows var(--dur) var(--ease);
+}
+.mc-toolrow__collapse[data-open="true"] {
+  grid-template-rows: 1fr;
+}
+.mc-toolrow__collapse-inner {
+  overflow: hidden;
+  min-height: 0;
+}
+.mc-toolrow__body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 2px 8px 10px 32px;
+}
+.mc-toolrow__hint {
+  margin: 0;
+  font-size: var(--fs-xs);
+  color: var(--fg-subtlest);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mc-toolrow__collapse {
+    transition: none;
+  }
+  .mc-toolrow__spin {
+    animation: none;
+  }
+}

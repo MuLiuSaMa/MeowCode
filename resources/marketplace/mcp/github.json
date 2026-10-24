@@ -1,0 +1,9 @@
+{
+  "description": "Inspect repositories, triage pull requests and issues, debug CI, and publish changes through a hybrid GitHub connector and CLI workflow.",
+  "server": {
+    "url": "https://api.githubcopilot.com/mcp/",
+    "headers": {
+      "Authorization": "Bearer ${MEOWCODE_GITHUB_TOKEN}"
+    }
+  }
+}

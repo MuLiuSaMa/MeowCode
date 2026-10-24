@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="zh-CN"><head><meta charset="utf-8"><title>Manifesto</title>
+<link rel="stylesheet" href="../../assets/fonts.css">
+<link rel="stylesheet" href="../../assets/base.css">
+<link rel="stylesheet" id="theme-link" href="../../assets/themes/minimal-white.css">
+<link rel="stylesheet" href="../../assets/animations/animations.css">
+<style>
+.manifesto-body{flex:1;display:grid;grid-template-columns:1fr 1fr;gap:48px;align-items:center}
+.manifesto-text{display:flex;flex-direction:column;gap:24px}
+.manifesto-text .big-title{font-size:64px;font-weight:800;line-height:1.05;letter-spacing:-.03em;margin:0}
+.manifesto-text .big-title em{font-style:italic;font-weight:700}
+.manifesto-text .lead-text{font-size:20px;color:var(--text-2);line-height:1.65}
+.manifesto-img{width:100%;aspect-ratio:4/3;background:#1a2238;overflow:hidden;border-radius:var(--radius-sm)}
+.manifesto-img img{width:100%;height:100%;object-fit:cover;display:block}
+</style>
+</head><body class="single">
+<deck-stage width="1920" height="1080" data-themes="minimal-white,aurora,tokyo-night,editorial-serif" data-theme-base="../../assets/themes/">
+  <section class="slide active" data-deck-label="Manifesto">
+    <p class="kicker">Manifesto · 宣言</p>
+    <div class="manifesto-body">
+      <div class="manifesto-text">
+        <h1 class="big-title">Form follows <em>function</em>,<br>Code follows <em>intent</em>.</h1>
+        <p class="lead-text">当形式服从功能，代码追随意图，系统就不再是工具——它成为思想的延伸。这是我们构建产品的信条。</p>
+      </div>
+      <!-- 图片占位；替换为真实图片：<div class="manifesto-img"><img src="images/xxx.jpg"></div> -->
+      <div class="manifesto-img"></div>
+    </div>
+  </section>
+</deck-stage>
+<script src="../../assets/runtime.js"></script>
+</body></html>

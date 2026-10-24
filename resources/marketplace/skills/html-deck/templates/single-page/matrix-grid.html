@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="zh-CN"><head><meta charset="utf-8"><title>Matrix Grid</title>
+<link rel="stylesheet" href="../../assets/fonts.css">
+<link rel="stylesheet" href="../../assets/base.css">
+<link rel="stylesheet" id="theme-link" href="../../assets/themes/minimal-white.css">
+<link rel="stylesheet" href="../../assets/animations/animations.css">
+<style>
+.matrix{display:grid;grid-template-columns:repeat(var(--cols,6),1fr);gap:12px;margin-top:28px}
+.mx{background:var(--surface-2);border-radius:var(--radius-sm);padding:18px 16px;display:flex;flex-direction:column;gap:6px}
+.mx .tag{font-size:11px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--text-3)}
+.mx h4{font-size:15px;font-weight:700;margin:0;line-height:1.2}
+.mx p{font-size:12px;color:var(--text-2);margin:0;line-height:1.5}
+.mx.accent{background:var(--accent);color:#fff}
+.mx.accent .tag{color:rgba(255,255,255,.65)}
+.mx.accent p{color:rgba(255,255,255,.8)}
+.matrix-foot{display:grid;grid-template-columns:1fr auto;gap:32px;align-items:end;margin-top:24px;padding-top:20px;border-top:1px solid var(--border)}
+.matrix-foot .big{font-size:72px;font-weight:800;line-height:.85;letter-spacing:-.03em;font-variant-numeric:tabular-nums}
+.matrix-foot .big .unit{font-size:24px;font-weight:400;opacity:.5;margin-left:4px}
+</style>
+</head><body class="single">
+<deck-stage width="1920" height="1080" data-themes="minimal-white,aurora,tokyo-night" data-theme-base="../../assets/themes/">
+  <section class="slide active" data-deck-label="Matrix Grid">
+    <p class="kicker">Skill Matrix · 能力矩阵</p>
+    <h2 class="h2">覆盖 12 个核心领域</h2>
+    <!-- === 可增删 .mx 条目，grid 自动按总数均匀排列行列；添加 .accent 类可高亮重点项 === -->
+    <div class="matrix anim-stagger-list">
+      <div class="mx"><span class="tag">NLP</span><h4>意图识别</h4><p>多轮对话理解</p></div>
+      <div class="mx"><span class="tag">CV</span><h4>目标检测</h4><p>实时视频流</p></div>
+      <div class="mx accent"><span class="tag">LLM</span><h4>代码生成</h4><p>多语言支持</p></div>
+      <div class="mx"><span class="tag">Data</span><h4>特征工程</h4><p>自动化 Pipeline</p></div>
+      <div class="mx"><span class="tag">Infra</span><h4>弹性调度</h4><p>GPU 集群管理</p></div>
+      <div class="mx"><span class="tag">Safety</span><h4>内容审核</h4><p>多模态过滤</p></div>
+      <div class="mx"><span class="tag">Search</span><h4>语义检索</h4><p>向量召回</p></div>
+      <div class="mx"><span class="tag">Rec</span><h4>推荐系统</h4><p>实时个性化</p></div>
+      <div class="mx"><span class="tag">Speech</span><h4>语音合成</h4><p>低延迟 TTS</p></div>
+      <div class="mx"><span class="tag">Agent</span><h4>工具调用</h4><p>多步推理</p></div>
+      <div class="mx"><span class="tag">Edge</span><h4>端侧部署</h4><p>量化压缩</p></div>
+      <div class="mx"><span class="tag">Eval</span><h4>质量评估</h4><p>自动化基准</p></div>
+    </div>
+    <div class="matrix-foot">
+      <p class="dim" style="max-width:48ch;line-height:1.6">涵盖从数据采集到模型部署的全链路能力，已服务内部 200+ 业务线。</p>
+      <div class="big">20,000<span class="unit">+</span></div>
+    </div>
+  </section>
+</deck-stage>
+<script src="../../assets/runtime.js"></script>
+<script>
+/* 自动计算列数：目标至少 2 行、每行最多 6 列，均匀分配 */
+document.querySelectorAll('.matrix').forEach(function(g){
+  var n=g.children.length;
+  var rows=Math.max(2,Math.ceil(n/6));
+  g.style.setProperty('--cols',Math.ceil(n/rows));
+});
+</script>
+</body></html>

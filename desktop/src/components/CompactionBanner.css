@@ -1,0 +1,28 @@
+/* 时间线里的压缩分隔线：居中文字 + 两侧细线 */
+.mc-compaction {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  padding: 4px 0 2px;
+  font-size: var(--fs-xs);
+  color: var(--text-tertiary);
+}
+
+.mc-compaction__rule {
+  flex: 1 1 0;
+  height: 1px;
+  background: var(--line-soft);
+}
+
+.mc-compaction__text {
+  flex: none;
+  max-width: 70%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mc-compaction[data-active="true"] {
+  color: var(--accent);
+}

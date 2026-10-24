@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"><title>Image Fullbleed</title>
+<link rel="stylesheet" href="../../assets/fonts.css">
+<link rel="stylesheet" href="../../assets/base.css">
+<link rel="stylesheet" id="theme-link" href="../../assets/themes/minimal-white.css">
+<link rel="stylesheet" href="../../assets/animations/animations.css">
+<style>
+.fullbleed{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;overflow:hidden}
+.fullbleed .bg{position:absolute;inset:0}
+.fullbleed .bg img{width:100%;height:100%;object-fit:cover}
+.fullbleed .bg .placeholder{width:100%;height:100%;background:
+  radial-gradient(ellipse at 50% 40%,rgba(59,108,255,.4),transparent 60%),
+  radial-gradient(ellipse at 80% 70%,rgba(192,132,252,.3),transparent 50%),
+  linear-gradient(180deg,#0b1024 0%,#1a2238 100%)}
+.fullbleed .scrim{position:absolute;inset:0;background:rgba(0,0,0,.45)}
+.fullbleed .content{position:relative;z-index:2;max-width:900px;padding:40px}
+.fullbleed .content h1{font-size:72px;font-weight:900;line-height:1.05;letter-spacing:-.03em;color:#fff;margin:0}
+.fullbleed .content p{font-size:22px;color:rgba(255,255,255,.8);margin:20px auto 0;max-width:56ch;line-height:1.6}
+.fullbleed .content .pill{background:rgba(255,255,255,.12);color:#fff;border:1px solid rgba(255,255,255,.2)}
+</style>
+</head>
+<body class="single">
+<deck-stage width="1920" height="1080" data-themes="minimal-white,tokyo-night,catppuccin-mocha,glassmorphism,dracula" data-theme-base="../../assets/themes/">
+  <section class="slide active" data-deck-label="Image Fullbleed" style="padding:0">
+    <div class="fullbleed">
+      <div class="bg">
+        <!-- 替换为: <img src="assets/bg-fullbleed_1920x1080.png" alt="背景"> -->
+        <div class="placeholder"></div>
+      </div>
+      <div class="scrim"></div>
+      <div class="content" data-anim="blur-in">
+        <span class="pill">Chapter 02</span>
+        <h1 class="mt-s">让画面自己说话</h1>
+        <p>全屏出血图 + 半透明遮罩 + 居中大标题。<br>适合情绪页、章节分割、故事高潮。</p>
+      </div>
+    </div>
+    <div class="notes">全屏出血布局：图片铺满整个 slide，通过 .scrim 遮罩确保文字可读。注意 slide 的 padding 需设为 0。</div>
+  </section>
+</deck-stage>
+<script src="../../assets/runtime.js"></script>
+</body></html>

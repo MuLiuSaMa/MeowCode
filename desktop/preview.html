@@ -1,0 +1,679 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>MeowCode preview</title>
+    <script>
+      // --- mock Electron bridge for visual preview only ---
+      const params = new URLSearchParams(location.search);
+      const SESSION = {
+        id: "sess-8f3a91c2",
+        cwd: "D:\\Projects\\meow-demo",
+        // ?mode=default 可关掉徽章，便于对照默认态
+        mode: params.get("mode") || "plan",
+      };
+      const scenario = params.get("s") || "chat";
+      // ?theme=light|dark 强制首帧主题（未指定则跟随系统）
+      const forcedTheme = params.get("theme");
+      // ?sec=general|appearance|models|about 直接打开设置页的某个分区
+      const forcedSection = params.get("sec");
+      // ?menu=1 打开模型列表；?menu=2 打开后再点第一个模型，直接跳到思考强度滑杆（预览专用）
+      if (params.get("menu") === "1" || params.get("menu") === "2") {
+        let tries = 0;
+        const timer = setInterval(() => {
+          const btn = document.querySelector(".mc-composer__model");
+          if (btn) {
+            btn.click();
+            clearInterval(timer);
+            if (params.get("menu") === "2") {
+              setTimeout(() => {
+                const item = document.querySelector(".mc-popover__item");
+                if (item) item.click();
+              }, 250);
+            }
+          } else if (++tries > 200) {
+            clearInterval(timer);
+          }
+        }, 50);
+      }
+      // ?perm=1 自动点开权限菜单并选中「完全访问」，核对 chip 状态切换（预览专用）
+      if (params.get("perm") === "1") {
+        let stage = 0;
+        let tries = 0;
+        const permTimer = setInterval(() => {
+          if (stage === 0) {
+            const chip = document.querySelector(".mc-composer__access");
+            if (chip) {
+              chip.click();
+              stage = 1;
+            } else if (++tries > 200) clearInterval(permTimer);
+          } else {
+            const item = Array.from(document.querySelectorAll(".mc-permmenu__item")).find((b) =>
+              b.textContent.includes("完全访问"),
+            );
+            if (item) {
+              item.click();
+              clearInterval(permTimer);
+            } else if (++tries > 400) clearInterval(permTimer);
+          }
+        }, 60);
+      }
+      // ?plus=1 自动点开「+」菜单，核对附件/模式三项（预览专用）
+      if (params.get("plus") === "1") {
+        let plusTries = 0;
+        const plusTimer = setInterval(() => {
+          const btn = document.querySelector(".mc-pluswrap .mc-composer__icon");
+          if (btn) {
+            btn.click();
+            clearInterval(plusTimer);
+          } else if (++plusTries > 200) {
+            clearInterval(plusTimer);
+          }
+        }, 50);
+      }
+      // ?mention=1 在输入框打一个 @，直接展开文件面板（预览专用）
+      if (params.get("mention") === "1") {
+        let tries = 0;
+        const mentionTimer = setInterval(() => {
+          const el = document.querySelector(".mc-composer__input");
+          if (el) {
+            const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value").set;
+            el.focus();
+            setter.call(el, "@");
+            el.setSelectionRange(1, 1);
+            el.dispatchEvent(new Event("input", { bubbles: true }));
+            clearInterval(mentionTimer);
+          } else if (++tries > 200) {
+            clearInterval(mentionTimer);
+          }
+        }, 50);
+      }
+      // ?hover=close 强制关闭按钮显示 hover 态，便于截图核对（预览专用）
+      if (params.get("hover") === "close") {
+        const style = document.createElement("style");
+        style.textContent =
+          ".mc-winbtn--close{background:var(--win-close-hover)!important;color:var(--win-close-fg)!important}";
+        document.head.appendChild(style);
+      }
+      // ?hover=row 强制第一行工具行显示 hover 态（预览专用）
+      if (params.get("hover") === "row") {
+        const style = document.createElement("style");
+        style.textContent =
+          ".mc-toolrow.mc-preview-hover .mc-toolrow__head{background:var(--surface)}.mc-toolrow.mc-preview-hover .mc-toolrow__chev{opacity:1}";
+        document.head.appendChild(style);
+        let hoverTries = 0;
+        const hoverTimer = setInterval(() => {
+          const row = document.querySelector(".mc-toolrow");
+          if (row) {
+            row.classList.add("mc-preview-hover");
+            clearInterval(hoverTimer);
+          } else if (++hoverTries > 200) {
+            clearInterval(hoverTimer);
+          }
+        }, 50);
+      }
+      // ?expand=1 自动展开第一个工具行，便于截图核对展开态（预览专用）
+      if (params.get("expand") === "1") {
+        let tries = 0;
+        const expandTimer = setInterval(() => {
+          const head = document.querySelector(".mc-toolrow__head");
+          if (head) {
+            head.click();
+            clearInterval(expandTimer);
+          } else if (++tries > 200) {
+            clearInterval(expandTimer);
+          }
+        }, 50);
+      }
+      if (forcedTheme) {
+        document.documentElement.dataset.theme = forcedTheme;
+        const style = document.createElement("style");
+        style.textContent = `html,body{color-scheme:${forcedTheme}}`;
+        document.head.appendChild(style);
+      }
+      // ?backdrop=acrylic：模拟 Windows 亚克力背板（用一张渐变当"桌面"），核对毛玻璃外框
+      if (params.get("backdrop") === "acrylic") {
+        document.documentElement.dataset.backdrop = "acrylic";
+        const style = document.createElement("style");
+        style.textContent = `body {
+          background:
+            radial-gradient(900px 520px at 18% 8%, #4b5563 0%, transparent 60%),
+            radial-gradient(700px 420px at 82% 92%, #374151 0%, transparent 62%),
+            linear-gradient(150deg, #1f2937, #0b0d10) !important;
+        }`;
+        document.head.appendChild(style);
+      }
+      const listeners = new Set();
+      // 内嵌浏览器 host 的 IPC 监听（?browse=1 时用 ensureListener 模拟主进程要求建页签）
+      const ensureListeners = new Set();
+      const selectListeners = new Set();
+      let seeded = false;
+      const reply = (body) => ({ ok: true, status: 200, body });
+      const emit = (event) => listeners.forEach((fn) => fn(event));
+
+      /** 计划页签的示例计划文档（?plantab=1 / ?planflow=1 时由 /workspace/file 返回） */
+      const PLAN_DOC_MD = `# 前端重写为黑白灰 Agent 风格
+
+## 目标
+移除蓝色强调色，统一为黑白灰设计令牌，卡片使用大圆角。
+
+## 现状
+- \`desktop/src/theme/tokens.css\` 仍有多处蓝色
+- \`App.tsx\` 855 行，组件边界不清
+
+## 分步实施
+1. 重写 \`tokens.css\`：只保留灰阶与语义色
+2. 拆分 \`App.tsx\` 为 shell / composer / timeline
+3. 弹窗改用原生 \`<dialog>\`
+4. 跑 \`pnpm typecheck\` 与视觉回归
+
+## 风险
+- 深色/浅色两套令牌容易漏改
+- 长列表重渲染可能掉帧
+
+## 验证
+- 截图对比两种主题
+- \`npx vitest run\` 全绿
+`;
+
+      /** ?s=history 的存档样例：含 content:null + tool_calls 的纯工具轮，验证历史重建无空白气泡。 */
+      const HISTORY_MESSAGES = [
+        { role: "user", content: "帮我看看工具调用现在是怎么渲染的。" },
+        {
+          role: "assistant",
+          content: null,
+          tool_calls: [
+            {
+              id: "h1",
+              type: "function",
+              function: { name: "read_file", arguments: '{"path":"desktop/src/components/ChainOfThought.tsx"}' },
+            },
+            {
+              id: "h2",
+              type: "function",
+              function: { name: "run_command", arguments: '{"command":"ls D:/MeowCode/ZCode-main/apps | head -60"}' },
+            },
+          ],
+        },
+        { role: "assistant", content: "看完后建议直接把工具卡片换成单行摘要行，并保留点击展开详情。" },
+        {
+          role: "assistant",
+          content: null,
+          tool_calls: [
+            {
+              id: "h3",
+              type: "function",
+              function: { name: "edit_file", arguments: '{"path":"desktop/src/components/MessageList.tsx"}' },
+            },
+            {
+              id: "h4",
+              type: "function",
+              function: { name: "update_plan", arguments: '{"steps":[{"title":"a","status":"completed"},{"title":"b","status":"in_progress"}]}' },
+            },
+          ],
+        },
+      ];
+
+      /** 预览用的模型目录，便于核对图标与中文名。 */
+      const MOCK_PROVIDERS = [
+        {
+          id: "provider-local",
+          name: "DeepSeek",
+          baseUrl: "https://api.deepseek.com/anthropic",
+          model: "deepseek-v4-pro",
+          displayName: "DeepSeek-V4-Pro",
+          protocol: "anthropic-messages",
+          templateId: "deepseek",
+          contextWindow: 256000,
+          maxTokens: 32000,
+          inputModalities: ["text", "image"],
+          reasoningEffort: "high",
+          enabled: true,
+          hasApiKey: true,
+        },
+        {
+          id: "provider-glm",
+          name: "Z.ai API",
+          baseUrl: "https://api.z.ai/api/paas/v4",
+          model: "glm-5.3-flash",
+          displayName: "GLM-5.3-Flash",
+          protocol: "openai-chat-completions",
+          templateId: "zai-standard-api",
+          contextWindow: 128000,
+          maxTokens: 16000,
+          inputModalities: ["text"],
+          reasoningEffort: "",
+          enabled: true,
+          hasApiKey: true,
+        },
+        {
+          id: "provider-minimax",
+          name: "MiniMax",
+          baseUrl: "https://api.minimaxi.com/anthropic",
+          model: "MiniMax-M3",
+          protocol: "anthropic-messages",
+          templateId: "minimax",
+          enabled: false,
+          hasApiKey: false,
+        },
+        {
+          id: "provider-groq",
+          name: "Groq",
+          baseUrl: "https://api.groq.com/openai/v1",
+          model: "llama-3.3-70b",
+          protocol: "openai-chat-completions",
+          templateId: "groq",
+          enabled: false,
+          hasApiKey: false,
+        },
+      ];
+
+      window.meow = {
+        async request(path) {
+          if (path === "/session") return reply(SESSION);
+          if (path === "/session/messages") {
+            // ?s=history：返回带 tool_calls 的存档，验证历史回放重建工具行
+            if (scenario === "history") return reply({ messages: HISTORY_MESSAGES });
+            return reply({
+              // ?wait=1 时只回用户消息：配合 message_start 验证「等待模型响应」指示器
+              messages:
+                params.get("wait") === "1"
+                  ? [{ role: "user", content: "把前端整体重写成黑白灰的 Agent 风格，去掉蓝色，卡片用大圆角。" }]
+                  : [
+                      { role: "user", content: "把前端整体重写成黑白灰的 Agent 风格，去掉蓝色，卡片用大圆角。" },
+                      {
+                        role: "assistant",
+                        content:
+                          "好的，我先看一下当前的界面结构，然后一次性重写。\n\n计划要点：\n\n1. **移除 Chakra UI**，改为纯 CSS 变量令牌\n2. 建立 `theme/tokens.css` 设计令牌（黑白灰，零蓝色）\n3. 把 855 行的 `App.tsx` 拆成组件树\n4. 弹窗改用原生 `<dialog>`\n\n先列一下目录：",
+                      },
+                    ],
+            });
+          }
+          // ?mention=1 的目录导航样例：两级目录 + 根目录散文件
+          if (path.startsWith("/workspace/dir")) {
+            const dir = new URLSearchParams(path.split("?")[1] ?? "").get("path") ?? "";
+            const tree = {
+              "": [
+                { name: "src", path: "src", dir: true },
+                { name: "docs", path: "docs", dir: true },
+                { name: "package.json", path: "package.json", dir: false },
+                { name: "README.md", path: "README.md", dir: false },
+              ],
+              src: [
+                { name: "components", path: "src/components", dir: true },
+                { name: "App.tsx", path: "src/App.tsx", dir: false },
+                { name: "main.tsx", path: "src/main.tsx", dir: false },
+              ],
+              "src/components": [
+                { name: "Composer.tsx", path: "src/components/Composer.tsx", dir: false },
+                { name: "Composer.css", path: "src/components/Composer.css", dir: false },
+              ],
+            };
+            return reply({ path: dir, entries: tree[dir] ?? [] });
+          }
+          if (path === "/sessions")
+            return reply({
+              sessions: [
+                { id: "sess-8f3a91c2", filePath: "a.jsonl", cwd: "D:\\Projects\\meow-demo", createdAt: "2026-10-16T17:42:00" },
+                {
+                  id: "sess-2b71",
+                  filePath: "b.jsonl",
+                  cwd: "D:\\Projects\\meow-demo",
+                  createdAt: "2026-10-15T09:12:00",
+                  // 超长 AI 标题：验证侧栏单行省略（预览专用）
+                  title: "把前端整体重写成黑白灰的 Agent 风格并修复所有显示问题和光标残留以及自动展开面板",
+                },
+                { id: "sess-91cd", filePath: "c.jsonl", cwd: "D:\\Projects\\landing", createdAt: "2026-10-14T21:03:00" },
+              ],
+            });
+          if (path === "/session/changes")
+            return reply({
+              changes: [
+                {
+                  path: "src/App.tsx",
+                  operation: "edit_file",
+                  changeCount: 2,
+                  added: 12,
+                  removed: 3,
+                  timestamp: "2026-10-17T09:40:00",
+                  diff: "@@ -1,3 +1,3 @@\n- const old = 1;\n+ const next = 2;\n  unchanged",
+                },
+              ],
+            });
+          // 计划页签预览：读取 plans/ 下的 Markdown
+          if (path.startsWith("/workspace/file")) return reply({ content: PLAN_DOC_MD });
+          return reply({});
+        },
+        async getSettings() {
+          return {
+            workspace: SESSION.cwd,
+            providerId: "provider-local",
+            theme: forcedTheme ?? "system",
+            closeAction: "ask",
+            // 预置一条归档会话（对应 sessions 里的 a.jsonl），验证归档分区与主列表过滤
+            archivedSessions: ["a.jsonl"],
+            providers: MOCK_PROVIDERS,
+          };
+        },
+        async saveSettings(s) { return s; },
+        async savePreferences(p) { return p; },
+        async saveProviderPrefs(p) { return p; },
+        /** 预览里没有真实文件系统：假装拖入的文件都位于工作区根目录 */
+        getFilePath(file) {
+          return file?.name ? `${SESSION.cwd}\\${file.name}` : null;
+        },
+        // UI 状态（右侧面板/页签/草稿）：预览里给空状态，避免启动即报错
+        async getUiState() {
+          return {
+            version: 1,
+            inspector: { visible: true, width: 300 },
+            tabs: [],
+            activeTabId: "",
+            drafts: {},
+          };
+        },
+        async saveUiState(patch) { return { ok: true, ...patch }; },
+        async pickWorkspace() { return SESSION.cwd; },
+        async workspaceExists() { return true; },
+        async getAppInfo() {
+          return {
+            name: "MeowCode",
+            version: "0.1.0",
+            electron: "44.7.0",
+            chrome: "144.0.7559.173",
+            node: "22.22.2",
+            platform: "win32 x64",
+          };
+        },
+        async getModelProfiles() { return null; },
+        onModelProfiles() { return () => {}; },
+        onEvent(fn) {
+          listeners.add(fn);
+          // 在第一个订阅者注册后再播事件，避免 React 还没挂载就发出导致事件丢失
+          if (!seeded) {
+            seeded = true;
+            setTimeout(seed, 300);
+          }
+          return () => { listeners.delete(fn); };
+        },
+        onOpenSettings() { return () => {}; },
+        onCloseRequest() { return () => {}; },
+        respondClose: async () => {},
+        openPath: async () => null,
+        openExternal: async () => null,
+
+        // ---- 内嵌浏览器（agent 驱动）：预览里只记录监听，不真的有 webview ----
+        bindBrowserTab: async () => ({ ok: true }),
+        onEnsureBrowserTab(fn) {
+          ensureListeners.add(fn);
+          return () => { ensureListeners.delete(fn); };
+        },
+        onSelectBrowserTab(fn) {
+          selectListeners.add(fn);
+          return () => { selectListeners.delete(fn); };
+        },
+
+        // ---- 终端（预览里只做空实现）----
+        termCreate: async () => ({ id: "term-preview", shell: "pwsh.exe" }),
+        termWrite: async () => {},
+        termResize: async () => {},
+        termKill: async () => {},
+        onTermData: () => () => {},
+        onTermExit: () => () => {},
+
+        // ---- 自绘标题栏的窗口操作（预览里只做空实现）----
+        minimizeWindow: async () => {},
+        toggleMaximizeWindow: async () => false,
+        closeWindow: async () => {},
+        getWindowState: async () => ({ isMaximized: false }),
+        onWindowStateChange: () => () => {},
+      };
+
+      function seed() {
+        if (scenario === "chat") {
+          // ?wait=1：只发 message_start，停在「等待模型响应」状态（预览专用）
+          if (params.get("wait") === "1") {
+            emit({ type: "message_start" });
+            return;
+          }
+          emit({ type: "usage", inputTokens: 2148, outputTokens: 396 });
+          emit({ type: "tool_started", callId: "c1", tool: "list_dir", input: { path: "." } });
+          emit({ type: "tool_output", callId: "c1", output: "desktop/\nsrc/\npackage.json\npnpm-workspace.yaml" });
+          emit({ type: "tool_finished", callId: "c1", ok: true });
+          emit({ type: "tool_started", callId: "c2", tool: "read_file", input: { path: "desktop/src/App.tsx" } });
+          emit({ type: "tool_output", callId: "c2", output: "import iconUrl from \"./assets/icon.png\";\n… 855 lines" });
+          emit({ type: "tool_finished", callId: "c2", ok: true });
+          emit({ type: "tool_started", callId: "c3", tool: "run_command", input: { command: "pnpm typecheck" } });
+          emit({ type: "tool_output", callId: "c3", output: "tsc --noEmit\n✓ 0 errors" });
+          emit({ type: "tool_finished", callId: "c3", ok: true });
+          // 思考过程流：验证可折叠思考块（预览专用）
+          emit({ type: "thinking_delta", delta: "用户想要黑白灰的界面，我需要先看当前的组件结构，" });
+          emit({ type: "thinking_delta", delta: "然后逐一替换样式，注意不要动后端契约。" });
+          emit({ type: "message_complete", text: "", reasoning: "用户想要黑白灰的界面，我需要先看当前的组件结构，然后逐一替换样式，注意不要动后端契约。" });
+        }
+
+        if (scenario === "tools") {
+          // 全工具 / 全状态：成功、运行中（不发 finished）、失败、未知工具、超长命令与文件名
+          const tool = (callId, name, input, output, ok) => {
+            emit({ type: "tool_started", callId, tool: name, input });
+            if (output !== undefined) emit({ type: "tool_output", callId, output });
+            if (ok !== undefined) emit({ type: "tool_finished", callId, ok });
+          };
+          tool("t1", "read_file", { path: "desktop/src/components/panel/useSideTabs.ts" }, "export function useSideTabs() {\n  // …", true);
+          tool("t2", "read_file", { path: "desktop/src/panel/address.ts" }, "export const address = …", true);
+          tool("t3", "read_file", { path: "desktop/src/components/panel/SomeExtremelyLongFileNameThatKeepsGoingAndShouldTruncate.tsx" }, "…", true);
+          tool("t4", "run_command", { command: "ls D:/MeowCode/ZCode-main/apps D:/MeowCode/ZCode-main/packages 2>/dev/null | head -60" }, "apps\npackages", true);
+          tool("t5", "run_command", { command: "pnpm --filter @meowcode/desktop build && pnpm --filter @meowcode/desktop typecheck" }, undefined, undefined);
+          tool("t6", "edit_file", { path: "desktop/src/components/MessageList.tsx" }, "Edited MessageList.tsx", true);
+          tool("t7", "write_file", { path: "desktop/src/components/ToolRow.tsx" }, "oldString was not found in the file.", false);
+          tool("t8", "grep", { pattern: "tool_calls", path: "desktop/src" }, "desktop/src/timeline.ts:63", true);
+          tool("t9", "glob", { pattern: "src/**/*.tsx", path: "." }, "desktop/src/App.tsx", true);
+          tool("t10", "list_dir", { path: "desktop" }, "src/\nmain.cjs", true);
+          tool("t11", "update_plan", { steps: [{ title: "a", status: "completed" }, { title: "b", status: "in_progress" }] }, "Updated plan with 2 steps.", true);
+          tool("t12", "mystery_tool", { foo: "bar" }, "unknown", true);
+        }
+
+        if (scenario === "approval") {
+          emit({
+            type: "approval_required",
+            callId: "c9",
+            tool: "run_command",
+            input: { command: "rm -rf node_modules", cwd: "D:\\Projects\\meow-demo" },
+          });
+        }
+
+        // ---- 自动展开场景（预览专用）----
+        // ?plan=new：plan_updated → 计划页签新建并激活
+        if (params.get("plan") === "new") {
+          emit({
+            type: "plan_updated",
+            sessionId: SESSION.id,
+            steps: [
+              { title: "重写前端组件树", status: "completed" },
+              { title: "接入自动展开面板", status: "in_progress" },
+              { title: "验证计划 / 审阅 / 浏览器页签", status: "pending" },
+            ],
+            explanation: "**执行中**：先落组件，再接事件。",
+          });
+        }
+        // ?plan=keep：先展开计划页签 → 用户切回新标签页 → 再来一次更新不抢焦点
+        if (params.get("plan") === "keep") {
+          emit({
+            type: "plan_updated",
+            sessionId: SESSION.id,
+            steps: [
+              { title: "第一版计划", status: "completed" },
+              { title: "继续推进", status: "in_progress" },
+            ],
+            explanation: "第一版计划",
+          });
+          setTimeout(() => {
+            document.querySelector(".mc-rtp__tabadd")?.click();
+          }, 400);
+          setTimeout(() => {
+            emit({
+              type: "plan_updated",
+              sessionId: SESSION.id,
+              steps: [
+                { title: "第一版计划", status: "completed" },
+                { title: "第二版计划已更新", status: "in_progress" },
+              ],
+              explanation: "第二版计划",
+            });
+          }, 700);
+        }
+        // ?review=1：file_changed → 审阅页签新建并激活；切走后再次改动不抢焦点
+        if (params.get("review") === "1") {
+          emit({ type: "file_changed", sessionId: SESSION.id, path: "src/App.tsx", operation: "edit_file" });
+          setTimeout(() => {
+            document.querySelector(".mc-rtp__tabadd")?.click();
+          }, 400);
+          setTimeout(() => {
+            emit({ type: "file_changed", sessionId: SESSION.id, path: "src/copy.ts", operation: "write_file" });
+          }, 700);
+        }
+        // ?browse=1：模拟主进程 browser host 要求建 agent 浏览器页签
+        if (params.get("browse") === "1") {
+          setTimeout(() => {
+            ensureListeners.forEach((fn) => fn({ requestId: "br-preview", url: "about:blank" }));
+          }, 100);
+        }
+        // ?caret=1：模拟「中间轮次正文 + 工具调用」（运行时不会发 message_complete），验证光标不残留
+        if (params.get("caret") === "1") {
+          emit({ type: "assistant_delta", delta: "标题出来了，截图确认视觉效果：" });
+          emit({ type: "tool_started", callId: "c7", tool: "browser_screenshot", input: {} });
+          emit({ type: "tool_output", callId: "c7", output: "Screenshot captured (800x600)." });
+          emit({ type: "tool_finished", callId: "c7", ok: true });
+          emit({ type: "thinking_delta", delta: "再点一下按钮验证交互。" });
+          emit({ type: "assistant_delta", delta: "页面正常渲染了。" });
+          emit({ type: "tool_started", callId: "c8", tool: "browser_snapshot", input: {} });
+          emit({ type: "tool_output", callId: "c8", output: "url: http://localhost:4173/" });
+          emit({ type: "tool_finished", callId: "c8", ok: true });
+          emit({ type: "turn_complete" });
+        }
+        // ?stats=1：响应统计（输入/输出 token、生成速度、响应时间、首字延迟）
+        if (params.get("stats") === "1") {
+          emit({ type: "message_start" });
+          setTimeout(() => emit({ type: "thinking_delta", delta: "先确认一下指标来源。" }), 150);
+          setTimeout(() => emit({ type: "assistant_delta", delta: "已接好会话信息服务。" }), 300);
+          setTimeout(() => emit({ type: "usage", inputTokens: 2148, outputTokens: 396, cacheReadTokens: 1327 }), 1200);
+          setTimeout(() => emit({ type: "message_complete", text: "已接好会话信息服务。" }), 1250);
+          setTimeout(() => emit({ type: "turn_complete" }), 1300);
+        }
+
+        // ?planconfirm=1：模拟计划文档刚写完，验证确认卡片与占位符切换（预览专用）
+        if (params.get("planconfirm") === "1") {
+          emit({
+            type: "plan_documented",
+            sessionId: SESSION.id,
+            path: "plans/2026-10-17-frontend-rewrite.md",
+          });
+        }
+        // ?editflow=1：一条「修改中」的 edit_file 行（预览专用）
+        if (params.get("editflow") === "1") {
+          emit({
+            type: "tool_started",
+            sessionId: SESSION.id,
+            callId: "edit-running",
+            tool: "edit_file",
+            input: { path: "src/App.tsx" },
+          });
+        }
+        // ?plantab=1：只打开计划页签看文档预览（预览专用）
+        if (params.get("plantab") === "1") {
+          emit({
+            type: "plan_documented",
+            sessionId: SESSION.id,
+            path: "plans/2026-10-17-frontend-rewrite.md",
+          });
+        }
+        // ?preparing=write|edit：模型正在生成写/改文件工具的参数（预览专用）
+        if (params.get("preparing") === "write" || params.get("preparing") === "edit") {
+          const tool = params.get("preparing") === "write" ? "write_file" : "edit_file";
+          emit({ type: "message_start", sessionId: SESSION.id });
+          emit({
+            type: "tool_call_progress",
+            sessionId: SESSION.id,
+            count: 1,
+            tool,
+            names: [tool],
+            path:
+              params.get("nopath") === "1"
+                ? undefined
+                : params.get("preparing") === "write"
+                  ? "plans/2026-10-17-frontend-rewrite.md"
+                  : "src/App.tsx",
+            chars: 48,
+          });
+        }
+
+        // ?planflow=1：写入中 → 写完弹确认卡片，验证「正在写入」过渡（预览专用）
+        if (params.get("planflow") === "1") {
+          emit({
+            type: "tool_started",
+            sessionId: SESSION.id,
+            callId: "plan-write",
+            tool: "write_file",
+            input: { path: "plans/2026-10-17-frontend-rewrite.md" },
+          });
+          setTimeout(() => {
+            emit({ type: "tool_finished", sessionId: SESSION.id, callId: "plan-write", ok: true });
+            emit({
+              type: "plan_documented",
+              sessionId: SESSION.id,
+              path: "plans/2026-10-17-frontend-rewrite.md",
+            });
+          }, 1600);
+        }
+      }
+
+      // ?s=settings 时进入设置页；?sec= 指定默认分区（预览专用）
+      if (scenario === "settings") {
+        let opened = false;
+        let tries = 0;
+        const openTimer = setInterval(() => {
+          if (opened) return;
+          const buttons = document.querySelectorAll(".mc-rail__btn");
+          if (buttons.length >= 2) {
+            buttons[1].click();
+            opened = true;
+            clearInterval(openTimer);
+          } else if (++tries > 200) {
+            clearInterval(openTimer);
+          }
+        }, 50);
+        const apply = () => {
+          const navs = document.querySelectorAll(".mc-settings__navitem");
+          const map = { general: 0, appearance: 1, models: 2, archive: 3, about: 4 };
+          const index = map[forcedSection];
+          if (navs.length && index !== undefined) navs[index].click();
+          // ?picker=1 时顺带打开「添加模型服务商」选择器（预览专用）
+          if (params.get("picker") === "1") {
+            setTimeout(() => {
+              const add = Array.from(document.querySelectorAll("button")).find((b) =>
+                b.textContent.includes("添加模型"),
+              );
+              if (add) add.click();
+            }, 300);
+          }
+          // ?tray=1 时点一下「缩小到托盘」，核对选中态是否切换（预览专用）
+          if (params.get("tray") === "1") {
+            setTimeout(() => {
+              const seg = Array.from(document.querySelectorAll(".mc-segmented__item")).find(
+                (b) => b.textContent.includes("缩小到托盘"),
+              );
+              if (seg) seg.click();
+            }, 300);
+          }
+        };
+        setTimeout(apply, 400);
+        setTimeout(apply, 1000);
+      }
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

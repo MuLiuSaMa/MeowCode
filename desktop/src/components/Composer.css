@@ -1,0 +1,1209 @@
+.mc-composerwrap {
+  flex-shrink: 0;
+  padding: 10px 20px 18px;
+}
+
+.mc-composerstack {
+  position: relative;
+  max-width: var(--content-max);
+  margin: 0 auto;
+}
+
+.mc-queuedlist {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0 14px 8px;
+}
+
+.mc-queuedlist--recovered {
+  padding: 8px;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-md);
+  background: color-mix(in oklab, var(--surface) 55%, transparent);
+}
+
+.mc-queuedlist__head {
+  font-size: var(--fs-xs);
+  color: var(--fg-subtle);
+  padding: 0 2px;
+}
+
+/* 已引用的技能/插件 chip：输入框内正常文档流，多选时自动换行 */
+.mc-composer__skillrow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 10px 14px 0;
+}
+.mc-composer__skillrow .mc-skillchip {
+  display: inline-flex;
+  vertical-align: middle;
+}
+.mc-skillchip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 6px 2px 8px;
+  border-radius: var(--radius-md);
+  background: var(--surface-hover);
+  color: var(--fg);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+  line-height: 1.6;
+  user-select: none;
+}
+.mc-skillchip__icon {
+  width: 14px;
+  height: 14px;
+  border-radius: 4px;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+.mc-skillchip__cmd {
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  color: var(--fg-subtle);
+}
+/* 附件卡片：与技能 chip 同构，用边框区分「文件」而不是「能力」；超长文件名省略 */
+.mc-skillchip--file {
+  border: 1px solid var(--border);
+  background: var(--surface);
+  max-width: 260px;
+}
+.mc-skillchip__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+.mc-skillchip__x {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 15px;
+  height: 15px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--fg-subtle);
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+}
+.mc-skillchip__x:hover {
+  background: var(--surface);
+  color: var(--fg);
+}
+
+.mc-queued {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  corner-shape: superellipse(1.5);
+  background: var(--surface);
+}
+
+.mc-queued__text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--fs-caption);
+  color: var(--fg);
+}
+
+.mc-queued__actions {
+  display: flex;
+  flex-shrink: 0;
+  gap: 2px;
+}
+
+.mc-queued__action {
+  border: 0;
+  background: transparent;
+  color: var(--fg-subtle);
+  font: inherit;
+  font-size: var(--fs-caption);
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: color var(--dur-fast) var(--ease), background var(--dur-fast) var(--ease);
+}
+
+.mc-queued__action:hover {
+  color: var(--fg);
+  background: var(--surface-hover);
+}
+
+.mc-queued__action--danger:hover {
+  color: var(--danger);
+}
+
+/* 项目标签：贴在输入框顶部、左右内缩，下半截被输入框盖住（原来那种姿位） */
+.mc-composer__context {
+  position: relative;
+  display: flex;
+  align-items: center;
+  margin: 0 16px -12px;
+  padding: 7px 12px 19px;
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  corner-shape: superellipse(1.5);
+  background: var(--surface);
+}
+
+/* 悬停 / 菜单展开时这一整段合成一枚胶囊：✕ 与名字同底，不分开 */
+.mc-composer__projpill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 12px 3px 3px;
+  margin-left: -6px;
+  border-radius: var(--radius-full);
+  corner-shape: superellipse(1.5);
+  background: transparent;
+  transition: background-color var(--dur) var(--ease);
+}
+.mc-composer__context:hover .mc-composer__projpill,
+.mc-composer__context[data-open="true"] .mc-composer__projpill {
+  background: var(--surface-hover);
+}
+
+/* 项目图标：仅作标识，不可点击（切换项目点右侧名字）。
+   注意：必须清掉 button/span 的默认 padding，否则内容区过窄，svg 会被 flex 压扁。 */
+.mc-composer__projicon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  padding: 0;
+  color: var(--fg-subtle);
+}
+
+.mc-composer__projname {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--fg);
+  font-family: inherit;
+  font-size: var(--fs-caption);
+  font-weight: var(--fw-medium);
+  cursor: pointer;
+}
+
+/* 工作区缺失时的回退按钮：与项目标签同位，点击打开目录选择器 */
+.mc-composer__pickws {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: -6px;
+  padding: 3px 10px;
+  border: 0;
+  border-radius: var(--radius-full);
+  corner-shape: superellipse(1.5);
+  background: transparent;
+  color: var(--fg-subtle);
+  font-family: inherit;
+  font-size: var(--fs-caption);
+  font-weight: var(--fw-medium);
+  cursor: pointer;
+  transition: background-color var(--dur) var(--ease), color var(--dur) var(--ease);
+}
+.mc-composer__pickws:hover,
+.mc-composer__pickws:focus-visible {
+  background: var(--surface-hover);
+  color: var(--fg);
+}
+
+/* 项目切换菜单：贴在标签上方 */
+.mc-projmenu {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 0;
+  z-index: 60;
+  width: 280px;
+  padding: 4px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  corner-shape: superellipse(1.5);
+  box-shadow: var(--shadow-lg);
+  animation: mc-fade-in var(--dur) var(--ease);
+}
+
+.mc-projmenu__search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px;
+  color: var(--fg-subtle);
+}
+.mc-projmenu__search input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: var(--fg);
+  font-family: inherit;
+  font-size: var(--fs-caption);
+  outline: none;
+}
+.mc-projmenu__search input:focus-visible {
+  outline: none;
+}
+.mc-projmenu__search input::placeholder {
+  color: var(--fg-subtlest);
+}
+
+.mc-projmenu__sep {
+  height: 1px;
+  margin: 3px 6px;
+  background: var(--border);
+}
+
+.mc-projmenu__list {
+  display: flex;
+  flex-direction: column;
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.mc-projmenu__item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 4px 8px;
+  border: 0;
+  border-radius: var(--radius-md);
+  corner-shape: superellipse(1.5);
+  background: transparent;
+  color: var(--fg);
+  font-family: inherit;
+  font-size: var(--fs-caption);
+  text-align: left;
+  cursor: pointer;
+  transition: background-color var(--dur) var(--ease);
+}
+.mc-projmenu__item:hover {
+  background: var(--surface-hover);
+}
+.mc-projmenu__item > svg {
+  flex-shrink: 0;
+  color: var(--fg-subtle);
+}
+.mc-projmenu__item > .mc-projmenu__check {
+  margin-left: auto;
+  color: var(--fg);
+}
+
+.mc-projmenu__empty {
+  padding: 5px 8px;
+  font-size: var(--fs-sm);
+  color: var(--fg-subtlest);
+}
+
+.mc-composer {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-2xl);
+  corner-shape: superellipse(1.5);
+  background: var(--input-fill);
+  box-shadow: var(--shadow-md);
+  transition: border-color var(--dur) var(--ease);
+}
+.mc-composer[data-disabled="true"] {
+  opacity: 0.7;
+}
+/* 拖入图片时给输入框一个明确的可放置提示 */
+.mc-composer[data-dragging="true"] {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-soft);
+}
+
+/* 待发送图片：缩略图条 */
+.mc-attach {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 12px 14px 0;
+}
+.mc-attach__item {
+  position: relative;
+}
+.mc-attach__thumb {
+  display: block;
+  width: 64px;
+  height: 64px;
+  object-fit: cover;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+}
+.mc-attach__remove {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  background: var(--surface);
+  color: var(--fg-subtle);
+  cursor: pointer;
+  transition: background-color var(--dur) var(--ease), color var(--dur) var(--ease);
+}
+.mc-attach__remove:hover {
+  background: var(--surface-hover);
+  color: var(--fg);
+}
+
+.mc-composer__input {
+  border: 0;
+  background: none;
+  outline: none;
+  resize: none;
+  padding: 16px 18px 2px;
+  min-height: 54px;
+  max-height: 220px;
+  color: var(--fg);
+  font-family: var(--font-sans);
+  font-size: var(--fs-base);
+  line-height: var(--lh-normal);
+}
+/* 文本控件鼠标点击也会命中 :focus-visible 的全局白圈；点输入框不应出现外框 */
+.mc-composer__input:focus-visible {
+  outline: none;
+}
+.mc-composer__input::placeholder {
+  color: var(--fg-subtlest);
+}
+
+.mc-composer__bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 6px 10px 10px 12px;
+}
+.mc-composer__left,
+.mc-composer__right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+/*
+ * 底栏组件统一胶囊造型：圆角 = 高度一半，浅表面底 + hover 提亮。
+ * 加号是 30px 圆胶囊（圆形是胶囊的退化形），权限 / 模型是横向胶囊。
+ */
+.mc-composer__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  flex-shrink: 0;
+  border: 0;
+  border-radius: var(--radius-full);
+  background: var(--surface);
+  color: var(--fg-subtle);
+  cursor: pointer;
+  transition: background-color var(--dur) var(--ease), color var(--dur) var(--ease);
+}
+.mc-composer__icon:hover {
+  background: var(--surface-hover);
+  color: var(--fg);
+}
+
+.mc-composer__accesswrap {
+  position: relative;
+  min-width: 0;
+}
+/* 「+」菜单容器：和权限菜单同样的锚定方式 */
+.mc-pluswrap {
+  position: relative;
+  display: inline-flex;
+  flex-shrink: 0;
+}
+.mc-composer__access {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: var(--radius-full);
+  background: var(--surface);
+  color: var(--fg-subtle);
+  font-family: inherit;
+  font-size: var(--fs-sm);
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background-color var(--dur) var(--ease), color var(--dur) var(--ease);
+}
+.mc-composer__access > svg {
+  flex-shrink: 0;
+}
+.mc-composer__access:hover {
+  background: var(--surface-hover);
+  color: var(--fg);
+}
+/* 完全访问模式下整枚 chip 亮橙色（警告色），和「每次询问」一眼区分 */
+.mc-composer__access[data-mode="full"] {
+  color: var(--warning);
+}
+
+/* 权限选择菜单：贴在 chip 上方 */
+.mc-permmenu {
+  position: absolute;
+  left: 0;
+  bottom: calc(100% + 8px);
+  width: 264px;
+  padding: 4px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  corner-shape: superellipse(1.5);
+  box-shadow: var(--shadow-lg);
+  z-index: 30;
+  animation: mc-fade-in var(--dur) var(--ease);
+}
+.mc-permmenu__item {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-rows: auto auto;
+  align-items: center;
+  column-gap: 8px;
+  width: 100%;
+  padding: 5px 8px;
+  border: 0;
+  border-radius: var(--radius-md);
+  corner-shape: superellipse(1.5);
+  background: transparent;
+  color: var(--fg);
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color var(--dur) var(--ease);
+}
+.mc-permmenu__item:hover {
+  background: var(--surface-hover);
+}
+.mc-permmenu__item[data-active="true"] {
+  background: var(--surface);
+}
+.mc-permmenu__item:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.mc-permmenu__label {
+  grid-row: 1;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--fs-base);
+}
+.mc-permmenu__label > svg {
+  flex-shrink: 0;
+  color: var(--fg-subtle);
+}
+.mc-permmenu__desc {
+  grid-row: 2;
+  grid-column: 1;
+  font-size: var(--fs-xs);
+  line-height: var(--lh-normal);
+  color: var(--fg-subtlest);
+}
+.mc-permmenu__check {
+  grid-row: 1 / span 2;
+  grid-column: 2;
+  color: var(--fg);
+}
+
+/* 「完全访问」整项用警告橙，和胶囊同一语义，扫一眼就能认出最高权限 */
+.mc-permmenu__item[data-mode="full"] .mc-permmenu__label {
+  color: var(--warning);
+}
+.mc-permmenu__item[data-mode="full"] .mc-permmenu__desc {
+  color: var(--warning);
+  opacity: 0.72;
+}
+.mc-permmenu__item[data-mode="full"] .mc-permmenu__check {
+  color: var(--warning);
+}
+
+/* 会话模式徽章：权限胶囊右侧的小胶囊，点击即退出模式 */
+.mc-modebadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 10px;
+  flex-shrink: 0;
+  border: 1px solid transparent;
+  border-radius: var(--radius-full);
+  background: var(--surface);
+  color: var(--fg-subtle);
+  font-family: inherit;
+  font-size: var(--fs-sm);
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background-color var(--dur) var(--ease), color var(--dur) var(--ease),
+    border-color var(--dur) var(--ease);
+}
+.mc-modebadge > svg {
+  flex-shrink: 0;
+}
+.mc-modebadge:hover {
+  background: var(--surface-hover);
+  color: var(--fg);
+}
+.mc-modebadge[data-mode="plan"] {
+  border-color: color-mix(in oklab, var(--accent) 45%, transparent);
+  background: var(--accent-soft);
+  color: var(--fg);
+}
+.mc-modebadge[data-mode="goal"] {
+  border-color: color-mix(in oklab, var(--accent-violet) 45%, transparent);
+  background: color-mix(in oklab, var(--accent-violet) 16%, transparent);
+  color: var(--fg);
+}
+
+/*
+ * 计划确认卡片：计划写完时整个输入框换成这张卡片
+ * （标题 + 说明 + 「开始执行」+ 可直接输入的「调整计划」）。
+ */
+.mc-composer[data-plan="true"] {
+  box-shadow: var(--shadow-lg);
+}
+
+.mc-planconfirm {
+  position: relative;
+  padding: 16px 16px 12px;
+  animation: mc-fade-in var(--dur) var(--ease);
+}
+.mc-planconfirm__title {
+  margin: 0;
+  padding-right: 26px;
+  color: var(--fg);
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+.mc-planconfirm__sub {
+  margin: 5px 0 0;
+  color: var(--fg-subtle);
+  font-size: var(--fs-sm);
+  line-height: 1.5;
+}
+.mc-planconfirm__exit {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--fg-subtlest);
+  cursor: pointer;
+  transition: background-color var(--dur) var(--ease), color var(--dur) var(--ease);
+}
+.mc-planconfirm__exit:hover {
+  background: var(--surface-hover);
+  color: var(--fg);
+}
+
+/* 两个选项上下排列：第一项是高亮的「开始执行」，第二项是输入框 */
+.mc-planconfirm__option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  margin-top: 6px;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: var(--radius-md);
+  corner-shape: superellipse(1.5);
+  background: var(--surface);
+  color: var(--fg);
+  font-family: inherit;
+  font-size: var(--fs-sm);
+  text-align: left;
+  cursor: pointer;
+  transition: background-color var(--dur) var(--ease);
+}
+.mc-planconfirm__option:first-of-type {
+  margin-top: 14px;
+}
+.mc-planconfirm__option:hover:not(:disabled) {
+  background: var(--surface-hover);
+}
+/* 主选项（开始执行）比次选项亮一档，呼应设计稿里第一行更突出的效果 */
+.mc-planconfirm__option[data-primary="true"] {
+  background: var(--surface-hover);
+}
+.mc-planconfirm__option[data-primary="true"]:hover:not(:disabled) {
+  background: var(--surface-active, var(--surface-hover));
+}
+.mc-planconfirm__option[data-field="true"] {
+  cursor: text;
+}
+.mc-planconfirm__option:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.mc-planconfirm__num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  border-radius: var(--radius-xs);
+  background: color-mix(in oklab, var(--fg) 10%, transparent);
+  color: var(--fg-subtle);
+  font-size: var(--fs-xs);
+  font-variant-numeric: tabular-nums;
+}
+.mc-planconfirm__label {
+  flex: 1;
+  min-width: 0;
+  line-height: 1.45;
+}
+.mc-planconfirm__arrow {
+  flex-shrink: 0;
+  color: var(--fg-subtle);
+}
+
+/* 选项 2 的输入框：铺满整行，去掉原生边框与底色 */
+.mc-planconfirm__input {
+  flex: 1;
+  min-width: 0;
+  height: 20px;
+  padding: 0;
+  border: 0;
+  background: none;
+  outline: none;
+  color: var(--fg);
+  font-family: inherit;
+  font-size: var(--fs-sm);
+}
+.mc-planconfirm__input::placeholder {
+  color: var(--fg-subtlest);
+}
+.mc-planconfirm__input:disabled {
+  cursor: not-allowed;
+}
+
+.mc-planconfirm__footer {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 10px;
+}
+/* ask 向导卡片：上一题靠左、跳过靠右；首题只有跳过按钮时仍靠右 */
+.mc-composer[data-ask="true"] .mc-planconfirm__footer {
+  justify-content: space-between;
+}
+.mc-composer[data-ask="true"] .mc-planconfirm__footer[data-single="true"] {
+  justify-content: flex-end;
+}
+.mc-planconfirm__send {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-full);
+  background: var(--surface-hover);
+  color: var(--fg-subtle);
+  cursor: pointer;
+  transition: background-color var(--dur) var(--ease), color var(--dur) var(--ease);
+}
+.mc-planconfirm__send:hover:not(:disabled) {
+  background: var(--surface-active, var(--surface-hover));
+  color: var(--fg);
+}
+.mc-planconfirm__send:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* 占用圆圈外层：弹层以它为锚点（居中在圆圈正上方） */
+.mc-composer__ctxwrap {
+  position: relative;
+}
+
+.mc-composer__modelwrap {
+  position: relative;
+  min-width: 0;
+}
+.mc-composer__model {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  max-width: 300px;
+  height: 30px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: var(--radius-full);
+  background: var(--surface);
+  color: var(--fg);
+  font-family: inherit;
+  font-size: var(--fs-sm);
+  cursor: pointer;
+  transition: background-color var(--dur) var(--ease);
+}
+.mc-composer__model:hover {
+  background: var(--surface-hover);
+}
+.mc-composer__model > span:first-child {
+  min-width: 0;
+}
+.mc-composer__effort {
+  color: var(--fg-subtle);
+  flex-shrink: 0;
+}
+.mc-composer__model > svg {
+  color: var(--fg-subtle);
+  flex-shrink: 0;
+}
+
+.mc-sendbtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  border: 0;
+  border-radius: 50%;
+  background: var(--brand);
+  color: var(--brand-fg);
+  cursor: pointer;
+  transition: opacity var(--dur) var(--ease), background-color var(--dur) var(--ease),
+    color var(--dur) var(--ease);
+}
+.mc-sendbtn:hover:not(:disabled) {
+  opacity: 0.85;
+}
+.mc-sendbtn:disabled {
+  background: var(--surface-hover);
+  color: var(--fg-subtlest);
+  cursor: not-allowed;
+}
+
+/* @文件引用选择器：贴在输入区上方，样式与项目/权限弹层一致 */
+.mc-mention {
+  position: absolute;
+  left: 14px;
+  right: 14px;
+  bottom: calc(100% + 8px);
+  z-index: 70;
+  display: flex;
+  flex-direction: column;
+  max-width: 460px;
+  max-height: 300px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  corner-shape: superellipse(1.5);
+  background: var(--surface);
+  box-shadow: var(--shadow-lg);
+  overflow: hidden;
+  animation: mc-fade-in var(--dur) var(--ease);
+}
+
+.mc-mention__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+  font-size: var(--fs-xs);
+  color: var(--fg-subtle);
+}
+
+.mc-mention__hint {
+  margin-left: auto;
+  color: var(--warning);
+}
+
+.mc-mention__list {
+  list-style: none;
+  margin: 0;
+  padding: 4px;
+  overflow-y: auto;
+}
+
+.mc-mention__item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--fg-subtle);
+  font-family: inherit;
+  font-size: var(--fs-caption);
+  text-align: left;
+  cursor: pointer;
+  transition: background-color var(--dur) var(--ease), color var(--dur) var(--ease);
+}
+
+.mc-mention__item[data-active="true"] {
+  background: var(--surface-hover);
+  color: var(--fg);
+}
+
+.mc-mention__icon {
+  flex-shrink: 0;
+  color: var(--fg-subtlest);
+}
+
+/* 面包屑：显示当前目录，点它返回上一层 */
+.mc-mention__crumb {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+  padding: 2px 6px 2px 2px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--fg-subtle);
+  font-size: var(--fs-sm);
+  cursor: pointer;
+}
+
+.mc-mention__crumb:hover {
+  background: var(--surface-hover);
+  color: var(--fg);
+}
+
+.mc-mention__refresh {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  margin-left: auto;
+  width: 22px;
+  height: 22px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--fg-subtlest);
+  cursor: pointer;
+}
+
+.mc-mention__refresh:hover {
+  background: var(--surface-hover);
+  color: var(--fg);
+}
+
+/* 失败提示已经占用了 auto 边距，别把刷新按钮再推一次 */
+.mc-mention__hint + .mc-mention__refresh {
+  margin-left: 0;
+}
+
+.mc-mention__chevron {
+  flex-shrink: 0;
+  margin-left: auto;
+  color: var(--fg-subtlest);
+}
+
+.mc-mention__name {
+  flex: 1;
+  min-width: 0;
+  color: var(--fg);
+}
+
+.mc-mention__empty {
+  margin: 0;
+  padding: 10px;
+  font-size: var(--fs-sm);
+  color: var(--fg-subtlest);
+}
+
+/* `/` 命令面板：与 @ 文件面板同一锚点（输入框上方） */
+.mc-slashmenu {
+  position: absolute;
+  left: 14px;
+  right: 14px;
+  bottom: calc(100% + 8px);
+  max-height: 260px;
+  overflow: auto;
+  padding: 4px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  corner-shape: superellipse(1.5);
+  box-shadow: var(--shadow-lg);
+  z-index: 40;
+  animation: mc-fade-in var(--dur) var(--ease);
+}
+.mc-slashmenu__group {
+  padding: 4px 8px 2px;
+  color: var(--fg-subtlest);
+  font-size: var(--fs-xs);
+  letter-spacing: 0.02em;
+}
+.mc-slashmenu__item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 4px 8px;
+  border: 0;
+  border-radius: var(--radius-md);
+  corner-shape: superellipse(1.5);
+  background: transparent;
+  color: var(--fg);
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color var(--dur) var(--ease);
+}
+.mc-slashmenu__icon {
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  object-fit: contain;
+  flex-shrink: 0;
+  color: var(--fg-subtle);
+}
+.mc-slashmenu__title {
+  flex-shrink: 0;
+  max-width: 45%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--fs-sm);
+  color: var(--fg);
+}
+.mc-slashmenu__item[data-active="true"] {
+  background: var(--surface);
+}
+.mc-slashmenu__cmd {
+  flex-shrink: 0;
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+  color: var(--fg);
+}
+.mc-slashmenu__desc {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--fs-sm);
+  color: var(--fg-subtle);
+}
+
+/* 「+」菜单：紧凑弹窗（锚定 + 按钮），插件/技能/命令在右侧展开二级浮层 */
+.mc-plusmenu {
+  left: 0;
+  right: auto;
+  bottom: calc(100% + 8px);
+  width: 260px;
+  max-height: none;
+  overflow: visible;
+}
+.mc-plusmenu__row {
+  position: relative;
+}
+.mc-plusmenu__divider {
+  height: 1px;
+  margin: 4px 6px;
+  background: var(--border);
+}
+.mc-plusmenu__flyout {
+  position: absolute;
+  left: calc(100% + 6px);
+  bottom: -4px;
+  width: 320px;
+  max-height: min(420px, 60vh);
+  overflow: auto;
+  padding: 4px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  corner-shape: superellipse(1.5);
+  box-shadow: var(--shadow-lg);
+  z-index: 31;
+  animation: mc-fade-in var(--dur) var(--ease);
+}
+.mc-plusmenu__back {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 5px 8px;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--fg-subtle);
+  font-family: inherit;
+  font-size: var(--fs-xs);
+  text-align: left;
+  cursor: pointer;
+}
+.mc-plusmenu__back:hover {
+  background: var(--surface);
+  color: var(--fg);
+}
+.mc-plusmenu__icon {
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+.mc-plusmenu__chevron {
+  flex-shrink: 0;
+  margin-left: auto;
+  color: var(--fg-subtle);
+  transition: transform var(--dur) var(--ease);
+}
+.mc-plusmenu__chevron[data-open="true"] {
+  transform: rotate(90deg);
+}
+.mc-plusmenu__subitem {
+  padding-left: 30px;
+  font-size: var(--fs-xs);
+}
+.mc-plusmenu__empty {
+  margin: 0;
+  padding: 10px 8px;
+  color: var(--fg-subtlest);
+  font-size: var(--fs-sm);
+}
+.mc-plusmenu__group {
+  padding: 4px 8px 2px;
+  color: var(--fg-subtlest);
+  font-size: var(--fs-xs);
+  letter-spacing: 0.02em;
+}
+.mc-plusmenu__item {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 4px 8px;
+  border: 0;
+  border-radius: var(--radius-md);
+  corner-shape: superellipse(1.5);
+  background: transparent;
+  color: var(--fg);
+  font-family: inherit;
+  font-size: var(--fs-sm);
+  text-align: left;
+  cursor: pointer;
+  transition: background-color var(--dur) var(--ease);
+}
+.mc-plusmenu__item:hover:not(:disabled),
+.mc-plusmenu__item[data-active="true"] {
+  background: var(--surface);
+}
+.mc-plusmenu__item:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.mc-plusmenu__item > svg {
+  flex-shrink: 0;
+  color: var(--fg-subtle);
+}
+.mc-plusmenu__label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mc-plusmenu__hint {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--fg-subtlest);
+  font-size: var(--fs-xs);
+}
+.mc-plusmenu__check {
+  flex-shrink: 0;
+  margin-left: auto;
+  color: var(--fg);
+}
+
+/* ask_user 多题卡片：题干与分组 */
+.mc-planconfirm__group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.mc-planconfirm__question {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 2px 0 0;
+  color: var(--fg);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+  line-height: 1.5;
+}
+.mc-planconfirm__question .mc-planconfirm__num {
+  flex-shrink: 0;
+}
+.mc-planconfirm__option[data-active="true"] {
+  border-color: color-mix(in oklab, var(--fg) 55%, var(--border));
+}
+
+/* ask_user 向导进度徽标与上一题 */
+.mc-planconfirm__progress {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 9px;
+  margin-right: 8px;
+  border-radius: 999px;
+  background: var(--fg);
+  color: var(--bg);
+  font-size: var(--fs-caption, 12px);
+  font-weight: var(--fw-medium);
+}
+.mc-planconfirm__back {
+  align-self: flex-start;
+  padding: 4px 10px;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--fg-subtlest);
+  font-family: inherit;
+  font-size: var(--fs-sm);
+  cursor: pointer;
+}
+.mc-planconfirm__back:hover {
+  background: var(--surface-hover);
+  color: var(--fg);
+}

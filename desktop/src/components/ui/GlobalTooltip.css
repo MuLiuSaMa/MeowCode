@@ -1,0 +1,45 @@
+/* 全局自绘 tooltip：替代原生 title 提示气泡 */
+.mc-tip {
+  position: fixed;
+  z-index: 9999;
+  box-sizing: border-box;
+  max-width: 320px;
+  padding: 7px 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm, 6px);
+  /* 用浮层实色（--bg-elevated 是 #1e1e1e / #ffffff），不用 --surface（那是半透明） */
+  background: var(--bg-elevated);
+  color: var(--fg);
+  font-size: var(--fs-xs);
+  line-height: 1.55;
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+  box-shadow: 0 10px 28px rgb(0 0 0 / 45%);
+  pointer-events: none;
+}
+
+/* 测量出真实尺寸前先隐藏，避免在左上角闪一下 */
+.mc-tip[data-ready="false"] {
+  opacity: 0;
+}
+
+.mc-tip[data-ready="true"] {
+  animation: mc-tip-in 110ms var(--ease);
+}
+
+@keyframes mc-tip-in {
+  from {
+    opacity: 0;
+    transform: translateY(-2px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* 悬停期间 href 被暂存到 data-mc-href（为了不弹左下角地址气泡），
+   这里补回指针样式，视觉上与原链接一致。 */
+a[data-mc-href] {
+  cursor: pointer;
+}

@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>MeowCode</title>
+    <style>
+      /* 启动画面之前也保持黑底，避免首帧白闪；App 就绪后移除 data-booting */
+      html[data-booting],
+      html[data-booting] body {
+        background: #000;
+      }
+    </style>
+    <script>
+      // 防启动闪色：在样式与 React 之前就把 data-theme 定下来。
+      // key 必须与 src/theme/theme.tsx 的 STORAGE_KEY 一致。
+      (function () {
+        document.documentElement.dataset.booting = "1";
+        try {
+          var stored = localStorage.getItem("meow:theme");
+          var resolved =
+            stored === "light" || stored === "dark"
+              ? stored
+              : window.matchMedia("(prefers-color-scheme: dark)").matches
+                ? "dark"
+                : "light";
+          document.documentElement.dataset.theme = resolved;
+        } catch (error) {
+          document.documentElement.dataset.theme = "dark";
+        }
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

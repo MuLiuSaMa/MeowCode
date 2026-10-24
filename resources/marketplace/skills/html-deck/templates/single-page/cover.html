@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="minimal-white">
+<head>
+<meta charset="utf-8"><title>Cover — html-ppt</title>
+<link rel="stylesheet" href="../../assets/fonts.css">
+<link rel="stylesheet" href="../../assets/base.css">
+<link rel="stylesheet" id="theme-link" href="../../assets/themes/minimal-white.css">
+<link rel="stylesheet" href="../../assets/animations/animations.css">
+<style>
+.cover-bg{position:absolute;inset:0;overflow:hidden}
+.cover-bg img{width:100%;height:100%;object-fit:cover}
+.cover-bg .placeholder{width:100%;height:100%;background:
+  radial-gradient(80% 60% at 30% 40%,rgba(59,108,255,.35),transparent 70%),
+  radial-gradient(70% 50% at 75% 60%,rgba(192,132,252,.3),transparent 70%),
+  linear-gradient(135deg,#0b1024,#1a2238)}
+.cover-scrim{position:absolute;inset:0;background:linear-gradient(180deg,rgba(0,0,0,.25) 0%,rgba(0,0,0,.55) 100%)}
+.cover-content{position:relative;z-index:2;height:100%;display:flex;flex-direction:column;justify-content:center;padding:56px 72px}
+.cover-content .h1{color:#fff;font-size:64px;font-weight:900;line-height:1.08;letter-spacing:-.03em;margin:0}
+.cover-content .lede{color:rgba(255,255,255,.82);font-size:20px;margin:18px 0 0;max-width:56ch}
+.cover-content .pill{background:rgba(255,255,255,.12);color:#fff;border:1px solid rgba(255,255,255,.2)}
+.cover-content .deck-header,.cover-content .deck-footer{color:rgba(255,255,255,.7)}
+</style>
+</head>
+<body class="single">
+<deck-stage width="1920" height="1080" data-themes="minimal-white,aurora,catppuccin-mocha,tokyo-night,xiaohongshu-white,neo-brutalism" data-theme-base="../../assets/themes/">
+  <section class="slide active" data-deck-label="Cover" style="padding:0">
+    <div class="cover-bg">
+      <!-- 替换为: <img src="assets/cover-bg_1920x1080.png" alt="封面背景"> -->
+      <div class="placeholder"></div>
+    </div>
+    <div class="cover-scrim"></div>
+    <div class="cover-content">
+      <div class="deck-header"><span class="eyebrow">Keynote · 2026</span><span class="eyebrow">html-ppt</span></div>
+      <div class="anim-stagger-list" style="margin-top:auto;margin-bottom:auto">
+        <h1 class="h1 anim-fade-up" data-anim="fade-up">
+          设计一套<span class="gradient-text">属于你</span>的<br>HTML 演讲系统
+        </h1>
+        <p class="lede">从主题、版式到动效，全部由模板驱动。一行命令即可开场。</p>
+      </div>
+      <div class="deck-footer"><span class="dim2" style="color:rgba(255,255,255,.6)">lewis · 2026-04-15</span><span class="slide-number" data-current="1" data-total="1"></span></div>
+    </div>
+    <div class="notes">封面页口播：大家好，今天给大家带来一套开箱即用的 HTML 演讲系统。背景图通过 cover-bg 区域的 img 标签替换。</div>
+  </section>
+</deck-stage>
+<script src="../../assets/runtime.js"></script>
+</body></html>
