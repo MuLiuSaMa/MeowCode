@@ -73,6 +73,14 @@
   --danger: #d98a86;
   --danger-fg: #ffffff;
   --danger-surface: rgba(217 138 134 / 0.14);
+
+  /* ---- diff 增删色：Git 面板与审阅 diff 的 +/−、行背景 ----
+     语义色（success/danger）刻意低饱和，只适合小面积状态点缀；
+     diff 需要一眼分辨增删，所以单独给一组更鲜艳的绿/红。 */
+  --diff-add: #45e08a;
+  --diff-add-surface: rgba(69 224 138 / 0.16);
+  --diff-del: #ff6b6b;
+  --diff-del-surface: rgba(255 107 107 / 0.16);
   /* 窗口关闭按钮 hover：沿用 Windows 原生红（仅 hover 瞬间出现） */
   --win-close-hover: #c42b1c;
   --win-close-fg: #ffffff;
@@ -187,6 +195,12 @@
   --danger: #b4544f;
   --danger-fg: #ffffff;
   --danger-surface: rgba(180 84 79 / 0.10);
+
+  /* diff 增删色（亮色下压暗一档保证对比度，仍明显比语义色鲜艳） */
+  --diff-add: #12a150;
+  --diff-add-surface: rgba(18 161 80 / 0.14);
+  --diff-del: #e02f2f;
+  --diff-del-surface: rgba(224 47 47 / 0.12);
   --win-close-hover: #c42b1c;
   --win-close-fg: #ffffff;
   --accent: #0c77ff;

@@ -146,11 +146,11 @@
 }
 .mc-git__letter[data-kind="added"],
 .mc-git__letter[data-kind="untracked"] {
-  color: var(--success-strong);
+  color: var(--diff-add);
 }
 .mc-git__letter[data-kind="deleted"],
 .mc-git__letter[data-kind="conflicted"] {
-  color: var(--danger);
+  color: var(--diff-del);
 }
 .mc-git__letter[data-kind="renamed"],
 .mc-git__letter[data-kind="copied"] {
@@ -180,10 +180,10 @@
   font-style: normal;
 }
 .mc-git__rowstat em[data-kind="add"] {
-  color: var(--success-strong);
+  color: var(--diff-add);
 }
 .mc-git__rowstat em[data-kind="del"] {
-  color: var(--danger);
+  color: var(--diff-del);
 }
 .mc-git__rowactions {
   display: none;
@@ -457,10 +457,10 @@
   font-size: var(--fs-xs);
 }
 .mc-git__count[data-kind="add"] {
-  color: var(--success-strong);
+  color: var(--diff-add);
 }
 .mc-git__count[data-kind="del"] {
-  color: var(--danger);
+  color: var(--diff-del);
 }
 .mc-git__warn {
   display: inline-flex;
@@ -484,10 +484,12 @@
   min-height: 18px;
 }
 .mc-git__line[data-kind="add"] {
-  background: var(--success-surface);
+  background: var(--diff-add-surface);
+  box-shadow: inset 2px 0 0 var(--diff-add);
 }
 .mc-git__line[data-kind="del"] {
-  background: var(--danger-surface);
+  background: var(--diff-del-surface);
+  box-shadow: inset 2px 0 0 var(--diff-del);
 }
 .mc-git__line[data-kind="hunk"] {
   background: var(--surface);

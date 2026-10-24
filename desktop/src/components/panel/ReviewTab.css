@@ -108,10 +108,10 @@
   font-variant-numeric: tabular-nums;
 }
 .mc-review__add {
-  color: var(--success);
+  color: var(--diff-add);
 }
 .mc-review__del {
-  color: var(--danger);
+  color: var(--diff-del);
 }
 
 .mc-review__badge {
@@ -155,12 +155,12 @@
   color: var(--fg-subtle);
 }
 .mc-review__line[data-kind="add"] {
-  color: var(--success);
-  background: color-mix(in oklab, var(--success) 10%, transparent);
+  color: var(--diff-add);
+  background: var(--diff-add-surface);
 }
 .mc-review__line[data-kind="del"] {
-  color: var(--danger);
-  background: color-mix(in oklab, var(--danger) 10%, transparent);
+  color: var(--diff-del);
+  background: var(--diff-del-surface);
 }
 .mc-review__line[data-kind="meta"] {
   color: var(--fg-subtlest);
