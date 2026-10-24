@@ -31,6 +31,8 @@ export type GitSelection =
 export type GitCommitDetail = {
   commit: GitCommit;
   files: GitFileEntry[];
+  /** 该提交涉及的文件总数（files 最多 500 条，大提交会被截断） */
+  fileCount: number;
   patch: string;
   truncated: boolean;
 };

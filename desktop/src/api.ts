@@ -1146,12 +1146,17 @@ export async function gitLog(params: { limit?: number; skip?: number } = {}): Pr
 export async function gitShowCommit(sha: string): Promise<{
   commit: GitCommit;
   files: GitFileEntry[];
+  fileCount: number;
   patch: string;
   truncated: boolean;
 }> {
-  return api<{ commit: GitCommit; files: GitFileEntry[]; patch: string; truncated: boolean }>(
-    `/git/commit?sha=${encodeURIComponent(sha)}`,
-  );
+  return api<{
+    commit: GitCommit;
+    files: GitFileEntry[];
+    fileCount: number;
+    patch: string;
+    truncated: boolean;
+  }>(`/git/commit?sha=${encodeURIComponent(sha)}`);
 }
 
 export async function gitPull(): Promise<{ ok: boolean; summary: string }> {

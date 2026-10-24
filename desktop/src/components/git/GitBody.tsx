@@ -36,6 +36,11 @@ function CommitDetail({ git, onBack }: { git: GitView; onBack: () => void }) {
                   {file.origPath ? `${file.origPath} → ${file.path}` : file.path}
                 </code>
               ))}
+              {detail.fileCount > detail.files.length ? (
+                <code className="mc-git__detailfile" data-more="true">
+                  +{detail.fileCount - detail.files.length} 个文件未列出
+                </code>
+              ) : null}
             </div>
           </>
         ) : (

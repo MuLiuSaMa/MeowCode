@@ -118,6 +118,8 @@ export class GitError extends Error {
 
 /** 工作区不是仓库时 status 直接返回空态，不抛错 */
 const MAX_PATHS_PER_REQUEST = 2_000;
+/** 提交详情最多列多少个文件；初始提交动辄几千个，全量渲染会让弹层卡死 */
+const MAX_COMMIT_FILES = 500;
 /** diff 补丁上限：超出截断，UI 上标记 truncated */
 export const MAX_PATCH_BYTES = 512 * 1024;
 /** 合成 untracked patch 时单文件上限 */
@@ -125,6 +127,12 @@ const MAX_UNTRACKED_BYTES = 512 * 1024;
 /** 合成 untracked patch 的行数上限 */
 const MAX_UNTRACKED_LINES = 3_000;
 const MAX_STDOUT_BYTES = 4 * 1024 * 1024;
+/**
+ * 可截断读取（diff / show）的执行器上限：比 MAX_PATCH_BYTES 多一点，
+ * 让 `truncatePatch` 能切在预算内，同时不必把几十 MB 的 patch 读进内存。
+ * 典型场景：刚 init 的仓库第一个提交包含几千个文件，`git show` 会吐几十 MB。
+ */
+const MAX_TRUNCATABLE_STDOUT_BYTES = MAX_PATCH_BYTES + 128 * 1024;
 const MAX_STDERR_BYTES = 64 * 1024;
 /**
  * revision 白名单：必须以字母数字开头（否则 `-x` 会被 git 当成选项），
@@ -146,9 +154,16 @@ export type RunGitOptions = {
   input?: string;
   timeoutMs?: number;
   signal?: AbortSignal;
+  /** stdout 上限（字节）；默认 4MB */
+  maxStdoutBytes?: number;
+  /**
+   * 允许「输出超限」时返回**部分结果**而不是报错。
+   * 只给 diff/show 这类天然可截断的读取用；status/log 必须完整，超限要报错。
+   */
+  truncateStdout?: boolean;
 };
 
-export type RunGitResult = { stdout: Buffer; stderr: string };
+export type RunGitResult = { stdout: Buffer; stderr: string; truncated: boolean };
 
 /**
  * 执行 git 并返回原始字节。
@@ -190,10 +205,11 @@ export async function runGit(
     }
 
     const chunks: Buffer[] = [];
+    const maxStdout = options.maxStdoutBytes ?? MAX_STDOUT_BYTES;
     let stdoutBytes = 0;
     let stderr = "";
     let settled = false;
-    let killedForSize = false;
+    let truncated = false;
 
     const finish = (error?: GitError) => {
       if (settled) return;
@@ -201,7 +217,7 @@ export async function runGit(
       clearTimeout(timer);
       options.signal?.removeEventListener("abort", onAbort);
       if (error) reject(error);
-      else resolve({ stdout: Buffer.concat(chunks), stderr });
+      else resolve({ stdout: Buffer.concat(chunks), stderr, truncated });
     };
     const onAbort = () => {
       killProcessTree(child);
@@ -221,9 +237,15 @@ export async function runGit(
     }
 
     child.stdout?.on("data", (chunk: Buffer) => {
-      if (stdoutBytes >= MAX_STDOUT_BYTES) {
-        // 超限直接杀掉：继续读只会把内存和键盘都拖死
-        killedForSize = true;
+      if (truncated) return;
+      const room = maxStdout - stdoutBytes;
+      if (chunk.length > room) {
+        // 只留下装得下的部分：再多读只会把内存和事件循环一起拖住
+        if (room > 0) {
+          chunks.push(chunk.subarray(0, room));
+          stdoutBytes += room;
+        }
+        truncated = true;
         killProcessTree(child);
         return;
       }
@@ -241,8 +263,22 @@ export async function runGit(
       );
     });
     child.on("close", (code: number | null) => {
-      if (killedForSize) {
-        finish(new GitError("git_failed", "Git output exceeded the 4MB limit."));
+      if (truncated) {
+        // 可截断读取：把已有的部分交出去，由调用方标记 truncated
+        if (options.truncateStdout) {
+          finish();
+          return;
+        }
+        const limit =
+          maxStdout >= 1024 * 1024
+            ? `${Math.round(maxStdout / (1024 * 1024))}MB`
+            : `${Math.max(1, Math.round(maxStdout / 1024))}KB`;
+        finish(
+          new GitError(
+            "git_failed",
+            `git ${args[0] ?? ""} produced more than ${limit} of output; narrow it down (single file / fewer paths).`,
+          ),
+        );
         return;
       }
       if (code === 0) {
@@ -669,7 +705,11 @@ function truncatePatch(patch: string): { patch: string; truncated: boolean } {
   if (Buffer.byteLength(patch, "utf8") <= MAX_PATCH_BYTES) {
     return { patch, truncated: false };
   }
-  const cut = Buffer.from(patch, "utf8").subarray(0, MAX_PATCH_BYTES).toString("utf8");
+  // 按字节切可能落在多字节字符中间：把尾部的替换字符去掉，别把半个汉字喂给 UI
+  const cut = Buffer.from(patch, "utf8")
+    .subarray(0, MAX_PATCH_BYTES)
+    .toString("utf8")
+    .replace(/\uFFFD+$/, "");
   return {
     patch: `${cut}\n... [patch truncated at ${Math.round(MAX_PATCH_BYTES / 1024)}KB]`,
     truncated: true,
@@ -685,43 +725,63 @@ export async function getDiff(
   const relative = input.path ? normalizeRepoPath(root, input.path) : undefined;
 
   let raw: string;
+  /** git 输出被执行器按上限截断了（大提交 / 大文件），要透传给 UI */
+  let cutByGit = false;
   if (scope === "commit") {
     const sha = (input.sha ?? "").trim();
     if (!REVISION_PATTERN.test(sha)) {
       throw new GitError("invalid_path", "sha is not a valid revision.");
     }
+    const truncatable = {
+      truncateStdout: true,
+      maxStdoutBytes: MAX_TRUNCATABLE_STDOUT_BYTES,
+    };
     try {
-      const { stdout } = await runGit(root, [
-        "show",
-        "--format=",
-        "--no-ext-diff",
-        "--no-textconv",
-        "-U3",
-        sha,
-        ...(relative ? ["--", relative] : []),
-      ]);
-      raw = stdout.toString("utf8");
+      const result = await runGit(
+        root,
+        [
+          "show",
+          "--format=",
+          "--no-ext-diff",
+          "--no-textconv",
+          "-U3",
+          sha,
+          ...(relative ? ["--", relative] : []),
+        ],
+        truncatable,
+      );
+      raw = result.stdout.toString("utf8");
+      cutByGit = result.truncated;
     } catch (error) {
       // merge commit 没有自带 patch（combined diff 被 --format= 吃掉）：退回对比第一父
-      const { stdout } = await runGit(root, [
-        "diff",
-        "--no-ext-diff",
-        "--no-textconv",
-        "-U3",
-        `${sha}^1`,
-        sha,
-        ...(relative ? ["--", relative] : []),
-      ]).catch(() => {
+      const result = await runGit(
+        root,
+        [
+          "diff",
+          "--no-ext-diff",
+          "--no-textconv",
+          "-U3",
+          `${sha}^1`,
+          sha,
+          ...(relative ? ["--", relative] : []),
+        ],
+        truncatable,
+      ).catch(() => {
         throw error;
       });
-      raw = stdout.toString("utf8");
+      raw = result.stdout.toString("utf8");
+      cutByGit = result.truncated;
     }
   } else {
     const args = ["diff", "--no-ext-diff", "--no-textconv", "-U3"];
     if (scope === "index") args.push("--cached");
     if (relative) args.push("--", relative);
-    const { stdout } = await runGit(root, args);
-    raw = stdout.toString("utf8");
+    const result = await runGit(root, args, {
+      truncateStdout: true,
+      maxStdoutBytes: MAX_TRUNCATABLE_STDOUT_BYTES,
+    });
+    raw = result.stdout.toString("utf8");
+    cutByGit = result.truncated;
 
     // untracked：git diff 看不到，读文件合成 patch。
     // 必须先确认它**确实**没被跟踪 —— 干净文件同样没有 diff，
@@ -767,8 +827,8 @@ export async function getDiff(
 
   const binary = raw.includes("Binary files ") || raw.includes("GIT binary patch");
   const counts = countPatchLines(raw);
-  const { patch, truncated } = truncatePatch(raw);
-  return { patch, binary, truncated, ...counts };
+  const cut = truncatePatch(raw);
+  return { patch: cut.patch, binary, truncated: cut.truncated || cutByGit, ...counts };
 }
 
 export async function listBranches(workspace: string): Promise<{ current?: string; detached: boolean; branches: GitBranch[] }> {
@@ -862,7 +922,14 @@ export async function listLog(
 export async function showCommit(
   workspace: string,
   sha: string,
-): Promise<{ commit: GitCommit; files: GitFileEntry[]; patch: string; truncated: boolean }> {
+): Promise<{
+  commit: GitCommit;
+  files: GitFileEntry[];
+  /** 该提交涉及的文件总数（files 可能被 MAX_COMMIT_FILES 截断） */
+  fileCount: number;
+  patch: string;
+  truncated: boolean;
+}> {
   const root = await resolveRoot(workspace);
   const revision = sha.trim();
   if (!REVISION_PATTERN.test(revision)) {
@@ -899,7 +966,13 @@ export async function showCommit(
   }
 
   const diff = await getDiff(workspace, { scope: "commit", sha: revision });
-  return { commit, files, patch: diff.patch, truncated: diff.truncated };
+  return {
+    commit,
+    files: files.slice(0, MAX_COMMIT_FILES),
+    fileCount: files.length,
+    patch: diff.patch,
+    truncated: diff.truncated,
+  };
 }
 
 // ---- 写操作 ----
@@ -1135,7 +1208,11 @@ export async function collectCommitContext(workspace: string): Promise<{
       stdout: Buffer.alloc(0),
       stderr: "",
     })),
-    runGit(root, ["diff", "--cached", "-U1", "--no-ext-diff", "--no-textconv"]).catch(() => ({
+    runGit(root, ["diff", "--cached", "-U1", "--no-ext-diff", "--no-textconv"], {
+      // 生成 commit message 只需要开头部分：直接按 256KB 截断，别把几十 MB 读进内存
+      truncateStdout: true,
+      maxStdoutBytes: 256 * 1024,
+    }).catch(() => ({
       stdout: Buffer.alloc(0),
       stderr: "",
     })),

@@ -321,6 +321,53 @@ describeGit("git service integration", () => {
     expect(Date.now() - started).toBeLessThan(30_000);
   });
 
+  slow("truncates an oversized commit patch instead of failing", async () => {
+    const root = await makeRepo();
+    dirs.push(root);
+    // 2MB 文本：git show 输出远超 512KB 补丁上限
+    await writeFile(path.join(root, "big.txt"), `${"x".repeat(120)}\n`.repeat(20_000));
+    const service = createGitService({ workspace: root });
+    await service.stage(["big.txt"]);
+    const created = await service.commit("chore: add big file");
+
+    const diff = await service.diff({ scope: "commit", sha: created.sha });
+    expect(diff.truncated).toBe(true);
+    expect(diff.patch.length).toBeGreaterThan(1_000);
+    expect(diff.patch).toContain("[patch truncated at 512KB]");
+
+    // 执行器层面：可截断读取返回部分结果，不可截断的命令明确报错
+    const partial = await runGit(root, ["show", "--format=", created.sha], {
+      truncateStdout: true,
+      maxStdoutBytes: 1_024,
+    });
+    expect(partial.truncated).toBe(true);
+    expect(partial.stdout.length).toBe(1_024);
+    await expect(
+      runGit(root, ["show", "--format=", created.sha], { maxStdoutBytes: 1_024 }),
+    ).rejects.toThrow(/more than 1KB of output/);
+
+    // 提交详情：文件列表有上限，总数照实返回
+    const shown = await service.showCommit(created.sha);
+    expect(shown.fileCount).toBe(1);
+    expect(shown.files).toHaveLength(1);
+  });
+
+  slow("caps the file list of a huge commit", async () => {
+    const root = await makeRepo();
+    dirs.push(root);
+    for (let index = 0; index < 505; index += 1) {
+      await writeFile(path.join(root, `f${index}.txt`), `${index}\n`);
+    }
+    const service = createGitService({ workspace: root });
+    await service.stage(["f0.txt"]);
+    // 逐个 stage 太慢，直接全量 add
+    await runGit(root, ["add", "-A"]);
+    const created = await service.commit("chore: many files");
+    const shown = await service.showCommit(created.sha);
+    expect(shown.fileCount).toBe(505);
+    expect(shown.files).toHaveLength(500);
+  });
+
   slow("explains push without an origin remote instead of failing vaguely", async () => {
     const root = await makeRepo();
     dirs.push(root);
