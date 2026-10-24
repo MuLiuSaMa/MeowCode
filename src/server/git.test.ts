@@ -233,6 +233,10 @@ describeGit("git service integration", () => {
     expect(log.commits[0].subject).toBe("feat: add app");
     expect(log.commits[0].sha).toBe(created.sha);
 
+    // 干净文件没有 diff：不能凭空合成「新文件」补丁（刚提交完，工作区与 HEAD 一致）
+    const cleanDiff = await service.diff({ path: "src/app.ts" });
+    expect(cleanDiff.patch).toBe("");
+
     // 修改文件后 diff 走普通 patch
     await writeFile(path.join(root, "src", "app.ts"), "export const a = 2;\n");
     const modified = await service.status();

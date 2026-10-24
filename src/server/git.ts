@@ -723,8 +723,17 @@ export async function getDiff(
     const { stdout } = await runGit(root, args);
     raw = stdout.toString("utf8");
 
-    // untracked：git diff 看不到，读文件合成 patch
-    if (relative && scope === "worktree" && !raw.trim()) {
+    // untracked：git diff 看不到，读文件合成 patch。
+    // 必须先确认它**确实**没被跟踪 —— 干净文件同样没有 diff，
+    // 直接合成会凭空造出一个「新文件」补丁。
+    const untracked =
+      relative && scope === "worktree" && !raw.trim()
+        ? !(await runGit(root, ["ls-files", "--error-unmatch", "--", relative]).then(
+            () => true,
+            () => false,
+          ))
+        : false;
+    if (relative && scope === "worktree" && untracked) {
       const absolute = path.resolve(root, relative);
       const info = await fs.stat(absolute).catch(() => null);
       if (info?.isFile()) {
