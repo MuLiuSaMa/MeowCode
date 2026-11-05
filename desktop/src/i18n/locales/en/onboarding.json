@@ -1,0 +1,57 @@
+{
+  "actions": {
+    "back": "Back",
+    "next": "Continue",
+    "skip": "Skip",
+    "later": "Set up later",
+    "connect": "Connect",
+    "connecting": "Connecting…",
+    "start": "Get started",
+    "finishing": "Finishing…",
+    "close": "Close onboarding"
+  },
+  "language": {
+    "title": "Choose language",
+    "label": "Language",
+    "previewLabel": "Language preview",
+    "previewText": "Hello, welcome to MeowCode.",
+    "systemMeta": "Follow system · currently {{language}}",
+    "selectedMeta": "Interface language · {{language}}"
+  },
+  "theme": {
+    "title": "Choose theme",
+    "desc": "Applies immediately. You can change it anytime in Settings → Appearance.",
+    "options": {
+      "system": {
+        "label": "System",
+        "desc": "Matches the Windows light / dark setting in real time"
+      },
+      "light": {
+        "label": "Light",
+        "desc": "Always use the light interface"
+      },
+      "dark": {
+        "label": "Dark",
+        "desc": "Always use the dark interface"
+      }
+    }
+  },
+  "provider": {
+    "title": "Choose an AI provider",
+    "searchLabel": "Search providers",
+    "searchPlaceholder": "Search by name or id, for example deepseek",
+    "empty": "No provider matches — try “Custom provider”",
+    "customName": "Custom provider",
+    "customMeta": "Enter the endpoint and key by hand",
+    "needsEndpoint": "Endpoint required"
+  },
+  "connect": {
+    "title": "Connect AI provider",
+    "saveFailed": "Connection failed. Check your settings and try again."
+  },
+  "finish": {
+    "title": "You’re all set",
+    "desc": "Setup is complete. You can start using MeowCode now.",
+    "noProvider": "No model configured yet — you can add one later in Settings → Models."
+  }
+}

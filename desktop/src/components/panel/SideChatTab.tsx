@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { LuPlus } from "react-icons/lu";
 import {
   api,
@@ -30,7 +31,7 @@ function nextSideKey(prefix: string): string {
 }
 
 /**
- * 侧边聊天页签：与主聊天完全同款——相同的消息卡片（思考/工具/错误）、PlanCard、
+ * 侧边聊天页签：与主聊天完全同款——相同的消息卡片（思考/工具/错误）、计划悬浮胶囊、
  * 压缩横幅、完整 Composer（模型选择、思考档位、权限、上下文占用与压缩）。
  * 会话跑在服务端独立 runtime 上（/side/*），事件按自己的 sessionId 过滤。
  */
@@ -40,6 +41,7 @@ export function SideChatTab({
   providers,
   activeProviderId,
   onManageModels,
+  onOpenFile,
 }: {
   active: boolean;
   cwd?: string;
@@ -48,7 +50,10 @@ export function SideChatTab({
   activeProviderId: string;
   /** 打开 设置 → 模型（模型弹层底部「管理模型」） */
   onManageModels: () => void;
+  /** read_file 工具行点击 → 右侧「文件」页签打开 */
+  onOpenFile?: (path: string) => void;
 }) {
+  const { t } = useTranslation("panel");
   const [sideId, setSideId] = useState<string | null>(null);
   const [providerId, setProviderId] = useState("");
   const [sideEffort, setSideEffort] = useState("");
@@ -79,7 +84,7 @@ export function SideChatTab({
     tool: string;
     input: unknown;
     diff?: string;
-    risk?: { level: "high"; reasons: string[] };
+    risk?: { level: "medium" | "high"; categories?: string[]; reasons: string[] };
   } | null>(null);
   const ensuringRef = useRef(false);
   const cwdRef = useRef(cwd);
@@ -228,7 +233,7 @@ export function SideChatTab({
           loadedTimeline.push({
             kind: "notice",
             key: nextSideKey("notice"),
-            message: "上次生成被应用退出中断；已保留已生成的内容，可以继续对话。",
+            message: t("sidechat.interruptedNotice"),
           });
         }
         if (isCompacting) {
@@ -254,7 +259,7 @@ export function SideChatTab({
         ensuringRef.current = false;
       }
     })();
-  }, [active, sideId, refreshContext]);
+  }, [active, sideId, refreshContext, t]);
 
   // providerId 变化时同步思考档位（侧边改动只在本地，不写入全局设置）
   useEffect(() => {
@@ -531,8 +536,12 @@ export function SideChatTab({
   const confirmPlan = useCallback(async () => {
     const docPath = planDocPath;
     await changeChatMode("default");
-    await send(docPath ? `计划已确认，请按 ${docPath} 开始实施。` : "计划已确认，请开始实施。");
-  }, [changeChatMode, planDocPath, send]);
+    await send(
+      docPath
+        ? t("sidechat.planConfirmedWithPath", { path: docPath })
+        : t("sidechat.planConfirmed"),
+    );
+  }, [changeChatMode, planDocPath, send, t]);
 
   const changeActiveProvider = useCallback(
     async (nextId: string) => {
@@ -620,11 +629,16 @@ export function SideChatTab({
     <div className="mc-sidechat">
       <div className="mc-sidechat__head">
         <span className="mc-sidechat__state mc-truncate">
-          {failure ?? (streaming ? "生成中…" : sideId ? "独立会话 · 与主对话并行" : "初始化…")}
+          {failure ??
+            (streaming
+              ? t("sidechat.generating")
+              : sideId
+                ? t("sidechat.standalone")
+                : t("sidechat.initializing"))}
         </span>
         <button type="button" className="mc-sidechat__newbtn" disabled={busy} onClick={() => void newSession()}>
           <LuPlus size={13} />
-          新会话
+          {t("sidechat.newSession")}
         </button>
       </div>
 
@@ -636,10 +650,11 @@ export function SideChatTab({
         onCompact={manualCompact}
         onDismiss={() => setContextWarningDismissed(true)}
       />
-      <MessageList items={timeline} canUse={Boolean(sideId)} waiting={waiting} />
+      <MessageList items={timeline} canUse={Boolean(sideId)} waiting={waiting} onOpenFile={onOpenFile} />
       <Composer
         value={input}
         onChange={setInput}
+        polishTarget="side"
         onSend={(images, overrideText) => void send(overrideText, undefined, images)}
         onError={pushError}
         onStop={stop}
@@ -665,7 +680,7 @@ export function SideChatTab({
         activeProviderId={providerId}
         onChangeActiveProvider={(id) => void changeActiveProvider(id)}
         onManageModels={onManageModels}
-        model={sideProvider?.displayName || sideProvider?.model || "未配置模型"}
+        model={sideProvider?.displayName || sideProvider?.model || t("sidechat.noModel")}
         effort={sideEffort}
         onChangeEffort={(value) => void changeEffort(value)}
         permissionMode={permissionMode}

@@ -1,0 +1,186 @@
+{
+  "nav": {
+    "heading": "Agent アーキテクチャ",
+    "agentListAria": "Agent リスト",
+    "mainAgentGroup": "メインエージェント",
+    "subagentGroup": "サブエージェント · {{name}}",
+    "subagentCount_one": "サブエージェント {{count}} 件 · {{tagline}}",
+    "subagentCount_other": "サブエージェント {{count}} 件 · {{tagline}}",
+    "subagentCount_few": "サブエージェント {{count}} 件 · {{tagline}}",
+    "subagentCount_many": "サブエージェント {{count}} 件 · {{tagline}}",
+    "addArchitecture": "カスタム Agent アーキテクチャを作成",
+    "renameHint": "名称をダブルクリックすると変更できます",
+    "deleteAria": "「{{name}}」を削除",
+    "currentBadge": "現在",
+    "profileDisabledBadge": "このプロファイルでは無効",
+    "readOnlyBadge": "読み取り専用",
+    "customTagline": "カスタムアーキテクチャ",
+    "loading": "Agent を読み込んでいます…",
+    "emptySubagents": "この Agent にはサブエージェントが含まれていません"
+  },
+  "roles": {
+    "general": "汎用",
+    "explore": "探索",
+    "planner": "計画",
+    "scoper": "範囲策定",
+    "depthProber": "深掘り",
+    "implementer": "実装",
+    "reviewer": "レビュー",
+    "verifier": "検証",
+    "freshVerifier": "独立再検証",
+    "juror": "最終判定",
+    "sweeper": "収束清掃",
+    "goalChecker": "目標照合",
+    "custom": "カスタム"
+  },
+  "types": {
+    "agent": "Agent",
+    "tier": "階層",
+    "gate": "ゲート",
+    "role": "サブエージェント"
+  },
+  "nodeCard": {
+    "agent": "メインエージェント",
+    "role": "サブエージェント",
+    "gate": "ゲート",
+    "tier": "階層",
+    "tierPassThrough": "階層 · パススルー",
+    "agentTip": "メインエージェントはルート runtime で、task によりサブエージェントをディスパッチします",
+    "roleTip": "サブエージェントは task ディスパッチ時にインスタンス化されます",
+    "gateTip": "ゲートはチェックポイントで、gate→role の辺がクローズ役のサブエージェントを指定します",
+    "tierTip": "タスク階層。admit 以降にどのゲートを回すかを決定します",
+    "terminalTierTip": "この階層にはゲートがありません。admit 後すぐに完了します"
+  },
+  "edge": {
+    "closeOut": "クローズ"
+  },
+  "select": {
+    "placeholder": "選択してください"
+  },
+  "defaults": {
+    "standardAgent": "標準 Agent",
+    "mainAgent": "メインエージェント",
+    "newTier": "新しい階層",
+    "newGate": "新しいゲート",
+    "customRoleDescription": "カスタムサブエージェント：ツールの許可リストとシステムプロンプトはこのノードのプロパティパネルで上書きします"
+  },
+  "status": {
+    "loading": "読み込み中…",
+    "saving": "保存中…",
+    "saved": "保存しました — ガバナンス run は次の admit 前に新しい図を読み込みます",
+    "reset": "組み込みアーキテクチャに戻しました — 保存すると有効になります",
+    "connectTarget": "接続モード：対象ノードをクリックしてください",
+    "connectPickNode": "ノードを選択してから「接続」をクリックしてください",
+    "dirty": "保存していない変更があります"
+  },
+  "toolbar": {
+    "addTier": "階層",
+    "addGate": "ゲート",
+    "addRole": "サブエージェント",
+    "connect": "接続",
+    "cancelConnect": "接続を中止",
+    "connectTip": "開始ノードをクリックし、次に終了ノードをクリックして接続します",
+    "delete": "削除",
+    "deleteTip": "選択中のノードまたは接続を削除します（ノードを削除すると接続されている辺も削除されます）",
+    "fit": "キャンバスに合わせる",
+    "fitTip": "アーキテクチャ図全体を中央に表示サイズで収めます",
+    "reset": "組み込みに戻す",
+    "save": "ワークスペースに保存"
+  },
+  "canvas": {
+    "loading": "アーキテクチャ図を読み込んでいます…",
+    "legend": "ノードをドラッグ · 何もないところをドラッグで平行移動 · ホイールで拡大縮小 | メインエージェント→サブエージェント = task ディスパッチ、メインエージェント→階層 = admit | tier→gate の番号 = ゲートの順序、gate→role = クローズ"
+  },
+  "inspector": {
+    "ariaLabel": "ノードのプロパティ",
+    "close": "プロパティパネルを閉じる",
+    "edge": "接続",
+    "agentSubtitle": "メインエージェント · {{id}}",
+    "tierSubtitle": "タスク階層 · {{id}}",
+    "gateSubtitle": "品質ゲート · {{id}}",
+    "roleSubtitle": "サブエージェント · {{role}}",
+    "roleSubtitleNumbered": "サブエージェント · {{role}} #{{ordinal}}",
+    "edgeSubtitle": "接続 · {{type}}",
+    "deleteNode": "ノードを削除",
+    "deleteEdge": "接続を削除"
+  },
+  "fields": {
+    "nodeName": "ノード名",
+    "nodeId": "ノード ID",
+    "description": "責務",
+    "availableTools": "利用可能なツール",
+    "selectAll": "すべて選択",
+    "clearAll": "すべて解除",
+    "restoreDefault": "既定に戻す",
+    "restoreBuiltin": "組み込みに戻す",
+    "systemPrompt": "システムプロンプト",
+    "agentPromptPlaceholder": "空欄 = 現在のプロファイルの既定プロンプトを使用",
+    "dispatch": "ディスパッチ先",
+    "dispatchHint": "接続側で変更します",
+    "roleType": "サブエージェント識別子",
+    "displayName": "表示名",
+    "roleDescription": "サブエージェントの責務の概要",
+    "gateBindings": "ゲートの割り当て",
+    "gateBindingsHint": "クリックで割り当て変更",
+    "rolePromptPlaceholder": "空欄の場合は組み込みプロンプトを使用",
+    "gateName": "品質ゲート名",
+    "invariant": "判定不変条件 / 受け入れ基準",
+    "onFail": "失敗時の戦略",
+    "closer": "クローズ役のサブエージェント",
+    "tierName": "階層名",
+    "tierId": "階層 ID（T0 / T1 / T2 のみが admit に認識されます）",
+    "tierDescription": "階層の説明",
+    "tierPrompt": "階層プロンプト（admit 時に注入、任意）",
+    "tierPromptPlaceholder": "空欄 = 注入しない。入力すると admit レポートとともにメインエージェントへ一度送られます",
+    "gateSequence": "ゲート順序",
+    "gateSequenceHint": "クリックで追加／削除",
+    "edgePath": "経路",
+    "edgeType": "種類",
+    "order": "order（同じ階層内で昇順に実行）"
+  },
+  "tools": {
+    "none": "ツールなし",
+    "allIncludingDynamic": "すべてのツール。MCP / ブラウザの動的ツールも含みます",
+    "selectedCount_one": "{{count}} 件選択中",
+    "selectedCount_other": "{{count}} 件選択中",
+    "selectedCount_few": "{{count}} 件選択中",
+    "selectedCount_many": "{{count}} 件選択中",
+    "selectedFull": "すべてのツールを選択中",
+    "followProfile": "現在のプロファイルに追随",
+    "inheritedNote": "上書きしていない場合は追加制限はなく、プロファイルが決定します",
+    "orchestrationNote": "task / admit はオーケストレーション用のチャネルで、常に利用できます",
+    "explicitWhitelistNote": "明示的な許可リストには、実行時に注入される MCP / ブラウザツールは含まれません"
+  },
+  "registry": {
+    "unavailable": "レジストリを利用できません",
+    "loading": "レジストリを読み込んでいます…",
+    "unavailableRetry": "レジストリを利用できません — アプリを再起動するか上の再試行を押してください",
+    "loadFailed": "サブエージェントのレジストリを読み込めませんでした",
+    "loadFailedHint": "デスクトップ版が古いサーバービルドのまま実行されている可能性があります。アプリを再起動して再試行してください。",
+    "retry": "再試行"
+  },
+  "onFail": {
+    "rework": "やり直し（最初のゲートに戻ります）",
+    "loopTo": "loop-to:{{id}}（{{id}} に戻ります）",
+    "block": "block（lane を直接ブロックします）"
+  },
+  "closer": {
+    "unbound": "割り当てなし（admit が拒否します）"
+  },
+  "empty": {
+    "dispatchEdges": "ディスパッチの接続はまだありません",
+    "gateNodes": "図にゲートノードがまだありません"
+  },
+  "tier": {
+    "executionOrder": "実行順序：{{gates}}。順序は接続の order で変更します。",
+    "passThrough": "ゲートなし · パススルー（admit 後にすぐ完了）"
+  },
+  "notes": {
+    "agentPrompt": "入力欄には現在のプロファイルの既定プロンプトがプリフィルされています。編集後に保存すれば有効です。カスタム内容はプロファイルのプロンプトを<strong>丸ごと置き換えます</strong>ので、ツールの使い方やパスの規則などの基本取り決めは残してください。",
+    "agentRoot": "メインエージェントは常駐するルート runtime で、ゲートには関与しません。クローズ役のサブエージェントは tier→gate→role の連鎖でクローズします。サブエージェントはこれ以上ディスパッチできません。",
+    "rolePrompt": "空欄の場合は組み込みプロンプトにフォールバックします。読み取り専用のサブエージェントの承認モードは引き続きレジストリが強制します。クローズ役のサブエージェントは JSON の結果契約を保持してください。保持しないと ChildResult の検証が失敗します。",
+    "gateBinding": "1 つのゲートに割り当てられるクローズ役のサブエージェントは 1 つだけです。割り当て済みをクリックすると解除されます。",
+    "gateEvidence": "証拠はホストが実測します。implementer はファイルの変更、reviewer は critical findings、verifier はコマンドの終了コードを見ます。他のサブエージェントに割り当てた場合は completed + valid のみ検証します。ゲートはモデル自身の申告を信用しません。",
+    "edgeSemantics": "tier→gate の辺がゲートの順序を、gate→role の辺がクローズ役のサブエージェントを決めます。それ以外の接続は説明目的だけです。"
+  }
+}

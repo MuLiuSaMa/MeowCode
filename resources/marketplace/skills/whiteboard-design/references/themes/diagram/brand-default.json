@@ -1,0 +1,110 @@
+{
+  "id": "brand-default",
+  "version": 5,
+  "tags": ["default", "generic", "flow", "architecture", "intent", "prompt"],
+  "document": {
+    "background": "{bg.bg-base-secondary}",
+    "text": "{text.text-default}",
+    "mutedText": "{text.text-secondary}",
+    "connector": "{brand.brand grey.500}",
+    "primaryConnector": "{brand.brand purple.600}"
+  },
+  "node": {
+    "neutral": {
+      "fill": "{bg.bg-base-default}",
+      "stroke": "{border.border-neutral-l3}",
+      "text": "{text.text-default}"
+    },
+    "primary": {
+      "fill": "{brand.brand purple.600}",
+      "stroke": "{brand.brand purple.600}",
+      "text": "{text.text-onaccent}"
+    },
+    "emphasis": {
+      "fill": "{brand.brand purple.100}",
+      "stroke": "{brand.brand purple.600}",
+      "text": "{text.text-default}"
+    },
+    "secondary": {
+      "fill": "{bg.bg-card}",
+      "stroke": "{border.border-neutral-l2}",
+      "text": "{text.text-default}"
+    }
+  },
+  "style": {
+    "shape": {
+      "roughness": 0,
+      "strokeWidth": 1,
+      "strokeStyle": "solid",
+      "fillStyle": "solid",
+      "opacity": 100,
+      "roundness": {"type": 3}
+    },
+    "text": {
+      "fontFamily": "helvetica",
+      "fontFamilyAliases": [2, "2"],
+      "codeFontFamily": "cascadia",
+      "codeFontFamilyAliases": [3, "3"],
+      "fontSize": 16,
+      "groupTitleFontSize": 20,
+      "titleFontSize": 28
+    },
+    "arrow": {
+      "roughness": 0,
+      "strokeWidth": 1,
+      "strokeStyle": "solid",
+      "opacity": 100,
+      "route": "straight",
+      "startArrowhead": null,
+      "endArrowhead": "triangle",
+      "roundness": null,
+      "elbowed": false
+    },
+    "allowed": {
+      "strokeWidths": [1, 2],
+      "strokeStyles": ["solid", "dashed"],
+      "rectangleRoundnessTypes": [null, 3],
+      "arrowRoutes": ["straight", "elbowed", "curved"],
+      "arrowheads": [null, "triangle"]
+    }
+  },
+  "data": {
+    "other": "{viz.viz-series-slate}",
+    "accents": ["{viz.viz-series-violet}"],
+    "labelRoles": [
+      {
+        "fill": "{viz.viz-series-sky}",
+        "text": "{text.text-default}"
+      },
+      {
+        "fill": "{viz.viz-series-mint}",
+        "text": "{text.text-default}"
+      },
+      {
+        "fill": "{viz.viz-series-coral}",
+        "text": "{text.text-default}"
+      },
+      {
+        "fill": "{viz.viz-series-amber}",
+        "text": "{text.text-default}"
+      },
+      {
+        "fill": "{viz.viz-series-slate}",
+        "text": "{text.text-default}"
+      },
+      {
+        "fill": "{viz.viz-series-violet}",
+        "text": "{text.text-default}"
+      }
+    ]
+  },
+  "semantic": {},
+  "series": [
+    "{viz.viz-series-sky}",
+    "{viz.viz-series-mint}",
+    "{viz.viz-series-coral}",
+    "{viz.viz-series-amber}",
+    "{viz.viz-series-slate}",
+    "{viz.viz-series-violet}"
+  ]
+}

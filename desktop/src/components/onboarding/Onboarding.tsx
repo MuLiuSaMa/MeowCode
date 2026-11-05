@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import {
   LuArrowLeft,
   LuArrowRight,
@@ -24,18 +25,14 @@ import {
   PROVIDER_CATALOG,
   type ProviderTemplate,
 } from "../../data/providerCatalog";
+import { currentLanguage } from "../../i18n";
+import { UI_LANGUAGES } from "../../i18n/languages";
 import { Button } from "../ui/Button";
-import { CustomSelect } from "../ui/CustomSelect";
 import { TextField } from "../ui/TextField";
 import { ProviderIcon } from "../ui/ProviderIcon";
-import { ModelFormFields } from "../settings/ModelFormFields";
-import { buildProvider } from "../settings/modelForm";
-import {
-  LANGUAGE_OPTIONS,
-  ONBOARDING_COPY,
-  resolveOnboardingLocale,
-  type OnboardingStep,
-} from "./copy";
+import { ProviderFormBody, useProviderForm } from "../settings/ProviderFormBody";
+import { providerLabel } from "../settings/modelForm";
+import type { OnboardingStep } from "./copy";
 import "./Onboarding.css";
 
 const THEME_ORDER: ThemePreference[] = ["system", "light", "dark"];
@@ -51,17 +48,24 @@ const STEP_ICONS: Record<OnboardingStep, typeof LuMonitor> = {
   connect: LuPlug,
   finish: LuRocket,
 };
+/** 表里只存 key：标题在组件内查表，切语言才会跟着刷新。 */
+const STEP_TITLE_KEYS: Record<OnboardingStep, string> = {
+  language: "language.title",
+  theme: "theme.title",
+  provider: "provider.title",
+  connect: "connect.title",
+  finish: "finish.title",
+};
 
-function emptyProvider(): ProviderSettings {
-  return {
-    id: "",
-    name: "",
-    baseUrl: "",
-    model: "",
-    inputModalities: ["text"],
-    enabled: true,
-  };
-}
+/** 未选服务商时占位：connect 步骤不渲染，只是保证 hook 调用顺序稳定 */
+const EMPTY_DRAFT: ProviderSettings = {
+  id: "",
+  name: "",
+  baseUrl: "",
+  model: "",
+  inputModalities: ["text"],
+  enabled: true,
+};
 
 export type OnboardingProps = {
   initialLanguage: LanguagePreference;
@@ -71,7 +75,7 @@ export type OnboardingProps = {
   replay: boolean;
   onSaveLanguage: (value: LanguagePreference) => void;
   onSaveTheme: (value: ThemePreference) => void;
-  onSaveProvider: (provider: ProviderSettings) => Promise<boolean>;
+  onSaveProviders: (entries: ProviderSettings[]) => Promise<boolean>;
   onFinish: () => Promise<void>;
   onClose: () => void;
 };
@@ -87,7 +91,7 @@ export function Onboarding({
   replay,
   onSaveLanguage,
   onSaveTheme,
-  onSaveProvider,
+  onSaveProviders,
   onFinish,
   onClose,
 }: OnboardingProps) {
@@ -96,27 +100,40 @@ export function Onboarding({
   const [theme, setTheme] = useState<ThemePreference>(initialTheme);
   const [template, setTemplate] = useState<ProviderTemplate | null>(null);
   const [query, setQuery] = useState("");
-  const [form, setForm] = useState<ProviderSettings>(emptyProvider);
-  const [contextInput, setContextInput] = useState("");
-  const [maxInput, setMaxInput] = useState("");
+  const [draft, setDraft] = useState<ProviderSettings | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [finishing, setFinishing] = useState(false);
   const [providerSaved, setProviderSaved] = useState(false);
 
-  const copy = ONBOARDING_COPY[resolveOnboardingLocale(language)];
+  const { t } = useTranslation("onboarding");
   const StepIcon = STEP_ICONS[step];
+  const title = t(STEP_TITLE_KEYS[step]);
 
-  const title =
-    step === "language"
-      ? copy.language.title
-      : step === "theme"
-        ? copy.theme.title
-        : step === "provider"
-          ? copy.provider.title
-          : step === "connect"
-            ? copy.connect.title
-            : copy.finish.title;
+  /** 与设置页共用同一份表单逻辑：多模型行、勾选、行内上下文、获取模型列表 */
+  const form = useProviderForm({
+    draft: draft ?? EMPTY_DRAFT,
+    existingLabels: providers.map(providerLabel),
+    onSave: (entries) => {
+      if (saving) return;
+      setSaving(true);
+      setError(null);
+      void onSaveProviders(entries).then((ok) => {
+        setSaving(false);
+        if (!ok) {
+          setError(t("connect.saveFailed"));
+          return;
+        }
+        setProviderSaved(true);
+        setStep("finish");
+      });
+    },
+  });
+
+  // 语言名用各自母语写法、不参与翻译：翻成当前界面语言反而认不出自己要切去哪
+  const activeLanguage = language === "system" ? currentLanguage() : language;
+  const activeLanguageName =
+    UI_LANGUAGES.find((item) => item.code === activeLanguage)?.nativeName ?? activeLanguage;
 
   const filteredProviders = useMemo(() => {
     const key = query.trim().toLowerCase();
@@ -126,13 +143,14 @@ export function Onboarding({
     );
   }, [query]);
 
+  const customName = t("provider.customName");
   const showCustom = useMemo(() => {
     const key = query.trim().toLowerCase();
-    return !key || "custom".includes(key) || "自定义".includes(query.trim());
-  }, [query]);
+    return !key || "custom".includes(key) || customName.toLowerCase().includes(key);
+  }, [query, customName]);
 
   const providerHost = (item: ProviderTemplate) => {
-    if (!item.baseUrl) return copy.provider.needsEndpoint;
+    if (!item.baseUrl) return t("provider.needsEndpoint");
     try {
       return new URL(item.baseUrl).host;
     } catch {
@@ -142,7 +160,7 @@ export function Onboarding({
 
   const pickTemplate = (next: ProviderTemplate) => {
     setTemplate(next);
-    setForm({
+    setDraft({
       id: `provider-${Date.now()}`,
       name: next.id === CUSTOM_TEMPLATE.id ? "" : next.name,
       baseUrl: next.baseUrl,
@@ -152,8 +170,6 @@ export function Onboarding({
       inputModalities: ["text"],
       enabled: true,
     });
-    setContextInput("");
-    setMaxInput("");
     setError(null);
   };
 
@@ -186,30 +202,6 @@ export function Onboarding({
     setStep("finish");
   };
 
-  const saveProvider = async () => {
-    if (!template || saving) return;
-    const result = buildProvider(
-      form,
-      contextInput,
-      maxInput,
-      providers.map((item) => item.model),
-    );
-    if (!result.ok) {
-      setError(result.error);
-      return;
-    }
-    setSaving(true);
-    setError(null);
-    const ok = await onSaveProvider(result.provider);
-    setSaving(false);
-    if (!ok) {
-      setError(copy.connect.saveFailed);
-      return;
-    }
-    setProviderSaved(true);
-    setStep("finish");
-  };
-
   const finish = async () => {
     if (finishing) return;
     setFinishing(true);
@@ -229,8 +221,8 @@ export function Onboarding({
           <button
             type="button"
             className="mc-onboarding__close"
-            aria-label={copy.actions.close}
-            title={copy.actions.close}
+            aria-label={t("actions.close")}
+            title={t("actions.close")}
             onClick={onClose}
           >
             <LuX size={16} />
@@ -239,7 +231,9 @@ export function Onboarding({
 
         <header className="mc-onboarding__stephead">
           <span className="mc-onboarding__stepicon" aria-hidden>
-            <StepIcon size={22} />
+            <span key={step} className="mc-onboarding__stepglyph">
+              <StepIcon size={22} />
+            </span>
           </span>
           <h2 className="mc-onboarding__title">{title}</h2>
         </header>
@@ -250,27 +244,53 @@ export function Onboarding({
           key={step}
         >
           {step === "language" ? (
-            <section className="mc-onboarding__panel mc-onboarding__panel--narrow">
+            <section className="mc-onboarding__panel mc-onboarding__panel--lang">
               <div className="mc-onboarding__langpreview">
-                <span className="mc-onboarding__langtag">{copy.language.previewLabel}</span>
-                <p className="mc-onboarding__langtext">{copy.language.previewText}</p>
+                <span className="mc-onboarding__langtag">{t("language.previewLabel")}</span>
+                <p className="mc-onboarding__langtext">{t("language.previewText")}</p>
                 <span className="mc-onboarding__langmeta">
-                  {language === "system" ? copy.language.systemMeta : copy.language.zhMeta}
+                  {t(language === "system" ? "language.systemMeta" : "language.selectedMeta", {
+                    language: activeLanguageName,
+                  })}
                 </span>
               </div>
-              <CustomSelect
-                ariaLabel={copy.language.label}
-                placement="top"
-                value={language}
-                options={LANGUAGE_OPTIONS}
-                onChange={(value) => chooseLanguage(value)}
-              />
+              <div className="mc-onboarding__langgrid" role="group" aria-label={t("language.label")}>
+                <button
+                  type="button"
+                  className="mc-onboarding__langcard"
+                  data-active={language === "system"}
+                  aria-pressed={language === "system"}
+                  onClick={() => chooseLanguage("system")}
+                >
+                  <LuMonitor size={16} className="mc-onboarding__langicon" />
+                  <span className="mc-onboarding__langname">{t("settings:language.system")}</span>
+                  {language === "system" ? (
+                    <LuCheck size={15} className="mc-onboarding__langcheck" />
+                  ) : null}
+                </button>
+                {UI_LANGUAGES.map((item) => {
+                  const active = language === item.code;
+                  return (
+                    <button
+                      key={item.code}
+                      type="button"
+                      className="mc-onboarding__langcard"
+                      data-active={active}
+                      aria-pressed={active}
+                      onClick={() => chooseLanguage(item.code)}
+                    >
+                      <span className="mc-onboarding__langname">{item.nativeName}</span>
+                      {active ? <LuCheck size={15} className="mc-onboarding__langcheck" /> : null}
+                    </button>
+                  );
+                })}
+              </div>
             </section>
           ) : null}
 
           {step === "theme" ? (
             <section className="mc-onboarding__panel">
-              <p className="mc-onboarding__desc">{copy.theme.desc}</p>
+              <p className="mc-onboarding__desc">{t("theme.desc")}</p>
               <div className="mc-onboarding__options">
                 {THEME_ORDER.map((value) => {
                   const Icon = THEME_ICONS[value];
@@ -303,11 +323,11 @@ export function Onboarding({
                           <Icon size={16} />
                         </span>
                         <span className="mc-onboarding__optionname">
-                          {copy.theme.options[value].label}
+                          {t(`theme.options.${value}.label`)}
                         </span>
                       </span>
                       <span className="mc-onboarding__optiondesc">
-                        {copy.theme.options[value].desc}
+                        {t(`theme.options.${value}.desc`)}
                       </span>
                     </button>
                   );
@@ -319,10 +339,10 @@ export function Onboarding({
           {step === "provider" ? (
             <section className="mc-onboarding__panel">
               <TextField
-                label={copy.provider.searchLabel}
+                label={t("provider.searchLabel")}
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
-                placeholder={copy.provider.searchPlaceholder}
+                placeholder={t("provider.searchPlaceholder")}
               />
               <div className="mc-onboarding__providers">
                 {showCustom ? (
@@ -336,10 +356,10 @@ export function Onboarding({
                     <ProviderIcon template={CUSTOM_TEMPLATE} size={24} />
                     <span className="mc-onboarding__providertext">
                       <span className="mc-onboarding__providername">
-                        {copy.provider.customName}
+                        {customName}
                       </span>
                       <span className="mc-onboarding__providermeta">
-                        {copy.provider.customMeta}
+                        {t("provider.customMeta")}
                       </span>
                     </span>
                     {template?.id === CUSTOM_TEMPLATE.id ? <LuCheck size={15} /> : null}
@@ -365,7 +385,7 @@ export function Onboarding({
                 {!filteredProviders.length && !showCustom ? (
                   <p className="mc-onboarding__empty">
                     <LuSearch size={14} />
-                    {copy.provider.empty}
+                    {t("provider.empty")}
                   </p>
                 ) : null}
               </div>
@@ -374,14 +394,7 @@ export function Onboarding({
 
           {step === "connect" && template ? (
             <section className="mc-onboarding__panel">
-              <ModelFormFields
-                form={form}
-                contextInput={contextInput}
-                maxInput={maxInput}
-                onChange={(patch) => setForm((prev) => ({ ...prev, ...patch }))}
-                onContextInputChange={setContextInput}
-                onMaxInputChange={setMaxInput}
-              />
+              <ProviderFormBody controller={form} />
               {error ? <p className="mc-modelform__error">{error}</p> : null}
             </section>
           ) : null}
@@ -391,9 +404,9 @@ export function Onboarding({
               <span className="mc-onboarding__success" aria-hidden>
                 <LuCheck size={30} />
               </span>
-              <p className="mc-onboarding__desc">{copy.finish.desc}</p>
+              <p className="mc-onboarding__desc">{t("finish.desc")}</p>
               {!providers.length && !providerSaved ? (
-                <p className="mc-onboarding__note">{copy.finish.noProvider}</p>
+                <p className="mc-onboarding__note">{t("finish.noProvider")}</p>
               ) : null}
             </section>
           ) : null}
@@ -408,19 +421,19 @@ export function Onboarding({
                 onClick={back}
                 disabled={saving || finishing}
               >
-                {copy.actions.back}
+                {t("actions.back")}
               </Button>
             ) : null}
           </div>
           <div className="mc-onboarding__footerright">
             {step === "provider" ? (
               <Button variant="ghost" onClick={skipProvider}>
-                {copy.actions.skip}
+                {t("actions.skip")}
               </Button>
             ) : null}
             {step === "connect" ? (
               <Button variant="ghost" onClick={() => setStep("finish")} disabled={saving}>
-                {copy.actions.later}
+                {t("actions.later")}
               </Button>
             ) : null}
             {step === "language" || step === "theme" || step === "provider" ? (
@@ -430,17 +443,17 @@ export function Onboarding({
                 onClick={next}
                 disabled={step === "provider" && !template}
               >
-                {copy.actions.next}
+                {t("actions.next")}
               </Button>
             ) : null}
             {step === "connect" ? (
-              <Button variant="primary" onClick={() => void saveProvider()} disabled={saving}>
-                {saving ? copy.actions.connecting : copy.actions.connect}
+              <Button variant="primary" onClick={form.submit} disabled={saving}>
+                {saving ? t("actions.connecting") : t("actions.connect")}
               </Button>
             ) : null}
             {step === "finish" ? (
               <Button variant="primary" onClick={() => void finish()} disabled={finishing}>
-                {finishing ? copy.actions.finishing : copy.actions.start}
+                {finishing ? t("actions.finishing") : t("actions.start")}
               </Button>
             ) : null}
           </div>

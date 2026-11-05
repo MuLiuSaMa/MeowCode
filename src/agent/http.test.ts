@@ -1,5 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { fetchWithRetry, isAbortError, isRetryableStatus, parseRetryAfter } from "./http";
+import {
+  buildAuthHeaders,
+  fetchWithRetry,
+  isAbortError,
+  isRetryableStatus,
+  mergeExtraHeaders,
+  parseRetryAfter,
+} from "./http";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -110,5 +117,43 @@ describe("retry helpers", () => {
     const parsed = parseRetryAfter(future);
     expect(parsed).toBeGreaterThan(0);
     expect(parsed).toBeLessThanOrEqual(5_000);
+  });
+});
+
+describe("buildAuthHeaders", () => {
+  it("缺省 authStyle 按 fallback：x-api-key（Anthropic 系）/ Bearer（OpenAI 系）", () => {
+    expect(buildAuthHeaders("sk-1", undefined, "x-api-key")).toEqual({ "x-api-key": "sk-1" });
+    expect(buildAuthHeaders("sk-1", undefined, "bearer")).toEqual({ authorization: "Bearer sk-1" });
+  });
+
+  it("各 authStyle 的头形态", () => {
+    expect(buildAuthHeaders("k", "bearer", "x-api-key")).toEqual({ authorization: "Bearer k" });
+    expect(buildAuthHeaders("k", "api-key", "bearer")).toEqual({ "api-key": "k" });
+    expect(buildAuthHeaders("k", "bedrock-api-key", "bearer")).toEqual({
+      authorization: "Bedrock-API-Key k",
+    });
+    expect(buildAuthHeaders("k", "none", "bearer")).toEqual({});
+  });
+
+  it("空 apiKey 一律不产头（服务商原生鉴权）", () => {
+    expect(buildAuthHeaders(undefined, undefined, "bearer")).toEqual({});
+    expect(buildAuthHeaders("", "api-key", "bearer")).toEqual({});
+  });
+});
+
+describe("mergeExtraHeaders", () => {
+  it("空 / 缺省原样返回", () => {
+    const base = { "content-type": "application/json" };
+    expect(mergeExtraHeaders(base, undefined)).toBe(base);
+    expect(mergeExtraHeaders(base, {})).toBe(base);
+  });
+
+  it("同名以 extra 为准（用户可覆盖内置头）", () => {
+    expect(
+      mergeExtraHeaders({ authorization: "Bearer old", "content-type": "application/json" }, {
+        authorization: "Bearer new",
+        "x-title": "MeowCode",
+      }),
+    ).toEqual({ authorization: "Bearer new", "content-type": "application/json", "x-title": "MeowCode" });
   });
 });

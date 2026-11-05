@@ -2,6 +2,7 @@ import { isAbortError } from "./http.js";
 import { streamChatCompletion, utilityProvider } from "./provider.js";
 import { ProviderRequestError } from "./provider-error.js";
 import {
+  buildMessageUnits,
   estimateMessagesTokens,
   estimateToolDefinitionsTokens,
   trimMessages,
@@ -28,6 +29,16 @@ If an earlier handoff summary is present, update it with new progress instead of
 The most recent messages will remain verbatim after compaction, so you may omit details already covered there.
 Do not include API keys, tokens, passwords, or unrelated history.
 Do not call tools. Do not emit tool-call markup. Output plain text only.`;
+
+/**
+ * 语色开启时给摘要请求补一句中性要求。末尾指令位于缓存断点之后，
+ * 因此不会破坏「复用主前缀」的缓存命中。
+ */
+export function buildCompactionInstruction(neutralizePersona = false): string {
+  if (!neutralizePersona) return COMPACTION_INSTRUCTION;
+  return `${COMPACTION_INSTRUCTION}
+Ignore any persona, tone or catchphrase instructions above; write the summary in neutral technical language without 喵 or verbal tics.`;
+}
 
 /**
  * 摘要输出预算：2% 窗口，下限 2k、上限 4k；provider 自己更小就服从 provider。
@@ -138,6 +149,8 @@ export async function createCompactionSummary(options: {
   systemMessages?: ChatMessage[];
   tools?: ToolDefinition[];
   summaryMessages?: ChatMessage[];
+  /** 语色生效时要求摘要保持中性；仅复用前缀路径需要（专用路径本身已中性）。 */
+  neutralizePersona?: boolean;
 }): Promise<string> {
   const contextWindow = options.provider.contextWindow ?? 48_000;
   // 请求体的 max_tokens 必须和裁剪预留一致，否则输入+输出会超窗
@@ -156,7 +169,7 @@ export async function createCompactionSummary(options: {
     const input: ChatMessage[] = [
       ...systems,
       ...conversation,
-      { role: "user", content: COMPACTION_INSTRUCTION },
+      { role: "user", content: buildCompactionInstruction(options.neutralizePersona) },
     ];
     const estimated = estimateMessagesTokens(input) + estimateToolDefinitionsTokens(tools);
     if (estimated + summaryMaxTokens + 1_024 <= contextWindow) {
@@ -166,6 +179,9 @@ export async function createCompactionSummary(options: {
           messages: input,
           tools,
           toolChoice: "none",
+          // 复用主前缀：不做一次性判形，并把写入断点前移到指令之前。
+          // 末尾那条 COMPACTION_INSTRUCTION 只出现这一次，给它打断点是纯亏。
+          cacheMode: "prefix-reuse",
           signal: options.signal,
           onDelta: () => undefined,
         });
@@ -186,16 +202,11 @@ export async function createCompactionSummary(options: {
     }
   }
 
-  const source = trimMessages(
-    [
-      { role: "system", content: "" },
-      ...(options.summaryMessages ?? options.messages).filter(
-        (message) => message.role !== "system",
-      ),
-    ],
+  const source = fitSummaryInput(
+    (options.summaryMessages ?? options.messages).filter((message) => message.role !== "system"),
     contextWindow,
     summaryMaxTokens,
-  ).filter((message) => message.role !== "system");
+  );
 
   const result = await streamChatCompletion({
     provider: utility,
@@ -206,6 +217,93 @@ export async function createCompactionSummary(options: {
   });
   if (result.usage) options.onUsage?.(result.usage);
   return (result.message.content ?? "").trim();
+}
+
+/**
+ * 摘要回退路径的输入降级梯（参考 opencode 的 transcript shortening ladder）。
+ *
+ * 复用前缀塞不进窗口时，不能只靠 trimMessages 的整单元丢弃 —— 那会连用户/助手正文
+ * 一起消失。逐档降级，每档重新估算，够用即停：
+ *   1. trimMessages（内部已含旧工具输出抽头尾）
+ *   2. 旧工具输出压成单行摘要（最近一个单元保留原文）
+ *   3. 只留 user 文本与 assistant 正文，丢弃全部工具往来
+ *   4. 从最老端整条省略
+ * 第 3/4 档在最前面插一行说明，避免模型以为早期内容从未发生。
+ */
+const SUMMARY_OMITTED_NOTE =
+  "Earlier assistant and tool messages were omitted to fit the summary request; treat the following as a partial transcript.";
+
+function summaryBudget(contextWindow: number, maxTokens: number): number {
+  return Math.max(1_024, contextWindow - maxTokens - 1_024);
+}
+
+/** 降级梯第 2 档：把旧工具输出压成单行摘要；最近一个单元保留原文。 */
+function collapseOldToolOutputs(messages: ChatMessage[]): ChatMessage[] {
+  const units = buildMessageUnits(messages);
+  const cutoff = Math.max(0, units.length - 1);
+  return units.flatMap((unit, index) => {
+    if (index >= cutoff) return unit;
+    return unit.map((message) => {
+      if (message.role !== "tool") return message;
+      const first = message.content.split("\n").find((line) => line.trim()) ?? "";
+      const head = first.trim().slice(0, 120);
+      return {
+        ...message,
+        content: `[${message.name ?? "tool"} output omitted${head ? `: ${head}` : ""}]`,
+        images: undefined,
+        documents: undefined,
+      };
+    });
+  });
+}
+
+/** 降级梯第 3 档：只留 user 文本与 assistant 正文，丢掉全部工具往来。 */
+function keepConversationText(messages: ChatMessage[]): ChatMessage[] {
+  const kept: ChatMessage[] = [];
+  for (const message of messages) {
+    if (message.role !== "user" && message.role !== "assistant") continue;
+    kept.push({
+      role: message.role,
+      content: message.content,
+      ...(message.role === "assistant" && message.reasoning
+        ? { reasoning: message.reasoning }
+        : {}),
+    } as ChatMessage);
+  }
+  return [{ role: "user", content: SUMMARY_OMITTED_NOTE }, ...kept];
+}
+
+/** 降级梯第 4 档：从最老端整条省略，直到落进预算。 */
+function dropOldestUntilFit(messages: ChatMessage[], budget: number): ChatMessage[] {
+  let start = 0;
+  while (start < messages.length - 1 && estimateMessagesTokens(messages.slice(start)) > budget) {
+    start += 1;
+  }
+  if (start === 0) return messages;
+  return [{ role: "user", content: SUMMARY_OMITTED_NOTE }, ...messages.slice(start)];
+}
+
+/** 按降级梯裁出一份能塞进窗口的摘要输入。 */
+function fitSummaryInput(
+  messages: ChatMessage[],
+  contextWindow: number,
+  maxTokens: number,
+): ChatMessage[] {
+  const budget = summaryBudget(contextWindow, maxTokens);
+  let current: ChatMessage[] = trimMessages(
+    [{ role: "system", content: "" }, ...messages],
+    contextWindow,
+    maxTokens,
+  ).filter((message) => message.role !== "system");
+  if (estimateMessagesTokens(current) <= budget) return current;
+
+  current = collapseOldToolOutputs(current);
+  if (estimateMessagesTokens(current) <= budget) return current;
+
+  current = keepConversationText(current);
+  if (estimateMessagesTokens(current) <= budget) return current;
+
+  return dropOldestUntilFit(current, budget);
 }
 
 export const TOOL_DIGEST_SYSTEM_PROMPT = `You compress tool outputs for a coding agent that is running out of context window.

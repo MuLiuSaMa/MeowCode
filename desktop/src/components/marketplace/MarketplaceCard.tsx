@@ -1,5 +1,8 @@
 import { LuMessageSquare } from "react-icons/lu";
-import type { MarketplaceEntry } from "../../api";
+import { useTranslation } from "react-i18next";
+import { Badge } from "../ui/Badge";
+import type { MarketplaceEntryLike } from "../../api";
+import { categoryLabelKey } from "./marketplace-categories";
 import "./marketplace.css";
 
 /** 市场图标：有 dataUrl 用真图标，否则首字母色块兜底 */
@@ -19,6 +22,9 @@ export function MarketIcon({
     codex: "#f59e0b",
     metis: "#ec4899",
     builtin: "#64748b",
+    community: "#f97316",
+    clawhub: "#0ea5e9",
+    skillhub: "#22c55e",
   };
   if (iconUrl) {
     return (
@@ -42,6 +48,25 @@ export function MarketIcon({
   );
 }
 
+/** 社区/第三方条目徽标（卡片/行通用）；作者名与源名是标识符，不翻译 */
+export function CommunityBadge({ entry }: { entry: MarketplaceEntryLike }) {
+  const { t } = useTranslation("marketplace");
+  if (entry.channel === "thirdparty") {
+    return <Badge tone="running">{entry.upstream === "skillhub" ? "SkillHub" : "ClawHub"}</Badge>;
+  }
+  if (entry.channel !== "community") return null;
+  return (
+    <>
+      <Badge tone="running">{t("channel.community")}</Badge>
+      {entry.author ? (
+        <span className="mc-mkt__author" title={t("card.authorTitle", { author: entry.author })}>
+          @{entry.author}
+        </span>
+      ) : null}
+    </>
+  );
+}
+
 /** 市场卡片（技能/插件）：图标 + 名称 + 两行截断描述 + 安装按钮；点击打开详情 */
 export function MarketplaceCard({
   entry,
@@ -50,14 +75,22 @@ export function MarketplaceCard({
   onInstall,
   onOpen,
   onUse,
+  onDelete,
+  canDelete,
 }: {
-  entry: MarketplaceEntry;
+  entry: MarketplaceEntryLike;
   iconUrl?: string;
   busy: boolean;
-  onInstall: (entry: MarketplaceEntry) => void;
-  onOpen: (entry: MarketplaceEntry) => void;
-  onUse: (entry: MarketplaceEntry) => void;
+  onInstall: (entry: MarketplaceEntryLike) => void;
+  onOpen: (entry: MarketplaceEntryLike) => void;
+  onUse: (entry: MarketplaceEntryLike) => void;
+  /** 社区条目删除入口（自己的条目才可见） */
+  onDelete?: (entry: MarketplaceEntryLike) => void;
+  canDelete?: boolean;
 }) {
+  const { t } = useTranslation("marketplace");
+  const updatable = Boolean(entry.updateAvailable);
+  const categoryKey = categoryLabelKey(entry.category);
   return (
     <article
       className="mc-mkt__card mc-mkt__card--clickable"
@@ -75,43 +108,70 @@ export function MarketplaceCard({
             <span className="mc-mkt__name-text" title={entry.name}>
               {entry.name}
             </span>
+            <CommunityBadge entry={entry} />
           </div>
           <p className="mc-mkt__desc">{entry.description}</p>
         </div>
       </div>
       <div className="mc-mkt__cardbottom">
-        <span className="mc-mkt__source">{entry.category}</span>
-        {entry.type === "skill" ? (
-          <button
-            type="button"
-            className="mc-mkt__install"
-            disabled={busy}
-            onClick={(event) => {
-              event.stopPropagation();
-              onUse(entry);
-            }}
-          >
-            {busy ? (
-              "准备中…"
-            ) : (
-              <>
-                <LuMessageSquare size={13} /> 使用
-              </>
-            )}
-          </button>
-        ) : (
-          <button
-            type="button"
-            className="mc-mkt__install"
-            disabled={busy}
-            onClick={(event) => {
-              event.stopPropagation();
-              onInstall(entry);
-            }}
-          >
-            {busy ? "安装中…" : "＋ 安装"}
-          </button>
-        )}
+        <span className="mc-mkt__source">{categoryKey ? t(categoryKey) : entry.category}</span>
+        <span className="mc-mkt__cardactions">
+          {canDelete && onDelete ? (
+            <button
+              type="button"
+              className="mc-mkt__ghost"
+              title={t("card.deletePrTitle")}
+              onClick={(event) => {
+                event.stopPropagation();
+                onDelete(entry);
+              }}
+            >
+              {t("actions.delete")}
+            </button>
+          ) : null}
+          {entry.type === "skill" && !updatable ? (
+            <button
+              type="button"
+              className="mc-mkt__install"
+              disabled={busy}
+              onClick={(event) => {
+                event.stopPropagation();
+                onUse(entry);
+              }}
+            >
+              {busy ? (
+                t("actions.preparing")
+              ) : (
+                <>
+                  <LuMessageSquare size={13} /> {t("actions.use")}
+                </>
+              )}
+            </button>
+          ) : entry.installed && !updatable ? (
+            <button
+              type="button"
+              className="mc-mkt__install"
+              disabled
+              title={t("card.installedTitle")}
+            >
+              {t("actions.installed")}
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="mc-mkt__install"
+              disabled={busy}
+              onClick={(event) => {
+                event.stopPropagation();
+                onInstall(entry);
+              }}
+            >
+              {busy
+                ? t(updatable ? "actions.updating" : "actions.installing")
+                : t(updatable ? "actions.update" : "actions.install")}
+            </button>
+          )}
+        </span>
       </div>
     </article>
   );

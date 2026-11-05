@@ -1,7 +1,9 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
+import os from "node:os";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
+import { McpOAuthProvider } from "./mcp-oauth.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { hasDynamicTool, registerDynamicTool, unregisterDynamicTool } from "../agent/tools.js";
 import type { ToolDefinition, ToolImage, ToolResult } from "../agent/types.js";
@@ -18,6 +20,11 @@ export type McpServerConfig = {
   /** streamable HTTP transport */
   url?: string;
   headers?: Record<string, string>;
+  /**
+   * OAuth（仅 streamable HTTP）：authorization_code + PKCE 公开客户端，动态注册，
+   * 授权码走 127.0.0.1 回环回调，token 落 ~/.meowcode/mcp-oauth/。缺省或 stdio 无此字段。
+   */
+  auth?: { type: "oauth"; scopes?: string[] };
   /** 默认 true：MCP 工具免审批直接执行；显式 false 则该 server 的工具每次调用先弹审批 */
   trust?: boolean;
   /** callTool 超时毫秒，默认 60000 */
@@ -29,14 +36,37 @@ export type McpServerConfig = {
 export type McpConfigFile = { mcpServers?: Record<string, McpServerConfig> };
 
 export type McpServerState = {
-  status: "connecting" | "ready" | "failed";
+  status: "connecting" | "ready" | "failed" | "unconfigured";
   toolCount: number;
   error?: string;
+  /** unconfigured 时缺的 ${VAR} 名单（给渲染层展示「待配置 · 缺 X」） */
+  missingEnv?: string[];
 };
 
 /** url / headers 值 / env 值里的 ${VAR} 用进程环境变量展开 */
 export function expandEnvTemplates(value: string): string {
   return value.replace(/\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g, (_, name: string) => process.env[name] ?? "");
+}
+
+/**
+ * 找出进程环境补不出来的 ${VAR} 占位（缺令牌/缺 env，空串也算缺）。
+ * 这类 server 不该发起连接——拿着空 Bearer 去撞 401 只会刷「失败」噪音；
+ * 跳过并标 unconfigured，等凭据热更新触发 reload 后自然连上。
+ */
+export function unresolvedEnvVars(config: McpServerConfig): string[] {
+  const missing = new Set<string>();
+  const scan = (value: string): void => {
+    for (const match of value.matchAll(/\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g)) {
+      const value = process.env[match[1]];
+      if (value === undefined || value === "") missing.add(match[1]);
+    }
+  };
+  if (config.command) scan(config.command);
+  for (const arg of config.args ?? []) scan(arg);
+  if (config.url) scan(config.url);
+  for (const value of Object.values(config.headers ?? {})) scan(value);
+  for (const value of Object.values(config.env ?? {})) scan(value);
+  return [...missing];
 }
 
 /**
@@ -98,28 +128,144 @@ type McpContentBlock = {
 
 type McpCallResult = { content?: McpContentBlock[]; isError?: boolean };
 
-/** MCP 工具描述上限：很多 server 会把整篇 README 塞进 description，每轮都随 schema 计费。 */
-const MAX_MCP_TOOL_DESCRIPTION_CHARS = 1_000;
+/**
+ * MCP 工具描述上限：很多 server 会把整篇 README 塞进 description，每轮都随 schema 计费。
+ * 240 字符 ≈ 60 token，够放下「首句 + 一条 Use when」；1000 字符时代 20 个工具就是
+ * 5k token/请求，纯属替 server 的营销文案付费。
+ */
+const MAX_MCP_TOOL_DESCRIPTION_CHARS = 240;
+/** 字段级描述上限：MCP 的 inputSchema 里每个字段常带一整段说明。 */
+const MAX_MCP_PROPERTY_DESCRIPTION_CHARS = 120;
+/** schema 递归深度上限：超过就只留类型，避免嵌套地狱把 schema 撑爆。 */
+const MCP_SCHEMA_MAX_DEPTH = 3;
+
+/** 说明「什么时候该用我」的句子，即使排在最后也要抢回预算。 */
+const MCP_USAGE_HINT = /use (this|when)|call (this|when)|用于|当.{0,12}时|trigger/i;
+
+/** 纯噪音的 JSON Schema 关键字：模型不读，但每轮都按 token 计费。 */
+const MCP_SCHEMA_DROP_KEYS = new Set([
+  "$schema",
+  "$id",
+  "$comment",
+  "examples",
+  "example",
+  "deprecated",
+]);
+
+/**
+ * 按句子裁剪一段说明文字，尽量保住信息量：
+ * 首句必留 → 再留「何时使用」类句子 → 剩余预算按原顺序补满。
+ * 整段都在预算内时逐字返回（保证同一输入永远产出同一字节，缓存前缀稳定）。
+ */
+export function clipMcpText(text: string, max: number): string {
+  const normalized = text.replace(/\r\n?/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
+  if (normalized.length <= max) return normalized;
+  const sentences = normalized.split(/(?<=[.!?。！？])\s+|\n+/).filter(Boolean);
+  if (!sentences.length) return "";
+  const picked = new Set<number>();
+  let length = 0;
+  const take = (index: number): boolean => {
+    const sentence = sentences[index];
+    const cost = sentence.length + (picked.size ? 1 : 0);
+    if (length + cost > max) return false;
+    picked.add(index);
+    length += cost;
+    return true;
+  };
+  // 首句通常定义工具是什么，必须留；单独超限时按词边界硬切
+  if (sentences[0].length + 2 > max) {
+    const head = sentences[0].slice(0, max - 2);
+    const cut = head.lastIndexOf(" ");
+    return `${(cut > max * 0.6 ? head.slice(0, cut) : head).trimEnd()} …`;
+  }
+  take(0);
+  for (let index = 1; index < sentences.length; index += 1) {
+    if (MCP_USAGE_HINT.test(sentences[index])) take(index);
+  }
+  for (let index = 1; index < sentences.length; index += 1) {
+    if (!picked.has(index)) take(index);
+  }
+  const ordered = [...picked].sort((left, right) => left - right);
+  const joined = ordered.map((index) => sentences[index]).join(" ");
+  return joined.length < normalized.length ? `${joined} …` : joined;
+}
+
+/**
+ * 清洗 MCP 的 inputSchema：删噪音键、裁剪字段描述、限制递归深度。
+ *
+ * 保留 `$defs` / `$ref` / `enum` / `const` / `required` / `format` / `pattern` /
+ * `minimum` / `maximum` / `default` —— 这些是模型填参数真正需要的约束。
+ * `additionalProperties` 只在布尔形态下删除（对象形态表示 map，语义不能丢）。
+ */
+export function sanitizeMcpSchema(node: unknown, depth = 0): unknown {
+  if (!node || typeof node !== "object" || Array.isArray(node)) return node;
+  const source = node as Record<string, unknown>;
+  if (depth >= MCP_SCHEMA_MAX_DEPTH) {
+    return typeof source.type === "string" ? { type: source.type } : {};
+  }
+  const out: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(source)) {
+    if (MCP_SCHEMA_DROP_KEYS.has(key)) continue;
+    // 布尔形态只是「禁止额外字段」的提示，模型不需要
+    if (key === "additionalProperties" && typeof value === "boolean") continue;
+    // title 与 description 同时存在时 title 只是重复信息
+    if (key === "title" && typeof source.description === "string") continue;
+    if (key === "description" && typeof value === "string") {
+      out[key] = clipMcpText(value, MAX_MCP_PROPERTY_DESCRIPTION_CHARS);
+      continue;
+    }
+    if (key === "properties" && value && typeof value === "object" && !Array.isArray(value)) {
+      const properties: Record<string, unknown> = {};
+      for (const [name, child] of Object.entries(value as Record<string, unknown>)) {
+        properties[name] = sanitizeMcpSchema(child, depth + 1);
+      }
+      out.properties = properties;
+      continue;
+    }
+    if ((key === "items" || key === "not") && value && typeof value === "object") {
+      out[key] = sanitizeMcpSchema(value, depth + 1);
+      continue;
+    }
+    if ((key === "anyOf" || key === "oneOf" || key === "allOf") && Array.isArray(value)) {
+      out[key] = value.map((item) => sanitizeMcpSchema(item, depth + 1));
+      continue;
+    }
+    if (
+      (key === "$defs" || key === "definitions") &&
+      value &&
+      typeof value === "object" &&
+      !Array.isArray(value)
+    ) {
+      const defs: Record<string, unknown> = {};
+      for (const [name, child] of Object.entries(value as Record<string, unknown>)) {
+        defs[name] = sanitizeMcpSchema(child, depth + 1);
+      }
+      out[key] = defs;
+      continue;
+    }
+    out[key] = value;
+  }
+  return out;
+}
 
 /** MCP inputSchema → ToolDefinition.parameters：缺 type 补 object，required 只留字符串 */
 export function toToolDefinition(name: string, description: string, schema: McpToolInfo["inputSchema"]): ToolDefinition {
-  const properties =
+  const rawProperties =
     schema?.properties && typeof schema.properties === "object" ? schema.properties : {};
+  const sanitized = sanitizeMcpSchema({ type: "object", properties: rawProperties }, 0) as {
+    properties?: Record<string, unknown>;
+  };
   const required = Array.isArray(schema?.required)
     ? schema.required.filter((item): item is string => typeof item === "string")
     : [];
-  const clippedDescription =
-    description.length > MAX_MCP_TOOL_DESCRIPTION_CHARS
-      ? `${description.slice(0, MAX_MCP_TOOL_DESCRIPTION_CHARS)}… [description truncated]`
-      : description;
   return {
     type: "function",
     function: {
       name,
-      description: clippedDescription,
+      description: clipMcpText(description, MAX_MCP_TOOL_DESCRIPTION_CHARS),
       parameters: {
         type: "object",
-        properties,
+        properties: sanitized.properties ?? {},
         ...(required.length > 0 ? { required } : {}),
       },
     },
@@ -155,7 +301,7 @@ export function mcpContentToResult(result: McpCallResult): ToolResult {
 // ---------------------------------------------------------------------------
 
 /** 测试注入用：给定配置返回已连接的 client（默认实现内部建 transport 并 connect） */
-export type McpClientFactory = (config: McpServerConfig) => Promise<McpClientLike>;
+export type McpClientFactory = (config: McpServerConfig, serverName?: string) => Promise<McpClientLike>;
 
 export type McpClientLike = {
   listTools: (params?: undefined, options?: { timeout?: number }) => Promise<{ tools: McpToolInfo[] }>;
@@ -173,12 +319,57 @@ const LIST_TOOLS_TIMEOUT_MS = 10_000;
 const CALL_TOOL_DEFAULT_TIMEOUT_MS = 60_000;
 const MAX_RECONNECTS = 3;
 
+/** JSON 形状的深度相等（键序不敏感）：restart 时判断 server 配置是否变化 */
+function jsonEqual(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  if (Array.isArray(a) || Array.isArray(b)) {
+    return (
+      Array.isArray(a) &&
+      Array.isArray(b) &&
+      a.length === b.length &&
+      a.every((item, index) => jsonEqual(item, b[index]))
+    );
+  }
+  if (a && b && typeof a === "object" && typeof b === "object") {
+    const recordA = a as Record<string, unknown>;
+    const recordB = b as Record<string, unknown>;
+    const keysA = Object.keys(recordA);
+    const keysB = Object.keys(recordB);
+    return (
+      keysA.length === keysB.length &&
+      keysA.every((key) => key in recordB && jsonEqual(recordA[key], recordB[key]))
+    );
+  }
+  return false;
+}
+
+/** server 凭据指纹：env/headers 里 ${VAR} 按当前进程环境展开后的值集合。
+ *  mcp.json 不变但令牌热更新（OAuth 刷新/手动令牌换/清）时指纹变化 → restart 必须重连。 */
+function expansionFingerprint(config: McpServerConfig): string {
+  const env = Object.entries(config.env ?? {})
+    .map(([key, value]) => `${key}=${expandEnvTemplates(value)}`)
+    .sort();
+  const headers = Object.entries(config.headers ?? {})
+    .map(([key, value]) => `${key}=${expandEnvTemplates(value)}`)
+    .sort();
+  return JSON.stringify([env, headers]);
+}
+
 export class McpManager {
   private readonly servers = new Map<
     string,
-    { config: McpServerConfig; client: McpClientLike | null; state: McpServerState; toolNames: string[]; reconnects: number }
+    {
+      config: McpServerConfig;
+      client: McpClientLike | null;
+      state: McpServerState;
+      toolNames: string[];
+      reconnects: number;
+      /** 断线重连计时器：拆连接时清除，防止已废弃的 entry 再起进程 */
+      reconnectTimer?: ReturnType<typeof setTimeout>;
+      /** 连接成功时的凭据指纹（见 expansionFingerprint） */
+      envFingerprint?: string;
+    }
   >();
-  private readonly timers = new Set<ReturnType<typeof setTimeout>>();
   private disposed = false;
   /** 拆连接中：拆出来的 close 事件不能再触发重连，否则会多起一个同款 server 进程 */
   private tearingDown = false;
@@ -264,54 +455,107 @@ export class McpManager {
     });
   }
 
-  /** 重载：断开全部 → 重置状态 → 按新配置重连（保持实例引用稳定） */
+  /**
+   * 重载（diff 式）：配置未变的 server 原样保留——不拆连接不重连，工具不闪断；
+   * 只拆「被移除 / 被禁用 / 配置变化 / 凭据指纹变化」的，只连「新增 / 变化 / 此前失败」的。
+   * 市场装/卸载单个 MCP 不再让其余 npx server 全部重启（每个都要付冷启动成本）；
+   * 令牌热更新（OAuth 刷新、手动令牌换/清）不改 mcp.json，靠指纹变化触发重连。
+   */
   async restart(servers: Record<string, McpServerConfig>): Promise<void> {
     await this.serialize(async () => {
-      await this.teardown();
-      this.servers.clear();
-      await this.startInternal(servers, this.log);
+      this.disposed = false;
+      for (const name of this.servers.keys()) {
+        const entry = this.servers.get(name)!;
+        const next = servers[name];
+        if (
+          !next ||
+          next.enabled === false ||
+          !jsonEqual(entry.config, next) ||
+          (entry.client !== null && entry.envFingerprint !== expansionFingerprint(next))
+        ) {
+          await this.teardownServer(name);
+          this.servers.delete(name);
+        }
+      }
+      const toConnect: string[] = [];
+      for (const [name, config] of Object.entries(servers)) {
+        if (config.enabled === false) continue;
+        const entry = this.servers.get(name);
+        if (!entry) {
+          this.servers.set(name, {
+            config,
+            client: null,
+            state: { status: "connecting", toolCount: 0 },
+            toolNames: [],
+            reconnects: 0,
+          });
+          toConnect.push(name);
+        } else if (!entry.client && entry.state.status !== "connecting") {
+          // 此前失败/已断开且没有连接在途：借 reload 的机会重试
+          entry.state = { status: "connecting", toolCount: 0 };
+          toConnect.push(name);
+        }
+      }
+      await Promise.all(toConnect.map((name) => this.connectServer(name)));
     });
   }
 
-  private async teardown(): Promise<void> {
-    for (const timer of this.timers) clearTimeout(timer);
-    this.timers.clear();
-    this.tearingDown = true;
-    await Promise.all(
-      [...this.servers.values()].map(async (entry) => {
-        if (!entry.client) return;
-        const client = entry.client;
-        entry.client = null;
-        try {
-          await Promise.race([
-            client.close(),
-            new Promise((_, reject) => setTimeout(() => reject(new Error("close timeout")), 3_000)),
-          ]);
-        } catch {
-          this.log("warn", "mcp client close did not finish in time; ignoring");
-        }
-      }),
-    );
-    for (const entry of this.servers.values()) {
-      for (const toolName of entry.toolNames) unregisterDynamicTool(toolName);
-      entry.toolNames = [];
+  /** 拆单个 server：摘工具 + 清重连计时器 + 关连接（3s 兜底）；预期内的关闭不触发重连 */
+  private async teardownServer(name: string): Promise<void> {
+    const entry = this.servers.get(name);
+    if (!entry) return;
+    if (entry.reconnectTimer) {
+      clearTimeout(entry.reconnectTimer);
+      entry.reconnectTimer = undefined;
     }
-    this.tearingDown = false;
+    for (const toolName of entry.toolNames) unregisterDynamicTool(toolName);
+    entry.toolNames = [];
+    const client = entry.client;
+    entry.client = null;
+    if (!client) return;
+    client.onclose = undefined;
+    try {
+      await Promise.race([
+        client.close(),
+        new Promise((_, reject) => setTimeout(() => reject(new Error("close timeout")), 3_000)),
+      ]);
+    } catch {
+      this.log("warn", `mcp client "${name}" close did not finish in time; ignoring`);
+    }
+  }
+
+  private async teardown(): Promise<void> {
+    this.tearingDown = true;
+    try {
+      await Promise.all([...this.servers.keys()].map((name) => this.teardownServer(name)));
+    } finally {
+      this.tearingDown = false;
+    }
   }
 
   private async connectServer(name: string): Promise<void> {
     const entry = this.servers.get(name);
     if (!entry || this.disposed) return;
+    // 缺凭据（${VAR} 展开为空）不发起连接：拿着空 Bearer 去撞 401 只会刷失败噪音，等热更新补齐再连
+    const missing = unresolvedEnvVars(entry.config);
+    if (missing.length > 0) {
+      entry.client = null;
+      entry.state = { status: "unconfigured", toolCount: 0, missingEnv: missing };
+      this.log("info", `mcp server "${name}" waiting for credentials: ${missing.join(", ")}`);
+      return;
+    }
     entry.state = { status: "connecting", toolCount: 0 };
     try {
-      const client = await this.clientFactory(entry.config);
+      const client = await this.clientFactory(entry.config, name);
       client.onclose = () => this.handleClose(name);
-      // 连接期间可能已被 restart/dispose 拆掉：这时别再注册工具，否则会留下孤儿工具
-      if (this.disposed || this.tearingDown) {
+      // 连接期间可能已被 restart/dispose 拆掉（entry 被删除或整体替换）：别再注册，关掉走人
+      if (this.disposed || this.tearingDown || this.servers.get(name) !== entry) {
+        client.onclose = undefined;
         await client.close().catch(() => undefined);
         return;
       }
       entry.client = client;
+      entry.envFingerprint = expansionFingerprint(entry.config);
       const { tools } = await client.listTools(undefined, { timeout: LIST_TOOLS_TIMEOUT_MS });
       const registered: string[] = [];
       for (const tool of tools) {
@@ -361,26 +605,48 @@ export class McpManager {
     entry.reconnects = attempts + 1;
     entry.state = { status: "connecting", toolCount: 0 };
     this.log("warn", `mcp server "${name}" disconnected; reconnect #${attempts + 1} in ${delay}ms`);
-    const timer = setTimeout(() => {
-      this.timers.delete(timer);
+    if (entry.reconnectTimer) clearTimeout(entry.reconnectTimer);
+    entry.reconnectTimer = setTimeout(() => {
+      entry.reconnectTimer = undefined;
       void this.connectServer(name);
     }, delay);
-    this.timers.add(timer);
   }
 }
 
-/** 默认工厂：stdio（spawn 子进程）或 streamable HTTP；env/headers 展开 ${VAR} */
-export const createStdioOrHttpClient: McpClientFactory = async (config): Promise<McpClientLike> => {
+/** 默认工厂：stdio（spawn 子进程）或 streamable HTTP；env/headers 展开 ${VAR}。
+ *  HTTP + auth.type="oauth" 时走 SDK 授权流程（回环回调 + 换 token），失败标 failed。 */
+export const createStdioOrHttpClient: McpClientFactory = async (config, serverName): Promise<McpClientLike> => {
   const client = new Client({ name: "meowcode", version: "0.1.0" });
   if (typeof config.url === "string" && config.url.length > 0) {
     const headers: Record<string, string> = {};
     for (const [key, value] of Object.entries(config.headers ?? {})) {
       headers[key] = expandEnvTemplates(value);
     }
-    const transport = new StreamableHTTPClientTransport(new URL(expandEnvTemplates(config.url)), {
-      requestInit: { headers },
-    });
-    await client.connect(transport);
+    const url = new URL(expandEnvTemplates(config.url));
+    const provider =
+      config.auth?.type === "oauth"
+        ? new McpOAuthProvider({
+            serverName: serverName ?? url.host,
+            serverUrl: url.toString(),
+            homeDir: process.env.MEOWCODE_HOME_DIR || os.homedir(),
+            ...(config.auth.scopes?.length ? { scopes: config.auth.scopes } : {}),
+          })
+        : null;
+    const connect = async (): Promise<void> => {
+      const transport = new StreamableHTTPClientTransport(url, {
+        requestInit: { headers },
+        ...(provider ? { authProvider: provider } : {}),
+      });
+      await client.connect(transport);
+    };
+    try {
+      await connect();
+    } catch (error) {
+      // 401 → SDK 抛 UnauthorizedError：跑完整授权（拉浏览器 + 回环等 code），然后重连一次
+      if (!provider || error?.constructor?.name !== "UnauthorizedError") throw error;
+      await provider.ensureAuthorized();
+      await connect();
+    }
     return client as unknown as McpClientLike;
   }
   if (typeof config.command === "string" && config.command.length > 0) {

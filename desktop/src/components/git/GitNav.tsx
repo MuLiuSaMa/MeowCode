@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
+import type { TFunction } from "i18next";
 import {
   LuArrowDownToLine,
   LuArrowUpFromLine,
-  LuChevronLeft,
   LuCircleAlert,
   LuGitBranch,
   LuPlus,
@@ -12,8 +13,12 @@ import {
 } from "react-icons/lu";
 import type { GitFileEntry, GitFileStatus } from "../../api";
 import type { GitGroupId, GitView } from "../../git/useGitView";
+import { formatNumber } from "../../i18n/format";
 import { ConfirmDialog } from "./ConfirmDialog";
 import "./git.css";
+
+/** 每组最多渲染的行数，见下方 groups 的注释 */
+const MAX_ROWS = 1_000;
 
 const STATUS_LETTER: Record<GitFileStatus, string> = {
   modified: "M",
@@ -58,7 +63,7 @@ function GroupHeader({
   return (
     <div className="mc-git__group">
       <span className="mc-git__grouplabel">{label}</span>
-      <span className="mc-git__groupcount">{count}</span>
+      <span className="mc-git__groupcount">{formatNumber(count)}</span>
       {onAction ? (
         <button
           type="button"
@@ -75,18 +80,17 @@ function GroupHeader({
 }
 
 /**
- * 源码管理左栏：分支行 + 冲突/已暂存/未暂存三组。
+ * Git 管理左栏：分支行 + 冲突/已暂存/未暂存三组。
  * 宽度由外层 `.mc-listcol` 控制，这里不写死宽度。
  */
 export function GitNav({
   git,
   onOpenBranches,
-  onClose,
 }: {
   git: GitView;
   onOpenBranches: () => void;
-  onClose: () => void;
 }) {
+  const { t } = useTranslation("git");
   /** 丢弃 / 解决冲突都要确认：两者都会覆盖磁盘上的内容 */
   const [discardPaths, setDiscardPaths] = useState<string[] | null>(null);
   const [resolveTarget, setResolveTarget] = useState<{
@@ -95,18 +99,48 @@ export function GitNav({
   } | null>(null);
   const status = git.status;
   const isRepo = status?.isRepo === true;
-  const groups: Array<{ id: GitGroupId; label: string; entries: GitFileEntry[] }> = [
-    { id: "conflicted", label: "冲突", entries: status?.conflicted ?? [] },
-    { id: "staged", label: "已暂存", entries: status?.staged ?? [] },
-    { id: "unstaged", label: "更改", entries: status?.unstaged ?? [] },
+  /**
+   * 列表最多渲染这么多行：几万个未跟踪文件（比如把参考仓库拷进工作区）会把渲染进程直接卡死。
+   * 服务端已经截断过一次，这里再兜一层——老版本服务端 / 异常数据也不会把界面拖死。
+   */
+  const rows = (entries: GitFileEntry[] | undefined) => (entries ?? []).slice(0, MAX_ROWS);
+  /** 分组标题在组件内查表：切语言才会跟着刷新 */
+  const groupLabels = useMemo<Record<GitGroupId, string>>(
+    () => ({
+      conflicted: t("group.conflicted"),
+      staged: t("group.staged"),
+      unstaged: t("group.unstaged"),
+    }),
+    [t],
+  );
+  /** entries 是渲染用的截断列表，total 才是真实数量 */
+  const groups: Array<{ id: GitGroupId; label: string; entries: GitFileEntry[]; total: number }> = [
+    {
+      id: "conflicted",
+      label: groupLabels.conflicted,
+      entries: rows(status?.conflicted),
+      total: status?.conflictedCount ?? status?.conflicted.length ?? 0,
+    },
+    {
+      id: "staged",
+      label: groupLabels.staged,
+      entries: rows(status?.staged),
+      total: status?.stagedCount ?? status?.staged.length ?? 0,
+    },
+    {
+      id: "unstaged",
+      label: groupLabels.unstaged,
+      entries: rows(status?.unstaged),
+      total: status?.unstagedCount ?? status?.unstaged.length ?? 0,
+    },
   ];
-  const total = groups.reduce((sum, group) => sum + group.entries.length, 0);
+  const total = groups.reduce((sum, group) => sum + group.total, 0);
 
   return (
-    <nav className="mc-panel mc-panel--conversations mc-git__nav" aria-label="源代码管理">
-      <h1 className="mc-settings__heading">源代码管理</h1>
+    <nav className="mc-panel mc-panel--conversations mc-git__nav" aria-label={t("nav.ariaLabel")}>
+      <h1 className="mc-settings__heading">{t("nav.heading")}</h1>
       {isRepo ? (
-        <button type="button" className="mc-git__branchrow" onClick={onOpenBranches} title="切换分支">
+        <button type="button" className="mc-git__branchrow" onClick={onOpenBranches} title={t("branch.switch")}>
           <LuGitBranch size={13} />
           <span className="mc-git__branchname">
             {status?.branch || (status?.detached ? "detached HEAD" : "—")}
@@ -121,10 +155,10 @@ export function GitNav({
       ) : (
         <p className="mc-git__subtitle">
           {status?.reason === "git_unavailable"
-            ? "未检测到 git，请先安装并加入 PATH"
+            ? t("repo.unavailable")
             : status?.reason === "not_a_repo"
-              ? "当前工作区不是 Git 仓库"
-              : "正在读取仓库状态…"}
+              ? t("repo.notRepo")
+              : t("repo.reading")}
         </p>
       )}
 
@@ -134,23 +168,36 @@ export function GitNav({
             <section key={group.id} className="mc-git__section" data-group={group.id}>
               <GroupHeader
                 label={group.label}
-                count={group.entries.length}
-                {...(group.id === "staged" && group.entries.length
+                count={group.total}
+                {...(group.id === "staged" && group.total
                   ? {
                       action: <LuUndo2 size={12} />,
-                      actionTitle: "全部取消暂存",
-                      onAction: () => void git.unstage(group.entries.map((entry) => entry.path)),
+                      actionTitle: t("group.unstageAll"),
+                      onAction: () => void git.unstageAll(),
                     }
-                  : group.id === "unstaged" && group.entries.length
+                  : group.id === "unstaged" && group.total
                     ? {
                         action: <LuPlus size={12} />,
-                        actionTitle: "全部暂存",
-                        onAction: () => void git.stage(group.entries.map((entry) => entry.path)),
+                        actionTitle: t("group.stageAll"),
+                        onAction: () => void git.stageAll(),
                       }
                     : {})}
               />
+              {group.total > group.entries.length ? (
+                <p className="mc-git__truncated">
+                  {t("list.truncated", {
+                    shown: formatNumber(group.entries.length),
+                    total: formatNumber(group.total),
+                  })}
+                  {group.id === "staged"
+                    ? t("list.truncatedStaged")
+                    : group.id === "unstaged"
+                      ? t("list.truncatedUnstaged")
+                      : ""}
+                </p>
+              ) : null}
               {group.entries.length === 0 ? (
-                <p className="mc-git__empty">暂无</p>
+                <p className="mc-git__empty">{t("group.empty")}</p>
               ) : (
                 group.entries.map((entry) => {
                   const active =
@@ -191,43 +238,43 @@ export function GitNav({
                             <button
                               type="button"
                               className="mc-git__rowbtn"
-                              title="采用我方（ours）"
+                              title={t("conflict.oursTitle")}
                               onClick={(event) => {
                                 event.stopPropagation();
                                 setResolveTarget({ path: entry.path, side: "ours" });
                               }}
                             >
-                              我方
+                              {t("conflict.ours")}
                             </button>
                             <button
                               type="button"
                               className="mc-git__rowbtn"
-                              title="采用对方（theirs）"
+                              title={t("conflict.theirsTitle")}
                               onClick={(event) => {
                                 event.stopPropagation();
                                 setResolveTarget({ path: entry.path, side: "theirs" });
                               }}
                             >
-                              对方
+                              {t("conflict.theirs")}
                             </button>
                             <button
                               type="button"
                               className="mc-git__rowbtn"
-                              title="标记为已解决（内容已手工处理）"
+                              title={t("conflict.markTitle")}
                               onClick={(event) => {
                                 event.stopPropagation();
                                 setResolveTarget({ path: entry.path, side: "mark" });
                               }}
                             >
-                              已解决
+                              {t("conflict.mark")}
                             </button>
                           </>
                         ) : group.id === "staged" ? (
                           <button
                             type="button"
                             className="mc-git__rowbtn"
-                            title="取消暂存"
-                            aria-label="取消暂存"
+                            title={t("file.unstage")}
+                            aria-label={t("file.unstage")}
                             onClick={(event) => {
                               event.stopPropagation();
                               void git.unstage([entry.path]);
@@ -240,8 +287,8 @@ export function GitNav({
                             <button
                               type="button"
                               className="mc-git__rowbtn"
-                              title="暂存"
-                              aria-label="暂存"
+                              title={t("file.stage")}
+                              aria-label={t("file.stage")}
                               onClick={(event) => {
                                 event.stopPropagation();
                                 void git.stage([entry.path]);
@@ -252,8 +299,8 @@ export function GitNav({
                             <button
                               type="button"
                               className="mc-git__rowbtn"
-                              title="丢弃改动"
-                              aria-label="丢弃改动"
+                              title={t("file.discard")}
+                              aria-label={t("file.discard")}
                               onClick={(event) => {
                                 event.stopPropagation();
                                 setDiscardPaths([entry.path]);
@@ -275,10 +322,10 @@ export function GitNav({
 
       <ConfirmDialog
         open={discardPaths !== null}
-        title="丢弃改动"
-        message="这些文件的工作区改动会被永久丢弃（未暂存的修改会消失，untracked 文件会被删除）。"
+        title={t("discard.title")}
+        message={t("discard.message")}
         detail={(discardPaths ?? []).join("\n")}
-        confirmLabel="丢弃"
+        confirmLabel={t("discard.confirm")}
         danger
         busy={git.busy === "discard"}
         onCancel={() => setDiscardPaths(null)}
@@ -292,18 +339,18 @@ export function GitNav({
         open={resolveTarget !== null}
         title={
           resolveTarget?.side === "mark"
-            ? "标记为已解决"
+            ? t("conflict.resolveTitleMark")
             : resolveTarget?.side === "ours"
-              ? "采用我方版本"
-              : "采用对方版本"
+              ? t("conflict.resolveTitleOurs")
+              : t("conflict.resolveTitleTheirs")
         }
         message={
           resolveTarget?.side === "mark"
-            ? "会把该冲突文件标记为已解决（内容保持当前磁盘上的样子）。"
-            : "该文件会被直接替换为所选一侧的版本，另一侧的内容会丢失。"
+            ? t("conflict.resolveMessageMark")
+            : t("conflict.resolveMessageReplace")
         }
         detail={resolveTarget?.path}
-        confirmLabel="确认"
+        confirmLabel={t("dialog.confirm")}
         danger={resolveTarget?.side !== "mark"}
         busy={Boolean(git.busy?.startsWith("resolve:"))}
         onCancel={() => setResolveTarget(null)}
@@ -318,63 +365,64 @@ export function GitNav({
         {isRepo ? (
           <>
             <span className="mc-git__footmeta">
-              {total} 个变更 · {status?.name}
+              {t("footer.changes", { count: total })} · {status?.name}
             </span>
             <div className="mc-git__footactions">
               <button
                 type="button"
                 className="mc-settings__back"
-                title="刷新"
+                title={t("action.refresh")}
                 onClick={() => void git.refresh()}
               >
-                <LuRotateCw size={12} /> 刷新
+                <LuRotateCw size={12} /> {t("action.refresh")}
               </button>
               <button
                 type="button"
                 className="mc-settings__back"
-                title={status?.upstream ? "拉取（--ff-only）" : "当前分支没有上游"}
+                title={status?.upstream ? t("pull.title") : t("pull.noUpstream")}
                 disabled={!status?.upstream || git.busy !== null}
                 onClick={() => void git.pull()}
               >
-                <LuArrowDownToLine size={12} /> 拉取
+                <LuArrowDownToLine size={12} /> {t("action.pull")}
               </button>
               <button
                 type="button"
                 className="mc-settings__back"
-                title={status?.branch ? "推送" : "detached HEAD 无法推送"}
+                title={status?.branch ? t("action.push") : t("push.detached")}
                 disabled={!status?.branch || git.busy !== null}
                 onClick={() => void git.push()}
               >
-                <LuArrowUpFromLine size={12} /> 推送
+                <LuArrowUpFromLine size={12} /> {t("action.push")}
               </button>
             </div>
           </>
         ) : null}
-        <button type="button" className="mc-settings__back" onClick={onClose}>
-          <LuChevronLeft size={13} /> 返回对话
-        </button>
       </div>
     </nav>
   );
 }
 
 /** 分支行的小提示：无上游/ahead/behind 的解释（GitBody 头部复用）。 */
-export function describeUpstream(status: { upstream?: string; ahead?: number; behind?: number } | null): string {
-  if (!status?.upstream) return "没有上游分支";
+export function describeUpstream(
+  status: { upstream?: string; ahead?: number; behind?: number } | null,
+  t: TFunction<"git">,
+): string {
+  if (!status?.upstream) return t("upstream.none");
   const parts = [status.upstream];
-  if (status.ahead) parts.push(`领先 ${status.ahead}`);
-  if (status.behind) parts.push(`落后 ${status.behind}`);
+  if (status.ahead) parts.push(t("upstream.ahead", { count: status.ahead }));
+  if (status.behind) parts.push(t("upstream.behind", { count: status.behind }));
   return parts.join(" · ");
 }
 
 /** 仓库不可用时给用户的排错提示。 */
 export function GitRepoHint({ reason }: { reason?: string }) {
+  const { t } = useTranslation("git");
   const text =
     reason === "git_unavailable"
-      ? "未检测到 git：请安装 Git 并确认 `git --version` 在终端可用。"
+      ? t("repoHint.unavailable")
       : reason === "not_a_repo"
-        ? "当前工作区不是 Git 仓库。在终端执行 `git init` 后回到这里刷新。"
-        : "无法读取仓库状态。";
+        ? t("repoHint.notRepo")
+        : t("repoHint.failed");
   return (
     <div className="mc-git__placeholder">
       <LuCircleAlert size={16} />

@@ -2,8 +2,12 @@ import http from "node:http";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { startServer } from "./server.js";
+
+// 集成测试：真实 server 启停 + jiti 全量重编译 + MCP 子进程，
+// 并行负载下单例可达 10s 以上；给足余量，避免把「机器忙」误报成失败。
+vi.setConfig({ testTimeout: 30_000, hookTimeout: 40_000 });
 
 const TOKEN = "parallel-token";
 let server: http.Server;
@@ -40,7 +44,7 @@ async function sessionInfo(): Promise<SessionInfo> {
   return (await response.json()) as SessionInfo;
 }
 
-async function waitFor<T>(read: () => Promise<T | null>, timeoutMs = 3000): Promise<T> {
+async function waitFor<T>(read: () => Promise<T | null>, timeoutMs = 8000): Promise<T> {
   const started = Date.now();
   for (;;) {
     const value = await read();

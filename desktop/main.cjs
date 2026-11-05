@@ -2,6 +2,7 @@ const {
   app,
   BrowserWindow,
   Menu,
+  Notification,
   Tray,
   dialog,
   ipcMain,
@@ -14,6 +15,22 @@ const {
 } = require("electron");
 const { registerTerminalIpc } = require("./terminals.cjs");
 const { createBrowserHostController } = require("./browser-host.cjs");
+const { createComputerHostController } = require("./computer-host.cjs");
+const { mainStrings } = require("./main-i18n.cjs");
+const {
+  normalizeTraySessions,
+  traySessionLabel,
+  splitTraySessions,
+} = require("./tray-sessions.cjs");
+const {
+  TURN_DEDUPE_MS,
+  createDedupe,
+  describeApproval,
+  describeAsk,
+  describeTurn,
+  notificationTitle,
+  shouldNotify,
+} = require("./notifications.cjs");
 const { readJsonWithBackup, writeJsonAtomic } = require("./persist.cjs");
 const { createEventBatcher } = require("./event-batcher.cjs");
 const {
@@ -30,7 +47,8 @@ const {
   refreshPlatformToken: refreshOauthPlatformToken,
   verifyClientCredentials: verifyOauthPlatformCredentials,
 } = require("./oauth-platforms.cjs");
-const { fork } = require("node:child_process");
+const { registerCommunitySubmitIpc } = require("./community-submit.cjs");
+const { fork, execFileSync } = require("node:child_process");
 const crypto = require("node:crypto");
 const fs = require("node:fs");
 const http = require("node:http");
@@ -38,13 +56,22 @@ const https = require("node:https");
 const os = require("node:os");
 const path = require("node:path");
 
+// 悬浮岛是透明置顶小窗：Windows 下 Chromium 的遮挡计算会把它误判为被遮挡而挂起渲染
+// （NexBox 灵动岛踩过同一坑）。必须在 app ready 前设置，对所有窗口生效。
+app.commandLine.appendSwitch("disable-features", "CalculateNativeWinOcclusion");
+
 /** 本地 agent server 的进程内鉴权 token：每次应用启动生成一次，server 重启保持不变。 */
 const serverToken = crypto.randomBytes(32).toString("base64url");
 
 /** GitHub OAuth access token 注入到这个环境变量；mcp.json 只保留 ${...} 占位模板。 */
 const GITHUB_TOKEN_ENV = "MEOWCODE_GITHUB_TOKEN";
-/** Gitee/GitCode 手工 PAT：加密存 settings.mcpCredentials，启动/更新时注入进程 env。 */
-const MANUAL_MCP_TOKEN_ENVS = ["MEOWCODE_GITEE_TOKEN", "MEOWCODE_GITCODE_TOKEN"];
+/** 手工令牌（Gitee/GitCode PAT、Figma/瑞幸访问令牌）：加密存 settings.mcpCredentials，启动/更新时注入进程 env。 */
+const MANUAL_MCP_TOKEN_ENVS = [
+  "MEOWCODE_GITEE_TOKEN",
+  "MEOWCODE_GITCODE_TOKEN",
+  "MEOWCODE_FIGMA_TOKEN",
+  "LUCKIN_MCP_TOKEN",
+];
 /** 提前 5 分钟刷新，避开 MCP 请求中途过期。 */
 const GITHUB_REFRESH_MARGIN_MS = 5 * 60 * 1000;
 /** 未完成的设备流；deviceCode 只留在主进程内存，不落盘、不进渲染层。 */
@@ -147,16 +174,63 @@ app.setName("MeowCode");
 // 显式锁定数据目录：默认取 package.json 的 name（@meowcode/desktop）会产出 %APPDATA%/@meowcode
 app.setPath("userData", path.join(app.getPath("appData"), "MeowCode"));
 if (process.platform === "win32") {
-  // 与 electron-builder 的 appId 一致，保证任务栏/通知按 MeowCode 归组
-  app.setAppUserModelId("app.meowcode.desktop");
+  // 打包后与 electron-builder 的 appId 一致，任务栏/通知按 MeowCode 归组。
+  // dev 下 exe 是改名后的 MeowCode.exe，没有对应开始菜单快捷方式，用 appId 会因为没有
+  // 归属而静默不弹 toast —— 退回 exe 自身路径，通知才显示得出来。
+  app.setAppUserModelId(devRepoRoot() ? process.execPath : "app.meowcode.desktop");
 }
 
 /** 关闭窗口时的行为：每次询问 / 缩小到托盘 / 直接关闭 */
 const CLOSE_ACTIONS = ["ask", "tray", "quit"];
+/** 用户可见回复的语色：普通 / 永雏塔菲 / 大嘴 */
+const SPEECH_STYLES = ["normal", "tafei", "dazui"];
+const PROXY_MODES = ["direct", "system", "manual"];
+
+/**
+ * 读系统代理（Windows「Internet 选项 / 设置 → 网络和 Internet → 代理」那个）。
+ * 只解析最常见的 ProxyServer 形态：`host:port` 或 `http=...;https=...`。
+ * 读不到就返回空串 —— agent 侧会退到 HTTPS_PROXY/HTTP_PROXY 兜底，
+ * 再不行就是直连，不会因为读注册表失败把网络卡死。
+ */
+function resolveSystemProxy() {
+  if (process.platform !== "win32") {
+    return process.env.HTTPS_PROXY || process.env.https_proxy || "";
+  }
+  try {
+    const key = "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings";
+    const out = execFileSync("reg", ["query", key], { encoding: "utf8", timeout: 3000 });
+    if (!/ProxyEnable\s+REG_DWORD\s+0x1/i.test(out)) return "";
+    const server = /ProxyServer\s+REG_SZ\s+(.+)/i.exec(out)?.[1]?.trim();
+    if (!server) return "";
+    if (!server.includes("=")) return server;
+    const byScheme = {};
+    for (const item of server.split(";")) {
+      const index = item.indexOf("=");
+      if (index <= 0) continue;
+      byScheme[item.slice(0, index).trim().toLowerCase()] = item.slice(index + 1).trim();
+    }
+    return byScheme.https || byScheme.http || "";
+  } catch {
+    return "";
+  }
+}
 /** 主题偏好：跟随系统 / 浅色 / 深色 */
 const THEME_PREFERENCES = ["system", "light", "dark"];
-/** 界面语言：跟随系统 / 简体中文（目前仅简体中文有词条） */
-const LANGUAGE_PREFERENCES = ["system", "zh-CN"];
+/** 界面语言：跟随系统 + 11 个语种，必须与 desktop/src/i18n/languages.ts 的清单一致 */
+const LANGUAGE_PREFERENCES = [
+  "system",
+  "zh-CN",
+  "zh-TW",
+  "en",
+  "ja",
+  "ko",
+  "ru",
+  "de",
+  "fr",
+  "es",
+  "hi",
+  "pt",
+];
 
 /** 主题 → 窗口底色，必须与 theme/tokens.css 的 --bg-root 一致 */
 const THEME_BACKGROUND = { dark: "#0a0a0a", light: "#e6e6e6" };
@@ -170,8 +244,15 @@ const ACRYLIC_BACKDROP =
   process.platform === "win32" && Number(os.release().split(".")[2] ?? 0) >= 22000;
 
 let mainWindow = null;
+/** AI 悬浮岛窗口：屏幕顶部居中的透明置顶胶囊，显示所有运行中会话的状态 */
+let islandWindow = null;
+/** 悬浮岛窗口尺寸：需容纳展开态迷你聊天窗 ~460×640 + 边距 */
+const ISLAND_WINDOW_WIDTH = 480;
+const ISLAND_WINDOW_HEIGHT = 680;
 /** 内嵌浏览器的 agent 控制桥：随窗口起停，agent server 通过 env 拿到地址与 token */
 const browserHost = createBrowserHostController({ getMainWindow: () => mainWindow });
+/** 电脑控制桥（computer_* 工具）：截图走 desktopCapturer，输入走常驻 PowerShell 助手 */
+const computerHost = createComputerHostController();
 let tray = null;
 /** 真退出（托盘菜单 / before-quit）时为 true，此时 close 事件直接放行 */
 let isQuitting = false;
@@ -400,6 +481,37 @@ function ensureDefaultWorkspace() {
   return next;
 }
 
+/**
+ * 命令沙箱设置：只存一组稳定字段；非法值一律回落默认（默认关闭）。
+ * 与 server 的 normalizeSandboxSettings 保持同一形状。
+ */
+function normalizeSandbox(raw) {
+  const parsed = raw && typeof raw === "object" && !Array.isArray(raw) ? raw : {};
+  const seen = new Set();
+  const writableRoots = [];
+  for (const item of Array.isArray(parsed.writableRoots) ? parsed.writableRoots : []) {
+    if (typeof item !== "string") continue;
+    const value = item.trim();
+    if (!value) continue;
+    const key = process.platform === "win32" ? value.toLowerCase() : value;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    writableRoots.push(value);
+  }
+  const grantTimeoutMs =
+    typeof parsed.grantTimeoutMs === "number" && Number.isFinite(parsed.grantTimeoutMs)
+      ? Math.min(600_000, Math.max(10_000, Math.round(parsed.grantTimeoutMs)))
+      : 120_000;
+  return {
+    enabled: parsed.enabled === true,
+    mode: "workspace-write",
+    writableRoots,
+    allowTemp: parsed.allowTemp !== false,
+    grantTimeoutMs,
+    confirmDelete: parsed.confirmDelete === true,
+  };
+}
+
 function defaultSettings() {
   return {
     schemaVersion: 2,
@@ -407,6 +519,16 @@ function defaultSettings() {
     theme: "system",
     closeAction: "ask",
     language: "system",
+    speechStyle: "normal",
+    // 回合后自动蒸馏记忆（ZCode auto-memory 同款）：默认开启，设置页可关
+    memoryExtraction: true,
+    // 自我学习（技能 / 项目经验 / 用户模型）：实验性能力，默认关闭，设置页可开
+    selfLearning: false,
+    // 命令沙箱（Windows 受限令牌 + ACL）：默认关闭，设置页显式开启
+    sandbox: normalizeSandbox(),
+    // 网络代理：direct = 直连（默认，与加代理之前行为一致）
+    proxyMode: "direct",
+    proxyUrl: "",
     onboardingCompleted: false,
     archivedSessions: [],
     projectNames: {},
@@ -416,6 +538,10 @@ function defaultSettings() {
     mcpCredentials: {},
     oauthApps: {},
     oauthAccounts: {},
+    hooks: {
+      runMode: "auto",
+      includeWorkspace: false,
+    },
   };
 }
 
@@ -484,9 +610,18 @@ function migrateSettings(raw) {
     schemaVersion: 2,
     providers: Array.isArray(parsed.providers) ? parsed.providers : [],
     language: LANGUAGE_PREFERENCES.includes(parsed.language) ? parsed.language : "system",
+    speechStyle: SPEECH_STYLES.includes(parsed.speechStyle) ? parsed.speechStyle : "normal",
     // 全新安装走 defaultSettings() 回退（显式 false）；已有 settings.json 缺字段的老用户补 true
     onboardingCompleted:
       typeof parsed.onboardingCompleted === "boolean" ? parsed.onboardingCompleted : true,
+    // 记忆自动蒸馏：缺字段的老用户补 true（与 defaultSettings 对齐）
+    memoryExtraction:
+      typeof parsed.memoryExtraction === "boolean" ? parsed.memoryExtraction : true,
+    // 自我学习：缺字段的老用户补 false（实验性，默认关闭）
+    selfLearning: typeof parsed.selfLearning === "boolean" ? parsed.selfLearning : false,
+    // 网络代理：缺字段的老用户补直连（保持原有网络行为）
+    proxyMode: PROXY_MODES.includes(parsed.proxyMode) ? parsed.proxyMode : "direct",
+    proxyUrl: typeof parsed.proxyUrl === "string" ? parsed.proxyUrl : "",
     archivedSessions: Array.isArray(parsed.archivedSessions) ? parsed.archivedSessions : [],
     projectNames:
       parsed.projectNames && typeof parsed.projectNames === "object" && !Array.isArray(parsed.projectNames)
@@ -494,10 +629,22 @@ function migrateSettings(raw) {
         : {},
     pinnedProjects: Array.isArray(parsed.pinnedProjects) ? parsed.pinnedProjects : [],
     removedProjects: Array.isArray(parsed.removedProjects) ? parsed.removedProjects : [],
+    // 界面字体：空串 = 默认 MiSans；customFonts = 导入的自定义字体文件
+    fontFamily: typeof parsed.fontFamily === "string" ? parsed.fontFamily : "",
+    // 代码字体：空串 = 默认等宽栈
+    codeFontFamily: typeof parsed.codeFontFamily === "string" ? parsed.codeFontFamily : "",
+    customFonts: Array.isArray(parsed.customFonts)
+      ? parsed.customFonts.filter((item) => item && typeof item.fileName === "string")
+      : [],
     githubAuth: normalizeGithubAuth(parsed.githubAuth),
     mcpCredentials: normalizeMcpCredentials(parsed.mcpCredentials),
     oauthApps: normalizeOauthApps(parsed.oauthApps),
     oauthAccounts: normalizeOauthAccounts(parsed.oauthAccounts),
+    hooks: {
+      runMode: parsed.hooks?.runMode === "ask" ? "ask" : "auto",
+      includeWorkspace: parsed.hooks?.includeWorkspace === true,
+    },
+    sandbox: normalizeSandbox(parsed.sandbox),
   };
 }
 
@@ -556,6 +703,9 @@ function providerFields(provider, existing) {
     reasoningSummary:
       "reasoningSummary" in provider ? provider.reasoningSummary : existing?.reasoningSummary,
     fallbackIds: "fallbackIds" in provider ? provider.fallbackIds : existing?.fallbackIds,
+    authStyle: "authStyle" in provider ? provider.authStyle : existing?.authStyle,
+    extraHeaders: "extraHeaders" in provider ? provider.extraHeaders : existing?.extraHeaders,
+    extraBody: "extraBody" in provider ? provider.extraBody : existing?.extraBody,
     // 显式带 enabled 字段就采用它（false 会被保留），否则沿用原值
     enabled: "enabled" in provider ? Boolean(provider.enabled) : existing?.enabled,
     apiKeyEncrypted: provider.apiKey
@@ -619,7 +769,15 @@ function publicSettings(settings) {
     theme: settings.theme ?? "system",
     closeAction: settings.closeAction ?? "ask",
     language: LANGUAGE_PREFERENCES.includes(settings.language) ? settings.language : "system",
+    speechStyle: SPEECH_STYLES.includes(settings.speechStyle) ? settings.speechStyle : "normal",
     onboardingCompleted: typeof settings.onboardingCompleted === "boolean" ? settings.onboardingCompleted : true,
+    /** 回合后自动蒸馏记忆：默认开 */
+    memoryExtraction: typeof settings.memoryExtraction === "boolean" ? settings.memoryExtraction : true,
+    /** 自我学习：实验性，默认关 */
+    selfLearning: typeof settings.selfLearning === "boolean" ? settings.selfLearning : false,
+    /** 网络代理：direct / system / manual */
+    proxyMode: PROXY_MODES.includes(settings.proxyMode) ? settings.proxyMode : "direct",
+    proxyUrl: typeof settings.proxyUrl === "string" ? settings.proxyUrl : "",
     archivedSessions: Array.isArray(settings.archivedSessions) ? settings.archivedSessions : [],
     /** 项目（工作区）自定义显示名：cwd → name */
     projectNames: settings.projectNames && typeof settings.projectNames === "object" ? settings.projectNames : {},
@@ -627,6 +785,24 @@ function publicSettings(settings) {
     pinnedProjects: Array.isArray(settings.pinnedProjects) ? settings.pinnedProjects : [],
     /** 已移除（侧栏隐藏）的项目 cwd 列表 */
     removedProjects: Array.isArray(settings.removedProjects) ? settings.removedProjects : [],
+    silentUpdate: typeof settings.silentUpdate === "boolean" ? settings.silentUpdate : true,
+    notifications: typeof settings.notifications === "boolean" ? settings.notifications : true,
+    floatingIsland: typeof settings.floatingIsland === "boolean" ? settings.floatingIsland : false,
+    worktreeFetchUpstream:
+      typeof settings.worktreeFetchUpstream === "boolean" ? settings.worktreeFetchUpstream : false,
+    worktreeAutoCleanup:
+      typeof settings.worktreeAutoCleanup === "boolean" ? settings.worktreeAutoCleanup : true,
+    worktreeMaxKeep:
+      typeof settings.worktreeMaxKeep === "number" ? settings.worktreeMaxKeep : 15,
+    includeAgentsMd: typeof settings.includeAgentsMd === "boolean" ? settings.includeAgentsMd : true,
+    includeClaudeMd: typeof settings.includeClaudeMd === "boolean" ? settings.includeClaudeMd : true,
+    hooks: {
+      runMode: settings.hooks?.runMode === "ask" ? "ask" : "auto",
+      includeWorkspace: settings.hooks?.includeWorkspace === true,
+    },
+    sandbox: normalizeSandbox(settings.sandbox),
+    fontFamily: typeof settings.fontFamily === "string" ? settings.fontFamily : "",
+    codeFontFamily: typeof settings.codeFontFamily === "string" ? settings.codeFontFamily : "",
     providers: (settings.providers ?? []).map((provider) => ({
       id: provider.id,
       name: provider.name,
@@ -644,6 +820,9 @@ function publicSettings(settings) {
       cacheTtl: provider.cacheTtl,
       reasoningSummary: provider.reasoningSummary,
       fallbackIds: provider.fallbackIds,
+      authStyle: provider.authStyle,
+      extraHeaders: provider.extraHeaders,
+      extraBody: provider.extraBody,
       nativeCompaction: provider.nativeCompaction,
       enabled: provider.enabled,
       hasApiKey: Boolean(provider.apiKeyEncrypted),
@@ -777,6 +956,7 @@ const UI_TAB_KINDS = new Set([
   "plan",
   "subagent",
   "subagents",
+  "plugin",
 ]);
 const MAX_UI_TABS = 32;
 const MAX_DRAFTS = 200;
@@ -829,7 +1009,8 @@ function sanitizeUiState(raw) {
         tabs.push({
           id,
           kind: "workspace",
-          title: title || "文件",
+          // 标题交给渲染层按当前语言现算，避免把某一语的默认标题持久化
+          title: title || "",
           ...(typeof item.path === "string" && item.path.trim()
             ? { path: item.path.trim().slice(0, 2048) }
             : {}),
@@ -844,7 +1025,7 @@ function sanitizeUiState(raw) {
         tabs.push({
           id,
           kind: "subagent",
-          title: title || "子 Agent",
+          title: title || "",
           agentId: agentId.slice(0, 64),
           parentSessionId: parentSessionId.slice(0, 64),
           ...(typeof item.callId === "string" && item.callId.trim()
@@ -853,6 +1034,17 @@ function sanitizeUiState(raw) {
           ...(typeof item.description === "string" && item.description.trim()
             ? { description: item.description.trim().slice(0, 200) }
             : {}),
+        });
+        continue;
+      }
+      if (item.kind === "plugin") {
+        const pluginId = typeof item.pluginId === "string" ? item.pluginId.trim() : "";
+        if (!pluginId) continue;
+        tabs.push({
+          id,
+          kind: "plugin",
+          title: title || pluginId,
+          pluginId: pluginId.slice(0, 64),
         });
         continue;
       }
@@ -986,6 +1178,9 @@ function buildServerEnv(settings) {
     cacheTtl: provider.cacheTtl,
     reasoningSummary: provider.reasoningSummary,
     fallbackIds: provider.fallbackIds,
+    authStyle: provider.authStyle,
+    extraHeaders: provider.extraHeaders,
+    extraBody: provider.extraBody,
     nativeCompaction: provider.nativeCompaction,
   }));
   const ripgrepPath = devRepoRoot()
@@ -1004,17 +1199,61 @@ function buildServerEnv(settings) {
     if (token) manualMcpEnv[config.tokenEnv] = token;
   }
   const githubToken = githubStoredToken(settings);
+  // 插件禁用清单（设置页启停）：server 只认 env，不读 settings 文件。
+  // computer-control（电脑控制）默认关闭：用户从未持久化过插件开关（settings.plugins
+  // 缺失）时注入禁用项；设置页写过的 disabled 数组存在后，以用户持久化的清单为准
+  //（设置页开关以 server 回报的 enabled 状态为基础整表重写，因此双向自洽）。
+  const storedPluginDisabled = Array.isArray(settings.plugins?.disabled)
+    ? settings.plugins.disabled
+    : null;
+  const pluginDisabled = storedPluginDisabled ?? ["computer-control"];
   return {
     ...process.env,
     ...manualMcpEnv,
     ...(githubToken ? { [GITHUB_TOKEN_ENV]: githubToken } : {}),
     MEOWCODE_SERVER_PORT: "0",
     MEOWCODE_SESSIONS_DIR: sessionsDir,
+    MEOWCODE_WORKTREES_DIR: path.join(settingsDir, "worktrees"),
     MEOWCODE_WORKSPACE: settings.workspace ?? "",
     MEOWCODE_PROVIDER_ID: settings.providerId ?? "",
     MEOWCODE_PROVIDERS: JSON.stringify(providers),
-    // 插件禁用清单（设置页启停）：server 只认 env，不读 settings 文件
-    MEOWCODE_PLUGINS: JSON.stringify({ disabled: settings.plugins?.disabled ?? [] }),
+    // 记忆自动蒸馏开关：server 只认 env，不读 settings 文件
+    MEOWCODE_MEMORY_EXTRACTION: settings.memoryExtraction === false ? "0" : "1",
+    // 自我学习开关：同上，运行中切换走 /config/learning（默认关）
+    MEOWCODE_SELF_LEARNING: settings.selfLearning === true ? "1" : "0",
+    // 网络代理：system 模式在启动时把系统代理解析成具体地址传给 server
+    // （agent 侧再退到 HTTPS_PROXY/HTTP_PROXY 兜底）；运行中切换走 /config/proxy
+    MEOWCODE_PROXY_MODE: PROXY_MODES.includes(settings.proxyMode) ? settings.proxyMode : "direct",
+    MEOWCODE_PROXY_URL:
+      settings.proxyMode === "manual"
+        ? settings.proxyUrl || ""
+        : settings.proxyMode === "system"
+          ? resolveSystemProxy()
+          : "",
+    // AGENTS.md / CLAUDE.md 导入开关：server 启动时读 env，设置页切换走 /config/instructions
+    MEOWCODE_INCLUDE_AGENTS_MD: settings.includeAgentsMd === false ? "0" : "1",
+    MEOWCODE_INCLUDE_CLAUDE_MD: settings.includeClaudeMd === false ? "0" : "1",
+    // 会话回滚（文件快照）：server 启动时读 env，写盘后重启 agent server 生效
+    MEOWCODE_REWIND: settings.rewindSnapshots === false ? "0" : "1",
+    ...(typeof settings.rewindMaxTotalMb === "number" && settings.rewindMaxTotalMb > 0
+      ? { MEOWCODE_REWIND_MAX_MB: String(Math.round(settings.rewindMaxTotalMb)) }
+      : {}),
+    ...(typeof settings.rewindKeepCheckpoints === "number" && settings.rewindKeepCheckpoints > 0
+      ? { MEOWCODE_REWIND_KEEP: String(Math.round(settings.rewindKeepCheckpoints)) }
+      : {}),
+    // 语色：server 只认 env，不读 settings 文件；运行中切换走 /config/speech-style
+    MEOWCODE_SPEECH_STYLE: SPEECH_STYLES.includes(settings.speechStyle)
+      ? settings.speechStyle
+      : "normal",
+    MEOWCODE_PLUGINS: JSON.stringify({ disabled: pluginDisabled }),
+    // 命令沙箱：server 只认 env；运行中切换走 PUT /config/sandbox
+    MEOWCODE_SANDBOX: JSON.stringify(normalizeSandbox(settings.sandbox)),
+    // Claude Code hooks：user 级始终参与；工作区 .claude 默认不执行（设置页子开关）
+    MEOWCODE_HOOKS_RUN_MODE: settings.hooks?.runMode === "ask" ? "ask" : "auto",
+    MEOWCODE_CC_HOOKS_SCOPE: JSON.stringify({
+      user: true,
+      workspace: settings.hooks?.includeWorkspace === true,
+    }),
     MEOWCODE_SERVER_TOKEN: serverToken,
     // 插件市场 bundles 根（未设置=市场功能为空）
     MEOWCODE_MARKETPLACE_DIR: marketplaceDir(),
@@ -1023,6 +1262,12 @@ function buildServerEnv(settings) {
       ? {
           MEOWCODE_BROWSER_HOST: browserHost.baseUrl,
           MEOWCODE_BROWSER_HOST_TOKEN: browserHost.token,
+        }
+      : {}),
+    ...(computerHost.baseUrl
+      ? {
+          MEOWCODE_COMPUTER_HOST: computerHost.baseUrl,
+          MEOWCODE_COMPUTER_HOST_TOKEN: computerHost.token,
         }
       : {}),
     ELECTRON_RUN_AS_NODE: "1",
@@ -1101,17 +1346,51 @@ function updateServerGithubToken(token) {
   return updateServerMcpCredentials({ [GITHUB_TOKEN_ENV]: token || null });
 }
 
-const MANUAL_MCP_USER_URLS = {
-  MEOWCODE_GITEE_TOKEN: "https://gitee.com/api/v5/user",
-  MEOWCODE_GITCODE_TOKEN: "https://api.gitcode.com/api/v5/user",
+/** 手工令牌在线校验：Gitee/GitCode 走 query 参数，Figma 走 X-Figma-Token 请求头，瑞幸走 MCP initialize 握手。 */
+const MANUAL_MCP_TOKEN_CHECKS = {
+  MEOWCODE_GITEE_TOKEN: {
+    url: (token) => `https://gitee.com/api/v5/user?access_token=${encodeURIComponent(token)}`,
+    headers: () => ({}),
+  },
+  MEOWCODE_GITCODE_TOKEN: {
+    url: (token) => `https://api.gitcode.com/api/v5/user?access_token=${encodeURIComponent(token)}`,
+    headers: () => ({}),
+  },
+  MEOWCODE_FIGMA_TOKEN: {
+    url: () => "https://api.figma.com/v1/me",
+    headers: (token) => ({ "X-Figma-Token": token }),
+  },
+  LUCKIN_MCP_TOKEN: {
+    url: () => "https://gwmcp.lkcoffee.com/order/user/mcp",
+    method: "POST",
+    headers: (token) => ({
+      authorization: `Bearer ${token}`,
+      "content-type": "application/json",
+      accept: "application/json, text/event-stream",
+    }),
+    // 直接对 MCP 端点做 initialize 握手：401 = 令牌无效，2xx = 鉴权通过
+    body: () =>
+      JSON.stringify({
+        jsonrpc: "2.0",
+        method: "initialize",
+        params: {
+          protocolVersion: "2025-03-26",
+          capabilities: {},
+          clientInfo: { name: "MeowCode", version: "1.0.0" },
+        },
+        id: 1,
+      }),
+  },
 };
 
 async function validateManualMcpToken(name, token) {
-  const userUrl = MANUAL_MCP_USER_URLS[name];
-  if (!userUrl) return { ok: false, message: "不支持的 MCP Token。" };
+  const check = MANUAL_MCP_TOKEN_CHECKS[name];
+  if (!check) return { ok: false, message: "不支持的 MCP Token。" };
   try {
-    const response = await fetch(`${userUrl}?access_token=${encodeURIComponent(token)}`, {
-      headers: { accept: "application/json", "user-agent": "MeowCode" },
+    const response = await fetch(check.url(token), {
+      method: check.method ?? "GET",
+      headers: { accept: "application/json", "user-agent": "MeowCode", ...check.headers(token) },
+      body: check.body ? check.body(token) : undefined,
       signal: AbortSignal.timeout(15_000),
     });
     if (response.ok) return { ok: true };
@@ -1531,6 +1810,8 @@ async function bootServerOnce() {
             resolve(serverUrl);
           }
           startEventStream();
+          // 托盘菜单里的最近会话：server 就绪后补一次（窗口还没推送过时靠它填）
+          void refreshTraySessions();
         }
       });
       child.on("exit", (code, signal) => {
@@ -1650,6 +1931,8 @@ async function startEventStream() {
                 lastEventId = Math.max(lastEventId, pendingId);
               }
               pendingId = null;
+              // 通知侧先消化：标题/摘要缓存 + 到点弹窗，再照旧转发给渲染层
+              handleServerEventForNotifications(payload);
               batcher.push(payload);
             } catch {
               // Ignore malformed frames.
@@ -1669,7 +1952,214 @@ async function startEventStream() {
   }
 }
 
+// ---- 系统通知 ----
+//
+// Windows 的 toast 卡片上「应用名 + 图标」由 AUMID 决定（见文件顶部的 setAppUserModelId），
+// 内容由这里拼：标题取会话名，正文取本轮最后一条回复；审批则是工具名 + 命令/路径。
+// 只在主窗口不在前台时打扰用户；前台但看的是别的会话时照常提示。
+
+/** 会话标题缓存：session_title 事件 + /sessions 兜底，通知标题用。 */
+const sessionTitles = new Map();
+/** 每个会话本轮最后一条 AI 回复：通知正文的摘要来源。 */
+const sessionPreviews = new Map();
+/** 回合结束通知去重：SSE 重连可能重放同一事件。 */
+const turnDedupe = createDedupe({ windowMs: TURN_DEDUPE_MS });
+/** 审批通知去重：同一个 callId 只提示一次（子 Agent 也复用同一事件类型）。 */
+const approvalDedupe = createDedupe();
+
+/** 通知文案跟随界面语言（与托盘菜单同一套词条表）。 */
+function notificationLabels() {
+  const ui = uiStrings();
+  return {
+    turnDone: ui.notifTurnDone,
+    turnAborted: ui.notifTurnAborted,
+    turnError: ui.notifTurnError,
+    approval: ui.notifApproval,
+    ask: ui.notifAsk,
+    untitled: ui.untitledSession,
+  };
+}
+
+/** 通知卡片图标：dev 读仓库 resources/icon.png，打包读 resources/icons/icon.png。 */
+function notificationIconPath() {
+  const root = devRepoRoot();
+  return root
+    ? path.join(root, "resources", "icon.png")
+    : path.join(process.resourcesPath, "icons", "icon.png");
+}
+
+let notificationIconImage;
+function notificationIcon() {
+  if (notificationIconImage !== undefined) return notificationIconImage || undefined;
+  try {
+    const image = nativeImage.createFromPath(notificationIconPath());
+    // toast 卡片上的图标是 48~64px，整张 1254px 的原图没必要
+    notificationIconImage = image.isEmpty() ? null : image.resize({ width: 64, height: 64 });
+  } catch {
+    notificationIconImage = null;
+  }
+  return notificationIconImage || undefined;
+}
+
+/** 主窗口是否正被用户看着：隐藏到托盘 / 最小化 / 被别的应用挡住都算后台。 */
+function isMainWindowInForeground() {
+  if (!mainWindow || mainWindow.isDestroyed()) return false;
+  if (!mainWindow.isVisible() || mainWindow.isMinimized()) return false;
+  return mainWindow.isFocused();
+}
+
+/**
+ * 要不要打扰用户：总开关 + 系统支持 + 窗口在后台。
+ * 窗口在前台但用户看的是别的会话时也要提示，否则多会话并行永远收不到通知。
+ */
+function shouldNotifyNow(sessionId) {
+  // 正在退出：别在关应用的最后几秒弹一堆通知
+  if (isQuitting) return false;
+  const enabled = readSettings().notifications !== false;
+  if (!shouldNotify({ enabled, supported: Notification.isSupported() })) return false;
+  if (!isMainWindowInForeground()) return true;
+  return Boolean(sessionId && trayActiveSessionId && sessionId !== trayActiveSessionId);
+}
+
+function showNotification({ title, body, sessionId }) {
+  if (!body) return;
+  try {
+    const notification = new Notification({
+      title,
+      body,
+      icon: notificationIcon(),
+      // Windows 的 Tag 语义：同一会话的新通知替换旧的，通知中心不会堆一列
+      ...(sessionId ? { id: sessionId } : {}),
+    });
+    notification.on("failed", (_event, error) => {
+      // dev 下没有开始菜单快捷方式时 AUMID 归属可能失败，这里至少留下线索
+      console.warn("[MeowCode] Notification failed:", error);
+    });
+    notification.on("click", () => {
+      showMainWindow();
+      void focusSessionFromNotification(sessionId);
+    });
+    notification.show();
+  } catch (error) {
+    console.warn("[MeowCode] Notification error:", error);
+  }
+}
+
+/** 点通知回到对应会话：事件只带 sessionId，现拉一次列表换成 filePath 再走托盘切换通道。 */
+async function focusSessionFromNotification(sessionId) {
+  if (!sessionId || !serverUrl) return;
+  try {
+    const response = await fetch(`${serverUrl}/sessions`, {
+      headers: { authorization: `Bearer ${serverToken}` },
+    });
+    if (!response.ok) return;
+    const body = await response.json();
+    const hit = Array.isArray(body?.sessions)
+      ? body.sessions.find((item) => item?.id === sessionId)
+      : null;
+    if (hit?.filePath) sendTrayAction("meow:tray-switch-session", hit.filePath);
+  } catch {
+    // 拿不到列表就只把窗口唤到前台，不打断用户
+  }
+}
+
+function notifyTurnComplete(payload) {
+  const sessionId = String(payload?.sessionId ?? "");
+  if (!sessionId) return;
+  if (!shouldNotifyNow(sessionId)) return;
+  if (!turnDedupe.accept(sessionId)) return;
+  const labels = notificationLabels();
+  showNotification({
+    title: notificationTitle(sessionTitles.get(sessionId), labels.untitled),
+    body: describeTurn({
+      status: payload.status,
+      preview: sessionPreviews.get(sessionId),
+      labels,
+    }),
+    sessionId,
+  });
+}
+
+function notifyApprovalRequired(payload) {
+  const callId = String(payload?.callId ?? "");
+  // 子 Agent 的审批复用同一事件类型：标题取父会话的
+  const sessionId = String(payload?.parentSessionId ?? payload?.sessionId ?? "");
+  if (!callId || !sessionId) return;
+  if (!shouldNotifyNow(sessionId)) return;
+  if (!approvalDedupe.accept(callId)) return;
+  const labels = notificationLabels();
+  showNotification({
+    title: notificationTitle(sessionTitles.get(sessionId), labels.untitled),
+    body: describeApproval({
+      tool: payload.tool,
+      command: payload.command,
+      input: payload.input,
+      labels,
+    }),
+    sessionId,
+  });
+}
+
+/** ask_user：模型挂起等你点选/回答，和审批一样需要打扰。 */
+function notifyAskUser(payload) {
+  const callId = String(payload?.callId ?? "");
+  const sessionId = String(payload?.sessionId ?? "");
+  if (!callId || !sessionId) return;
+  if (!shouldNotifyNow(sessionId)) return;
+  // 与审批共用一张表：同一个 callId 只提示一次
+  if (!approvalDedupe.accept(callId)) return;
+  const labels = notificationLabels();
+  showNotification({
+    title: notificationTitle(sessionTitles.get(sessionId), labels.untitled),
+    body: describeAsk({ questions: payload.questions, labels }),
+    sessionId,
+  });
+}
+
+/** agent server 的 SSE 事件分流：维护标题/摘要缓存，再决定弹不弹。 */function handleServerEventForNotifications(payload) {
+  if (!payload || typeof payload.type !== "string") return;
+  switch (payload.type) {
+    case "session_title":
+      if (payload.sessionId && payload.title) sessionTitles.set(payload.sessionId, payload.title);
+      return;
+    case "message_start":
+      if (!payload.agentId && payload.sessionId) sessionPreviews.delete(payload.sessionId);
+      return;
+    case "message_complete":
+      if (!payload.agentId && payload.sessionId) {
+        sessionPreviews.set(payload.sessionId, payload.text ?? "");
+      }
+      return;
+    case "turn_complete":
+      // 子 Agent 收尾不代表主回合结束，不提示
+      if (!payload.agentId) notifyTurnComplete(payload);
+      return;
+    case "approval_required":
+      notifyApprovalRequired(payload);
+      return;
+    case "approval_resolved":
+      approvalDedupe.release(payload.callId);
+      return;
+    case "ask_user":
+      notifyAskUser(payload);
+      return;
+    default:
+      return;
+  }
+}
+
 // ---- 托盘 ----
+
+/** 最近会话（渲染层会话列表变化时推送；server 就绪后再兜底拉一次）。 */
+let traySessions = [];
+/** 当前打开的会话文件：菜单里打勾用 */
+let trayActiveSessionPath = null;
+/** 当前打开的会话 id：通知判定「前台但看的是别的会话」用 */
+let trayActiveSessionId = null;
+/** 渲染层是否已经加载完（决定托盘动作直接发还是先排队）。 */
+let rendererReady = false;
+/** 托盘动作 → 渲染层：窗口还没加载完时先存一条，did-finish-load 后补发。 */
+let pendingTrayAction = null;
 
 function showMainWindow() {
   if (!mainWindow) {
@@ -1679,6 +2169,25 @@ function showMainWindow() {
   if (mainWindow.isMinimized()) mainWindow.restore();
   mainWindow.show();
   mainWindow.focus();
+}
+
+/** 托盘点击后要渲染层做的事（切会话 / 新对话 / 开设置）：没加载完就排队等一次。 */
+function sendTrayAction(channel, payload) {
+  const win = mainWindow;
+  if (!win || win.isDestroyed() || !rendererReady) {
+    pendingTrayAction = { channel, payload, at: Date.now() };
+    return;
+  }
+  win.webContents.send(channel, payload);
+}
+
+function flushTrayAction() {
+  const action = pendingTrayAction;
+  pendingTrayAction = null;
+  if (!action || !mainWindow || mainWindow.isDestroyed()) return;
+  // 窗口加载失败后隔很久才恢复时，别再拿十几分钟前的那次点击动用户的会话
+  if (Date.now() - (action.at ?? 0) > 30_000) return;
+  mainWindow.webContents.send(action.channel, action.payload);
 }
 
 /** 独立托盘 ICO：内含 16–64 各 DPI 帧，由 scripts/make-tray-icons.mjs 从 resources/icon.png 生成。 */
@@ -1700,31 +2209,129 @@ function createTray() {
   tray.on("click", showMainWindow);
   tray.on("double-click", showMainWindow);
   updateTrayMenu();
+  // 窗口首帧还没渲染时菜单里也要有内容：直接问一次 agent server
+  void refreshTraySessions();
+}
+
+/** 原生 UI（托盘 / 文件选择框）的当前语言文案：跟随设置里的界面语言，system 用系统语言解析。 */
+function uiStrings() {
+  let preference = "system";
+  try {
+    preference = readSettings().language || "system";
+  } catch {
+    // 设置还没写入时按 system 处理
+  }
+  const languages = app.getPreferredSystemLanguages?.() ?? [app.getLocale()];
+  return mainStrings(preference, languages);
+}
+
+/** 兜底数据源：渲染层还没推送时（窗口未加载）直接从 server 拉会话列表。 */
+async function refreshTraySessions() {
+  if (!serverUrl) return;
+  try {
+    const response = await fetch(`${serverUrl}/sessions`, {
+      headers: { authorization: `Bearer ${serverToken}` },
+    });
+    if (!response.ok) return;
+    const body = await response.json();
+    if (!Array.isArray(body?.sessions)) return;
+    traySessions = normalizeTraySessions(body.sessions);
+    // 顺手补一遍标题缓存：窗口还没推送过标题时，通知也不会只剩「未命名会话」
+    for (const item of body.sessions) {
+      if (item?.id && typeof item.title === "string" && item.title) {
+        sessionTitles.set(item.id, item.title);
+      }
+    }
+    updateTrayMenu();
+  } catch {
+    // server 还没就绪：等渲染层推送
+  }
+}
+
+/** 菜单项标题：无标题会话用「未命名会话」，& 要转义成 && 否则被当成助记符。 */
+function traySessionItem(session, ui) {
+  return {
+    label: traySessionLabel(session, ui.untitledSession),
+    type: "checkbox",
+    checked: Boolean(trayActiveSessionPath && session.filePath === trayActiveSessionPath),
+    click: () => {
+      // 先把状态挪过去再重建菜单：勾选立刻跟随，不用等渲染层推送。
+      // 延到下一拍重建：点击回调里直接换掉正在弹出的菜单，Windows 下会闪一下。
+      trayActiveSessionPath = session.filePath;
+      showMainWindow();
+      sendTrayAction("meow:tray-switch-session", session.filePath);
+      setTimeout(updateTrayMenu, 0);
+    },
+  };
 }
 
 function updateTrayMenu() {
   if (!tray) return;
-  tray.setContextMenu(
-    Menu.buildFromTemplate([
-      { label: "显示 MeowCode", click: showMainWindow },
-      {
-        label: "设置…",
-        click: () => {
-          showMainWindow();
-          mainWindow?.webContents.send("meow:open-settings");
-        },
+  const ui = uiStrings();
+  const { recent, more } = splitTraySessions(traySessions);
+  const template = [{ label: ui.newChat, click: openTrayNewChat }, { type: "separator" }];
+  if (recent.length) {
+    template.push({ label: ui.recentChats, enabled: false });
+    for (const session of recent) template.push(traySessionItem(session, ui));
+    if (more.length) {
+      template.push({
+        label: ui.moreChats,
+        submenu: more.map((session) => traySessionItem(session, ui)),
+      });
+    }
+    template.push({ type: "separator" });
+  }
+  template.push(
+    { label: ui.showWindow, click: showMainWindow },
+    {
+      label: ui.settings,
+      click: () => {
+        showMainWindow();
+        sendTrayAction("meow:open-settings");
       },
-      { type: "separator" },
-      {
-        label: "退出",
-        click: () => {
-          isQuitting = true;
-          app.quit();
-        },
+    },
+    { type: "separator" },
+    {
+      label: ui.quit,
+      click: () => {
+        isQuitting = true;
+        app.quit();
       },
-    ]),
+    },
   );
+  tray.setContextMenu(Menu.buildFromTemplate(template));
 }
+
+/** 托盘「新对话」：走和侧栏按钮同一条渲染层逻辑（沿用上次工作区）。 */
+function openTrayNewChat() {
+  showMainWindow();
+  sendTrayAction("meow:tray-new-session");
+}
+
+/** 渲染层每次会话列表/当前会话变化后推一次：主进程只负责展示与分发点击。 */
+ipcMain.handle("meow:tray-sessions", (_event, payload) => {
+  traySessions = normalizeTraySessions(payload?.sessions);
+  trayActiveSessionPath =
+    typeof payload?.activeFilePath === "string" && payload.activeFilePath
+      ? payload.activeFilePath
+      : null;
+  trayActiveSessionId =
+    typeof payload?.activeSessionId === "string" && payload.activeSessionId
+      ? payload.activeSessionId
+      : null;
+  updateTrayMenu();
+  return { ok: true };
+});
+
+/**
+ * 渲染层已订阅好托盘事件：这时补发排队的那一条动作。
+ * 不能只靠 did-finish-load —— React 的 effect 在首帧之后才跑，早发会直接丢掉。
+ */
+ipcMain.handle("meow:tray-ready", () => {
+  rendererReady = true;
+  flushTrayAction();
+  return { ok: true };
+});
 
 // ---- 关闭方式 ----
 
@@ -1751,8 +2358,135 @@ ipcMain.handle("meow:close-decision", (_event, choice, remember) => {
   }
 });
 
+// ---- AI 悬浮岛：屏幕顶部居中的透明置顶胶囊（设置 → AI 悬浮岛开关）----
+
+let islandScreenHooksInstalled = false;
+
+/** 渲染层上报的岛体交互矩形（屏幕坐标）：展开=面板，折叠=胶囊 */
+let islandHoverRect = null;
+/** 主进程轮询判定的光标是否在岛上 */
+let islandCursorInside = false;
+let islandPollTimer = null;
+
+/**
+ * 60ms 轮询光标位置直接切换穿透（NexBox 灵动岛同款）。
+ * 不用渲染层 mousemove + IPC：快速点击时穿透还没切回来，点击会穿到下层窗口——这就是「有时展不开」的根源。
+ */
+function startIslandPoll() {
+  if (islandPollTimer) return;
+  islandPollTimer = setInterval(() => {
+    const win = islandWindow;
+    if (!win || win.isDestroyed() || !islandHoverRect) return;
+    const pt = screen.getCursorScreenPoint();
+    const rect = islandHoverRect;
+    // 进 14 / 出 26 的回差边距，避免在边缘来回翻转
+    const margin = islandCursorInside ? 26 : 14;
+    const inside =
+      pt.x >= rect.x - margin &&
+      pt.x <= rect.x + rect.width + margin &&
+      pt.y >= rect.y - margin &&
+      pt.y <= rect.y + rect.height + margin;
+    if (inside === islandCursorInside) return;
+    islandCursorInside = inside;
+    win.setIgnoreMouseEvents(!inside, { forward: true });
+    // 同步给渲染层：离开岛体时收起展开面板
+    win.webContents.send("meow:island-cursor", inside);
+  }, 60);
+}
+
+function stopIslandPoll() {
+  if (islandPollTimer) {
+    clearInterval(islandPollTimer);
+    islandPollTimer = null;
+  }
+  islandCursorInside = false;
+  islandHoverRect = null;
+}
+
+/** 贴住主显示器工作区顶部居中；分辨率变化 / 插拔显示器时由 screen 事件回调自动校正 */
+function positionIslandWindow() {
+  if (!islandWindow || islandWindow.isDestroyed()) return;
+  const { workArea } = screen.getPrimaryDisplay();
+  const width = ISLAND_WINDOW_WIDTH;
+  const x = Math.max(workArea.x, Math.round(workArea.x + (workArea.width - width) / 2));
+  islandWindow.setPosition(x, workArea.y);
+}
+
+function ensureIslandScreenHooks() {
+  if (islandScreenHooksInstalled) return;
+  islandScreenHooksInstalled = true;
+  screen.on("display-metrics-changed", () => positionIslandWindow());
+  screen.on("displays-changed", () => positionIslandWindow());
+}
+
+function createIslandWindow() {
+  if (islandWindow && !islandWindow.isDestroyed()) return;
+  ensureIslandScreenHooks();
+  startIslandPoll();
+  islandWindow = new BrowserWindow({
+    width: ISLAND_WINDOW_WIDTH,
+    height: ISLAND_WINDOW_HEIGHT,
+    show: false,
+    // 无边框透明：岛体形状完全由渲染层绘制
+    frame: false,
+    transparent: true,
+    hasShadow: false,
+    alwaysOnTop: true,
+    skipTaskbar: true,
+    resizable: false,
+    minimizable: false,
+    maximizable: false,
+    fullscreenable: false,
+    // 输入框需要键盘焦点：hover 展开不抢焦点（showInactive），点进输入框才聚焦。
+    // focusable:false 在 Windows 上收不到键盘事件，直接输入要求必须可聚焦。
+    focusable: true,
+    webPreferences: {
+      preload: path.join(__dirname, "preload.cjs"),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: false,
+      devTools: false,
+      // 常驻后台的流式动画与状态推进不能被节流
+      backgroundThrottling: false,
+    },
+  });
+  islandWindow.setMenu(null);
+  // 兜底：任何未被渲染层 preventDefault 的拖放都不允许导航岛页面（Chromium 默认会打开文件）
+  islandWindow.webContents.on("will-navigate", (event) => event.preventDefault());
+  // 空闲时整窗穿透；forward:true 让渲染层仍能收到 mousemove，据此判定光标进出岛体再切换
+  islandWindow.setIgnoreMouseEvents(true, { forward: true });
+  islandWindow.once("ready-to-show", () => {
+    if (!islandWindow || islandWindow.isDestroyed()) return;
+    positionIslandWindow();
+    islandWindow.showInactive();
+  });
+  const devServerUrl = process.env.VITE_DEV_SERVER_URL;
+  if (devServerUrl) {
+    islandWindow.loadURL(`${devServerUrl.replace(/\/+$/, "")}/island.html`);
+  } else {
+    islandWindow.loadFile(path.join(__dirname, "renderer", "island.html"));
+  }
+  islandWindow.on("closed", () => {
+    islandWindow = null;
+  });
+}
+
+function destroyIslandWindow() {
+  if (!islandWindow) return;
+  const win = islandWindow;
+  islandWindow = null;
+  stopIslandPoll();
+  try {
+    win.destroy();
+  } catch {
+    // 已销毁则忽略
+  }
+}
+
 function createWindow() {
   const settings = readSettings();
+  // 新窗口的渲染层还没跑起来：托盘动作先排队，did-finish-load 后再补发
+  rendererReady = false;
   // 毛玻璃背板的明暗跟随应用主题（深色更深、浅色更浅）
   applyWindowTheme(settings.theme);
   const savedWindow = readWindowState();
@@ -1831,6 +2565,13 @@ function createWindow() {
     if (savedWindow.maximized) mainWindow.maximize();
     mainWindow.show();
   });
+  // 首帧渲染完成：托盘动作等渲染层订阅好（meow:tray-ready）再补发，这里只标记可发
+  mainWindow.webContents.on("did-finish-load", () => {
+    rendererReady = true;
+  });
+  mainWindow.webContents.on("did-start-loading", () => {
+    rendererReady = false;
+  });
 
   // 系统主题切换时，跟随系统的窗口底色也跟着变
   nativeTheme.on("updated", () => {
@@ -1868,6 +2609,9 @@ function createWindow() {
 
   mainWindow.on("closed", () => {
     mainWindow = null;
+    rendererReady = false;
+    // 悬浮岛跟着销毁：否则它常驻会让 window-all-closed 不触发，应用退不干净
+    destroyIslandWindow();
     // 关窗即释放所有终端 pty，避免 conpty 残留阻塞退出
     terminalManager?.disposeAll();
   });
@@ -1930,7 +2674,12 @@ ipcMain.handle("meow:save-settings", async (_event, nextSettings) => {
   const incoming = nextSettings && typeof nextSettings === "object" ? nextSettings : {};
   const previous = readSettings();
   const providers = (incoming.providers ?? []).map((provider) => {
-    const existing = (previous.providers ?? []).find((item) => item.id === provider.id);
+    // 同一服务商下新增的模型条目是全新 id：密钥从同组来源条目继承，否则会丢 key
+    const existing =
+      (previous.providers ?? []).find((item) => item.id === provider.id) ??
+      (typeof provider.apiKeySourceId === "string"
+        ? (previous.providers ?? []).find((item) => item.id === provider.apiKeySourceId)
+        : undefined);
     return providerFields(provider, existing);
   });
   // 以 previous 为底：archivedSessions、项目偏好和未来新增字段都不会被这次保存丢掉
@@ -1967,6 +2716,50 @@ ipcMain.handle("meow:set-plugins-state", async (_event, payload) => {
   writeSettings(settings);
   await startServer();
   return publicSettings(settings);
+});
+
+// ---- Claude Code hooks：启停 + 运行方式 + 工作区配置范围；写盘后重启 agent server ----
+ipcMain.handle("meow:save-hooks-settings", async (_event, payload) => {
+  ensureDirs();
+  const incoming = payload && typeof payload === "object" ? payload : {};
+  const previous = readSettings();
+  const enabled = incoming.enabled !== false;
+  const runMode = incoming.runMode === "ask" ? "ask" : "auto";
+  const includeWorkspace = incoming.includeWorkspace === true;
+  const disabled = new Set(
+    Array.isArray(previous.plugins?.disabled)
+      ? previous.plugins.disabled
+      : ["computer-control"],
+  );
+  if (enabled) disabled.delete("claude-code-hooks");
+  else disabled.add("claude-code-hooks");
+  const settings = migrateSettings({
+    ...previous,
+    plugins: { ...(previous.plugins ?? {}), disabled: [...disabled] },
+    hooks: { runMode, includeWorkspace },
+  });
+  writeSettings(settings);
+  await startServer();
+  return publicSettings(settings);
+});
+
+/** 打开 Claude Code hooks 配置文件：只接受已知 layer，路径由主进程解析，避免任意文件打开。 */
+ipcMain.handle("meow:open-hooks-file", async (_event, layer) => {
+  const settings = readSettings();
+  const home = process.env.MEOWCODE_CC_HOOKS_HOME || os.homedir();
+  const workspace = settings.workspace;
+  let file = null;
+  if (layer === "user") file = path.join(home, ".claude", "settings.json");
+  else if (layer === "project" && workspace) {
+    file = path.join(workspace, ".claude", "settings.json");
+  } else if (layer === "local" && workspace) {
+    file = path.join(workspace, ".claude", "settings.local.json");
+  }
+  if (!file) return { ok: false, error: "invalid_layer" };
+  if (!fs.existsSync(file)) return { ok: false, missing: true, path: file };
+  const error = await shell.openPath(file);
+  if (error) return { ok: false, error, path: file };
+  return { ok: true, path: file };
 });
 
 // ---- GitHub OAuth（设备流）：token 加密存 settings，注入 MCP 凭据 env ----
@@ -2084,6 +2877,26 @@ ipcMain.handle("meow:set-mcp-credentials", async (_event, payload) => {
   return {
     ok: true,
     ...(applied ? {} : { warning: "已保存，但 MCP 热更新失败，重启应用后生效。" }),
+  };
+});
+
+// 清除手工令牌（如 Figma「解除授权」）：从 settings.mcpCredentials 删除，
+// 并把 server 进程 env 置 null（=删除）触发热重载；对应的 MCP 会因缺令牌而断开。
+ipcMain.handle("meow:clear-mcp-token", async (_event, payload) => {
+  ensureDirs();
+  const name = String(payload?.name ?? "");
+  if (!MANUAL_MCP_TOKEN_ENVS.includes(name)) {
+    return { ok: false, message: "不支持的 MCP Token。" };
+  }
+  const previous = readSettings();
+  const credentials = { ...(previous.mcpCredentials ?? {}) };
+  if (!(name in credentials)) return { ok: false, message: "没有已保存的令牌。" };
+  delete credentials[name];
+  writeSettings(migrateSettings({ ...previous, mcpCredentials: credentials }));
+  const applied = await updateServerMcpCredentials({ [name]: null });
+  return {
+    ok: true,
+    ...(applied ? {} : { warning: "已清除本机令牌，但 MCP 热更新失败，重启应用后生效。" }),
   };
 });
 
@@ -2266,6 +3079,13 @@ ipcMain.handle("meow:oauth-connect-cancel", (_event, payload) => {
   return { ok: true };
 });
 
+// 社区市场提交/删除：复用 gitcode-community 槽位 token（提交窗口引导授权）
+registerCommunitySubmitIpc({
+  ipcMain,
+  broadcast,
+  readCommunityToken: () => oauthStoredToken(readSettings(), "gitcode-community"),
+});
+
 ipcMain.handle("meow:oauth-disconnect", async (_event, payload) => {
   ensureDirs();
   const platform = String(payload?.platform ?? "");
@@ -2292,7 +3112,7 @@ ipcMain.handle("meow:oauth-disconnect", async (_event, payload) => {
 ipcMain.handle("meow:pick-workspace", async () => {
   const result = await dialog.showOpenDialog(mainWindow, {
     properties: ["openDirectory", "createDirectory"],
-    title: "选择 MeowCode 工作区",
+    title: uiStrings().pickWorkspace,
   });
   return result.canceled || !result.filePaths.length ? null : result.filePaths[0];
 });
@@ -2383,6 +3203,26 @@ ipcMain.handle("meow:save-provider-prefs", (_event, prefs) => {
   if (typeof prefs?.providerId === "string" && prefs.providerId) {
     next.providerId = prefs.providerId;
   }
+  // 记忆自动蒸馏开关：只写盘（启动时经 MEOWCODE_MEMORY_EXTRACTION 传给 server），
+  // 实时生效走 /config/memory-extraction，由渲染层另行调用——绝不走 saveSettings
+  if (typeof prefs?.memoryExtraction === "boolean") {
+    next.memoryExtraction = prefs.memoryExtraction;
+  }
+  // 自我学习开关：同款双通道 —— 落盘供下次启动，实时生效走 /config/learning
+  if (typeof prefs?.selfLearning === "boolean") {
+    next.selfLearning = prefs.selfLearning;
+  }
+  // 网络代理：落盘供下次启动，实时生效走 /config/proxy
+  if (PROXY_MODES.includes(prefs?.proxyMode)) {
+    next.proxyMode = prefs.proxyMode;
+  }
+  if (typeof prefs?.proxyUrl === "string") {
+    next.proxyUrl = prefs.proxyUrl;
+  }
+  // 命令沙箱：落盘供下次启动，实时生效走 PUT /config/sandbox
+  if (prefs?.sandbox && typeof prefs.sandbox === "object") {
+    next.sandbox = normalizeSandbox({ ...next.sandbox, ...prefs.sandbox });
+  }
   writeSettings(next);
   return publicSettings(next);
 });
@@ -2395,12 +3235,36 @@ ipcMain.handle("meow:get-preferences", () => {
     theme: THEME_PREFERENCES.includes(settings.theme) ? settings.theme : "system",
     closeAction: CLOSE_ACTIONS.includes(settings.closeAction) ? settings.closeAction : "ask",
     language: LANGUAGE_PREFERENCES.includes(settings.language) ? settings.language : "system",
+    speechStyle: SPEECH_STYLES.includes(settings.speechStyle) ? settings.speechStyle : "normal",
     onboardingCompleted:
       typeof settings.onboardingCompleted === "boolean" ? settings.onboardingCompleted : true,
     archivedSessions: Array.isArray(settings.archivedSessions) ? settings.archivedSessions : [],
     projectNames: settings.projectNames && typeof settings.projectNames === "object" ? settings.projectNames : {},
     pinnedProjects: Array.isArray(settings.pinnedProjects) ? settings.pinnedProjects : [],
     removedProjects: Array.isArray(settings.removedProjects) ? settings.removedProjects : [],
+    // 缺省视为开启静默下载（boolean 存量用户没有这个字段）
+    silentUpdate: typeof settings.silentUpdate === "boolean" ? settings.silentUpdate : true,
+    // 系统通知：默认开启
+    notifications: typeof settings.notifications === "boolean" ? settings.notifications : true,
+    // AI 悬浮岛：默认关闭
+    floatingIsland: typeof settings.floatingIsland === "boolean" ? settings.floatingIsland : false,
+    worktreeFetchUpstream:
+      typeof settings.worktreeFetchUpstream === "boolean" ? settings.worktreeFetchUpstream : false,
+    worktreeAutoCleanup:
+      typeof settings.worktreeAutoCleanup === "boolean" ? settings.worktreeAutoCleanup : true,
+    worktreeMaxKeep:
+      typeof settings.worktreeMaxKeep === "number" ? settings.worktreeMaxKeep : 15,
+    includeAgentsMd: typeof settings.includeAgentsMd === "boolean" ? settings.includeAgentsMd : true,
+    includeClaudeMd: typeof settings.includeClaudeMd === "boolean" ? settings.includeClaudeMd : true,
+    // 会话回滚（文件快照）：默认开启
+    rewindSnapshots:
+      typeof settings.rewindSnapshots === "boolean" ? settings.rewindSnapshots : true,
+    rewindKeepCheckpoints:
+      typeof settings.rewindKeepCheckpoints === "number" ? settings.rewindKeepCheckpoints : 120,
+    rewindMaxTotalMb:
+      typeof settings.rewindMaxTotalMb === "number" ? settings.rewindMaxTotalMb : 512,
+    fontFamily: typeof settings.fontFamily === "string" ? settings.fontFamily : "",
+    codeFontFamily: typeof settings.codeFontFamily === "string" ? settings.codeFontFamily : "",
   };
 });
 
@@ -2416,6 +3280,16 @@ ipcMain.handle("meow:save-preferences", (_event, prefs) => {
   }
   if (prefs?.language !== undefined && LANGUAGE_PREFERENCES.includes(prefs.language)) {
     next.language = prefs.language;
+  }
+  // 语色：实时生效由渲染层先调 /config/speech-style，这里只负责落盘
+  if (prefs?.speechStyle !== undefined && SPEECH_STYLES.includes(prefs.speechStyle)) {
+    next.speechStyle = prefs.speechStyle;
+  }
+  // 工作区只决定「新建会话的默认目录」（/session/new 每次都会带 cwd）。
+  // 绝不能走 meow:save-settings：那条路会 startServer() 重启 agent server，
+  // 把运行中的回合和后台会话一起杀掉——这正是「换工作区后对话就结束」的根因。
+  if (typeof prefs?.workspace === "string" && prefs.workspace.trim()) {
+    next.workspace = prefs.workspace.trim();
   }
   if (typeof prefs?.onboardingCompleted === "boolean") {
     next.onboardingCompleted = prefs.onboardingCompleted;
@@ -2437,14 +3311,66 @@ ipcMain.handle("meow:save-preferences", (_event, prefs) => {
   if (Array.isArray(prefs?.removedProjects)) {
     next.removedProjects = prefs.removedProjects.filter((item) => typeof item === "string");
   }
+  if (typeof prefs?.silentUpdate === "boolean") {
+    next.silentUpdate = prefs.silentUpdate;
+  }
+  if (typeof prefs?.notifications === "boolean") {
+    next.notifications = prefs.notifications;
+  }
+  // 界面字体：空串 = 默认 MiSans
+  if (typeof prefs?.fontFamily === "string") {
+    next.fontFamily = prefs.fontFamily.slice(0, 120);
+  }
+  // 代码字体：空串 = 默认等宽栈
+  if (typeof prefs?.codeFontFamily === "string") {
+    next.codeFontFamily = prefs.codeFontFamily.slice(0, 120);
+  }
+  // AI 悬浮岛开关：默认关闭
+  if (typeof prefs?.floatingIsland === "boolean") {
+    next.floatingIsland = prefs.floatingIsland;
+  }
+  // Worktrees：创建前 fetch / 自动清理 / 保留上限
+  if (typeof prefs?.worktreeFetchUpstream === "boolean") {
+    next.worktreeFetchUpstream = prefs.worktreeFetchUpstream;
+  }
+  if (typeof prefs?.worktreeAutoCleanup === "boolean") {
+    next.worktreeAutoCleanup = prefs.worktreeAutoCleanup;
+  }
+  if (typeof prefs?.worktreeMaxKeep === "number" && Number.isFinite(prefs.worktreeMaxKeep)) {
+    next.worktreeMaxKeep = Math.max(1, Math.min(100, Math.round(prefs.worktreeMaxKeep)));
+  }
+  // AGENTS.md / CLAUDE.md 导入开关
+  if (typeof prefs?.includeAgentsMd === "boolean") {
+    next.includeAgentsMd = prefs.includeAgentsMd;
+  }
+  if (typeof prefs?.includeClaudeMd === "boolean") {
+    next.includeClaudeMd = prefs.includeClaudeMd;
+  }
   // 读-改-写：保留 providers 里的 apiKeyEncrypted
   writeSettings(next);
+  if (prefs?.language !== undefined) {
+    // 托盘菜单是原生 UI，切语言后必须重建才会跟着变
+    updateTrayMenu();
+  }
   if (prefs?.theme !== undefined) {
     applyWindowTheme(next.theme);
     if (mainWindow && !mainWindow.isDestroyed() && !ACRYLIC_BACKDROP) {
       mainWindow.setBackgroundColor(windowBackground(next.theme));
     }
   }
+  // 悬浮岛开关变化：按需创建/销毁窗口（比较旧值，避免无谓重建闪一下）
+  if (
+    typeof prefs?.floatingIsland === "boolean" &&
+    prefs.floatingIsland !== (typeof settings.floatingIsland === "boolean" ? settings.floatingIsland : false)
+  ) {
+    if (prefs.floatingIsland) {
+      createIslandWindow();
+    } else {
+      destroyIslandWindow();
+    }
+  }
+  // 广播给所有窗口（含悬浮岛）：岛据此跟随主题/语言变化
+  broadcast("meow:preferences-changed", publicSettings(next));
   return {
     theme: next.theme,
     closeAction: next.closeAction,
@@ -2455,6 +3381,18 @@ ipcMain.handle("meow:save-preferences", (_event, prefs) => {
     projectNames: next.projectNames ?? {},
     pinnedProjects: Array.isArray(next.pinnedProjects) ? next.pinnedProjects : [],
     removedProjects: Array.isArray(next.removedProjects) ? next.removedProjects : [],
+    silentUpdate: typeof next.silentUpdate === "boolean" ? next.silentUpdate : true,
+    notifications: typeof next.notifications === "boolean" ? next.notifications : true,
+    floatingIsland: typeof next.floatingIsland === "boolean" ? next.floatingIsland : false,
+    worktreeFetchUpstream:
+      typeof next.worktreeFetchUpstream === "boolean" ? next.worktreeFetchUpstream : false,
+    worktreeAutoCleanup:
+      typeof next.worktreeAutoCleanup === "boolean" ? next.worktreeAutoCleanup : true,
+    worktreeMaxKeep: typeof next.worktreeMaxKeep === "number" ? next.worktreeMaxKeep : 15,
+    includeAgentsMd: typeof next.includeAgentsMd === "boolean" ? next.includeAgentsMd : true,
+    includeClaudeMd: typeof next.includeClaudeMd === "boolean" ? next.includeClaudeMd : true,
+    fontFamily: typeof next.fontFamily === "string" ? next.fontFamily : "",
+    codeFontFamily: typeof next.codeFontFamily === "string" ? next.codeFontFamily : "",
   };
 });
 
@@ -2467,7 +3405,249 @@ ipcMain.handle("meow:get-app-info", () => ({
   platform: `${process.platform} ${process.arch}`,
 }));
 
+// ---- 界面字体：导入自定义字体文件（拷贝到 userData/fonts 并记入 settings）----
+
+function customFontsDir() {
+  return path.join(app.getPath("userData"), "fonts");
+}
+
+/** 文件名清洗成可安全落盘的名字 */
+function safeFontFileName(name) {
+  const base = String(name || "")
+    .split(/[\\/]/)
+    .pop()
+    .replace(/[<>:"/\\|?*\x00-\x1f]/g, "_")
+    .trim();
+  return base || "font.ttf";
+}
+
+const FONT_MIME = {
+  ".ttf": "font/ttf",
+  ".otf": "font/otf",
+  ".woff": "font/woff",
+  ".woff2": "font/woff2",
+  ".ttc": "font/collection",
+};
+
+/**
+ * 已导入的自定义字体：[{family, url}]。
+ * url 是 data URL —— file:// 直链指向应用目录之外，会被 Chromium 的文件同源策略拦掉。
+ */
+ipcMain.handle("meow:list-custom-fonts", async () => {
+  const settings = readSettings();
+  const dir = customFontsDir();
+  const list = Array.isArray(settings.customFonts) ? settings.customFonts : [];
+  const out = [];
+  for (const item of list) {
+    if (!item || typeof item.fileName !== "string") continue;
+    const target = path.join(dir, item.fileName);
+    if (!fs.existsSync(target)) continue;
+    const ext = path.extname(target).toLowerCase();
+    const data = await fs.promises.readFile(target);
+    out.push({
+      family: String(item.family || item.fileName),
+      url: `data:${FONT_MIME[ext] || "font/ttf"};base64,${data.toString("base64")}`,
+    });
+  }
+  return out;
+});
+
+// ---- 会话导出：选路径 → 主进程拉内容 → 写盘 ----
+// 渲染层没有 fs，也不该把几 MB 的 Markdown 走 IPC；内容由 server 产出，这里直接落盘。
+ipcMain.handle("meow:export-session", async (_event, payload) => {
+  if (!mainWindow || mainWindow.isDestroyed()) return { ok: false, error: "No window." };
+  const request = payload && typeof payload === "object" ? payload : {};
+  const format = request.format === "json" ? "json" : request.format === "html" ? "html" : "markdown";
+  const extension = format === "json" ? "json" : format === "html" ? "html" : "md";
+  const ui = uiStrings();
+  const rawTitle = typeof request.title === "string" && request.title.trim() ? request.title.trim() : "session";
+  const safeName =
+    rawTitle
+      .replace(/[\\/:*?"<>|\s]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 80) || "session";
+  const picked = await dialog.showSaveDialog(mainWindow, {
+    title: ui.exportSession,
+    defaultPath: path.join(app.getPath("documents"), `${safeName}.${extension}`),
+    filters: [
+      {
+        name:
+          format === "json" ? ui.jsonFiles : format === "html" ? ui.htmlFiles : ui.markdownFiles,
+        extensions: [extension],
+      },
+    ],
+  });
+  if (picked.canceled || !picked.filePath) return { ok: false, canceled: true };
+  try {
+    const base = await waitForServerReady();
+    const response = await fetch(`${base}/session/export`, {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${serverToken}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        filePath: request.filePath,
+        format,
+        includeThinking: request.includeThinking !== false,
+        includeTools: request.includeTools !== false,
+        inlineImages: request.inlineImages !== false,
+      }),
+    });
+    if (!response.ok) {
+      const text = await response.text().catch(() => "");
+      return { ok: false, error: text || `Export failed (${response.status})` };
+    }
+    const buffer = Buffer.from(await response.arrayBuffer());
+    await fs.promises.writeFile(picked.filePath, buffer);
+    return { ok: true, filePath: picked.filePath, bytes: buffer.byteLength };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : String(error) };
+  }
+});
+
+ipcMain.handle("meow:import-font", async () => {
+  const ui = uiStrings();
+  const picked = await dialog.showOpenDialog(mainWindow, {
+    title: ui.importFont,
+    properties: ["openFile"],
+    filters: [{ name: ui.fontFiles, extensions: ["ttf", "otf", "woff", "woff2", "ttc"] }],
+  });
+  if (picked.canceled || !picked.filePaths.length) return { ok: false, canceled: true };
+  const source = picked.filePaths[0];
+  const fileName = safeFontFileName(path.basename(source));
+  const dir = customFontsDir();
+  await fs.promises.mkdir(dir, { recursive: true });
+  await fs.promises.copyFile(source, path.join(dir, fileName));
+  // 展示名与 @font-face 族名都用文件名（去扩展名）
+  const family = fileName.replace(/\.(ttf|otf|woff2?|ttc)$/i, "") || fileName;
+  const settings = readSettings();
+  const list = (Array.isArray(settings.customFonts) ? settings.customFonts : []).filter(
+    (item) => item && item.fileName !== fileName,
+  );
+  writeSettings({ ...settings, customFonts: [...list, { family, fileName }] });
+  return { ok: true, family };
+});
+
+/** 删除已导入的自定义字体：清 settings 记录并删掉字体文件 */
+ipcMain.handle("meow:remove-custom-font", async (_event, family) => {
+  const name = String(family || "");
+  const settings = readSettings();
+  const list = Array.isArray(settings.customFonts) ? settings.customFonts : [];
+  const hit = list.find((item) => item && (item.family === name || item.fileName === name));
+  if (!hit) return { ok: false };
+  writeSettings({ ...settings, customFonts: list.filter((item) => item !== hit) });
+  await fs.promises.rm(path.join(customFontsDir(), hit.fileName), { force: true }).catch(() => undefined);
+  return { ok: true };
+});
+
+// ---- 更新检查 / 下载 / 安装（逻辑见 update-check.cjs、update-download.cjs，可单测）----
+const { checkForUpdate } = require("./update-check.cjs");
+const { downloadToFile, safeAssetFileName } = require("./update-download.cjs");
+
+ipcMain.handle("meow:check-update", async () => checkForUpdate(app.getVersion()));
+
+/** 更新包存放目录：系统「下载」文件夹（用户自己也能找到安装包） */
+function updateDownloadsDir() {
+  return app.getPath("downloads");
+}
+
+// 任意时刻只允许一个更新下载在跑：静默下载与更新弹窗共用一个任务
+let activeUpdateDownload = null;
+
+ipcMain.handle("meow:download-update", async (_event, payload) => {
+  const url = String(payload?.url || "");
+  if (!/^https?:\/\//i.test(url)) throw new Error("下载地址不合法");
+  const fileName = safeAssetFileName(String(payload?.fileName || "MeowCode-Setup.exe"));
+
+  const current = activeUpdateDownload;
+  if (current) {
+    // 同一个安装包：搭当前下载的车，返回同一份结果（静默 + 弹窗手动就是这种）
+    if (current.url === url && current.fileName === fileName) return current.promise;
+    // 别的包：等它下完再开新的，保证同时只有一个下载在跑
+    await current.promise.catch(() => undefined);
+  }
+
+  const promise = (async () => {
+    const dir = updateDownloadsDir();
+    await fs.promises.mkdir(dir, { recursive: true });
+    const target = path.join(dir, fileName);
+    const result = await downloadToFile({
+      url,
+      target,
+      onProgress: (progress) => broadcast("meow:update-progress", progress),
+    });
+    return { path: result.path, size: result.received };
+  })();
+
+  activeUpdateDownload = { url, fileName, promise };
+  try {
+    return await promise;
+  } finally {
+    if (activeUpdateDownload && activeUpdateDownload.promise === promise) {
+      activeUpdateDownload = null;
+    }
+  }
+});
+
+ipcMain.handle("meow:open-installer", async (_event, filePath) => {
+  const target = path.resolve(String(filePath || ""));
+  const dir = path.resolve(updateDownloadsDir());
+  // 只允许打开下载目录里的文件：渲染层传来的路径不可全信
+  if (!target.startsWith(dir + path.sep)) throw new Error("安装包路径不合法");
+  if (!fs.existsSync(target)) throw new Error("安装包不存在");
+  if (process.platform === "darwin") {
+    // macOS：挂载 dmg，让用户在访达里拖拽安装
+    await shell.openPath(target);
+    return { launched: true, quit: false };
+  }
+  if (process.platform === "linux") {
+    await fs.promises.chmod(target, 0o755).catch(() => undefined);
+  }
+  const { spawn } = require("node:child_process");
+  const child = spawn(target, [], { detached: true, stdio: "ignore" });
+  child.unref();
+  // Windows：安装包要覆盖正在运行的文件，得先把应用退掉
+  if (process.platform === "win32") setTimeout(() => app.quit(), 500);
+  return { launched: true, quit: process.platform === "win32" };
+});
+
 ipcMain.handle("meow:model-profiles", () => modelProfiles);
+
+// ---- AI 悬浮岛 IPC ----
+
+/** 渲染层上报岛体交互矩形（视口 CSS 坐标）：换算成屏幕坐标供轮询判定 */
+ipcMain.handle("meow:island-rect", (_event, rect) => {
+  const win = islandWindow;
+  if (!win || win.isDestroyed() || !rect || typeof rect !== "object") return;
+  const x = Number(rect.x);
+  const y = Number(rect.y);
+  const width = Number(rect.width);
+  const height = Number(rect.height);
+  if (![x, y, width, height].every(Number.isFinite)) return;
+  const bounds = win.getContentBounds();
+  islandHoverRect = { x: bounds.x + x, y: bounds.y + y, width, height };
+});
+
+/** 点击胶囊 → 显示/聚焦主窗口 */
+ipcMain.handle("meow:island-open-main", () => {
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    createWindow();
+    return;
+  }
+  if (mainWindow.isMinimized()) mainWindow.restore();
+  mainWindow.show();
+  mainWindow.focus();
+});
+
+/** 悬浮岛发出的 prompt 广播给主窗口：当前会话命中时由渲染层补用户气泡（服务端事件不带用户消息文本） */
+ipcMain.handle("meow:island-notify-prompt", (_event, payload) => {
+  if (!payload || typeof payload.sessionId !== "string" || !payload.sessionId) return;
+  broadcast("meow:island-prompt-sent", {
+    sessionId: payload.sessionId,
+    text: typeof payload.text === "string" ? payload.text : "",
+  });
+});
 
 // 单实例：两个进程共享 settings.json 和会话 JSONL 会互相覆盖
 const hasSingleInstanceLock = app.requestSingleInstanceLock();
@@ -2488,6 +3668,10 @@ if (!hasSingleInstanceLock) {
     ensureDirs();
     ensureDefaultWorkspace();
     reportStartupStatistics();
+    // 界面字体设置要枚举系统字体（Local Font Access）：应用窗口自身放行该权限，
+    // 其余权限维持 Electron 默认行为（这里的处理器只保证 local-fonts 不被拦）
+    session.defaultSession.setPermissionRequestHandler((_contents, _permission, callback) => callback(true));
+    session.defaultSession.setPermissionCheckHandler(() => true);
     // 内嵌浏览器默认拒绝摄像头/麦克风/定位/剪贴板/通知等权限请求
     for (const partition of ["persist:meow-browser", "persist:meow-browser-agent"]) {
       const browserSession = session.fromPartition(partition);
@@ -2498,6 +3682,10 @@ if (!hasSingleInstanceLock) {
     }
     createWindow();
     createTray();
+    // AI 悬浮岛：设置里开着就随应用启动（island 渲染层自行拉快照、带重试）
+    if (readSettings().floatingIsland) {
+      createIslandWindow();
+    }
     // 先读本机缓存，过期再后台拉取；拉取完成后会把新规则推给渲染层
     fetchModelProfiles();
     setInterval(fetchModelProfiles, MODEL_PROFILES_TTL).unref();
@@ -2506,6 +3694,12 @@ if (!hasSingleInstanceLock) {
     } catch (error) {
       // 桥起不来不阻塞应用启动：agent 侧浏览器工具会自动降级为不可用
       console.error("[MeowCode] Failed to start browser host:", error);
+    }
+    try {
+      await computerHost.start();
+    } catch (error) {
+      // 桥起不来不阻塞应用启动：agent 侧电脑控制工具会自动降级为不可用
+      console.error("[MeowCode] Failed to start computer host:", error);
     }
     try {
       await startServer();
@@ -2537,6 +3731,8 @@ let appShutdownInFlight = false;
 app.on("before-quit", (event) => {
   flushWindowState();
   flushUiState();
+  // 悬浮岛先于窗口关闭流程销毁，避免 WebView 销毁时闪现原生边框
+  destroyIslandWindow();
   if (quitAfterShutdown) return;
   if (appShutdownInFlight) {
     event.preventDefault();
@@ -2548,6 +3744,7 @@ app.on("before-quit", (event) => {
     appShutdownInFlight = true;
     isQuitting = true;
     browserHost.stop();
+    computerHost.stop();
     void stopServer().finally(() => {
       quitAfterShutdown = true;
       app.quit();
@@ -2556,4 +3753,5 @@ app.on("before-quit", (event) => {
   }
   isQuitting = true;
   browserHost.stop();
+  computerHost.stop();
 });

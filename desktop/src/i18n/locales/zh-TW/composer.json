@@ -1,0 +1,213 @@
+{
+  "image": {
+    "readFailed": "讀取圖片失敗",
+    "unsupported": "不支援的圖片格式：{{type}}",
+    "tooLarge": "圖片太大：{{name}} 自動壓縮後仍超過 2MB，請先裁剪或降低解析度",
+    "maxCount_one": "一則訊息最多附 {{count}} 張圖片",
+    "maxCount_few": "一則訊息最多附 {{count}} 張圖片",
+    "maxCount_many": "一則訊息最多附 {{count}} 張圖片",
+    "maxCount_other": "一則訊息最多附 {{count}} 張圖片",
+    "onlyImages": "只能附加圖片檔案",
+    "fallbackName": "圖片"
+  },
+  "file": {
+    "pathFailed": "讀取檔案路徑失敗：{{name}}",
+    "skipped": "略過空檔案或資料夾：{{name}}"
+  },
+  "plugin": {
+    "loadFailed": "載入失敗：{{error}}",
+    "local": "本機外掛"
+  },
+  "permission": {
+    "title": "工具執行權限",
+    "readOnly": {
+      "label": "唯讀",
+      "desc": "只讀檔案、搜尋與瀏覽器，禁止寫入檔案、修改檔案和執行命令"
+    },
+    "ask": {
+      "label": "每次詢問",
+      "desc": "寫入檔案、修改檔案、執行命令前都需要你確認"
+    },
+    "auto": {
+      "label": "工作區內自動",
+      "desc": "工作區內的寫入檔案、修改檔案與一般開發命令自動執行；讀取憑證、下載執行、改系統設定、發佈部署、破壞性 git 或工作區外路徑仍需確認"
+    },
+    "full": {
+      "label": "完全存取",
+      "desc": "可讀寫整台電腦上的檔案，自動執行全部工具"
+    }
+  },
+  "slash": {
+    "plan": {
+      "label": "計畫模式",
+      "desc": "唯讀調研，先把實作計畫寫成 plans/ 下的文件，等你確認"
+    },
+    "goal": {
+      "label": "目標模式",
+      "desc": "圍繞目標連續推進，用 update_plan 追蹤進度"
+    },
+    "exit": "退出{{mode}}",
+    "menuAria": "命令",
+    "group": {
+      "mode": "模式",
+      "command": "命令",
+      "plugin": "外掛",
+      "skill": "技能"
+    }
+  },
+  "mode": {
+    "plan": "計畫模式",
+    "goal": "目標模式",
+    "exitAria": "{{mode}}，點擊退出",
+    "exitTitle": "點擊退出該模式"
+  },
+  "project": {
+    "menuAria": "切換專案",
+    "search": "搜尋專案",
+    "empty": "沒有符合的專案",
+    "new": "新增專案",
+    "remove": "從清單移除",
+    "pickWorkspace": "選擇工作區"
+  },
+  "mention": {
+    "aria": "引用工作區檔案",
+    "back": "返回上一層",
+    "root": "工作區根目錄",
+    "refresh": "重新整理清單",
+    "loadFailed": "讀取失敗",
+    "loading": "載入中…",
+    "dirFailed": "無法讀取資料夾",
+    "noMatch": "沒有符合的檔案",
+    "emptyDir": "這個資料夾是空的"
+  },
+  "queue": {
+    "recoveredAria": "上次未傳送的訊息",
+    "recoveredHead": "上次結束時還沒傳送",
+    "sendAsNew": "作為新訊息傳送",
+    "send": "傳送",
+    "discardTitle": "捨棄這則訊息",
+    "discard": "捨棄",
+    "pendingAria": "佇列中的訊息",
+    "steerTitle": "中止目前回覆，立即傳送這則訊息",
+    "steer": "強制插話",
+    "removeTitle": "從佇列中移除",
+    "remove": "刪除"
+  },
+  "plan": {
+    "answerAria": "回答問題",
+    "answerSubMultiple": "選擇一個答案，或在下方直接輸入 · 選擇後自動進入下一題",
+    "answerSub": "選擇一個答案，或在下方直接輸入",
+    "answerPlaceholder": "其他想法，Enter 直接進入下一題",
+    "prev": "上一題",
+    "skipRest": "不回答，略過剩餘",
+    "unanswered": "（未回答）",
+    "confirmAria": "確認計畫",
+    "exit": "退出計畫模式",
+    "confirmTitle": "確認按此計畫執行？",
+    "confirmSub": "確認後，我將按此計畫執行並輸出內容",
+    "start": "開始執行",
+    "adjustPlaceholder": "調整計畫，補充內容告訴我如何調整",
+    "sendAdjust": "傳送調整",
+    "adjustPrompt": "調整計畫內容，傳送後模型將繼續修改計畫…"
+  },
+  "branch": {
+    "detached": "detached HEAD · 點擊切換分支",
+    "current": "目前分支 {{name}} · 點擊切換",
+    "search": "搜尋分支",
+    "listAria": "分支清單",
+    "loading": "正在讀取分支…",
+    "noMatch": "沒有符合的分支",
+    "empty": "這個儲存庫還沒有分支",
+    "stashSwitch": "貯藏本機變更後切換",
+    "openGit": "開啟原始碼管理"
+  },
+  "worktree": {
+    "locked": "目前工作階段已在獨立 worktree 中",
+    "hint": "在獨立 git worktree 中開始本次對話；未提交的變更不會帶入"
+  },
+  "input": {
+    "placeholder": {
+      "setup": "請先完成設定",
+      "compacting": "正在壓縮對話歷史，完成後可繼續傳送",
+      "streaming": "輸入後按 Enter 排隊傳送",
+      "default": "輸入 @ 引用專案檔案；圖片/任意檔案可直接拖入（含工作區外）"
+    },
+    "polishing": "AI 美化中"
+  },
+  "action": {
+    "more": "更多操作",
+    "moreTitle": "新增附件 / 切換模式",
+    "plusMenuAria": "新增、引用與命令",
+    "upload": "上傳附件",
+    "plugins": "外掛",
+    "pluginsCount": "外掛（{{count}}）",
+    "skills": "技能",
+    "skillsCount": "技能（{{count}}）",
+    "installing": "安裝中…",
+    "polish": "美化提示詞",
+    "send": "傳送",
+    "stop": "停止"
+  },
+  "attach": {
+    "listAria": "待傳送圖片",
+    "removeImageAria": "移除圖片",
+    "remove": "移除"
+  },
+  "chip": {
+    "listAria": "已引用的技能、外掛與附件",
+    "remove": "移除 {{name}}"
+  },
+  "agent": {
+    "title": "主 Agent：{{name}}"
+  },
+  "polish": {
+    "discarded": "輸入內容已變更，已捨棄美化結果。",
+    "failed": "美化提示詞失敗：{{error}}"
+  },
+  "ctx": {
+    "title": "上下文用量",
+    "close": "關閉",
+    "used": "已使用",
+    "windowUnset": "未設定視窗",
+    "categories": {
+      "system": "系統提示詞",
+      "tools": "系統工具",
+      "skills": "Skill（{{count}}個）",
+      "messages": "訊息",
+      "other": "其他"
+    },
+    "hint": "壓縮會把早期對話摺疊成摘要，介面上的歷史與工作階段檔案都完整保留。",
+    "compacting": "正在壓縮…",
+    "compact": "立即壓縮上下文",
+    "cache": {
+      "stateLabel": "快取",
+      "stateWarm": "熱",
+      "stateCold": "冷",
+      "stateEvicted": "已逐出",
+      "stateUnsupported": "不支援",
+      "stateUnknown": "未知",
+      "roundLabel": "本輪",
+      "round": "讀 {{read}} · 寫 {{write}}",
+      "busts": "疑似失配",
+      "bustTitle": "較上一輪少讀約 {{drop}} tokens：前綴被改寫或快取被逐出",
+      "reasonPrefixChanged": "前綴已變化（工具目錄/系統提示重寫）",
+      "reasonFirstRequest": "首個請求（冷啟動）",
+      "reasonIdleExceededTtl": "閒置超過快取 TTL",
+      "reasonNotReported": "服務商未報告快取明細",
+      "reasonBelowGranularity": "輸入低於最小可快取長度",
+      "reasonCacheMiss": "快取未命中"
+    }
+  },
+  "effort": {
+    "default": "預設",
+    "off": "關閉",
+    "on": "開啟",
+    "minimal": "極低",
+    "low": "低",
+    "medium": "中",
+    "high": "高",
+    "xhigh": "極高",
+    "max": "最高",
+    "ultra": "極致"
+  }
+}

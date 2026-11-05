@@ -9,6 +9,18 @@
   flex-direction: column;
   gap: 4px;
 }
+.mc-section__titlerow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+/* 标题行右侧操作：推到最右，且不参与标题的语义 */
+.mc-section__action {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
 .mc-section__title {
   margin: 0;
   font-size: var(--fs-lg);
@@ -29,6 +41,7 @@
   border-radius: var(--radius-lg);
   corner-shape: superellipse(1.5);
   background: var(--surface);
+  border: 1px solid var(--border);
   overflow: hidden;
 }
 
@@ -38,7 +51,7 @@
   align-items: center;
   justify-content: space-between;
   gap: 24px;
-  padding: 12px 16px;
+  padding: 16px 18px;
 }
 .mc-fieldrow + .mc-fieldrow {
   border-top: 1px solid var(--border);
@@ -46,21 +59,45 @@
 .mc-fieldrow__text {
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  gap: 4px;
   min-width: 0;
 }
+/* 标题加粗一档、说明压暗一档：参考 WorkBuddy 的设置行，扫一眼就能分清
+   「这是什么」和「它怎么工作」，不必逐字读 */
 .mc-fieldrow__label {
   font-size: var(--fs-base);
+  font-weight: var(--fw-semibold);
+  line-height: 1.35;
   color: var(--fg);
 }
 .mc-fieldrow__hint {
-  font-size: var(--fs-sm);
-  line-height: var(--lh-normal);
-  color: var(--fg-subtlest);
+  font-size: var(--fs-caption);
+  line-height: 1.45;
+  color: var(--fg-subtle);
 }
 .mc-fieldrow__control {
   display: flex;
   align-items: center;
   gap: 8px;
   flex-shrink: 0;
+}
+
+/* 直接塞在右侧控件位的输入框（如代理地址）：不自带 label，样式向 Select 看齐 */
+.mc-fieldrow__input {
+  width: 260px;
+  max-width: 42vw;
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  color: var(--fg);
+  font-family: var(--font-code, monospace);
+  font-size: var(--fs-sm);
+}
+.mc-fieldrow__input::placeholder {
+  color: var(--fg-subtlest);
+}
+.mc-fieldrow__input:focus-visible {
+  outline: 2px solid var(--accent, currentColor);
+  outline-offset: -1px;
 }

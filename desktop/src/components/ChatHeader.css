@@ -30,7 +30,17 @@
 }
 .mc-header__right {
   display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+  flex-shrink: 0;
+}
+.mc-header__actions {
+  display: flex;
   align-items: center;
   gap: 10px;
-  flex-shrink: 0;
+}
+.mc-header__overviewrow {
+  display: flex;
+  justify-content: flex-end;
 }

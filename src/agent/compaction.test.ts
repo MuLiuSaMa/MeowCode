@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ProviderRequestError } from "./provider-error";
+import { estimateMessagesTokens } from "./context";
 import type { ChatMessage } from "./types";
 
 const { streamMock } = vi.hoisted(() => ({ streamMock: vi.fn() }));
@@ -13,8 +14,13 @@ vi.mock("./provider.js", () => ({
   }),
 }));
 
-const { compactionSummaryMaxTokens, createCompactionSummary, isContextOverflow, summarizeToolOutputs } =
-  await import("./compaction.js");
+const {
+  buildCompactionInstruction,
+  compactionSummaryMaxTokens,
+  createCompactionSummary,
+  isContextOverflow,
+  summarizeToolOutputs,
+} = await import("./compaction.js");
 
 beforeEach(() => {
   streamMock.mockClear();
@@ -218,6 +224,42 @@ describe("createCompactionSummary cache reuse", () => {
     expect(call.messages[0]).toMatchObject({ role: "system" });
     expect(call.messages[0].content).toContain("compact handoff summary");
   });
+
+  it("摘要输入仍塞不进窗口时逐档降级，旧工具输出压成单行", async () => {
+    streamMock.mockResolvedValueOnce({ message: { role: "assistant", content: "ladder" } });
+    const messages: ChatMessage[] = [{ role: "user", content: "start" }];
+    for (let index = 0; index < 30; index += 1) {
+      messages.push({
+        role: "assistant",
+        content: null,
+        tool_calls: [
+          { id: `c${index}`, type: "function", function: { name: "read_file", arguments: "{}" } },
+        ],
+      });
+      messages.push({
+        role: "tool",
+        name: "read_file",
+        tool_call_id: `c${index}`,
+        content: `body ${index}\n${"z".repeat(3_000)}`,
+      });
+    }
+    const summary = await createCompactionSummary({
+      provider: { id: "p", name: "P", baseUrl: "http://localhost", model: "m", contextWindow: 8_000 },
+      messages,
+      reusePrefix: false,
+    });
+    expect(summary).toBe("ladder");
+    const call = streamMock.mock.calls[0][0];
+    const input = (call.messages as ChatMessage[]).filter((message) => message.role !== "system");
+    // 落进预算：窗口 8000 − 摘要输出 2048 − 1024 余量
+    expect(estimateMessagesTokens(input)).toBeLessThanOrEqual(8_000 - 2_048 - 1_024);
+    // 第 2 档生效：旧工具输出变成单行标注
+    expect(
+      input.some(
+        (message) => typeof message.content === "string" && message.content.includes("output omitted"),
+      ),
+    ).toBe(true);
+  });
 });
 
 describe("summarizeToolOutputs", () => {
@@ -272,5 +314,20 @@ describe("summarizeToolOutputs", () => {
     const callsBefore = streamMock.mock.calls.length;
     expect((await summarizeToolOutputs({ provider, outputs: [] })).size).toBe(0);
     expect(streamMock.mock.calls.length).toBe(callsBefore);
+  });
+});
+
+describe("buildCompactionInstruction", () => {
+  it("普通模式与原文逐字节一致", async () => {
+    const { COMPACTION_INSTRUCTION } = await import("./compaction.js");
+    expect(buildCompactionInstruction()).toBe(COMPACTION_INSTRUCTION);
+    expect(buildCompactionInstruction(false)).toBe(COMPACTION_INSTRUCTION);
+  });
+
+  it("语色开启时追加中性要求", () => {
+    const instruction = buildCompactionInstruction(true);
+    expect(instruction).toContain("persona");
+    expect(instruction).toContain("neutral technical language");
+    expect(instruction).toContain("喵");
   });
 });

@@ -10,7 +10,9 @@ const DANGEROUS = [
   /\brm\s+(-[a-z]*r[a-z]*f|-[a-z]*f[a-z]*r|--recursive\b.*--force\b|--force\b.*--recursive\b)/i,
   /\bsudo\b/i,
   /\b(chmod|chown)\b[^|;&]*777/i,
-  /\b(format|diskpart)\b/i,
+  // format 只有带盘符才是格式化磁盘；Format-Table / npm run format / --format= 不拦
+  /(?:^|[;&|\r\n]\s*)format(?:\.com)?\s+[a-z]:/i,
+  /\bdiskpart(?:\.exe)?\b/i,
   /\b(del|rd)\s+\/[sq]\b/i,
 ];
 

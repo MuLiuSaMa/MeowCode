@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import {
   LuArrowUpRight,
   LuCircleAlert,
@@ -11,12 +12,12 @@ import type { SubagentRun } from "../../api";
 import { SUBAGENT_ROLE_LABELS } from "../../agentRoles";
 import "./SubagentsTab.css";
 
-const STATUS_LABELS: Record<SubagentRun["status"], string> = {
-  running: "运行中",
-  completed: "已完成",
-  failed: "失败",
-  aborted: "已停止",
-  interrupted: "已中断",
+const STATUS_KEYS: Record<SubagentRun["status"], string> = {
+  running: "runStatus.running",
+  completed: "runStatus.completed",
+  failed: "runStatus.failed",
+  aborted: "runStatus.aborted",
+  interrupted: "runStatus.interrupted",
 };
 
 function formatDuration(ms: number): string {
@@ -44,6 +45,7 @@ export function SubagentsTab({
   onOpen: (agentId: string) => void;
   onStop: (agentId: string) => void;
 }) {
+  const { t } = useTranslation("panel");
   const [now, setNow] = useState(Date.now());
   const hasRunning = runs.some((run) => run.status === "running");
   useEffect(() => {
@@ -62,8 +64,8 @@ export function SubagentsTab({
     return (
       <div className="mc-subagents">
         <div className="mc-subagents__empty">
-          <span>当前会话还没有子 Agent</span>
-          <span>主 Agent 派发 task 后会出现在这里</span>
+          <span>{t("subagents.emptyTitle")}</span>
+          <span>{t("subagents.emptyHint")}</span>
         </div>
       </div>
     );
@@ -71,7 +73,7 @@ export function SubagentsTab({
 
   return (
     <div className="mc-subagents">
-      <div className="mc-subagents__hint">仅显示当前会话的子 Agent</div>
+      <div className="mc-subagents__hint">{t("subagents.onlyCurrentSession")}</div>
       <div className="mc-subagents__list">
         {ordered.map((run) => {
           const startedMs = Date.parse(run.startedAt);
@@ -88,7 +90,7 @@ export function SubagentsTab({
                 type="button"
                 className="mc-subagents__main"
                 onClick={() => onOpen(run.agentId)}
-                title="打开子 Agent 转录"
+                title={t("subagents.open")}
               >
                 <span className="mc-subagents__icon" aria-hidden="true">
                   {run.status === "running" ? (
@@ -107,7 +109,9 @@ export function SubagentsTab({
                     <span className="mc-subagents__type" data-type={run.agentType ?? "general"}>
                       {SUBAGENT_ROLE_LABELS[run.agentType ?? "general"]}
                     </span>
-                    {run.background ? <span className="mc-subagents__bg">后台</span> : null}
+                    {run.background ? (
+                      <span className="mc-subagents__bg">{t("subagent.background")}</span>
+                    ) : null}
                     {run.childResult ? (
                       <span
                         className="mc-subagents__childresult"
@@ -115,18 +119,23 @@ export function SubagentsTab({
                         title={
                           run.childResult.valid
                             ? run.childResult.summary
-                            : `${run.childResult.invalidReason ?? "宿主校验未通过"}：${run.childResult.summary}`
+                            : t("subagents.invalidTooltip", {
+                                reason: run.childResult.invalidReason ?? t("subagents.invalidFallback"),
+                                summary: run.childResult.summary,
+                              })
                         }
                       >
-                        {run.childResult.valid ? "已核验" : "校验未过"}
+                        {run.childResult.valid ? t("subagents.verified") : t("subagents.unverified")}
                         {run.childResult.criticalFindings
-                          ? ` · ${run.childResult.criticalFindings} 严重`
+                          ? ` · ${t("subagents.criticalFindings", {
+                              count: run.childResult.criticalFindings,
+                            })}`
                           : ""}
                       </span>
                     ) : null}
                   </span>
                   <span className="mc-subagents__meta">
-                    <span>{STATUS_LABELS[run.status]}</span>
+                    <span>{t(STATUS_KEYS[run.status])}</span>
                     {durationMs != null ? (
                       <>
                         <span className="mc-subagents__dot">·</span>
@@ -137,9 +146,9 @@ export function SubagentsTab({
                       <>
                         <span className="mc-subagents__dot">·</span>
                         <span>
-                          {input ? `入 ${input}` : ""}
-                          {input && output ? " / " : ""}
-                          {output ? `出 ${output}` : ""}
+                          {input ? t("subagent.tokensIn", { tokens: input }) : ""}
+                          {input && output ? " · " : ""}
+                          {output ? t("subagent.tokensOut", { tokens: output }) : ""}
                         </span>
                       </>
                     ) : null}
@@ -151,8 +160,8 @@ export function SubagentsTab({
                 <button
                   type="button"
                   className="mc-subagents__stop"
-                  title="停止这个子 Agent"
-                  aria-label="停止这个子 Agent"
+                  title={t("subagent.stop")}
+                  aria-label={t("subagent.stop")}
                   onClick={() => onStop(run.agentId)}
                 >
                   <LuSquare size={12} />

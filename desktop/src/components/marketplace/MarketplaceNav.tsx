@@ -1,12 +1,14 @@
+import { useTranslation } from "react-i18next";
 import { LuPuzzle, LuSparkles, LuPlug } from "react-icons/lu";
 import "./marketplace.css";
 
 export type MarketTab = "plugins" | "skills" | "mcp";
 
-const TABS: Array<{ id: MarketTab; label: string; icon: typeof LuPuzzle }> = [
-  { id: "plugins", label: "插件", icon: LuPuzzle },
-  { id: "skills", label: "技能", icon: LuSparkles },
-  { id: "mcp", label: "MCP", icon: LuPlug },
+/** 表里只存 key 与图标：标签在组件里查表，切语言才会跟着刷新 */
+const TABS: Array<{ id: MarketTab; labelKey: string; icon: typeof LuPuzzle }> = [
+  { id: "plugins", labelKey: "entryType.plugins", icon: LuPuzzle },
+  { id: "skills", labelKey: "entryType.skills", icon: LuSparkles },
+  { id: "mcp", labelKey: "entryType.mcp", icon: LuPlug },
 ];
 
 /**
@@ -22,10 +24,12 @@ export function MarketplaceNav({
   onTab: (tab: MarketTab) => void;
   onClose: () => void;
 }) {
+  const { t } = useTranslation("marketplace");
+
   return (
-    <nav className="mc-panel mc-panel--conversations mc-mkt__nav" aria-label="插件市场导航">
-      <h1 className="mc-settings__heading">插件市场</h1>
-      <p className="mc-mkt__subtitle">发现并安装插件、技能和 MCP，拓展 MeowCode 的能力。</p>
+    <nav className="mc-panel mc-panel--conversations mc-mkt__nav" aria-label={t("nav.ariaLabel")}>
+      <h1 className="mc-settings__heading">{t("nav.heading")}</h1>
+      <p className="mc-mkt__subtitle">{t("nav.subtitle")}</p>
       <ul className="mc-mkt__tabs">
         {TABS.map((item) => (
           <li key={item.id}>
@@ -37,13 +41,13 @@ export function MarketplaceNav({
               onClick={() => onTab(item.id)}
             >
               <item.icon size={15} />
-              {item.label}
+              {t(item.labelKey)}
             </button>
           </li>
         ))}
       </ul>
       <button type="button" className="mc-settings__back" onClick={onClose}>
-        返回对话
+        {t("nav.back")}
       </button>
     </nav>
   );

@@ -1,0 +1,213 @@
+{
+  "image": {
+    "readFailed": "이미지를 읽지 못했습니다",
+    "unsupported": "지원하지 않는 이미지 형식입니다: {{type}}",
+    "tooLarge": "이미지가 너무 큽니다: {{name}}의 크기가 자동 압축 후에도 2MB를 넘습니다. 먼저 자르거나 해상도를 낮춰 주세요",
+    "maxCount_one": "메시지 하나에 이미지를 최대 {{count}}장까지 첨부할 수 있습니다",
+    "maxCount_few": "메시지 하나에 이미지를 최대 {{count}}장까지 첨부할 수 있습니다",
+    "maxCount_many": "메시지 하나에 이미지를 최대 {{count}}장까지 첨부할 수 있습니다",
+    "maxCount_other": "메시지 하나에 이미지를 최대 {{count}}장까지 첨부할 수 있습니다",
+    "onlyImages": "이미지 파일만 첨부할 수 있습니다",
+    "fallbackName": "이미지"
+  },
+  "file": {
+    "pathFailed": "파일 경로를 읽지 못했습니다: {{name}}",
+    "skipped": "빈 파일 또는 폴더를 건너뛰었습니다: {{name}}"
+  },
+  "plugin": {
+    "loadFailed": "불러오지 못했습니다: {{error}}",
+    "local": "로컬 플러그인"
+  },
+  "permission": {
+    "title": "도구 실행 권한",
+    "readOnly": {
+      "label": "읽기 전용",
+      "desc": "파일 읽기, 검색, 브라우저만 허용하며 파일 쓰기·수정과 명령 실행은 금지합니다"
+    },
+    "ask": {
+      "label": "매번 확인",
+      "desc": "파일 쓰기·수정, 명령 실행 전에 항상 확인합니다"
+    },
+    "auto": {
+      "label": "워크스페이스 내 자동",
+      "desc": "워크스페이스 안의 쓰기·수정과 일반 개발 명령은 자동 실행합니다. 자격 증명 읽기, 다운로드 실행, 시스템 설정, 게시·배포, 파괴적 git, 워크스페이스 밖 경로는 계속 확인합니다"
+    },
+    "full": {
+      "label": "전체 액세스",
+      "desc": "이 컴퓨터의 파일을 읽고 쓸 수 있으며 모든 도구를 자동 실행합니다"
+    }
+  },
+  "slash": {
+    "plan": {
+      "label": "계획 모드",
+      "desc": "읽기 전용으로 조사하고 구현 계획을 plans/ 아래 문서로 작성해 확인을 기다립니다"
+    },
+    "goal": {
+      "label": "목표 모드",
+      "desc": "목표를 향해 계속 진행하며 update_plan 으로 진행 상황을 추적합니다"
+    },
+    "exit": "{{mode}} 종료",
+    "menuAria": "명령",
+    "group": {
+      "mode": "모드",
+      "command": "명령",
+      "plugin": "플러그인",
+      "skill": "스킬"
+    }
+  },
+  "mode": {
+    "plan": "계획 모드",
+    "goal": "목표 모드",
+    "exitAria": "{{mode}}, 클릭하여 종료",
+    "exitTitle": "클릭하여 이 모드 종료"
+  },
+  "project": {
+    "menuAria": "프로젝트 전환",
+    "search": "프로젝트 검색",
+    "empty": "일치하는 프로젝트가 없습니다",
+    "new": "새 프로젝트",
+    "remove": "목록에서 제거",
+    "pickWorkspace": "워크스페이스 선택"
+  },
+  "mention": {
+    "aria": "워크스페이스 파일 참조",
+    "back": "상위 폴더로",
+    "root": "워크스페이스 루트",
+    "refresh": "목록 새로고침",
+    "loadFailed": "읽기 실패",
+    "loading": "불러오는 중…",
+    "dirFailed": "폴더를 읽을 수 없습니다",
+    "noMatch": "일치하는 파일이 없습니다",
+    "emptyDir": "이 폴더는 비어 있습니다"
+  },
+  "queue": {
+    "recoveredAria": "지난번에 보내지 못한 메시지",
+    "recoveredHead": "지난번 종료 시 보내지 못함",
+    "sendAsNew": "새 메시지로 보내기",
+    "send": "보내기",
+    "discardTitle": "이 메시지 버리기",
+    "discard": "버리기",
+    "pendingAria": "대기 중인 메시지",
+    "steerTitle": "현재 응답을 중단하고 이 메시지를 즉시 보내기",
+    "steer": "즉시 끼어들기",
+    "removeTitle": "대기열에서 삭제",
+    "remove": "삭제"
+  },
+  "plan": {
+    "answerAria": "질문에 답변",
+    "answerSubMultiple": "답변을 선택하거나 아래에 입력하세요 · 선택하면 다음 질문으로 넘어갑니다",
+    "answerSub": "답변을 선택하거나 아래에 입력하세요",
+    "answerPlaceholder": "다른 답변 — Enter 로 다음 질문",
+    "prev": "이전 질문",
+    "skipRest": "답변하지 않고 나머지 건너뛰기",
+    "unanswered": "(미응답)",
+    "confirmAria": "계획 확인",
+    "exit": "계획 모드 종료",
+    "confirmTitle": "이 계획대로 실행할까요?",
+    "confirmSub": "확인하면 이 계획대로 실행하고 내용을 출력합니다",
+    "start": "실행 시작",
+    "adjustPlaceholder": "계획 조정 — 어떻게 바꿀지 입력하세요",
+    "sendAdjust": "조정 보내기",
+    "adjustPrompt": "계획 내용을 조정하세요. 보내면 모델이 계획을 계속 수정합니다…"
+  },
+  "branch": {
+    "detached": "detached HEAD · 클릭하여 브랜치 전환",
+    "current": "현재 브랜치 {{name}} · 클릭하여 전환",
+    "search": "브랜치 검색",
+    "listAria": "브랜치 목록",
+    "loading": "브랜치를 읽는 중…",
+    "noMatch": "일치하는 브랜치가 없습니다",
+    "empty": "이 저장소에는 아직 브랜치가 없습니다",
+    "stashSwitch": "로컬 변경 사항을 보관하고 전환",
+    "openGit": "소스 관리 열기"
+  },
+  "worktree": {
+    "locked": "이 세션은 이미 별도 worktree 에서 실행 중입니다",
+    "hint": "별도 git worktree 에서 이 대화를 시작합니다. 커밋하지 않은 변경 사항은 가져오지 않습니다"
+  },
+  "input": {
+    "placeholder": {
+      "setup": "먼저 설정을 완료하세요",
+      "compacting": "대화 기록을 압축하는 중입니다. 끝나면 다시 보낼 수 있습니다",
+      "streaming": "입력 후 Enter 로 대기열에 추가",
+      "default": "@ 로 프로젝트 파일 참조, 이미지나 임의의 파일을 끌어다 놓을 수 있습니다(워크스페이스 밖 포함)"
+    },
+    "polishing": "AI 다듬는 중"
+  },
+  "action": {
+    "more": "추가 작업",
+    "moreTitle": "첨부 추가 / 모드 전환",
+    "plusMenuAria": "추가, 참조 및 명령",
+    "upload": "첨부 업로드",
+    "plugins": "플러그인",
+    "pluginsCount": "플러그인({{count}})",
+    "skills": "스킬",
+    "skillsCount": "스킬({{count}})",
+    "installing": "설치 중…",
+    "polish": "프롬프트 다듬기",
+    "send": "보내기",
+    "stop": "중지"
+  },
+  "attach": {
+    "listAria": "보낼 이미지",
+    "removeImageAria": "이미지 제거",
+    "remove": "제거"
+  },
+  "chip": {
+    "listAria": "참조한 스킬, 플러그인 및 첨부",
+    "remove": "{{name}} 제거"
+  },
+  "agent": {
+    "title": "메인 Agent: {{name}}"
+  },
+  "polish": {
+    "discarded": "입력 내용이 바뀌어 다듬은 결과를 버렸습니다.",
+    "failed": "프롬프트 다듬기에 실패했습니다: {{error}}"
+  },
+  "ctx": {
+    "title": "컨텍스트 사용량",
+    "close": "닫기",
+    "used": "사용됨",
+    "windowUnset": "창 미설정",
+    "categories": {
+      "system": "시스템 프롬프트",
+      "tools": "시스템 도구",
+      "skills": "스킬 ({{count}})",
+      "messages": "메시지",
+      "other": "기타"
+    },
+    "hint": "압축은 이전 대화를 요약으로 접을 뿐이며, 화면의 기록과 세션 파일은 그대로 유지됩니다.",
+    "compacting": "압축 중…",
+    "compact": "지금 컨텍스트 압축",
+    "cache": {
+      "stateLabel": "캐시",
+      "stateWarm": "웜",
+      "stateCold": "콜드",
+      "stateEvicted": "퇴출됨",
+      "stateUnsupported": "미지원",
+      "stateUnknown": "알 수 없음",
+      "roundLabel": "최근",
+      "round": "읽기 {{read}} · 쓰기 {{write}}",
+      "busts": "캐시 깨짐 의심",
+      "bustTitle": "이전 라운드보다 약 {{drop}} 토큰 적게 읽음: 접두어 재작성 또는 캐시 퇴출",
+      "reasonPrefixChanged": "접두어 변경(도구 카탈로그/시스템 프롬프트 재작성)",
+      "reasonFirstRequest": "첫 요청(콜드 스타트)",
+      "reasonIdleExceededTtl": "캐시 TTL 초과 유휴",
+      "reasonNotReported": "공급자가 캐시 상세를 보고하지 않음",
+      "reasonBelowGranularity": "입력이 최소 캐시 가능 길이 미만",
+      "reasonCacheMiss": "캐시 미스"
+    }
+  },
+  "effort": {
+    "default": "기본",
+    "off": "끔",
+    "on": "켬",
+    "minimal": "최소",
+    "low": "낮음",
+    "medium": "중간",
+    "high": "높음",
+    "xhigh": "매우 높음",
+    "max": "최대",
+    "ultra": "울트라"
+  }
+}

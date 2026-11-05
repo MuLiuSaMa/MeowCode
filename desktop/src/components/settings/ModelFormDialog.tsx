@@ -1,67 +1,49 @@
-import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { findTemplate } from "../../data/providerCatalog";
-import { formatCapacity } from "../../util";
-import { Dialog } from "../ui/Dialog";
 import { Button } from "../ui/Button";
-import { ModelFormFields } from "./ModelFormFields";
-import { buildProvider } from "./modelForm";
+import { Dialog } from "../ui/Dialog";
+import { ProviderFormBody, useProviderForm } from "./ProviderFormBody";
 import type { ProviderSettings } from "../../api";
+import "./ModelsSection.css";
 
+/**
+ * 服务商弹层：表单体与首次启动引导共用，这里只负责弹窗外壳与页脚。
+ * 存储仍是「一条 = 一个模型」，保存时统一展开成多条 ProviderSettings。
+ */
 export function ModelFormDialog({
   draft,
-  existingIds,
+  entries,
+  existingLabels,
   onClose,
   onSave,
 }: {
   draft: ProviderSettings;
-  /** 其它已配置项的模型 ID，用于唯一性校验 */
-  existingIds: string[];
+  /** 同一服务商下已有的模型条目（编辑时传入；新建为空） */
+  entries: ProviderSettings[];
+  /** 其它服务商的显示名，用于唯一性校验 */
+  existingLabels: string[];
   onClose: () => void;
-  onSave: (provider: ProviderSettings) => void;
+  onSave: (entries: ProviderSettings[]) => void;
 }) {
-  const [form, setForm] = useState<ProviderSettings>(draft);
-  const [contextInput, setContextInput] = useState(formatCapacity(draft.contextWindow));
-  const [maxInput, setMaxInput] = useState(formatCapacity(draft.maxTokens));
-  const [error, setError] = useState<string | null>(null);
-
-  const template = findTemplate(form.templateId);
-  const patch = (part: Partial<ProviderSettings>) => setForm((prev) => ({ ...prev, ...part }));
-
-  const submit = () => {
-    const result = buildProvider(form, contextInput, maxInput, existingIds);
-    if (!result.ok) {
-      setError(result.error);
-      return;
-    }
-    onSave(result.provider);
-  };
+  const { t } = useTranslation("settings");
+  const controller = useProviderForm({ draft, entries, existingLabels, onSave });
+  const template = findTemplate(draft.templateId);
 
   return (
-    <Dialog open onClose={onClose} labelledBy="mc-modelform-title" className="mc-dialog--wide">
-      <span className="mc-dialog__title" id="mc-modelform-title">
-        {template ? `添加模型 · ${template.name}` : "编辑模型"}
-      </span>
-      <p className="mc-dialog__desc">
-        服务商已选好，下面填写模型本身的配置。API 密钥保存在本地（Windows 凭据加密），不会离开这台机器。
-      </p>
+    <Dialog open onClose={onClose} className="mc-dialog--wide">
+      <h2 className="mc-dialog__title">
+        {template ? t("models.form.addTitle", { name: template.name }) : t("models.form.editTitle")}
+      </h2>
+      <p className="mc-dialog__desc">{t("models.form.desc")}</p>
 
-      <ModelFormFields
-        form={form}
-        contextInput={contextInput}
-        maxInput={maxInput}
-        onChange={patch}
-        onContextInputChange={setContextInput}
-        onMaxInputChange={setMaxInput}
-      />
-
-      {error ? <p className="mc-modelform__error">{error}</p> : null}
+      <ProviderFormBody controller={controller} />
 
       <div className="mc-dialog__footer">
         <Button variant="ghost" onClick={onClose}>
-          取消
+          {t("actions.cancel")}
         </Button>
-        <Button variant="primary" onClick={submit}>
-          保存
+        <Button variant="primary" onClick={controller.submit}>
+          {t("actions.save")}
         </Button>
       </div>
     </Dialog>

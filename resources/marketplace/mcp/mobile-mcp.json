@@ -1,0 +1,13 @@
+{
+  "description": "mobile-mcp：Android 模拟器/真机与 iOS 设备自动化——截图、点击滑动、屏幕元素识别、应用管理、日志与崩溃采集（Windows 下为 Android；iOS 需 macOS）。",
+  "server": {
+    "command": "npx",
+    "args": [
+      "-y",
+      "@mobilenext/mobile-mcp@1.0.12"
+    ],
+    "env": {
+      "MOBILEMCP_DISABLE_TELEMETRY": "1"
+    }
+  }
+}

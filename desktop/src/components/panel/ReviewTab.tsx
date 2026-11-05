@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { LuChevronRight, LuEllipsis, LuRotateCw } from "react-icons/lu";
 import { api } from "../../api";
 import "./ReviewTab.css";
@@ -38,6 +39,7 @@ function dirNameOf(filePath: string): string {
  * 数据源 GET /session/changes（持久化于会话 JSONL，重启仍可审阅）。
  */
 export function ReviewTab({ sessionId }: { sessionId?: string }) {
+  const { t } = useTranslation("panel");
   const [changes, setChanges] = useState<ReviewChange[]>([]);
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState(false);
@@ -74,17 +76,17 @@ export function ReviewTab({ sessionId }: { sessionId?: string }) {
     <div className="mc-review">
       <div className="mc-review__head">
         <span className="mc-review__count">
-          {loading ? "加载中…" : `${changes.length} 个文件有改动`}
+          {loading ? t("review.loading") : t("review.changedFiles", { count: changes.length })}
         </span>
-        <button type="button" className="mc-review__refresh" aria-label="刷新" title="刷新" onClick={() => void reload()}>
+        <button type="button" className="mc-review__refresh" aria-label={t("review.refresh")} title={t("review.refresh")} onClick={() => void reload()}>
           <LuRotateCw size={13} />
         </button>
       </div>
 
       {failed ? (
-        <p className="mc-review__empty">读取失败，稍后重试</p>
+        <p className="mc-review__empty">{t("review.failed")}</p>
       ) : !loading && changes.length === 0 ? (
-        <p className="mc-review__empty">本会话还没有文件改动</p>
+        <p className="mc-review__empty">{t("review.empty")}</p>
       ) : (
         <div className="mc-review__list">
           {changes.map((change) => {
@@ -108,7 +110,7 @@ export function ReviewTab({ sessionId }: { sessionId?: string }) {
                     {change.removed > 0 ? <span className="mc-review__del">-{change.removed}</span> : null}
                   </span>
                   {change.changeCount > 1 ? (
-                    <span className="mc-review__badge" title={`改动 ${change.changeCount} 次`}>
+                    <span className="mc-review__badge" title={t("review.changeCount", { count: change.changeCount })}>
                       {change.changeCount}
                     </span>
                   ) : null}
@@ -116,7 +118,7 @@ export function ReviewTab({ sessionId }: { sessionId?: string }) {
                 </button>
 
                 {open ? (
-                  <div className="mc-review__diff" role="region" aria-label={`${change.path} 的改动`}>
+                  <div className="mc-review__diff" role="region" aria-label={t("review.diffAria", { path: change.path })}>
                     {change.diff.split("\n").map((line, index) => (
                       <div className="mc-review__line" data-kind={diffLineKind(line)} key={index}>
                         {line || " "}

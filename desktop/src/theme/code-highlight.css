@@ -1,0 +1,77 @@
+/*
+ * 语法高亮配色：hljs-* 类只做映射，颜色全部在 tokens.css 的 --code-tok-* 里按主题配。
+ * 消费方：FilePreview（右侧文件预览）、Markdown（聊天代码块）、CodeBlock（工具输入）。
+ */
+
+.hljs-keyword,
+.hljs-selector-tag,
+.hljs-doctag {
+  color: var(--code-tok-keyword);
+}
+
+.hljs-string,
+.hljs-regexp,
+.hljs-addition {
+  color: var(--code-tok-string);
+}
+
+.hljs-number,
+.hljs-literal,
+.hljs-symbol {
+  color: var(--code-tok-number);
+}
+
+.hljs-comment,
+.hljs-quote,
+.hljs-meta {
+  color: var(--code-tok-comment);
+  font-style: italic;
+}
+
+.hljs-title,
+.hljs-title.function_ {
+  color: var(--code-tok-function);
+}
+
+.hljs-title.class_,
+.hljs-type,
+.hljs-built_in {
+  color: var(--code-tok-type);
+}
+
+.hljs-name,
+.hljs-tag {
+  color: var(--code-tok-tag);
+}
+
+.hljs-attr,
+.hljs-attribute,
+.hljs-variable,
+.hljs-template-variable,
+.hljs-property,
+.hljs-params {
+  color: var(--code-tok-attr);
+}
+
+.hljs-section {
+  color: var(--code-tok-type);
+}
+
+.hljs-selector-class,
+.hljs-selector-id,
+.hljs-selector-attr,
+.hljs-selector-pseudo {
+  color: var(--code-tok-function);
+}
+
+.hljs-deletion {
+  color: var(--code-tok-tag);
+}
+
+.hljs-emphasis {
+  font-style: italic;
+}
+
+.hljs-strong {
+  font-weight: 600;
+}

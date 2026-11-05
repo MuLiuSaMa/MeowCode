@@ -7,12 +7,17 @@ import type {
   ToolDefinition,
 } from "./types.js";
 import { anthropicTools, streamAnthropicMessages, toAnthropicMessages } from "./anthropic.js";
-import { resolveCachePlan } from "./cache-profile.js";
-import { fetchWithRetry } from "./http.js";
+import { isOneShotRequest, resolveCachePlan, withoutCacheWrites } from "./cache-profile.js";
+import { buildAuthHeaders, fetchWithRetry, mergeExtraHeaders } from "./http.js";
 import { readSseFrames } from "./sse.js";
 import { responsesTools, streamResponses, toResponsesInput } from "./responses.js";
 import { ProviderRequestError } from "./provider-error.js";
 import { isToolCallComplete, summarizeToolCalls, type ToolCallProgress } from "./tool-progress.js";
+
+/** 明确拒绝 parallel_tool_calls 字段的 provider id：之后请求不再携带，避免每趟 400。 */
+const parallelToolCallsUnsupportedProviders = new Set<string>();
+/** 明确拒绝 prompt_cache_key 字段的 provider id（第三方网关）：之后请求不再携带。 */
+const promptCacheKeyUnsupportedProviders = new Set<string>();
 
 export type StreamCompletionResult = {
   message: Extract<ChatMessage, { role: "assistant" }>;
@@ -22,6 +27,20 @@ export type StreamCompletionResult = {
   /** Responses 增量链：仅当本次响应被 store:true 留存时返回（codex 式 previous_response_id） */
   responseId?: string;
 };
+
+/** 流中实时用量回调：Anthropic 在 message_start 就给出输入/缓存；OpenAI 仅在尾块。 */
+export type UsageListener = (usage: TokenUsage) => void;
+
+/** 部分网关每块都带 usage：值没变就不重复上报，避免前端白刷新。 */
+function sameUsage(previous: TokenUsage | undefined, next: TokenUsage): boolean {
+  return (
+    previous !== undefined &&
+    previous.inputTokens === next.inputTokens &&
+    previous.outputTokens === next.outputTokens &&
+    previous.cacheReadTokens === next.cacheReadTokens &&
+    previous.cacheWriteTokens === next.cacheWriteTokens
+  );
+}
 
 type ProviderChunk = {
   choices?: Array<{
@@ -46,6 +65,8 @@ type ProviderChunk = {
     prompt_tokens_details?: { cached_tokens?: number };
     /** DeepSeek 兼容：顶层缓存命中数（prompt_tokens 已包含它） */
     prompt_cache_hit_tokens?: number;
+    /** 部分兼容网关只给顶层 cached_tokens */
+    cached_tokens?: number;
   };
   error?: { message?: string };
 };
@@ -66,8 +87,12 @@ export function completionUrl(baseUrl: string, protocol: ApiFormat = "openai-cha
         : "/chat/completions";
 
   if (trimmed.endsWith(suffix)) return trimmed;
-  // 已带 /vN 就只补后缀，否则补 /v1 + 后缀
-  return /\/v\d+$/.test(trimmed) ? `${trimmed}${suffix}` : `${trimmed}/v1${suffix}`;
+  // 已带 /vN（含 v1beta / v1alpha 这类带后缀的）或 OpenAI 兼容层标记 /openai 时
+  // 只补后缀，否则补 /v1 + 后缀。Gemini 的兼容端点是 /v1beta/openai/chat/completions
+  // （没有独立的 /v1 段），老正则 \/v\d+$ 匹配不上 v1beta 会拼出 /v1beta/v1/...。
+  return /\/v\d+[a-z]*$|\/openai$/i.test(trimmed)
+    ? `${trimmed}${suffix}`
+    : `${trimmed}/v1${suffix}`;
 }
 
 /**
@@ -156,6 +181,8 @@ async function streamChatCompletions(options: {
   signal?: AbortSignal;
   onDelta: (delta: string) => void;
   onThinking?: (delta: string) => void;
+  /** 流中实时用量（同一轮可能多次：输入/缓存先到，输出随后增长） */
+  onUsage?: UsageListener;
   onToolCall?: (progress: ToolCallProgress) => void;
   /** 流式中某个工具调用参数完整闭合时立即回调（实验：流中提前执行只读工具） */
   onToolCallComplete?: (call: ToolCall) => void;
@@ -163,11 +190,19 @@ async function streamChatCompletions(options: {
   toolChoice?: "none";
 }): Promise<StreamCompletionResult> {
   const url = completionUrl(options.provider.baseUrl, "openai-chat-completions");
-  const buildBody = (includeUsage: boolean) => ({
+  const buildBody = (includeUsage: boolean, includeParallel: boolean, includeCacheKey: boolean) => ({
     model: options.provider.model,
     messages: toChatCompletionMessages(options.messages),
     tools: options.tools,
     stream: true,
+    // 并行工具调用恒开（对齐 Codex client.rs）：批处理密度直接决定总输入 token。
+    // 严格网关不认识会报 400，下面降级去掉重试。
+    ...(includeParallel ? { parallel_tool_calls: true } : {}),
+    // 会话亲和键（applyCachePolicy 只在官方主机注入）：路由到同一缓存分片，
+    // 等价前缀跨请求命中同一桶。网关不认识会报 400，下面降级去掉重试。
+    ...(includeCacheKey && options.provider.promptCacheKey
+      ? { prompt_cache_key: options.provider.promptCacheKey }
+      : {}),
     // 请求服务商回传真实用量（OpenAI 标准字段）。上下文占用圆圈依赖它；
     // 严格网关不认识该字段会报 400，下面会降级去掉重试一次。
     ...(includeUsage ? { stream_options: { include_usage: true } } : {}),
@@ -177,29 +212,50 @@ async function streamChatCompletions(options: {
     ...(options.toolChoice === "none" && options.tools.length
       ? { tool_choice: "none" }
       : {}),
+    // 用户自定义字段最后展开：同名覆盖内置，用于服务商特有的开关
+    // （Qwen/dashscope 的 enable_thinking、vLLM 的 chat_template_kwargs 等）
+    ...options.provider.extraBody,
   });
-  const doFetch = (includeUsage: boolean) => {
-    const headers: Record<string, string> = { "content-type": "application/json" };
-    if (options.provider.apiKey) headers.authorization = `Bearer ${options.provider.apiKey}`;
+  const doFetch = (includeUsage: boolean, includeParallel: boolean, includeCacheKey: boolean) => {
+    const headers = mergeExtraHeaders(
+      {
+        "content-type": "application/json",
+        ...buildAuthHeaders(options.provider.apiKey, options.provider.authStyle, "bearer"),
+      },
+      options.provider.extraHeaders,
+    );
     return fetchWithRetry(url, {
       method: "POST",
       headers,
       signal: options.signal,
-      body: JSON.stringify(buildBody(includeUsage)),
+      body: JSON.stringify(buildBody(includeUsage, includeParallel, includeCacheKey)),
     });
   };
 
-  let response = await doFetch(true);
-  if (!response.ok && response.status === 400) {
+  // 400 降级记忆：网关拒绝过 parallel_tool_calls / prompt_cache_key 就不再发
+  // （每个请求多一趟 400 很贵）
+  const omit = {
+    usage: false,
+    parallel: parallelToolCallsUnsupportedProviders.has(options.provider.id),
+    cacheKey: promptCacheKeyUnsupportedProviders.has(options.provider.id),
+  };
+  let response = await doFetch(!omit.usage, !omit.parallel, !omit.cacheKey);
+  for (let fallbacks = 0; !response.ok && response.status === 400 && fallbacks < 2; fallbacks += 1) {
     const text = await response.text().catch(() => "");
-    if (/stream_options/i.test(text)) {
+    if (!omit.usage && /stream_options/i.test(text)) {
       // 网关不认识 stream_options：去掉再试一次
-      response = await doFetch(false);
+      omit.usage = true;
+    } else if (!omit.cacheKey && /prompt_cache_key/i.test(text)) {
+      omit.cacheKey = true;
+      promptCacheKeyUnsupportedProviders.add(options.provider.id);
+    } else if (!omit.parallel && /parallel_tool_calls/i.test(text)) {
+      omit.parallel = true;
+      parallelToolCallsUnsupportedProviders.add(options.provider.id);
     } else {
       throw new ProviderRequestError(response.status, text || response.statusText);
     }
+    response = await doFetch(!omit.usage, !omit.parallel, !omit.cacheKey);
   }
-
   if (!response.ok || !response.body) {
     const text = await response.text().catch(() => "");
     throw new ProviderRequestError(response.status, text || response.statusText);
@@ -210,6 +266,7 @@ async function streamChatCompletions(options: {
   const toolCalls = new Map<number, ToolCall>();
   const completedCalls = new Set<number>();
   let usage: StreamCompletionResult["usage"];
+  let reportedUsage: TokenUsage | undefined;
   let finishReason: string | undefined;
   let sawDone = false;
 
@@ -230,12 +287,18 @@ async function streamChatCompletions(options: {
       if (parsed.usage) {
         // 缓存命中：OpenAI 走 prompt_tokens_details.cached_tokens，DeepSeek 用顶层 prompt_cache_hit_tokens
         const cachedTokens =
-          parsed.usage.prompt_tokens_details?.cached_tokens ?? parsed.usage.prompt_cache_hit_tokens;
+          parsed.usage.prompt_tokens_details?.cached_tokens ??
+          parsed.usage.prompt_cache_hit_tokens ??
+          parsed.usage.cached_tokens;
         usage = {
           inputTokens: parsed.usage.prompt_tokens,
           outputTokens: parsed.usage.completion_tokens,
           ...(cachedTokens !== undefined ? { cacheReadTokens: cachedTokens } : {}),
         };
+        if (!sameUsage(reportedUsage, usage)) {
+          reportedUsage = usage;
+          options.onUsage?.(usage);
+        }
       }
       const choice = parsed.choices?.[0];
       if (choice?.finish_reason) finishReason = choice.finish_reason;
@@ -310,7 +373,14 @@ async function streamChatCompletions(options: {
 export function utilityProvider(
   provider: ProviderConfig,
   maxTokens: number,
-  _purpose: "title" | "compaction" | "digest" | "commit" = "compaction",
+  _purpose:
+    | "title"
+    | "compaction"
+    | "digest"
+    | "commit"
+    | "polish"
+    | "memory"
+    | "learning" = "compaction",
 ): ProviderConfig {
   return { ...provider, maxTokens, reasoningEffort: undefined, thinkingBudget: undefined };
 }
@@ -319,36 +389,58 @@ export async function streamChatCompletion(options: {
   provider: ProviderConfig;
   messages: ChatMessage[];
   tools: ToolDefinition[];
+  /** Anthropic tools 断点锚点（会话目录快照末尾）；其他协议忽略 */
+  toolCacheAnchor?: number;
   signal?: AbortSignal;
   onDelta: (delta: string) => void;
   onThinking?: (delta: string) => void;
+  /** 流中实时用量（同一轮可能多次：输入/缓存先到，输出随后增长） */
+  onUsage?: UsageListener;
   onToolCall?: (progress: ToolCallProgress) => void;
   /** 流式中某个工具调用参数完整闭合时立即回调（实验：流中提前执行只读工具） */
   onToolCallComplete?: (call: ToolCall) => void;
   /** 传工具定义但禁止实际调用（压缩摘要复用主前缀时需要） */
   toolChoice?: "none";
+  /**
+   * 缓存写入意图：
+   *  - auto（默认）：一次性请求（无工具、无 assistant/tool 轮、user 轮 ≤1）不打标记，
+   *    因为它的写入永远读不回来。
+   *  - prefix-reuse：本次请求复用了主对话前缀（压缩摘要）。不做一次性判形，
+   *    且把写入断点前移到合成指令之前 —— 指令本身不会被后续请求读回。
+   */
+  cacheMode?: "auto" | "prefix-reuse";
 }): Promise<StreamCompletionResult> {
   const protocol = options.provider.protocol ?? "openai-chat-completions";
   // 缓存画像在这里解析一次：断点位置、TTL、retention 全部由 cache-profile 决定，
   // 协议层只消费裁剪好的计划（保证任何路径都不会超过 Anthropic 的 4 断点上限）。
-  const cachePlan = resolveCachePlan(options.provider);
+  const cachePlan =
+    options.cacheMode !== "prefix-reuse" && isOneShotRequest(options.messages, options.tools)
+      ? withoutCacheWrites(resolveCachePlan(options.provider))
+      : resolveCachePlan(options.provider);
 
   if (protocol === "anthropic-messages") {
-    const { system, messages } = toAnthropicMessages(options.messages, cachePlan);
+    const { system, messages } = toAnthropicMessages(options.messages, cachePlan, {
+      skipTailCacheWrite: options.cacheMode === "prefix-reuse",
+    });
     return streamAnthropicMessages({
       url: completionUrl(options.provider.baseUrl, protocol),
+      providerId: options.provider.id,
       apiKey: options.provider.apiKey,
+      authStyle: options.provider.authStyle,
+      extraHeaders: options.provider.extraHeaders,
+      extraBody: options.provider.extraBody,
       model: options.provider.model,
       maxTokens: options.provider.maxTokens,
       reasoningEffort: options.provider.reasoningEffort,
       thinkingBudget: options.provider.thinkingBudget,
       system,
       messages,
-      tools: anthropicTools(options.tools, cachePlan),
+      tools: anthropicTools(options.tools, cachePlan, options.toolCacheAnchor),
       toolChoice: options.toolChoice,
       signal: options.signal,
       onDelta: options.onDelta,
       onThinking: options.onThinking,
+      onUsage: options.onUsage,
       onToolCall: options.onToolCall,
       onToolCallComplete: options.onToolCallComplete,
     });
@@ -362,6 +454,9 @@ export async function streamChatCompletion(options: {
     return streamResponses({
       url: completionUrl(options.provider.baseUrl, protocol),
       apiKey: options.provider.apiKey,
+      authStyle: options.provider.authStyle,
+      extraHeaders: options.provider.extraHeaders,
+      extraBody: options.provider.extraBody,
       model: options.provider.model,
       maxTokens: options.provider.maxTokens,
       reasoningEffort: options.provider.reasoningEffort,
@@ -376,6 +471,7 @@ export async function streamChatCompletion(options: {
       signal: options.signal,
       onDelta: options.onDelta,
       onThinking: options.onThinking,
+      onUsage: options.onUsage,
       onToolCall: options.onToolCall,
       onToolCallComplete: options.onToolCallComplete,
     });

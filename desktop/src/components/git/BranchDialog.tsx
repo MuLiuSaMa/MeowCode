@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { LuCheck, LuGitBranch } from "react-icons/lu";
+import { useTranslation } from "react-i18next";
+import { LuCheck, LuGitBranch, LuLoaderCircle } from "react-icons/lu";
 import { Dialog } from "../ui/Dialog";
 import type { GitView } from "../../git/useGitView";
 import "./git.css";
@@ -17,10 +18,13 @@ export function BranchDialog({
   git: GitView;
   onClose: () => void;
 }) {
+  const { t } = useTranslation("git");
   const [query, setQuery] = useState("");
   const [newName, setNewName] = useState("");
   const [force, setForce] = useState(false);
   const [stash, setStash] = useState(false);
+  /** 正在切换的分支名：切完再关对话框，期间那一行显示转圈 */
+  const [pending, setPending] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -39,6 +43,17 @@ export function BranchDialog({
     : git.branches;
   const busy = git.busy !== null;
 
+  const switchTo = async (name: string) => {
+    if (busy || pending) return;
+    setPending(name);
+    try {
+      await git.switchBranch({ name, force, stash });
+    } finally {
+      setPending(null);
+      onClose();
+    }
+  };
+
   const create = async () => {
     const name = newName.trim();
     if (!name || busy) return;
@@ -49,20 +64,20 @@ export function BranchDialog({
 
   return (
     <Dialog open={open} onClose={onClose} className="mc-gitdlg mc-gitdlg--branch">
-      <h2 className="mc-gitdlg__title">切换分支</h2>
+      <h2 className="mc-gitdlg__title">{t("branch.switch")}</h2>
       <label className="mc-gitdlg__search">
         <input
           value={query}
-          placeholder="搜索分支"
+          placeholder={t("branch.search")}
           onChange={(event) => setQuery(event.target.value)}
           autoFocus
         />
       </label>
-      <div className="mc-gitdlg__branchlist" role="listbox" aria-label="分支列表">
+      <div className="mc-gitdlg__branchlist" role="listbox" aria-label={t("branch.listAria")}>
         {git.branchesLoading && !git.branches.length ? (
-          <p className="mc-gitdlg__empty">正在读取分支…</p>
+          <p className="mc-gitdlg__empty">{t("branch.loading")}</p>
         ) : filtered.length === 0 ? (
-          <p className="mc-gitdlg__empty">没有匹配的分支</p>
+          <p className="mc-gitdlg__empty">{t("branch.noMatch")}</p>
         ) : (
           filtered.map((branch) => (
             <button
@@ -72,21 +87,22 @@ export function BranchDialog({
               aria-selected={branch.current}
               className="mc-gitdlg__branchrow"
               data-current={branch.current}
-              disabled={busy}
+              data-busy={pending === branch.name ? "true" : "false"}
+              aria-busy={pending === branch.name}
+              disabled={busy || pending !== null}
               onClick={() => {
                 if (branch.current) {
                   onClose();
                   return;
                 }
-                void git.switchBranch({
-                  name: branch.name,
-                  force,
-                  stash,
-                });
-                onClose();
+                void switchTo(branch.name);
               }}
             >
-              <LuGitBranch size={13} />
+              {pending === branch.name ? (
+                <LuLoaderCircle size={13} className="mc-gitdlg__spin" />
+              ) : (
+                <LuGitBranch size={13} />
+              )}
               <span className="mc-gitdlg__branchname">{branch.name}</span>
               {branch.upstream ? (
                 <span className="mc-gitdlg__upstream">{branch.upstream}</span>
@@ -101,31 +117,31 @@ export function BranchDialog({
       <div className="mc-gitdlg__options">
         <label className="mc-gitdlg__check">
           <input type="checkbox" checked={stash} onChange={(event) => setStash(event.target.checked)} />
-          切换前贮藏本地改动
+          {t("branch.stash")}
         </label>
         <label className="mc-gitdlg__check" data-danger={force ? "true" : undefined}>
           <input type="checkbox" checked={force} onChange={(event) => setForce(event.target.checked)} />
-          强制切换（丢弃未提交的改动）
+          {t("branch.force")}
         </label>
       </div>
 
       <div className="mc-gitdlg__newbranch">
         <input
           value={newName}
-          placeholder="基于当前 HEAD 新建分支，如 feature/login"
+          placeholder={t("branch.newPlaceholder")}
           onChange={(event) => setNewName(event.target.value)}
           onKeyDown={(event) => {
             if (event.key === "Enter") void create();
           }}
         />
         <button type="button" className="mc-git__commitbtn" disabled={!newName.trim() || busy} onClick={() => void create()}>
-          新建并切换
+          {t("branch.create")}
         </button>
       </div>
 
       <div className="mc-gitdlg__actions">
         <button type="button" className="mc-gitdlg__cancel" onClick={onClose}>
-          关闭
+          {t("branch.close")}
         </button>
       </div>
     </Dialog>

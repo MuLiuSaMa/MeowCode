@@ -34,3 +34,32 @@
   font-size: var(--fs-xs);
   color: var(--fg-subtlest);
 }
+.mc-field__textarea {
+  min-height: 64px;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  corner-shape: superellipse(1.5);
+  background: var(--input-fill);
+  color: var(--fg);
+  font-family: var(--font-mono, monospace);
+  font-size: var(--fs-sm);
+  line-height: 1.5;
+  resize: vertical;
+  outline: none;
+  transition: border-color var(--dur) var(--ease), background-color var(--dur) var(--ease);
+}
+.mc-field__textarea::placeholder {
+  color: var(--fg-subtlest);
+}
+.mc-field__textarea:hover {
+  border-color: var(--border-hover);
+}
+.mc-field__textarea:focus {
+  border-color: var(--border-hover);
+  background: color-mix(in oklab, #fff 8%, var(--bg));
+}
+.mc-field__error {
+  font-size: var(--fs-xs);
+  color: var(--danger, #e02f2f);
+}

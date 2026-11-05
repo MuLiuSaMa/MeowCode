@@ -1,0 +1,232 @@
+{
+  "rail": {
+    "home": "首頁",
+    "architecture": "Agent 架構",
+    "git": "Git 管理",
+    "plugins": "外掛市集",
+    "settings": "設定"
+  },
+  "update": {
+    "downloadingPercent": "新版本自動下載中 {{percent}}%",
+    "downloading": "新版本自動下載中",
+    "dismiss": "關閉提示",
+    "restart": "重新啟動並安裝更新",
+    "failedAria": "自動下載更新失敗，點擊手動下載",
+    "failedTitle": "自動下載失敗，點擊手動下載"
+  },
+  "window": {
+    "minimize": "最小化",
+    "restore": "還原",
+    "maximize": "最大化",
+    "close": "關閉"
+  },
+  "approval": {
+    "title": "需要授權",
+    "requestSubagent": "子 Agent「{{name}}」想使用 {{tool}}。",
+    "requestApp": "MeowCode 想使用 {{tool}}。",
+    "stale": "檔案在審批期間被變更，下方的預覽已重新產生，請重新確認。",
+    "risk": "高風險命令",
+    "diff": "變更預覽",
+    "deny": "拒絕",
+    "approve": "允許",
+    "hookTitle": "Hook 要求執行指令",
+    "hookRequest": "事件：{{event}}",
+    "hookFromAgent": "子 Agent「{{name}}」發起",
+    "hookMatcher": "符合：{{matcher}}",
+    "hookSource": "設定：{{source}}",
+    "hookNote": "該指令將以目前使用者權限執行；批准只在本工作階段記住。",
+    "hookRun": "執行",
+    "hookSkip": "跳過",
+    "hookReasonTitle": "Hook 要求人工確認",
+    "sandboxTitle": "沙箱攔截了這次寫入",
+    "sandboxDesc": "命令嘗試寫工作區之外的位置，被系統級寫沙箱攔下。",
+    "sandboxCommand": "被攔截的命令",
+    "sandboxEvidence": "攔截證據",
+    "sandboxNote": "在沙箱外重試會以目前使用者權限執行這條命令；只放行這一次，不會關閉沙箱。",
+    "sandboxDeny": "保持沙箱",
+    "sandboxRetry": "在沙箱外重試"
+  },
+  "plan": {
+    "aria": "任務計畫",
+    "expand": "展開任務計畫",
+    "collapse": "收合任務計畫",
+    "allDone": "全部任務已完成",
+    "endedHeadline": "計畫已結束",
+    "ended": "已結束",
+    "status": {
+      "pending": "待開始",
+      "inProgress": "進行中",
+      "completed": "已完成",
+      "cancelled": "已取消"
+    },
+    "confirmedWithPath": "計畫已確認，請按 {{path}} 開始實作。",
+    "confirmed": "計畫已確認，請開始實作。",
+    "stepsProgress": "步驟 {{done}} / {{total}}",
+    "filesChanged": "{{n}} 個檔案已修改"
+  },
+  "status": {
+    "preparingSubagents_one": "正在準備 {{count}} 個子 Agent…",
+    "preparingSubagents_few": "正在準備 {{count}} 個子 Agent…",
+    "preparingSubagents_many": "正在準備 {{count}} 個子 Agent…",
+    "preparingSubagents_other": "正在準備 {{count}} 個子 Agent…",
+    "preparingWrites": "正在寫入檔案…",
+    "preparingEdits": "正在修改檔案…",
+    "preparingTools_one": "正在準備 {{count}} 個工具呼叫…",
+    "preparingTools_few": "正在準備 {{count}} 個工具呼叫…",
+    "preparingTools_many": "正在準備 {{count}} 個工具呼叫…",
+    "preparingTools_other": "正在準備 {{count}} 個工具呼叫…"
+  },
+  "notice": {
+    "interrupted": "上次產生因應用程式結束而中斷；已保留已產生的內容，可以繼續對話。",
+    "updateAvailable": "發現新版本 {{version}}",
+    "updateNow": "立即更新",
+    "subagentInterrupted": "這個子 Agent 的回合被中斷；已保留產生的內容。",
+    "cacheEvicted": "快取可能已被伺服器逐出（閒置超過宣告的 TTL），本回合按未命中計費。",
+    "cacheUnsupported": "該閘道在前綴未變的情況下未回報快取命中，可能不支援前綴快取；成本按全量輸入計算。",
+    "providerSwitched": "服務商已臨時切換：{{from}} → {{to}}（{{reason}}）。可在設定 → 模型裡調整順序。",
+    "undoableRewind": "已回滾 {{count}} 個檔案；這次回滾可以撤銷（來源會話已保留）。",
+    "undoRewind": "撤銷回滾",
+    "dismiss": "關閉提示"
+  },
+  "subagent": {
+    "label": "子 Agent",
+    "loadFailed": "無法載入子 Agent 逐字稿",
+    "steerAborted": "插話未送達：子 Agent 已停止",
+    "steerFinished": "插話未送達：子 Agent 已結束",
+    "status": {
+      "completed": "已完成",
+      "failed": "失敗",
+      "aborted": "已停止",
+      "interrupted": "已中斷"
+    },
+    "notice": "子 Agent「{{name}}」{{status}}",
+    "noticeWithReport": "子 Agent「{{name}}」{{status}}：{{report}}"
+  },
+  "error": {
+    "reason": {
+      "timeout": "請求逾時",
+      "rateLimit": "觸發速率限制",
+      "server": "伺服器故障"
+    },
+    "worktreeLoad": "worktree 工作階段建立後載入失敗，請重試。",
+    "notGitRepo": "目前工作區不是 git 儲存庫，無法使用 worktree 隔離。"
+  },
+  "toast": {
+    "worktreeDirty": "主工作區有未提交的變更：worktree 基於 HEAD，未提交內容不會帶入"
+  },
+  "architecture": {
+    "customName": "自訂 Agent"
+  },
+  "model": {
+    "unconfigured": "未設定模型"
+  },
+  "resize": {
+    "list": "調整左側清單寬度",
+    "inspector": "調整右側欄寬度"
+  },
+  "theme": {
+    "providerMissing": "useTheme 必須在 ThemeProvider 內使用"
+  },
+  "updateModal": {
+    "currentVersion": "目前 {{version}}",
+    "noAsset": "這次發行沒有附帶目前平台的安裝程式，無法線上下載",
+    "noNotes": "這次發行沒有更新說明",
+    "downloadDone": "下載完成",
+    "downloading": "下載中 {{percent}}%",
+    "downloadSize": "（{{received}} / {{total}}）",
+    "later": "稍後",
+    "restart": "重新啟動更新",
+    "cancel": "取消",
+    "downloadingShort": "下載中…",
+    "download": "下載更新"
+  },
+  "modelPopover": {
+    "aria": "模型與思考強度",
+    "selectModel": "選擇模型",
+    "empty": "尚未啟用任何模型。請到 設定 → 模型 新增。",
+    "manage": "管理模型",
+    "back": "返回模型清單",
+    "effort": "思考強度"
+  },
+  "taskRow": {
+    "status": {
+      "running": "執行中",
+      "completed": "已完成",
+      "failed": "失敗",
+      "aborted": "已停止",
+      "interrupted": "已中斷"
+    },
+    "background": "背景",
+    "open": "開啟子 Agent：{{name}}",
+    "durationUnderSecond": "少於 1 秒",
+    "durationSeconds": "{{value}} 秒",
+    "durationMinutes": "{{minutes}} 分 {{seconds}} 秒"
+  },
+  "closeDialog": {
+    "title": "關閉視窗時，希望 MeowCode 如何處理？",
+    "desc": "MeowCode 會繼續在背景執行，你可以從系統匣重新開啟。",
+    "remember": "記住我的選擇（可在 設定 → 一般 中修改）",
+    "cancel": "取消",
+    "tray": "縮小到系統匣",
+    "quit": "直接關閉"
+  },
+  "contextWarning": {
+    "usage": "上下文已使用 <b>{{percent}}%</b>（{{used}} / {{window}}）。",
+    "hintStreaming": "本輪結束後可手動壓縮，避免下一次請求溢出後自動壓縮。",
+    "hint": "建議手動壓縮，避免下一次請求溢出後自動壓縮。",
+    "compacting": "正在壓縮…",
+    "compactAfterTurn": "本輪結束後可壓縮",
+    "compactNow": "立即壓縮",
+    "dismissAria": "忽略壓縮提示",
+    "dismissTitle": "本次不再提示"
+  },
+  "compaction": {
+    "compacting": "正在壓縮對話記錄…",
+    "interrupted": "上次壓縮因應用程式結束而中斷",
+    "failed": "上次壓縮失敗，記錄未壓縮",
+    "done": "已壓縮對話記錄，較早的訊息以摘要形式保留"
+  },
+  "messageNav": {
+    "aria": "對話瀏覽",
+    "noText": "（無文字）",
+    "itemTitle": "第 {{index}} 則：{{preview}}",
+    "images_one": "{{count, number}} 張圖片",
+    "images_few": "{{count, number}} 張圖片",
+    "images_many": "{{count, number}} 張圖片",
+    "images_other": "{{count, number}} 張圖片"
+  },
+  "agentProfile": {
+    "aria": "主 Agent 檔位",
+    "customDesc": "自訂架構 · 沿用目前檔位的能力",
+    "dispatchable_one": "{{tagline}} · 可派發 {{count, number}} 個子 Agent",
+    "dispatchable_few": "{{tagline}} · 可派發 {{count, number}} 個子 Agent",
+    "dispatchable_many": "{{tagline}} · 可派發 {{count, number}} 個子 Agent",
+    "dispatchable_other": "{{tagline}} · 可派發 {{count, number}} 個子 Agent"
+  },
+  "contextMeter": {
+    "usage": "上下文 {{used}} / {{window}}（{{percent}}%）",
+    "noWindow": "未設定上下文視窗",
+    "aria": "上下文使用量"
+  },
+  "bootSplash": {
+    "aria": "正在啟動 MeowCode"
+  },
+  "island": {
+    "connecting": "連線中…",
+    "running": "{{n}} 個對話進行中",
+    "waitingApproval": "等待審批",
+    "idle": "閒置",
+    "approvalHint": "等待審批",
+    "thinking": "思考中…",
+    "working": "處理中…",
+    "hadError": "發生錯誤",
+    "untitled": "未命名對話",
+    "empty": "尚無訊息",
+    "stop": "停止",
+    "send": "傳送",
+    "openMain": "開啟主視窗",
+    "inputPlaceholder": "輸入訊息，Enter 傳送",
+    "inputIdle": "此對話未在執行中，請在主視窗開啟後繼續",
+    "dropHint": "鬆開以附加"
+  }
+}

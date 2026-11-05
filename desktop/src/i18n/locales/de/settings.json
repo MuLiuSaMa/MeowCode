@@ -1,0 +1,584 @@
+{
+  "language": {
+    "section": "Sprache",
+    "title": "Oberflächensprache",
+    "description": "Wählen Sie die Sprache der MeowCode-Oberfläche. Die Änderung gilt sofort, ohne Neustart.",
+    "system": "Systemsprache"
+  },
+  "speech": {
+    "section": "Sprachstil",
+    "field": "Antwortstil",
+    "desc": {
+      "normal": "Standardton: knapp, direkt und professionell – nur das Wesentliche.",
+      "tafei": "Taffy-Ton: eine verspielte Katzenmädchen-Persona, die Sätze mit „Miao“ (喵) beendet und gelegentlich ihren Erkennungssatz nutzt; technische Inhalte bleiben präzise.",
+      "dazui": "Dazui: äh, dies, dies … oder? Der beste Sprachstil unter zehn Millionen."
+    },
+    "options": {
+      "normal": "Normal",
+      "tafei": "永雏塔菲",
+      "dazui": "大嘴"
+    }
+  },
+  "nav": {
+    "heading": "Einstellungen",
+    "ariaLabel": "Einstellungsbereiche",
+    "back": "Zurück zum Chat"
+  },
+  "sections": {
+    "general": "Allgemein",
+    "appearance": "Aussehen",
+    "shortcuts": "Tastenkürzel",
+    "models": "Modelle",
+    "memory": "Speicher",
+    "archive": "Archiv",
+    "about": "Info",
+    "island": "AI 悬浮岛",
+    "hooks": "Hooks",
+    "dataImport": "Datenimport",
+    "rules": "Regeln",
+    "worktree": "Worktrees",
+    "learning": "Selbstlernen",
+    "rewind": "Sitzungs-Zurücksetzen",
+    "sandbox": "Sandbox"
+  },
+  "close": {
+    "section": "Fenster schließen",
+    "field": "Beim Schließen des Fensters",
+    "desc": {
+      "ask": "Jedes Mal nachfragen, ob ins Tray ausgeblendet oder beendet wird.",
+      "tray": "Das Fenster wird ins Systemtray ausgeblendet; MeowCode läuft im Hintergrund weiter.",
+      "quit": "Das Fenster beendet MeowCode sofort."
+    },
+    "options": {
+      "ask": "Jedes Mal nachfragen",
+      "tray": "Ins Tray",
+      "quit": "Direkt beenden"
+    }
+  },
+  "update": {
+    "section": "Updates",
+    "field": "Updates im Hintergrund laden",
+    "desc": {
+      "on": "Beim Start gefundene neue Versionen werden automatisch geladen. Danach erscheint unten links in der Seitenleiste ein Neustart-Knopf — klicken zum Installieren.",
+      "off": "Beim Start nur still prüfen und hinweisen; Herunterladen und Installieren bleibt Handarbeit auf der Info-Seite."
+    }
+  },
+  "appearance": {
+    "themeSection": "Design",
+    "themeField": "Farbschema",
+    "themeDesc": "„Systemfarben“ folgt der Hell-/Dunkel-Einstellung von Windows in Echtzeit. Die Änderung wirkt sofort, ohne Neustart.",
+    "theme": {
+      "system": "Systemfarben",
+      "light": "Hell",
+      "dark": "Dunkel"
+    },
+    "fontSection": "Schriften",
+    "fontDesc": "Die „Oberflächenschrift“ gilt für Chat, Seitenleiste und sonstigen Text, die „Code-Schrift“ für Codeblöcke, Diffs und anderen nichtproportionalen Text. Wählen Sie eine Systemschrift oder importieren Sie eine lokale Schriftdatei (ttf / otf / woff / woff2). Änderungen wirken sofort.",
+    "importField": "Schrift importieren",
+    "importButton": "Schrift importieren…",
+    "uiFont": "Oberflächenschrift",
+    "codeFont": "Code-Schrift",
+    "defaultFont": "Standard",
+    "fontsLoading": "Systemschriften werden gelesen … Klicken zum Wiederholen",
+    "imported": "{{name}} (importiert)"
+  },
+  "shortcuts": {
+    "title": "Tastenkürzel",
+    "description": "Übersicht der Tastenkürzel.",
+    "ctrlHint": "Unter macOS ersetzt ⌘ die Strg-Taste",
+    "items": {
+      "search": "Volltextsuche in Unterhaltungen",
+      "quickOpen": "Schnelles Öffnen von Dateien",
+      "sideChat": "Seitenchat",
+      "terminal": "Terminal",
+      "send": "Nachricht senden",
+      "commit": "Git-Änderungen committen"
+    }
+  },
+  "memory": {
+    "extractionTitle": "Automatische Speicher-Destillation",
+    "extractionDesc": "Nach jedem Zug prüft eine leichte Hintergrundanfrage den neuen Gesprächsverlauf und speichert langfristig Wichtiges (Präferenzen, Korrekturen, Projektentscheidungen) automatisch im Speicher. Bei Aus bleiben nur manuelle Einträge und die eigenen Speicher-Schreibvorgänge der KI.",
+    "extractionField": "Nach jedem Zug automatisch destillieren",
+    "extractionFailed": "Speichern des Schalters fehlgeschlagen",
+    "scope": {
+      "user": "Persönlicher Speicher",
+      "project": "Projektspeicher"
+    },
+    "descUser": "Der Speicher bleibt arbeitsbereichsübergreifend erhalten: Ihre Vorlieben, gängigen Abläufe und Erfahrungen. Die Einträge liegen unter ~/.meowcode/memory/, der Index wird zu Beginn jedes neuen Chats eingefügt, und die AI liest und schreibt sie bei Bedarf über die Memory-Werkzeuge.",
+    "descProject": "Speicher nur für den aktuellen Arbeitsbereich; er liegt im Projekt unter .meowcode/memory/ (nicht in git).",
+    "descProjectNamed": "Speicher nur für den aktuellen Arbeitsbereich ({{workspace}}); er liegt im Projekt unter .meowcode/memory/ (nicht in git).",
+    "count_one": "{{count}} Eintrag gespeichert",
+    "count_other": "{{count}} Einträge gespeichert",
+    "count_few": "{{count}} Einträge gespeichert",
+    "count_many": "{{count}} Einträge gespeichert",
+    "create": "Neuer Eintrag",
+    "empty": "Noch keine Einträge — lernt die AI im Chat etwas, das lange gemerkt werden sollte, legt sie es hier ab. Sie können auch von Hand neue Einträge anlegen.",
+    "clickToEdit": "Klicken zum Bearbeiten",
+    "noDescription": "(ohne Beschreibung)",
+    "deleteAria": "{{name}} löschen",
+    "confirmDeleteAria": "Löschen von {{name}} bestätigen",
+    "editTitle": "{{scope}} · {{name}} bearbeiten",
+    "createTitle": "{{scope}} — neuer Eintrag",
+    "editorDesc": "Bearbeiten Sie den Markdown-Quelltext. Die Beschreibung im Frontmatter wandert in den Index MEMORY.md und wirkt ab dem nächsten Chat.",
+    "name": "Name",
+    "namePlaceholder": "kebab-case, z. B. docker-cli",
+    "nameHint": "Wird als <name>.md gespeichert",
+    "nameRule": "Namen sind kleingeschriebenes kebab-case (Buchstaben, Ziffern, Bindestriche), höchstens 64 Zeichen",
+    "saved": "{{scope}}: Eintrag „{{name}}“ gespeichert",
+    "deleted": "{{scope}}: Eintrag „{{name}}“ gelöscht",
+    "loadFailed": "Speicher konnte nicht geladen werden",
+    "readFailed": "Eintrag konnte nicht gelesen werden",
+    "saveFailed": "Eintrag konnte nicht gespeichert werden",
+    "deleteFailed": "Eintrag konnte nicht gelöscht werden"
+  },
+  "archive": {
+    "section": "Archiv",
+    "desc": "Archivierte Chats tauchen nicht in der Chatliste auf und lassen sich jederzeit zurückholen. Zum Archivieren die Maus über einen Chat in der Liste bewegen und rechts auf das Archiv-Symbol klicken. Löschen entfernt den Chat selbst und lässt sich nicht rückgängig machen.",
+    "empty": "Keine archivierten Chats",
+    "item": "Chat · {{when}}",
+    "unknownTime": "Zeit unbekannt",
+    "deleteAll": "Alle löschen",
+    "confirmDeleteAll": "Alle löschen?",
+    "deleteAria": "{{name}} endgültig löschen",
+    "confirmDeleteAria": "Erneut klicken, um {{name}} endgültig zu löschen"
+  },
+  "about": {
+    "loading": "Versionsinformationen werden gelesen …",
+    "version": "Version",
+    "newVersion": "Neue Version gefunden",
+    "checking": "Prüfung läuft …",
+    "check": "Version prüfen",
+    "author": "Autor",
+    "website": "Website",
+    "repo": "Repository",
+    "openInBrowser": "Im Browser öffnen",
+    "credits": "Dank an",
+    "sponsor": "Unterstützen",
+    "sponsorHint": "Wenn MeowCode Ihnen hilft, können Sie den Autor mit einem QR-Code unterstützen.",
+    "qrAlt": "Zahlungs-QR-Code für {{name}}",
+    "sponsors": {
+      "wechat": "WeChat Pay",
+      "alipay": "Alipay"
+    },
+    "upToDate": "Sie haben bereits die neueste Version",
+    "checkFailed": "Versionsprüfung fehlgeschlagen: {{error}}"
+  },
+  "actions": {
+    "add": "Hinzufügen",
+    "cancel": "Abbrechen",
+    "confirmDelete": "Löschen bestätigen",
+    "delete": "Löschen",
+    "edit": "Bearbeiten",
+    "restore": "Wiederherstellen",
+    "save": "Speichern",
+    "saving": "Speichert …"
+  },
+  "models": {
+    "section": "Modelle",
+    "desc": "Fügen Sie hier Modellanbieter hinzu und tragen Sie den Modellnamen ein, den Sie verwenden möchten.",
+    "count_one": "{{count}} Modell konfiguriert",
+    "count_other": "{{count}} Modelle konfiguriert",
+    "count_few": "{{count}} Modelle konfiguriert",
+    "count_many": "{{count}} Modelle konfiguriert",
+    "add": "Modell hinzufügen",
+    "empty": "Noch kein Modell konfiguriert. Beginnen Sie mit „Modell hinzufügen“.",
+    "deleteTitle": "Anbieter löschen",
+    "deleteMessage": "„{{name}}“ löschen? Danach muss es neu eingerichtet werden.",
+    "restartTitle": "Speichern startet den lokalen Dienst neu",
+    "restartMessage": "Modelländerungen starten den lokalen Agent-Dienst neu; der laufende Turn wird unterbrochen. Trotzdem speichern?",
+    "restartConfirm": "Trotzdem speichern",
+    "colModel": "Modell",
+    "colProvider": "Anbieter",
+    "colActions": "Aktionen",
+    "active": "Aktiv",
+    "enableAria": "{{name}} aktivieren",
+    "levels": "Denkstufen",
+    "levelRemoveAria": "{{level}} entfernen",
+    "levelRemoveTitle": "Diese Stufe entfernen",
+    "levelsAuto": "Leer lassen = Zuordnung nach Modellname (aktuell {{levels}})",
+    "levelsManual": "Manuell festgelegt. Entfernen Sie alle Stufen, um wieder nach Modellname zuzuordnen.",
+    "modalityOptions": {
+      "text": "Text",
+      "image": "Bild",
+      "pdf": "PDF"
+    },
+    "ttlOptions": {
+      "fiveMinutes": "5 Minuten (Standard)",
+      "auto": "Automatisch (nach Chat-Takt)",
+      "oneHour": "1 Stunde (langer Anthropic-TTL)"
+    },
+    "summaryOptions": {
+      "none": "Nicht senden (spart Tokens)",
+      "auto": "Automatisch",
+      "concise": "Kompakt",
+      "detailed": "Ausführlich"
+    },
+    "compactionOptions": {
+      "auto": "Automatisch (offizielle Endpunkte)",
+      "on": "Immer erzwingen (kompatible Gateways)",
+      "off": "Aus (nur lokale Zusammenfassungen)"
+    },
+    "authOptions": {
+      "protocolDefault": "Protokoll-Standard (Anthropic x-api-key / OpenAI Bearer)",
+      "bearer": "Authorization: Bearer",
+      "azureKey": "api-key-Header (Azure OpenAI)",
+      "bedrockKey": "Bedrock-API-Key (Amazon Bedrock)",
+      "none": "Ohne Authentifizierungs-Header (lokale Inferenz / in Headern enthalten)"
+    },
+    "picker": {
+      "title": "Modellanbieter hinzufügen",
+      "desc": "Wählen Sie einen Anbieter und tragen Sie das Modell ein. Das API-Format lässt sich später jederzeit wechseln. Nicht dabei? Nutzen Sie „Eigener Anbieter“ und tragen Sie den Endpunkt von Hand ein.",
+      "search": "Suchen",
+      "searchPlaceholder": "Nach Name oder id suchen, z. B. deepseek",
+      "custom": "Eigener Anbieter",
+      "customMeta": "Endpunkt und Schlüssel von Hand eintragen",
+      "needEndpoint": "Endpunkt erforderlich",
+      "noMatch": "Kein passender Anbieter — versuchen Sie „Eigener Anbieter“"
+    },
+    "form": {
+      "addTitle": "Modell hinzufügen · {{name}}",
+      "editTitle": "Modell bearbeiten",
+      "desc": "Der Anbieter ist gewählt — jetzt das Modell selbst konfigurieren. API-Schlüssel werden nur lokal gespeichert (mit Windows-Anmeldedaten verschlüsselt) und verlassen dieses Gerät nicht.",
+      "customProviderName": "Eigener Anbieter",
+      "providerName": "Anbietername",
+      "providerNamePlaceholder": "Zum Beispiel My Provider",
+      "providerNameHint": "Erscheint in der Spalte „Anbieter“ der Modellliste",
+      "provider": "Anbieter",
+      "apiFormat": "API-Format",
+      "apiFormatAuto": "Aus der Anforderungs-URL erkannt; nach manueller Wahl keine automatische Erkennung",
+      "apiFormatDesc": "Legt fest, an welchen Endpunkt die Anfrage geht und wie der Body aufgebaut ist; wird aus der URL erkannt",
+      "baseUrl": "Anforderungs-URL",
+      "baseUrlHint": "Stamm-URL eintragen — das API-Format wird erkannt und der Pfad passend angehängt",
+      "modelId": "Modell-ID",
+      "modelIdPlaceholder": "Zum Beispiel deepseek-chat",
+      "modelIdHint": "Die Modellkennung aus der Anbieter-Dokumentation, erforderlich. Dieselbe Modell-ID lässt sich mehrfach konfigurieren (andere URL oder Schlüssel).",
+      "displayName": "Anzeigename des Modells",
+      "displayNamePlaceholder": "Leer = Modell-ID anzeigen",
+      "displayNameHint": "Nur für die Anzeige relevant, darf aber nicht mit einem vorhandenen Modell kollidieren",
+      "apiKey": "API-Schlüssel",
+      "apiKeySaved": "Gespeichert — leer lassen, um ihn beizubehalten",
+      "contextWindow": "Kontextfenster",
+      "contextWindowHint": "Leer = anhand des Modellnamens erkannt; 256K / 1M wird unterstützt",
+      "maxOutput": "Maximale Ausgabe",
+      "maxOutputHint": "Leer = anhand des Modellnamens erkannt; wie viele Tokens eine Antwort liefern darf",
+      "modalities": "Eingabe-Modalitäten",
+      "requiredTag": " (erforderlich)",
+      "modalityHint": "Bildfähigkeit wird am Modellnamen erkannt; PDF können nur die Protokolle Anthropic / Responses übertragen. Text muss bleiben.",
+      "advanced": "Erweiterte Einstellungen",
+      "advancedHint": "Denkintensität / Cache-TTL / Denkstufen / Authentifizierung und Anfrage-Anpassung — leer bedeutet Standardwerte",
+      "reasoningEffort": "Denkintensität",
+      "reasoningEffortPlaceholder": "Leer = Anbieter-Standard",
+      "reasoningEffortHint": "Wird als reasoning_effort gesendet",
+      "thinkingBudget": "Denkbudget",
+      "thinkingBudgetPlaceholder": "Leer = folgt der Denkintensität",
+      "thinkingBudgetHint": "thinking.budget_tokens; wird automatisch unter max_tokens begrenzt",
+      "cacheTtl": "Cache-TTL",
+      "cacheTtlHint": "1-h-Schreiben kostet das Doppelte; „Automatisch“ und „1 Stunde“ wirken nur auf Endpunkten mit nachgewiesenem langem TTL, sonst gilt 5 Minuten",
+      "reasoningSummary": "Denkzusammenfassung",
+      "reasoningSummaryHint": "Nur Responses-Protokoll; Zusammenfassungen zählen als Ausgabe-Tokens",
+      "nativeCompaction": "Serverseitige Komprimierung",
+      "nativeCompactionHint": "Der Anbieter komprimiert den Verlauf — das spart eine vollständige Zusammenfassungs-Anfrage",
+      "authStyle": "Authentifizierung",
+      "authStyleHint": "Bei den meisten Anbietern passt der Standard; für Azure / Bedrock den jeweiligen Eintrag wählen",
+      "extraHeaders": "Zusätzliche Header",
+      "extraHeadersHint": "Pro Zeile „Name: Wert“; Zeilen mit # sind Kommentare. Zum Beispiel der HTTP-Referer von OpenRouter",
+      "extraBody": "Zusätzlicher Anfragebody",
+      "extraBodyHint": "Ein JSON-Objekt, das oben in den Anfragebody gemischt wird. Zum Beispiel {\"enable_thinking\": false} bei Qwen",
+      "models": "Modelle",
+      "addModel": "Modell-ID hinzufügen",
+      "fetchModels": "Modellliste abrufen",
+      "fetching": "Wird geladen…",
+      "fetchTitle": "Modelle zum Hinzufügen wählen",
+      "fetchHint": "Nur angehakte Modelle werden übernommen.",
+      "fetchEmpty": "Keine Modelle erhalten.",
+      "fetchFailed": "Modellliste konnte nicht abgerufen werden: {{message}}",
+      "fetchAdded": "Bereits enthalten",
+      "fetchAdd": "Auswahl hinzufügen ({{count}})",
+      "modelSettings": "Modelleinstellungen",
+      "modelSettingsDesc": "Gilt nur für dieses Modell; Endpunkt, Schlüssel und Protokoll werden oben festgelegt.",
+      "modelsRequired": "Mindestens ein Modell hinzufügen.",
+      "contextDefault": "Modellstandard"
+    },
+    "error": {
+      "providerNameRequired": "Der Anbietername darf nicht leer sein",
+      "modelRequired": "Die Modell-ID darf nicht leer sein",
+      "duplicateName": "Der Anzeigename „{{name}}“ ist bereits konfiguriert",
+      "baseUrlRequired": "Die Anforderungs-URL darf nicht leer sein",
+      "contextFormat": "Ungültiges Format für das Kontextfenster — zum Beispiel 128k oder 1M",
+      "maxOutputFormat": "Ungültiges Format für die maximale Ausgabe — zum Beispiel 32k",
+      "extraBodyObject": "Der zusätzliche Anfragebody muss ein JSON-Objekt sein",
+      "extraBodyJson": "Der zusätzliche Anfragebody ist kein gültiges JSON: {{message}}",
+      "headerLine": "Ungültige Header-Zeile: {{line}}"
+    }
+  },
+  "island": {
+    "section": "AI 悬浮岛",
+    "field": "启用悬浮岛",
+    "desc": {
+      "on": "悬浮岛已开启：屏幕顶部居中显示所有运行中会话的状态，鼠标放上去可展开查看对话、直接输入或停止任务。",
+      "off": "开启后在屏幕顶部居中显示一枚胶囊，实时显示所有运行中会话的状态；鼠标放上去可展开成对话小窗。"
+    }
+  },
+  "hooks": {
+    "loading": "Hooks-Konfiguration wird geladen…",
+    "error": "Hooks-Konfiguration konnte nicht geladen werden: {{error}}",
+    "retry": "Erneut versuchen",
+    "saving": "Agent-Dienst wird neu gestartet, um Hooks anzuwenden…",
+    "import": {
+      "section": "Claude Code Hooks importieren",
+      "description": "Liest ~/.claude/settings.json und .claude-Konfigurationen im Arbeitsbereich. Arbeitsbereich-Konfigurationen werden standardmäßig nicht ausgeführt.",
+      "master": "Hooks aktivieren",
+      "masterHint": {
+        "on": "Claude Code Hook-Konfiguration ist geladen.",
+        "off": "Deaktiviert: Konfiguration wird nur lesend angezeigt und nicht ausgeführt."
+      },
+      "workspace": ".claude-Konfiguration des Arbeitsbereichs einbeziehen",
+      "workspaceHint": {
+        "on": "Hooks in .claude/settings*.json des Arbeitsbereichs werden ausgeführt.",
+        "off": "Nur ~/.claude-Konfiguration wird ausgeführt; Arbeitsbereich-Konfiguration wird nur angezeigt."
+      },
+      "workspaceWarning": "Hooks im Arbeitsbereich stammen aus Dateien dieses Repositories und können bösartige Befehle enthalten. Nur aktivieren, wenn du diesem Repository vertraust.",
+      "disabledNote": "Hooks sind deaktiviert. Aktiviere den Schalter oben, um Befehle auszuführen."
+    },
+    "configured": {
+      "section": "Konfigurierte Hooks",
+      "description": "Schreibgeschützte Übersicht. Zum Bearbeiten die Konfigurationsdatei öffnen.",
+      "empty": "Es sind keine Claude Code Hooks konfiguriert.",
+      "eventCount": "{{count}} Befehl(e)",
+      "matcher": "entspricht {{matcher}}",
+      "timeout": "{{seconds}}s Zeitlimit",
+      "layer": {
+        "user": "Benutzer",
+        "project": "Arbeitsbereich",
+        "local": "Arbeitsbereich lokal"
+      },
+      "layerUnknown": "Unbekannter Pfad",
+      "excluded": "Wird nicht ausgeführt",
+      "open": "Zum Bearbeiten öffnen",
+      "missing": "Datei nicht gefunden",
+      "fileCount": "{{count}} Befehl(e)",
+      "missingToast": "Datei nicht gefunden: {{path}}",
+      "openError": "Datei konnte nicht geöffnet werden: {{error}}",
+      "unsupported": "Nicht überbrückte Ereignisse: {{events}}"
+    },
+    "runMode": {
+      "section": "Ausführungsmodus für Hook-Befehle",
+      "description": {
+        "auto": "Hook-Befehle automatisch ausführen; PreToolUse `ask`/`deny` gelten weiterhin.",
+        "ask": "Vor der ersten Ausführung jedes Hook-Befehls in einer Sitzung fragen; Ablehnen überspringt nur diesen Befehl."
+      },
+      "field": "Ausführungsmodus",
+      "options": {
+        "auto": "Automatisch ausführen",
+        "autoDesc": "Keine zusätzliche Bestätigung; der Hook-Konfiguration folgen",
+        "ask": "Jedes Mal fragen",
+        "askDesc": "Jeden Befehl einmal pro Sitzung bestätigen"
+      }
+    },
+    "confirm": {
+      "title": "Agent-Dienst neu starten?",
+      "message": "Ein Turn läuft. Das Speichern der Hook-Einstellungen unterbricht ihn.",
+      "confirm": "Speichern und neu starten"
+    }
+  },
+  "dataImport": {
+    "title": "Datenimport",
+    "desc": "Neue Inhalte aus anderen Apps importieren; keine automatische Synchronisierung, Quelldaten werden nicht verändert.",
+    "fromApps": "Aus Apps importieren",
+    "redetect": "Neu erkennen",
+    "loading": "Importierbare Apps werden erkannt…",
+    "error": "Erkennung fehlgeschlagen: {{error}}",
+    "retry": "Erneut versuchen",
+    "app": {
+      "qoder": "Qoder CN IDE (Quest)",
+      "qoderintl": "Qoder (International)",
+      "workbuddy": "WorkBuddy",
+      "workbuddyai": "WorkBuddyAI",
+      "zcode": "ZCode",
+      "opencode": "OpenCode",
+      "dsh": "DeepSeek Harness",
+      "codex": "Codex"
+    },
+    "notDetected": "Nicht erkannt",
+    "selected": "{{count}} ausgewählt",
+    "import": "Daten importieren",
+    "importing": "Importiere…",
+    "groups": {
+      "mcp": "MCP-Konnektoren",
+      "memory": "Erinnerungen",
+      "skills": "Skills",
+      "tasks": "Unterhaltungen"
+    },
+    "groupEmpty": "Keine",
+    "result": {
+      "imported": "{{count}} importiert",
+      "skipped": "{{count}} bereits vorhanden",
+      "failed": "{{count}} fehlgeschlagen, zum Anzeigen klicken",
+      "mcpReloaded": "MCP-Konnektoren aktualisiert und neu verbunden"
+    },
+    "progress": "Importiere {{done}}/{{total}}"
+  },
+  "rules": {
+    "importSection": "Einstellungen importieren",
+    "agents": {
+      "label": "AGENTS.md in den Kontext aufnehmen",
+      "hint": "Der Agent liest AGENTS.md aus dem Arbeitsbereichsstamm und fügt sie dem Kontext hinzu."
+    },
+    "claude": {
+      "label": "CLAUDE.md in den Kontext aufnehmen",
+      "hint": "Der Agent liest CLAUDE.md und CLAUDE.local.md aus dem Arbeitsbereichsstamm und fügt sie dem Kontext hinzu."
+    },
+    "title": "Regeln",
+    "hint": "Erstelle und verwalte Regeln, die der Agent im Chat befolgt.",
+    "refresh": "Regeln aktualisieren",
+    "create": "Erstellen",
+    "empty": "Noch keine Regeln",
+    "emptyHint": "Klicke auf Erstellen, um deine erste Regel hinzuzufügen",
+    "noWorkspace": "Wähle zuerst einen Arbeitsbereich",
+    "noWorkspaceHint": "Regeln werden im Verzeichnis .meowcode/rules des Projekts gespeichert.",
+    "clickToEdit": "Klicken, um diese Regel zu bearbeiten",
+    "deleteAria": "Regel „{{name}}“ löschen",
+    "confirmDeleteAria": "Erneut klicken, um das Löschen der Regel „{{name}}“ zu bestätigen",
+    "createTitle": "Neue Regel",
+    "editTitle": "Regel „{{name}}“ bearbeiten",
+    "editorDesc": "Regeln werden mit dem Projekt in den System-Prompt eingefügt. Markdown wird unterstützt.",
+    "name": "Regelname",
+    "namePlaceholder": "z. B. code-style",
+    "nameHint": "Kleinbuchstaben, Ziffern und Bindestriche, z. B. code-style",
+    "nameRule": "Verwende Kleinbuchstaben, Ziffern und Bindestriche; beginne und ende nicht mit einem Bindestrich.",
+    "content": "Regelinhalt",
+    "contentPlaceholder": "z. B. Jede neue Funktion braucht JSDoc; generated/ nicht bearbeiten.",
+    "loadFailed": "Regeln konnten nicht geladen werden",
+    "readFailed": "Regel konnte nicht gelesen werden",
+    "saveFailed": "Regel konnte nicht gespeichert werden",
+    "deleteFailed": "Regel konnte nicht gelöscht werden",
+    "saved": "Regel „{{name}}“ gespeichert",
+    "deleted": "Regel „{{name}}“ gelöscht"
+  },
+  "worktree": {
+    "section": "Worktrees",
+    "fetch": {
+      "label": "Vor dem Erstellen Upstream abrufen",
+      "hint": "Upstream-Updates abrufen, bevor ein Worktree erstellt wird."
+    },
+    "cleanup": {
+      "label": "Alte Worktrees automatisch entfernen",
+      "hint": "Für die meisten Nutzer empfohlen. Nur deaktivieren, wenn du alte Worktrees und den Speicherplatz selbst verwalten möchtest."
+    },
+    "maxKeep": {
+      "label": "Worktree-Limit",
+      "hint": "Nach Überschreiten des Limits werden die ältesten Worktrees automatisch bereinigt. Vor dem Löschen wird ein Git-Backup erstellt, sodass entfernte Worktrees wiederhergestellt werden können."
+    }
+  },
+  "learning": {
+    "title": "Selbstlernen",
+    "desc": "Nach jedem Turn destilliert der Agent, was er gelernt hat: wiederverwendbare Skills, Projektregeln und ein Bild davon, wie du arbeitest. Nichts wird sofort vertraut – neue Einträge starten auf Probe, müssen sich bewähren und treten zurück, wenn sie stören.",
+    "toggleField": "Aus Gesprächen lernen",
+    "toggleFailed": "Einstellung konnte nicht geändert werden",
+    "budgetField": "Aufrufe heute",
+    "budgetValue": "{{count}} am {{date}}",
+    "skillsTitle": "Gelernte Skills",
+    "skillsDesc": "Abläufe, die der Agent sich selbst geschrieben hat. Gelesen wird über den SKILL.md-Pfad, gefunden über Name und Beschreibung.",
+    "skillsEmpty": "Noch nichts gelernt. Skills entstehen, wenn ein Ablauf gelingt und sich zu wiederholen lohnt.",
+    "skillCount_one": "{{count}} Skill",
+    "skillCount_other": "{{count}} Skills",
+    "skillCount_few": "{{count}} Skills",
+    "skillCount_many": "{{count}} Skills",
+    "consolidate": "Jetzt zusammenführen",
+    "consolidated": "Zusammengeführt: {{count}} Eintrag/Einträge aktualisiert",
+    "consolidatedEmpty": "Nichts zusammenzuführen",
+    "consolidateFailed": "Zusammenführen fehlgeschlagen",
+    "statsHint": "geholfen / geschadet – wie oft der Eintrag abgerufen wurde und ob der Turn gut lief",
+    "rollbackAria": "{{name}} auf die vorherige Version zurücksetzen",
+    "reactivateAria": "{{name}} zurück auf Probe stellen",
+    "deleteAria": "{{name}} löschen",
+    "actionFailed": "Aktion nicht ausgeführt",
+    "guidelinesTitle": "Projektregeln",
+    "guidelinesDesc": "Regeln, die nur bei passendem Auslöser auftauchen – Befehl, Fehler, Stichwort oder Dateimuster.",
+    "guidelinesEmpty": "Noch keine Regeln.",
+    "profileTitle": "Was er über dich weiß",
+    "profileDesc": "Kommunikationsstil, erwartete Sorgfalt, gewährte Selbstständigkeit.",
+    "profileEmpty": "Noch nichts. Das wächst langsam aus wiederholten Beobachtungen.",
+    "status": {
+      "tentative": "auf Probe",
+      "active": "vertraut",
+      "retired": "zurückgezogen"
+    },
+    "dimension": {
+      "communication": "Kommunikation",
+      "rigor": "Sorgfalt",
+      "autonomy": "Selbstständigkeit",
+      "coding_style": "Codestil",
+      "toolchain": "Toolchain",
+      "domain": "Domäne"
+    },
+    "loadFailed": "Gelernte Einträge konnten nicht geladen werden",
+    "clearField": "Alles Gelernte löschen",
+    "clearHint": "Löscht alle gelernten Skills, Regeln, Profilmerkmale und den Ergebnisverlauf – in diesem Projekt und projektübergreifend. Nicht umkehrbar.",
+    "clearAction": "Alles löschen",
+    "clearConfirm": "Erneut klicken zum Bestätigen",
+    "cleared": "{{scopes}} Lernverzeichnisse geleert",
+    "clearedNothing": "Nichts zu löschen",
+    "clearFailed": "Löschen fehlgeschlagen"
+  },
+  "general": {
+    "section": "Allgemein",
+    "desc": "Alltägliches Verhalten. Änderungen wirken sofort.",
+    "notify": {
+      "field": "Systembenachrichtigungen",
+      "desc": {
+        "on": "Wenn das Fenster im Hintergrund ist, bei Abschluss, Bestätigungsbedarf oder Abbruch eine Systembenachrichtigung mit Chat-Titel und Antwortauszug zeigen.",
+        "off": "Es werden keine Systembenachrichtigungen gezeigt."
+      }
+    }
+  },
+  "proxy": {
+    "title": "Netzwerk-Proxy",
+    "desc": "Verbindungsart wechseln, wenn das Netz zickt. Wirkt sofort.",
+    "mode": {
+      "direct": "Direkt",
+      "system": "System folgen",
+      "manual": "Manuell"
+    },
+    "urlLabel": "Proxy-Adresse",
+    "urlHint": "Zum Beispiel http://127.0.0.1:7890 – leer lassen für direkte Verbindung.",
+    "urlMissing": "Noch keine Adresse, Anfragen gehen weiterhin direkt.",
+    "failed": "Proxy-Einstellung nicht übernommen"
+  },
+  "rewind": {
+    "section": "Sitzungs-Zurücksetzen",
+    "enabled": {
+      "label": "Datei-Snapshots",
+      "hint": "Zu Beginn jedes Zuges wird ein Prüfpunkt gesetzt; geänderte Dateien lassen sich mit dem Chat zurücksetzen. Nach Änderung App neu starten."
+    },
+    "keep": {
+      "label": "Snapshots behalten",
+      "hint": "Snapshots der letzten N Prüfpunkte pro Sitzung behalten; ältere werden aufgeräumt."
+    },
+    "maxTotal": {
+      "label": "Snapshot-Größenlimit",
+      "hint": "Gesamtgrößenlimit des Snapshot-Verzeichnisses einer Sitzung; älteste werden zuerst freigegeben."
+    }
+  },
+  "sandbox": {
+    "title": "Sandbox",
+    "modeField": "Sandbox-Modus",
+    "modeDesc": "Steuert den Dateisystemzugriff des Agenten.",
+    "modeFull": "Voller Zugriff",
+    "modeFullDesc": "Der Agent kann Dateien außerhalb des Workspace lesen und schreiben.",
+    "modeWorkspace": "Workspace-Schreibzugriff",
+    "modeWorkspaceDesc": "Befehle können nur in den Workspace und zusätzliche beschreibbare Stammverzeichnisse schreiben.",
+    "deleteField": "Löschbestätigung",
+    "deleteDesc": "Gilt nur im Workspace-Schreibmodus; bei vollem Zugriff wird die Löschbestätigung standardmäßig übersprungen.",
+    "unsupported": "Die Befehlssandbox ist nur unter Windows verfügbar.",
+    "riskTitle": "Auf Workspace-Schreibzugriff umschalten?",
+    "riskDoes": "Beim Aktivieren werden eine dauerhafte ACL und ein Low-Integritätslabel in den Workspace geschrieben; run_command läuft dann mit eingeschränktem Token.",
+    "riskDoesNot": "Es schränkt Lesen, Netzwerk und Dateibearbeitungswerkzeuge nicht ein. Ein blockierter Befehl fragt separat, ob er einmal außerhalb der Sandbox wiederholt werden soll.",
+    "riskUndo": "Zurück auf vollen Zugriff schalten stoppt die Sandbox; die Workspace-ACL bleibt, wird aber nicht mehr verwendet.",
+    "confirmEnable": "Umschalten",
+    "cancel": "Abbrechen",
+    "enabled": "Auf Workspace-Schreibzugriff umgeschaltet (erste Freigabe {{ms}} ms)",
+    "saveFailed": "Sandbox-Einstellungen konnten nicht gespeichert werden",
+    "loadFailed": "Sandbox-Einstellungen konnten nicht geladen werden"
+  }
+}

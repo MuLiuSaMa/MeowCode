@@ -1,6 +1,7 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { readJsonFile, writeJsonAtomic } from "../agent/atomic-json.js";
+import { discoverSkills } from "../plugins/skills.js";
 
 // ---------------------------------------------------------------------------
 // 类型
@@ -46,7 +47,12 @@ export type MarketplaceInstallResult = {
   overwritten: boolean;
 };
 
-export type MarketplaceErrorCode = "not_found" | "not_managed" | "invalid_id";
+export type MarketplaceErrorCode =
+  | "not_found"
+  | "not_managed"
+  | "invalid_id"
+  | "invalid_input"
+  | "conflict";
 
 export class MarketplaceError extends Error {
   constructor(
@@ -62,7 +68,39 @@ type IndexFile = { version: number; generatedAt: string; items: MarketplaceItem[
 /** 安装标记（~/.meowcode/.marketplace/<type>-<id>.json）：uninstall 只认带标记的安装物 */
 type InstallMarker = { id: string; type: MarketItemType; source: string; installedAt: string };
 
+/** 手动条目标记（~/.meowcode/.marketplace/manual-<type>-<id>.json）：「我的」栏的数据源与卸载凭据 */
+export type ManualMarker = {
+  id: string;
+  type: MarketItemType;
+  addedAt: string;
+  /** 相对 ~/.meowcode 的安装目标（plugins 目录导入不是 <id>.ts，卸载需要真路径） */
+  target: string;
+};
+
+export type MineSkillEntry = {
+  type: "skill";
+  id: string;
+  addedAt: string;
+  status: "ok" | "missing";
+  name: string;
+  description: string;
+};
+export type MinePluginEntry = { type: "plugin"; id: string; addedAt: string; status: "ok" | "missing" };
+export type MineMcpEntry = {
+  type: "mcp";
+  id: string;
+  addedAt: string;
+  status: "ok" | "missing";
+  enabled: boolean;
+};
+export type MineList = { skills: MineSkillEntry[]; plugins: MinePluginEntry[]; mcp: MineMcpEntry[] };
+
 const ID_PATTERN = /^[a-z0-9][a-z0-9._-]*$/i;
+
+/** 插件单文件扩展名（对齐 loader 的发现规则） */
+const PLUGIN_EXTS = [".ts", ".mts", ".js", ".mjs", ".cjs"];
+/** 插件目录导入时认可的入口（index.* 或 package.json） */
+const PLUGIN_INDEX_NAMES = ["index.ts", "index.mts", "index.js", "index.mjs", "index.cjs"];
 
 // ---------------------------------------------------------------------------
 // Store
@@ -146,6 +184,78 @@ export function createMarketplaceStore(bundlesDir: string | undefined) {
     return config && typeof config === "object" ? config : {};
   }
 
+  async function exists(target: string): Promise<boolean> {
+    try {
+      await fs.access(target);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  function manualMarkerFile(type: MarketItemType, id: string, ctx: MarketplaceContext): string {
+    assertSafeId(id);
+    return path.join(meowRoot(ctx), ".marketplace", `manual-${type}-${id}.json`);
+  }
+
+  async function readManualMarker(type: MarketItemType, id: string, ctx: MarketplaceContext): Promise<ManualMarker | null> {
+    const marker = await readJsonFile<ManualMarker>(manualMarkerFile(type, id, ctx));
+    return marker && marker.target !== undefined ? marker : null;
+  }
+
+  async function writeManualMarker(
+    type: MarketItemType,
+    id: string,
+    target: string,
+    ctx: MarketplaceContext,
+  ): Promise<void> {
+    const file = manualMarkerFile(type, id, ctx);
+    await fs.mkdir(path.dirname(file), { recursive: true });
+    await writeJsonAtomic(file, {
+      id,
+      type,
+      target,
+      addedAt: new Date().toISOString(),
+    } satisfies ManualMarker);
+  }
+
+  /** 扫描全部手动标记；文件名/内容非法的跳过 */
+  async function listManualMarkers(ctx: MarketplaceContext): Promise<ManualMarker[]> {
+    let names: string[];
+    try {
+      names = await fs.readdir(path.join(meowRoot(ctx), ".marketplace"));
+    } catch {
+      return [];
+    }
+    const markers: ManualMarker[] = [];
+    for (const name of names) {
+      const match = /^manual-(skill|plugin|mcp)-(.+)\.json$/.exec(name);
+      if (!match) continue;
+      const type = match[1] as MarketItemType;
+      const id = match[2];
+      if (!ID_PATTERN.test(id) || id.includes("..")) continue;
+      const marker = await readJsonFile<ManualMarker>(path.join(meowRoot(ctx), ".marketplace", name));
+      if (!marker || typeof marker.addedAt !== "string" || typeof marker.target !== "string") continue;
+      markers.push({ id, type, addedAt: marker.addedAt, target: marker.target });
+    }
+    return markers;
+  }
+
+  /** 手动插件是否还在：目录导入 target 指向子目录，文件导入回退 <id>.ts */
+  async function manualPluginExists(marker: ManualMarker, ctx: MarketplaceContext): Promise<boolean> {
+    if (marker.target) {
+      const resolved = path.resolve(meowRoot(ctx), marker.target);
+      if (resolved !== meowRoot(ctx) && resolved.startsWith(meowRoot(ctx) + path.sep)) {
+        return exists(resolved);
+      }
+      return false;
+    }
+    return (
+      (await exists(path.join(meowRoot(ctx), "plugins", `${marker.id}.ts`))) ||
+      (await exists(path.join(meowRoot(ctx), "plugins", marker.id)))
+    );
+  }
+
   const MIME_BY_EXT: Record<string, string> = {
     ".svg": "image/svg+xml",
     ".png": "image/png",
@@ -172,6 +282,12 @@ export function createMarketplaceStore(bundlesDir: string | undefined) {
   }
 
   return {
+    /** 全部官方条目的 "<type>:<id>" 键集（社区源用来跳过与官方撞名的条目） */
+    async ids(): Promise<ReadonlySet<string>> {
+      const items = await loadIndex();
+      return new Set(items.map((item) => `${item.type}:${item.id}`));
+    },
+
     /** 索引 + 每项 installed/envReady 状态 + 图标 dataUrl 表（key = "<type>:<id>"） */
     async list(ctx: MarketplaceContext): Promise<{
       entries: MarketplaceEntry[];
@@ -259,7 +375,7 @@ export function createMarketplaceStore(bundlesDir: string | undefined) {
           throw new MarketplaceError("not_found", `marketplace mcp entry malformed: ${id}`);
         }
         const config = await readUserMcp(ctx);
-        const servers = { ...(config.mcpServers ?? {}) };
+        const servers = { ...config.mcpServers };
         overwritten = Boolean(servers[item.id]);
         servers[item.id] = bundle.server;
         await fs.mkdir(path.dirname(target), { recursive: true });
@@ -269,22 +385,209 @@ export function createMarketplaceStore(bundlesDir: string | undefined) {
       return { id: item.id, type, overwritten };
     },
 
-    /** 卸载：只删带市场标记的安装物（用户手工放置的同名内容不动） */
+    /** 卸载：删带市场标记或手动标记的安装物（用户手工放置的无标记内容不动） */
     async uninstall(id: string, type: MarketItemType, ctx: MarketplaceContext): Promise<void> {
       assertSafeId(id);
       const marker = await readMarker(type, id, ctx);
-      if (!marker) {
+      const manual = marker ? null : await readManualMarker(type, id, ctx);
+      if (!marker && !manual) {
         throw new MarketplaceError("not_managed", `${type}/${id} is not managed by the marketplace`);
       }
       if (type === "mcp") {
         const config = await readUserMcp(ctx);
-        const servers = { ...(config.mcpServers ?? {}) };
+        const servers = { ...config.mcpServers };
         delete servers[id];
         await writeJsonAtomic(path.join(meowRoot(ctx), "mcp.json"), { ...config, mcpServers: servers });
+      } else if (manual?.target) {
+        const target = path.resolve(meowRoot(ctx), manual.target);
+        if (!target.startsWith(meowRoot(ctx) + path.sep)) {
+          throw new MarketplaceError("invalid_id", `unsafe manual target: ${manual.target}`);
+        }
+        await fs.rm(target, { recursive: true, force: true });
       } else {
         await fs.rm(installTarget(type, id, ctx), { recursive: true, force: true });
       }
       await fs.rm(markerFile(type, id, ctx), { force: true });
+      await fs.rm(manualMarkerFile(type, id, ctx), { force: true });
+    },
+
+    /** 「我的」栏数据：manual 标记 × 实际存在状态（插件/MCP 运行时状态由路由层 join descriptors/statuses） */
+    async mineList(ctx: MarketplaceContext): Promise<MineList> {
+      const markers = (await listManualMarkers(ctx)).sort((a, b) => b.addedAt.localeCompare(a.addedAt));
+      const skills = await discoverSkills(
+        [{ dir: path.join(meowRoot(ctx), "skills"), source: "user" }],
+        { allowMissingDescription: true },
+      );
+      const skillById = new Map(skills.map((skill) => [path.basename(path.dirname(skill.path)), skill] as const));
+      const mcpConfig = await readUserMcp(ctx);
+      const servers = (mcpConfig.mcpServers ?? {}) as Record<string, { enabled?: unknown }>;
+
+      const out: MineList = { skills: [], plugins: [], mcp: [] };
+      for (const marker of markers) {
+        if (marker.type === "skill") {
+          const skill = skillById.get(marker.id);
+          out.skills.push({
+            type: "skill",
+            id: marker.id,
+            addedAt: marker.addedAt,
+            status: skill ? "ok" : "missing",
+            name: skill?.name ?? marker.id,
+            description: skill?.description ?? "",
+          });
+        } else if (marker.type === "plugin") {
+          out.plugins.push({
+            type: "plugin",
+            id: marker.id,
+            addedAt: marker.addedAt,
+            status: (await manualPluginExists(marker, ctx)) ? "ok" : "missing",
+          });
+        } else {
+          const server = servers[marker.id];
+          out.mcp.push({
+            type: "mcp",
+            id: marker.id,
+            addedAt: marker.addedAt,
+            status: server ? "ok" : "missing",
+            enabled: server ? server.enabled !== false : false,
+          });
+        }
+      }
+      return out;
+    },
+
+    /**
+     * 手动导入本地内容：skill = 含 SKILL.md 的目录（或 SKILL.md 文件本身），
+     * plugin = 单文件（.ts/.mts/.js/.mjs/.cjs）或含 index.* 或 package.json 的一层目录。
+     * 与市场/手动/手放内容撞 id 时拒绝（保护既有内容，不静默覆盖）。
+     */
+    async manualImport(
+      input: { type: "skill" | "plugin"; sourcePath: string },
+      ctx: MarketplaceContext,
+    ): Promise<{ id: string; type: "skill" | "plugin" }> {
+      const sourcePath = path.resolve(input.sourcePath);
+      const stat = await fs.stat(sourcePath).catch(() => null);
+      if (!stat) {
+        throw new MarketplaceError("invalid_input", `source path does not exist: ${sourcePath}`);
+      }
+
+      let id: string;
+      let copy: () => Promise<string>;
+      let targetPath: string;
+      if (input.type === "skill") {
+        const dir =
+          stat.isDirectory()
+            ? sourcePath
+            : path.basename(sourcePath).toLowerCase() === "skill.md"
+              ? path.dirname(sourcePath)
+              : null;
+        if (!dir) {
+          throw new MarketplaceError("invalid_input", "skill import expects a directory with SKILL.md (or the SKILL.md file)");
+        }
+        if (!(await exists(path.join(dir, "SKILL.md")))) {
+          throw new MarketplaceError("invalid_input", "SKILL.md not found in the selected directory");
+        }
+        id = path.basename(dir);
+        targetPath = path.join("skills", id);
+        copy = async () => {
+          await fs.cp(dir, path.join(meowRoot(ctx), targetPath), { recursive: true });
+          return targetPath;
+        };
+      } else if (stat.isDirectory()) {
+        const files = await fs.readdir(sourcePath);
+        const hasIndex = files.some((file) => PLUGIN_INDEX_NAMES.includes(file.toLowerCase()));
+        if (!hasIndex && !files.includes("package.json")) {
+          throw new MarketplaceError("invalid_input", "plugin directory needs index.* or package.json");
+        }
+        id = path.basename(sourcePath);
+        targetPath = path.join("plugins", id);
+        copy = async () => {
+          await fs.cp(sourcePath, path.join(meowRoot(ctx), targetPath), {
+            recursive: true,
+            // node_modules/.git 不拷：体积大；插件依赖应放在 ~/.meowcode/plugins 下自行管理
+            filter: (source) => {
+              const base = path.basename(source);
+              return base !== "node_modules" && base !== ".git";
+            },
+          });
+          return targetPath;
+        };
+      } else {
+        const ext = path.extname(sourcePath).toLowerCase();
+        if (!PLUGIN_EXTS.includes(ext)) {
+          throw new MarketplaceError(
+            "invalid_input",
+            `plugin file extension must be one of ${PLUGIN_EXTS.join("/")}`,
+          );
+        }
+        id = path.basename(sourcePath, path.extname(sourcePath));
+        targetPath = path.join("plugins", `${id}${ext}`);
+        copy = async () => {
+          await fs.mkdir(path.dirname(path.join(meowRoot(ctx), targetPath)), { recursive: true });
+          await fs.copyFile(sourcePath, path.join(meowRoot(ctx), targetPath));
+          return targetPath;
+        };
+      }
+
+      assertSafeId(id);
+      if (await readMarker(input.type, id, ctx)) {
+        throw new MarketplaceError("conflict", `${input.type}/${id} is already installed from the marketplace`);
+      }
+      if (await readManualMarker(input.type, id, ctx)) {
+        throw new MarketplaceError("conflict", `${input.type}/${id} is already in mine`);
+      }
+      if (await exists(path.join(meowRoot(ctx), targetPath))) {
+        throw new MarketplaceError("conflict", `~/.meowcode already has ${targetPath.replace(/\\/g, "/")}`);
+      }
+      await writeManualMarker(input.type, id, await copy(), ctx);
+      return { id, type: input.type };
+    },
+
+    /** 手动添加/更新 MCP server：merge 进 ~/.meowcode/mcp.json 并写 manual 标记 */
+    async manualMcpSave(
+      input: { id: string; server: Record<string, unknown> },
+      ctx: MarketplaceContext,
+    ): Promise<{ id: string; overwritten: boolean }> {
+      assertSafeId(input.id);
+      const server = input.server;
+      const hasUrl = typeof server.url === "string" && server.url.trim().length > 0;
+      const hasCommand = typeof server.command === "string" && server.command.trim().length > 0;
+      if (!hasUrl && !hasCommand) {
+        throw new MarketplaceError("invalid_input", "server config needs url or command");
+      }
+      const existingManual = await readManualMarker("mcp", input.id, ctx);
+      if (!existingManual && (await readMarker("mcp", input.id, ctx))) {
+        throw new MarketplaceError("conflict", `mcp/${input.id} is already installed from the marketplace`);
+      }
+      const config = await readUserMcp(ctx);
+      const servers = { ...config.mcpServers };
+      if (!existingManual && servers[input.id]) {
+        throw new MarketplaceError("conflict", `mcp/${input.id} already exists in mcp.json (hand-edited)`);
+      }
+      const overwritten = Boolean(servers[input.id]);
+      servers[input.id] = server;
+      const mcpFile = path.join(meowRoot(ctx), "mcp.json");
+      await fs.mkdir(path.dirname(mcpFile), { recursive: true });
+      await writeJsonAtomic(mcpFile, { ...config, mcpServers: servers });
+      await writeManualMarker("mcp", input.id, "mcp.json", ctx);
+      return { id: input.id, overwritten };
+    },
+
+    /** 手动条目启停：改 mcp.json 的 enabled 字段（McpManager 对 enabled:false 直接跳过） */
+    async manualMcpToggle(
+      input: { id: string; enabled: boolean },
+      ctx: MarketplaceContext,
+    ): Promise<{ id: string; enabled: boolean }> {
+      if (!(await readManualMarker("mcp", input.id, ctx))) {
+        throw new MarketplaceError("not_managed", `mcp/${input.id} is not a manual entry`);
+      }
+      const config = await readUserMcp(ctx);
+      const servers = { ...config.mcpServers };
+      if (!servers[input.id]) {
+        throw new MarketplaceError("not_found", `mcp/${input.id} not found in mcp.json`);
+      }
+      servers[input.id] = { ...(servers[input.id] as Record<string, unknown>), enabled: input.enabled };
+      await writeJsonAtomic(path.join(meowRoot(ctx), "mcp.json"), { ...config, mcpServers: servers });
+      return { id: input.id, enabled: input.enabled };
     },
   };
 }

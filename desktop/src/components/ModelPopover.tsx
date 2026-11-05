@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type RefObject } from "react";
-import { LuCheck, LuChevronRight, LuRotateCcw, LuSettings2 } from "react-icons/lu";
+import { useTranslation } from "react-i18next";
+import { LuCheck, LuChevronRight, LuSettings2 } from "react-icons/lu";
 import { findTemplate } from "../data/providerCatalog";
 import { effortFromIndex, effortIndex, effortLabel, effortLevelsForModel, effortLevelsFromValues, type EffortLevel } from "../effort";
 import type { ProviderSettings } from "../api";
@@ -75,6 +76,7 @@ export function ModelPopover({
   anchorRef?: RefObject<HTMLElement | null>;
 }) {
   const ref = useRef<HTMLDivElement>(null);
+  const { t } = useTranslation("shell");
   const [showList, setShowList] = useState(true);
   /** 相对触发按钮（模型 chip）水平居中、底部贴 chip 上沿；超宽时夹紧在视口内。 */
   const [fixedStyle, setFixedStyle] = useState<CSSProperties>({});
@@ -119,11 +121,11 @@ export function ModelPopover({
   }, [onClose, anchorRef]);
 
   return (
-    <div className="mc-popover" style={fixedStyle} ref={ref} role="dialog" aria-label="模型与思考强度">
+    <div className="mc-popover" style={fixedStyle} ref={ref} role="dialog" aria-label={t("modelPopover.aria")}>
       {showList ? (
         <>
           <div className="mc-popover__head">
-            <span className="mc-popover__title">选择模型</span>
+            <span className="mc-popover__title">{t("modelPopover.selectModel")}</span>
             <span className="mc-popover__count">{providers.length}</span>
           </div>
           <div className="mc-popover__list">
@@ -149,7 +151,7 @@ export function ModelPopover({
               </button>
             ))}
             {providers.length === 0 ? (
-              <p className="mc-popover__empty">还没有启用任何模型。到 设置 → 模型 里添加。</p>
+              <p className="mc-popover__empty">{t("modelPopover.empty")}</p>
             ) : null}
           </div>
           {/* 管理入口：无模型时引导添加，有模型时固定在列表下方 */}
@@ -160,7 +162,7 @@ export function ModelPopover({
               onClick={onManageModels}
             >
               <LuSettings2 size={14} />
-              管理模型
+              {t("modelPopover.manage")}
             </button>
           </div>
         </>
@@ -173,8 +175,8 @@ export function ModelPopover({
             <button
               type="button"
               className="mc-popover__levelbtn"
-              aria-label="返回模型列表"
-              title="返回模型列表"
+              aria-label={t("modelPopover.back")}
+              title={t("modelPopover.back")}
               onClick={() => setShowList(true)}
             >
               <span className="mc-popover__level" data-max={atMax}>
@@ -186,15 +188,6 @@ export function ModelPopover({
                 </span>
                 <LuChevronRight size={12} className="mc-popover__modelchev" />
               </span>
-            </button>
-            <button
-              type="button"
-              className="mc-popover__reset"
-              aria-label="重置为默认"
-              title="重置为默认"
-              onClick={() => onChange("")}
-            >
-              <LuRotateCcw size={15} />
             </button>
           </div>
 
@@ -245,7 +238,7 @@ export function ModelPopover({
               max={max}
               step={1}
               value={index}
-              aria-label="思考强度"
+              aria-label={t("modelPopover.effort")}
               onChange={(event) => onChange(effortFromIndex(Number(event.target.value), levels))}
             />
           </div>

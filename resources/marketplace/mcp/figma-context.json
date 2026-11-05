@@ -1,0 +1,14 @@
+{
+  "description": "Framelink Figma Context MCP：抓取 Figma 设计稿并简化为模型友好的布局与样式信息，设计稿转代码首选（npx 启动，需 Figma 个人访问令牌）。",
+  "server": {
+    "command": "npx",
+    "args": [
+      "-y",
+      "figma-context-mcp@1.5.0",
+      "--stdio"
+    ],
+    "env": {
+      "FIGMA_API_KEY": "${MEOWCODE_FIGMA_TOKEN}"
+    }
+  }
+}

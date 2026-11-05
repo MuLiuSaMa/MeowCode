@@ -1,13 +1,20 @@
 const { contextBridge, ipcRenderer, webUtils } = require("electron");
 
-// 会话图片资产基址：加载即取（server 起来前为 null，assetUrl 返回 null 前端降级无图）
+// 会话图片资产基址：只缓存成功值；server 未就绪时返回 null，下次调用会重取
+// （窗口加载早于 agent server fork，一次性 invoke 会把 null 固化成永久失败）
 let assetBase = null;
-ipcRenderer
-  .invoke("meow:asset-base")
-  .then((base) => {
-    assetBase = base;
-  })
-  .catch(() => undefined);
+async function resolveAssetBase() {
+  if (assetBase) return assetBase;
+  try {
+    const base = await ipcRenderer.invoke("meow:asset-base");
+    // null 不缓存：server 起来后要能拿到
+    if (base) assetBase = base;
+  } catch {
+    // 主进程未就绪，下次再取
+  }
+  return assetBase;
+}
+void resolveAssetBase(); // 预热：多数情况下窗口加载完 server 已就绪
 
 contextBridge.exposeInMainWorld("meow", {
   request: (path, init) => ipcRenderer.invoke("meow:request", path, init),
@@ -15,6 +22,13 @@ contextBridge.exposeInMainWorld("meow", {
   assetUrl: (file) => {
     if (!assetBase || !file) return null;
     return `${assetBase.serverUrl}/session/asset?file=${encodeURIComponent(file)}&token=${encodeURIComponent(assetBase.token)}`;
+  },
+  /** 插件自带面板的 URL（带 query token：iframe 带不了 Authorization 头）；server 未就绪返回 null（可重试） */
+  pluginUiUrl: async (pluginId, entry = "index.html") => {
+    if (!pluginId) return null;
+    const base = await resolveAssetBase();
+    if (!base) return null;
+    return `${base.serverUrl}/plugin-ui/${encodeURIComponent(pluginId)}/${encodeURIComponent(entry)}?token=${encodeURIComponent(base.token)}`;
   },
   /** 窗口是否启用了系统亚克力背板（渲染层据此把 body/root 画成透明） */
   acrylic: process.argv.includes("--meow-backdrop=acrylic"),
@@ -30,13 +44,19 @@ contextBridge.exposeInMainWorld("meow", {
   saveSettings: (settings) => ipcRenderer.invoke("meow:save-settings", settings),
   /** 插件启停（写 settings.plugins 后重启 agent server 生效） */
   setPluginsState: (payload) => ipcRenderer.invoke("meow:set-plugins-state", payload),
+  /** Claude Code hooks：启停/运行方式/工作区范围（重启 agent server 生效） */
+  saveHooksSettings: (payload) => ipcRenderer.invoke("meow:save-hooks-settings", payload),
+  /** 打开已知的 Claude Code hooks 配置文件（layer: user/project/local） */
+  openHooksFile: (layer) => ipcRenderer.invoke("meow:open-hooks-file", layer),
   /** GitHub MCP 的 OAuth 设备流：token 只在主进程加密保存，渲染层只拿状态/设备码 */
   githubAuthStatus: () => ipcRenderer.invoke("meow:github-auth-status"),
   githubDeviceStart: () => ipcRenderer.invoke("meow:github-device-start"),
   githubDevicePoll: (flowId) => ipcRenderer.invoke("meow:github-device-poll", flowId),
   githubDisconnect: () => ipcRenderer.invoke("meow:github-disconnect"),
-  /** Gitee / GitCode 手工 Token（主进程校验后加密保存并热更新 MCP） */
+  /** 手工 Token（Gitee/GitCode PAT、Figma 访问令牌：主进程校验后加密保存并热更新 MCP） */
   setMcpCredentials: (payload) => ipcRenderer.invoke("meow:set-mcp-credentials", payload),
+  /** 清除手工令牌（解除授权：删本机存储并热更新 MCP） */
+  clearMcpToken: (payload) => ipcRenderer.invoke("meow:clear-mcp-token", payload),
   /** Gitee / GitCode OAuth（浏览器授权，Client Secret 只存本机） */
   oauthStatus: () => ipcRenderer.invoke("meow:oauth-status"),
   oauthSaveApp: (payload) => ipcRenderer.invoke("meow:oauth-save-app", payload),
@@ -44,6 +64,15 @@ contextBridge.exposeInMainWorld("meow", {
   oauthConnectPoll: (payload) => ipcRenderer.invoke("meow:oauth-connect-poll", payload),
   oauthConnectCancel: (payload) => ipcRenderer.invoke("meow:oauth-connect-cancel", payload),
   oauthDisconnect: (payload) => ipcRenderer.invoke("meow:oauth-disconnect", payload),
+  /** 社区市场（GitCode 收录仓库）：当前登录名 / 提交条目 / 删除条目 */
+  communityUser: () => ipcRenderer.invoke("meow:community-user"),
+  communitySubmit: (payload) => ipcRenderer.invoke("meow:community-submit", payload),
+  communityDelete: (payload) => ipcRenderer.invoke("meow:community-delete", payload),
+  onCommunityProgress: (listener) => {
+    const wrapped = (_event, payload) => listener(payload);
+    ipcRenderer.on("meow:community-progress", wrapped);
+    return () => ipcRenderer.removeListener("meow:community-progress", wrapped);
+  },
   /** 窗口/页签/面板/草稿等界面状态（主进程防抖原子写） */
   getUiState: () => ipcRenderer.invoke("meow:get-ui-state"),
   saveUiState: (patch) => ipcRenderer.invoke("meow:save-ui-state", patch),
@@ -79,12 +108,64 @@ contextBridge.exposeInMainWorld("meow", {
 
   // ---- 轻量偏好：主题 / 关闭方式（只写盘，不重启 agent server）----
   savePreferences: (prefs) => ipcRenderer.invoke("meow:save-preferences", prefs),
+  /** 轻量偏好已保存的广播（悬浮岛据此跟随主题/语言；主窗口自身不依赖它） */
+  onPreferencesChanged: (listener) => {
+    const wrapped = (_event, payload) => listener(payload);
+    ipcRenderer.on("meow:preferences-changed", wrapped);
+    return () => ipcRenderer.removeListener("meow:preferences-changed", wrapped);
+  },
+
+  // ---- AI 悬浮岛 ----
+  /** 上报岛体交互矩形（视口坐标，展开=面板/折叠=胶囊）；主进程轮询光标据此切换穿透 */
+  setIslandRect: (rect) => ipcRenderer.invoke("meow:island-rect", rect),
+  /** 主进程光标进出岛体的判定结果（穿透已同步切换）：false = 光标已离开岛体 */
+  onIslandCursor: (listener) => {
+    const wrapped = (_event, payload) => listener(payload);
+    ipcRenderer.on("meow:island-cursor", wrapped);
+    return () => ipcRenderer.removeListener("meow:island-cursor", wrapped);
+  },
+  /** 点击胶囊 → 显示/聚焦主窗口 */
+  openMainFromIsland: () => ipcRenderer.invoke("meow:island-open-main"),
+  /** 岛内发出的 prompt 回报主进程广播（主窗口当前会话命中时补用户气泡） */
+  notifyIslandPrompt: (payload) => ipcRenderer.invoke("meow:island-notify-prompt", payload),
+  /** 悬浮岛发出 prompt 的广播（仅主窗口消费） */
+  onIslandPromptSent: (listener) => {
+    const wrapped = (_event, payload) => listener(payload);
+    ipcRenderer.on("meow:island-prompt-sent", wrapped);
+    return () => ipcRenderer.removeListener("meow:island-prompt-sent", wrapped);
+  },
+  /** 已导入的自定义字体（外观设置用），返回 [{family, url}] */
+  listCustomFonts: () => ipcRenderer.invoke("meow:list-custom-fonts"),
+  /** 弹系统对话框选字体文件并导入（拷贝到 userData/fonts） */
+  importFont: () => ipcRenderer.invoke("meow:import-font"),
+  /** 删除已导入的自定义字体（清记录 + 删文件） */
+  removeCustomFont: (family) => ipcRenderer.invoke("meow:remove-custom-font", family),
+  /** 导出会话：主进程弹保存框、拉 server 内容并写盘，返回最终路径 */
+  exportSession: (payload) => ipcRenderer.invoke("meow:export-session", payload),
   /** 托盘菜单「设置…」触发，主进程通知渲染层切到设置页 */
   onOpenSettings: (listener) => {
     const wrapped = () => listener();
     ipcRenderer.on("meow:open-settings", wrapped);
     return () => ipcRenderer.removeListener("meow:open-settings", wrapped);
   },
+
+  // ---- 托盘菜单的最近会话 / 新对话 ----
+  /** 会话列表或当前会话变化后推送：主进程据此重建托盘菜单（只用于展示） */
+  syncTraySessions: (payload) => ipcRenderer.invoke("meow:tray-sessions", payload),
+  /** 托盘里点了某个会话：切过去（主进程已把窗口唤到前台） */
+  onTraySwitchSession: (listener) => {
+    const wrapped = (_event, filePath) => listener(filePath);
+    ipcRenderer.on("meow:tray-switch-session", wrapped);
+    return () => ipcRenderer.removeListener("meow:tray-switch-session", wrapped);
+  },
+  /** 托盘里点了「新对话」 */
+  onTrayNewSession: (listener) => {
+    const wrapped = () => listener();
+    ipcRenderer.on("meow:tray-new-session", wrapped);
+    return () => ipcRenderer.removeListener("meow:tray-new-session", wrapped);
+  },
+  /** 订阅就绪握手：主进程把窗口加载期间排队的托盘动作补发过来 */
+  notifyTrayReady: () => ipcRenderer.invoke("meow:tray-ready"),
 
   // ---- 关闭确认：closeAction=ask 时主进程唤起自绘弹窗，选择经 respondClose 回主进程 ----
   onCloseRequest: (listener) => {
@@ -96,6 +177,18 @@ contextBridge.exposeInMainWorld("meow", {
 
   // ---- 应用信息（关于页）----
   getAppInfo: () => ipcRenderer.invoke("meow:get-app-info"),
+  /** 检查更新：主进程拉 GitCode releases（渲染进程直连会被 CORS 拦） */
+  checkUpdate: () => ipcRenderer.invoke("meow:check-update"),
+  /** 下载更新包：主进程流式下载并广播 meow:update-progress */
+  downloadUpdate: (payload) => ipcRenderer.invoke("meow:download-update", payload),
+  /** 打开已下载的安装包（Windows 会顺带退出应用） */
+  openInstaller: (filePath) => ipcRenderer.invoke("meow:open-installer", filePath),
+  /** 下载进度 */
+  onUpdateProgress: (listener) => {
+    const wrapped = (_event, payload) => listener(payload);
+    ipcRenderer.on("meow:update-progress", wrapped);
+    return () => ipcRenderer.removeListener("meow:update-progress", wrapped);
+  },
 
   /** 模型规则：主进程定期从 ZCode 内置配置同步（档位 / 上下文 / 输出 / 图片输入） */
   getModelProfiles: () => ipcRenderer.invoke("meow:model-profiles"),

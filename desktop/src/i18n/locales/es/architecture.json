@@ -1,0 +1,186 @@
+{
+  "nav": {
+    "heading": "Arquitectura de agentes",
+    "agentListAria": "Lista de agentes",
+    "mainAgentGroup": "Agente principal",
+    "subagentGroup": "Subagentes · {{name}}",
+    "subagentCount_one": "{{count}} subagente · {{tagline}}",
+    "subagentCount_other": "{{count}} subagentes · {{tagline}}",
+    "subagentCount_few": "{{count}} subagentes · {{tagline}}",
+    "subagentCount_many": "{{count}} subagentes · {{tagline}}",
+    "addArchitecture": "Nueva arquitectura de agente personalizada",
+    "renameHint": "Doble clic en el nombre para renombrarlo",
+    "deleteAria": "Eliminar «{{name}}»",
+    "currentBadge": "Actual",
+    "profileDisabledBadge": "Desactivado en este perfil",
+    "readOnlyBadge": "Solo lectura",
+    "customTagline": "Arquitectura personalizada",
+    "loading": "Cargando agentes…",
+    "emptySubagents": "Este agente no incluye subagentes"
+  },
+  "roles": {
+    "general": "Genérico",
+    "explore": "Exploración",
+    "planner": "Planificación",
+    "scoper": "Delimitación",
+    "depthProber": "Sonda profunda",
+    "implementer": "Implementación",
+    "reviewer": "Revisión",
+    "verifier": "Verificación",
+    "freshVerifier": "Reverificación",
+    "juror": "Veredicto",
+    "sweeper": "Limpieza final",
+    "goalChecker": "Comprobación del objetivo",
+    "custom": "Personalizado"
+  },
+  "types": {
+    "agent": "Agent",
+    "tier": "Nivel",
+    "gate": "Control",
+    "role": "Subagente"
+  },
+  "nodeCard": {
+    "agent": "Agente principal",
+    "role": "Subagente",
+    "gate": "Control",
+    "tier": "Nivel",
+    "tierPassThrough": "Nivel · directo",
+    "agentTip": "El agente principal es la runtime raíz y asigna subagentes mediante task",
+    "roleTip": "El subagente se instancia al asignarse la tarea mediante task",
+    "gateTip": "Un control es un punto de revisión; la arista gate→role designa al subagente de cierre",
+    "tierTip": "Nivel de tarea: decide qué controles se recorren tras admit",
+    "terminalTierTip": "Este nivel no tiene controles: finaliza justo después de admit"
+  },
+  "edge": {
+    "closeOut": "cierre"
+  },
+  "select": {
+    "placeholder": "Selecciona una opción"
+  },
+  "defaults": {
+    "standardAgent": "Agente estándar",
+    "mainAgent": "Agente principal",
+    "newTier": "Nivel nuevo",
+    "newGate": "Control nuevo",
+    "customRoleDescription": "Subagente personalizado: la lista permitida de herramientas y el prompt del sistema se sobrescriben en el panel de propiedades de este nodo"
+  },
+  "status": {
+    "loading": "Cargando…",
+    "saving": "Guardando…",
+    "saved": "Guardado — el run de gobernanza cargará el diagrama nuevo antes del siguiente admit",
+    "reset": "Restablecido a la arquitectura integrada — se aplica al guardar",
+    "connectTarget": "Modo de conexión: haz clic en el nodo de destino",
+    "connectPickNode": "Selecciona primero un nodo y luego haz clic en «Conectar»",
+    "dirty": "Hay cambios sin guardar"
+  },
+  "toolbar": {
+    "addTier": "Nivel",
+    "addGate": "Control",
+    "addRole": "Subagente",
+    "connect": "Conectar",
+    "cancelConnect": "Cancelar conexión",
+    "connectTip": "Haz clic en el nodo de origen y después en el de destino para conectarlos",
+    "delete": "Eliminar",
+    "deleteTip": "Elimina el nodo o la conexión seleccionados (eliminar un nodo también quita sus aristas)",
+    "fit": "Ajustar al lienzo",
+    "fitTip": "Centra y escala para ver toda la arquitectura",
+    "reset": "Restaurar la integrada",
+    "save": "Guardar en el espacio de trabajo"
+  },
+  "canvas": {
+    "loading": "Cargando el diagrama de arquitectura…",
+    "legend": "Arrastra los nodos · arrastra en el vacío para desplazar · rueda para zoom | Agente principal→subagente = asignación task, agente principal→nivel = admit | número tier→gate = orden de controles, gate→role = cierre"
+  },
+  "inspector": {
+    "ariaLabel": "Propiedades del nodo",
+    "close": "Cerrar el panel de propiedades",
+    "edge": "Conexión",
+    "agentSubtitle": "Agente principal · {{id}}",
+    "tierSubtitle": "Nivel de tarea · {{id}}",
+    "gateSubtitle": "Control de calidad · {{id}}",
+    "roleSubtitle": "Subagente · {{role}}",
+    "roleSubtitleNumbered": "Subagente · {{role}} #{{ordinal}}",
+    "edgeSubtitle": "Conexión · {{type}}",
+    "deleteNode": "Eliminar nodo",
+    "deleteEdge": "Eliminar conexión"
+  },
+  "fields": {
+    "nodeName": "Nombre del nodo",
+    "nodeId": "ID del nodo",
+    "description": "Responsabilidad",
+    "availableTools": "Herramientas disponibles",
+    "selectAll": "Seleccionar todo",
+    "clearAll": "Vaciar",
+    "restoreDefault": "Restaurar lo predeterminado",
+    "restoreBuiltin": "Restaurar las integradas",
+    "systemPrompt": "Prompt del sistema",
+    "agentPromptPlaceholder": "Vacío = usa el prompt predeterminado del perfil actual",
+    "dispatch": "Asignaciones",
+    "dispatchHint": "Se cambia en la conexión",
+    "roleType": "Identificador del subagente",
+    "displayName": "Nombre para mostrar",
+    "roleDescription": "Resumen de la responsabilidad del subagente",
+    "gateBindings": "Vínculos de controles",
+    "gateBindingsHint": "Clic para reasignar",
+    "rolePromptPlaceholder": "Vacío = usa el prompt integrado",
+    "gateName": "Nombre del control de calidad",
+    "invariant": "Invariante / criterios de aceptación",
+    "onFail": "Estrategia ante fallos",
+    "closer": "Subagente de cierre",
+    "tierName": "Nombre del nivel",
+    "tierId": "ID del nivel (admit solo reconoce T0 / T1 / T2)",
+    "tierDescription": "Descripción del nivel",
+    "tierPrompt": "Prompt del nivel (se inyecta en admit, opcional)",
+    "tierPromptPlaceholder": "Vacío = no se inyecta nada; el texto se envía una vez al agente principal junto con el informe de admit",
+    "gateSequence": "Secuencia de controles",
+    "gateSequenceHint": "Clic para añadir o quitar",
+    "edgePath": "Ruta",
+    "edgeType": "Tipo",
+    "order": "Número order (se ejecuta en orden ascendente dentro del nivel)"
+  },
+  "tools": {
+    "none": "Sin herramientas",
+    "allIncludingDynamic": "Todas las herramientas, más las dinámicas de MCP / navegador",
+    "selectedCount_one": "{{count}} herramienta seleccionada",
+    "selectedCount_other": "{{count}} herramientas seleccionadas",
+    "selectedCount_few": "{{count}} herramientas seleccionadas",
+    "selectedCount_many": "{{count}} herramientas seleccionadas",
+    "selectedFull": "Todas las herramientas seleccionadas",
+    "followProfile": "Sigue el perfil actual",
+    "inheritedNote": "Sin sobrescribir no hay límites extra: los decide el perfil",
+    "orchestrationNote": "task / admit son canales de orquestación y siempre están disponibles",
+    "explicitWhitelistNote": "Una lista permitida explícita deja fuera las herramientas MCP / navegador inyectadas en tiempo de ejecución"
+  },
+  "registry": {
+    "unavailable": "Registro no disponible",
+    "loading": "Leyendo el registro…",
+    "unavailableRetry": "Registro no disponible — reinicia la aplicación o usa «Reintentar» arriba",
+    "loadFailed": "No se pudo cargar el registro de subagentes",
+    "loadFailedHint": "Es posible que la aplicación de escritorio siga ejecutando una compilación antigua del servidor; reiníciala e inténtalo de nuevo.",
+    "retry": "Reintentar"
+  },
+  "onFail": {
+    "rework": "Rehacer (vuelve al primer control)",
+    "loopTo": "loop-to:{{id}} (vuelve a {{id}})",
+    "block": "block (bloquea la lane de inmediato)"
+  },
+  "closer": {
+    "unbound": "Sin asignar (admit lo rechazará)"
+  },
+  "empty": {
+    "dispatchEdges": "Aún no hay conexiones de asignación",
+    "gateNodes": "El diagrama aún no tiene nodos de control"
+  },
+  "tier": {
+    "executionOrder": "Orden de ejecución: {{gates}}; el orden se cambia con order en la conexión.",
+    "passThrough": "Sin controles · directo (finaliza justo después de admit)"
+  },
+  "notes": {
+    "agentPrompt": "El campo viene relleno con el prompt predeterminado del perfil actual; guarda para aplicar los cambios. Un contenido personalizado <strong>reemplaza por completo</strong> el prompt del perfil, así que conserva las reglas de uso de herramientas y de rutas.",
+    "agentRoot": "El agente principal es una runtime raíz permanente y no participa en controles; los subagentes de cierre cierran el resultado a través de la cadena tier→gate→role. Un subagente no puede asignar más trabajo.",
+    "rolePrompt": "Dejarlo vacío recurre al prompt integrado. El modo de aprobación de los subagentes de solo lectura lo sigue imponiendo el registro; el subagente de cierre debe conservar el contrato de resultado JSON, o la validación de ChildResult fallará.",
+    "gateBinding": "Cada control tiene un único subagente de cierre; hacer clic en el asignado lo libera.",
+    "gateEvidence": "Las evidencias las mide el anfitrión: implementer revisa los cambios en archivos, reviewer los critical findings y verifier los códigos de salida de los comandos; a cualquier otro subagente solo se le valida completed + valid. Un control no cree en lo que afirme el modelo.",
+    "edgeSemantics": "Las aristas tier→gate fijan el orden de los controles; las gate→role designan el subagente de cierre; las demás conexiones son solo informativas."
+  }
+}

@@ -153,6 +153,23 @@
   border-color: var(--fg-subtle);
 }
 
+/* ---- 官方/社区通道切换 ---- */
+.mc-mkt__channels {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.mc-mkt__author {
+  font-size: var(--fs-xs);
+  color: var(--fg-subtle);
+  white-space: nowrap;
+}
+.mc-mkt__cardactions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
 /* ---- 分区标题 ---- */
 .mc-mkt__section {
   margin: 8px 0 0;
@@ -330,6 +347,12 @@
   flex-direction: column;
   gap: 16px;
 }
+/* 宽窗口下整列内容（标题/介绍/正文）居中，返回按钮除外保持贴左上 */
+.mc-mkt__detailpage > *:not(.mc-mkt__back) {
+  width: 100%;
+  max-width: 860px;
+  margin-inline: auto;
+}
 .mc-mkt__back {
   align-self: flex-start;
   display: inline-flex;
@@ -350,10 +373,6 @@
 }
 .mc-mkt__detailpage .mc-mkt__dhead {
   gap: 16px;
-}
-.mc-mkt__detailpage .mc-mkt__ddesc,
-.mc-mkt__detailpage .mc-mkt__dbody {
-  max-width: 860px;
 }
 .mc-mkt__rowiconbtn {
   display: inline-flex;
@@ -544,4 +563,30 @@
   font-size: var(--fs-sm);
   color: var(--mc-danger, #e5484d);
   margin: 0;
+}
+.mc-mkt__tpfail {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--fs-sm);
+  color: var(--mc-warning, #f5a623);
+}
+.mc-mkt__tpfail .mc-mkt__ghost {
+  font-size: var(--fs-sm);
+  padding: 0;
+}
+.mc-mkt__loadmore {
+  display: flex;
+  margin: 12px auto 0;
+}
+
+/* ---- 「我的」（手动条目管理）---- */
+.mc-mine__risk {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--warning);
+}
+.mc-mine__advanced {
+  align-self: flex-start;
 }

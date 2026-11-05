@@ -4,7 +4,7 @@ import path from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { BrowserHostClient, BrowserHostCommand } from "./browser-host";
 import { ProviderRequestError } from "./provider-error";
-import type { ChatMessage, MeowEvent } from "./types";
+import type { ChatMessage, MeowEvent, SessionEntry } from "./types";
 import { SessionStore } from "./session-store";
 
 const { streamMock } = vi.hoisted(() => ({ streamMock: vi.fn() }));
@@ -75,7 +75,7 @@ describe("validatePlanInput", () => {
 });
 
 describe("request prefix stability", () => {
-  it("keeps one stable system message, persists tool results, and extends the previous prefix", async () => {
+  it("keeps stable system messages (base + memory guide), persists tool results, and extends the previous prefix", async () => {
     const dir = await mkdtemp(path.join(tmpdir(), "meowcode-runtime-"));
     const workspace = await mkdtemp(path.join(tmpdir(), "meowcode-ws-"));
     const runtime = makeRuntime(dir);
@@ -115,9 +115,13 @@ describe("request prefix stability", () => {
 
     const firstRequest = streamMock.mock.calls[0][0].messages as ChatMessage[];
     const secondRequest = streamMock.mock.calls[1][0].messages as ChatMessage[];
-    expect(firstRequest.filter((message) => message.role === "system")).toHaveLength(1);
-    expect(secondRequest.filter((message) => message.role === "system")).toHaveLength(1);
-    expect(secondRequest[0]).toEqual(firstRequest[0]);
+    // 基础 system + 常驻记忆/指令段（memory guide），两条都跨请求稳定
+    const firstSystem = firstRequest.filter((message) => message.role === "system");
+    const secondSystem = secondRequest.filter((message) => message.role === "system");
+    expect(firstSystem).toHaveLength(2);
+    expect(secondSystem).toHaveLength(2);
+    expect(secondSystem[0]).toEqual(firstSystem[0]);
+    expect(secondSystem[1]).toEqual(firstSystem[1]);
     // 计划正文随工具结果进入请求，不再改写 system
     expect(
       secondRequest.some(
@@ -155,7 +159,7 @@ describe("AgentRuntime context compaction", () => {
   it("compacts once on overflow and retries the turn", async () => {
     const dir = await mkdtemp(path.join(tmpdir(), "meowcode-runtime-"));
     const runtime = makeRuntime(dir);
-    const session = await runtime.newSession();
+    const _session = await runtime.newSession();
     const events = await collectEvents(runtime);
     const overflow = new ProviderRequestError(413, "prompt is too long");
     streamMock
@@ -197,6 +201,50 @@ describe("AgentRuntime context compaction", () => {
     expect(events.filter((event) => event.type === "compaction_started")).toHaveLength(1);
     expect(streamMock).toHaveBeenCalledTimes(3); // 失败 + 摘要 + 一次重试，没有第二次压缩
     expect(runtime.current?.entries.filter((entry) => entry.type === "compaction_summary")).toHaveLength(1);
+  });
+
+  it("drops oldest history instead of failing the turn when the summary call fails", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "meowcode-runtime-"));
+    const runtime = makeRuntime(dir);
+    await runtime.newSession();
+    const events = await collectEvents(runtime);
+    const overflow = new ProviderRequestError(413, "prompt is too long");
+    streamMock
+      .mockRejectedValueOnce(overflow)
+      .mockRejectedValueOnce(new Error("summary service unavailable"))
+      .mockResolvedValueOnce({ message: { role: "assistant", content: "FINAL" } });
+
+    await runtime.prompt("do the thing");
+
+    expect(events.some((event) => event.type === "error")).toBe(false);
+    expect(events.some((event) => event.type === "message_complete" && event.text === "FINAL")).toBe(true);
+    expect(streamMock).toHaveBeenCalledTimes(3); // 溢出 + 失败的摘要 + 重试
+    expect(runtime.current?.currentCompactionSummary).toContain("dropped without a summary");
+    // 请求必须合法：摘要前缀之后不能再出现孤立的 tool 消息
+    const effective = runtime.current?.effectiveMessages ?? [];
+    const firstToolIndex = effective.findIndex((message) => message.role === "tool");
+    expect(firstToolIndex).toBe(-1);
+  });
+
+  it("stops calling the summary model after three failures", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "meowcode-runtime-"));
+    const runtime = makeRuntime(dir);
+    await runtime.newSession();
+    const overflow = new ProviderRequestError(413, "prompt is too long");
+    for (let round = 0; round < 3; round += 1) {
+      streamMock
+        .mockRejectedValueOnce(overflow)
+        .mockRejectedValueOnce(new Error("summary service unavailable"))
+        .mockResolvedValueOnce({ message: { role: "assistant", content: `FINAL-${round}` } });
+    }
+    // 第 4 轮：熔断后不再尝试摘要，只花「溢出 + 重试」两次请求
+    streamMock
+      .mockRejectedValueOnce(overflow)
+      .mockResolvedValueOnce({ message: { role: "assistant", content: "FINAL-3" } });
+
+    for (let round = 0; round < 4; round += 1) await runtime.prompt(`round ${round}`);
+
+    expect(streamMock).toHaveBeenCalledTimes(3 * 3 + 2);
   });
 
   it("escapes overflow with the lightweight tool-output shrink before any model call", async () => {
@@ -399,8 +447,14 @@ describe("AgentRuntime context compaction", () => {
       })
       .mockResolvedValueOnce({ message: { role: "assistant", content: "WARM-SUMMARY" } });
     await runtime.prompt("do it");
-    await flush();
-    expect(events.some((event) => event.type === "compaction_warmup" && event.phase === "completed")).toBe(true);
+    // 预热在后台跑（含落盘 I/O）：等条件而不是等固定 20ms，避免机器忙时假失败
+    await vi.waitFor(
+      () =>
+        expect(
+          events.some((event) => event.type === "compaction_warmup" && event.phase === "completed"),
+        ).toBe(true),
+      { timeout: 5_000 },
+    );
     expect(events.some((event) => event.type === "compaction_started")).toBe(false);
 
     // 第二轮：没有溢出，但占用仍在 85% → 回合间隙主动采纳预热摘要（零摘要请求）
@@ -409,10 +463,12 @@ describe("AgentRuntime context compaction", () => {
       usage: { inputTokens: 13_800, outputTokens: 10 },
     });
     await runtime.prompt("again");
-    await flush();
+    await vi.waitFor(
+      () => expect(events.some((event) => event.type === "compaction_completed")).toBe(true),
+      { timeout: 5_000 },
+    );
 
     expect(events.some((event) => event.type === "compaction_started")).toBe(true);
-    expect(events.some((event) => event.type === "compaction_completed")).toBe(true);
     expect(runtime.current?.currentCompactionSummary).toBe("WARM-SUMMARY");
     // 总调用 = 两轮对话 + 一次预热摘要；主动采纳不产生新的模型请求
     expect(streamMock).toHaveBeenCalledTimes(3);
@@ -731,6 +787,25 @@ describe("AgentRuntime manual compaction", () => {
   });
 });
 
+describe("AgentRuntime active provider", () => {
+  it("falls back to an enabled provider when the configured one is disabled", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "meowcode-runtime-"));
+    const runtime = new AgentRuntime({
+      providers: [
+        { id: "off", name: "Off", baseUrl: "http://localhost", model: "m1", enabled: false },
+        { id: "on", name: "On", baseUrl: "http://localhost", model: "m2" },
+      ],
+      providerId: "off",
+      sessionsDir: dir,
+      homeDir: dir,
+    });
+    await runtime.newSession();
+    expect(runtime.activeProviderId).toBe("on");
+    // 停用的服务商不能被显式切回来：UI 与引擎必须落在同一个模型上
+    expect(() => runtime.setActiveProvider("off")).toThrow(/disabled/);
+  });
+});
+
 describe("AgentRuntime context usage", () => {  it("falls back to estimates, then prefers real input tokens", async () => {
     const dir = await mkdtemp(path.join(tmpdir(), "meowcode-runtime-"));
     const runtime = makeRuntime(dir);
@@ -742,9 +817,15 @@ describe("AgentRuntime context usage", () => {  it("falls back to estimates, the
     expect(before.source).toBe("estimate");
     expect(before.usedTokens).toBeGreaterThan(0);
     expect(before.recommendedCompaction).toBe(false);
-    // 估算路径下三项明细就是各分项估算值，加总与总量一致
-    const beforeParts = before.breakdown.system + before.breakdown.tools + before.breakdown.messages;
-    expect(beforeParts).toBe(before.usedTokens);
+    // 估算路径下各项来源就是分项估算值，加总与总量一致
+    const partsSum = (usage: typeof before) =>
+      usage.breakdown.system +
+      usage.breakdown.tools +
+      usage.breakdown.skills +
+      usage.breakdown.messages +
+      usage.breakdown.other;
+    expect(partsSum(before)).toBe(before.usedTokens);
+    expect(before.skillCount).toBe(0);
 
     streamMock.mockResolvedValueOnce({
       message: { role: "assistant", content: "ok" },
@@ -755,9 +836,8 @@ describe("AgentRuntime context usage", () => {  it("falls back to estimates, the
     const after = runtime.getContextUsage();
     expect(after.source).toBe("usage");
     expect(after.usedTokens).toBe(4321);
-    // 真实用量路径下按估算比例摊分，三项之和仍等于真实总量
-    const afterParts = after.breakdown.system + after.breakdown.tools + after.breakdown.messages;
-    expect(afterParts).toBe(4321);
+    // 真实用量路径下按估算比例摊分，各项之和仍等于真实总量
+    expect(partsSum(after)).toBe(4321);
     expect(after.breakdown.system).toBeGreaterThan(0);
     expect(after.breakdown.tools).toBeGreaterThan(0);
     expect(after.breakdown.messages).toBeGreaterThan(0);
@@ -806,6 +886,68 @@ describe("AgentRuntime context usage", () => {  it("falls back to estimates, the
       cacheReadTokens: 600,
       cacheWriteTokens: 200,
     });
+  });
+
+  it("流中实时样本与最终真值共用同一 roundId，最终一条标 final", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "meowcode-runtime-"));
+    const runtime = makeRuntime(dir);
+    await runtime.newSession();
+    const events = await collectEvents(runtime);
+    streamMock.mockImplementationOnce(
+      async (options: { onUsage?: (usage: Record<string, number>) => void }) => {
+        // Anthropic 的 message_start：输入与缓存先到
+        options.onUsage?.({ inputTokens: 2_000, cacheReadTokens: 1_500, cacheWriteTokens: 100 });
+        // 输出随后增长
+        options.onUsage?.({ inputTokens: 2_000, outputTokens: 40 });
+        return {
+          message: { role: "assistant", content: "ok" },
+          usage: {
+            inputTokens: 2_000,
+            outputTokens: 40,
+            cacheReadTokens: 1_500,
+            cacheWriteTokens: 100,
+          },
+        };
+      },
+    );
+
+    await runtime.prompt("hi");
+
+    const usageEvents = events.filter(
+      (event): event is Extract<MeowEvent, { type: "usage" }> => event.type === "usage",
+    );
+    expect(usageEvents).toHaveLength(3);
+    expect(new Set(usageEvents.map((event) => event.roundId)).size).toBe(1);
+    expect(usageEvents.filter((event) => event.final)).toHaveLength(1);
+    expect(usageEvents.at(-1)).toMatchObject({
+      final: true,
+      inputTokens: 2_000,
+      outputTokens: 40,
+      cacheReadTokens: 1_500,
+    });
+  });
+
+  it("回合出错时撤回未提交的实时样本，统计不虚高", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "meowcode-runtime-"));
+    const runtime = makeRuntime(dir);
+    await runtime.newSession();
+    const events = await collectEvents(runtime);
+    streamMock.mockImplementationOnce(
+      async (options: { onUsage?: (usage: Record<string, number>) => void }) => {
+        options.onUsage?.({ inputTokens: 900, outputTokens: 12 });
+        throw new Error("upstream boom");
+      },
+    );
+
+    await runtime.prompt("hi");
+
+    const usageEvents = events.filter(
+      (event): event is Extract<MeowEvent, { type: "usage" }> => event.type === "usage",
+    );
+    const live = usageEvents.find((event) => !event.final && !event.retracted);
+    expect(live).toBeTruthy();
+    const retracted = usageEvents.find((event) => event.retracted);
+    expect(retracted?.roundId).toBe(live?.roundId);
   });
 });
 
@@ -1193,8 +1335,8 @@ describe("AgentRuntime browser tools", () => {
     expect(plainTools.map((tool) => tool.function.name)).toContain("task");
     // 治理默认 goal：根 runtime 多挂 admit 控制面工具
     expect(plainTools.map((tool) => tool.function.name)).toContain("admit");
-    // 14 个内置工具 + admit + read_video
-    expect(plainTools).toHaveLength(16);
+    // 14 个内置工具 + admit + read_video + diagnostics + memory 三件 + tool_search
+    expect(plainTools).toHaveLength(21);
   });
 
   it("dispatches browser tool calls to the host without approval and emits tool events", async () => {
@@ -1704,6 +1846,8 @@ describe("turn ownership", () => {
     const dir = await mkdtemp(path.join(tmpdir(), "meowcode-runtime-"));
     const runtime = makeRuntime(dir);
     await runtime.newSession();
+    // 该用例验证"待审批被中断结算"，需要每次询问模式（默认 auto 会放行常规命令）
+    await runtime.setApprovalMode("ask");
     const events = await collectEvents(runtime);
     streamMock
       .mockResolvedValueOnce({
@@ -1754,6 +1898,8 @@ describe("turn ownership", () => {
     const dir = await mkdtemp(path.join(tmpdir(), "meowcode-runtime-"));
     const runtime = makeRuntime(dir);
     await runtime.newSession();
+    // 同上：待审批结算机制与权限档无关，这里显式要求弹窗
+    await runtime.setApprovalMode("ask");
     streamMock
       .mockResolvedValueOnce({
         message: {
@@ -1923,7 +2069,7 @@ describe("usage persistence", () => {
   });
 });
 
-describe("workspace instructions", () => {  it("injects AGENTS.md and refreshes it between turns", async () => {
+describe("workspace instructions", () => {  it("injects AGENTS.md once per session; mid-session edits don't change the prompt", async () => {
     const dir = await mkdtemp(path.join(tmpdir(), "meowcode-runtime-"));
     const workspace = await mkdtemp(path.join(tmpdir(), "meowcode-ws-"));
     await writeFile(path.join(workspace, "AGENTS.md"), "RULE ONE");
@@ -1940,6 +2086,7 @@ describe("workspace instructions", () => {  it("injects AGENTS.md and refreshes 
     expect(firstSystems[0].content).toContain("You are MeowCode");
     expect(firstSystems[1].content).toContain("RULE ONE");
 
+    // 会话级快照：中途改 AGENTS.md 不换 system[1] 字节（缓存前缀稳定），重开会话才生效
     await writeFile(path.join(workspace, "AGENTS.md"), "RULE TWO");
     streamMock.mockResolvedValueOnce({ message: { role: "assistant", content: "again" } });
     await runtime.prompt("again");
@@ -1947,11 +2094,20 @@ describe("workspace instructions", () => {  it("injects AGENTS.md and refreshes 
     const secondSystems = second.filter(
       (message): message is Extract<ChatMessage, { role: "system" }> => message.role === "system",
     );
-    expect(secondSystems[0]).toEqual(firstSystems[0]);
-    expect(secondSystems[1].content).toContain("RULE TWO");
+    expect(secondSystems[1].content).toContain("RULE ONE");
+
+    // 重开会话重新加载：新会话拿到改后的内容
+    await runtime.newSession(workspace);
+    streamMock.mockResolvedValueOnce({ message: { role: "assistant", content: "third" } });
+    await runtime.prompt("third");
+    const third = streamMock.mock.calls[2][0].messages as ChatMessage[];
+    const thirdSystems = third.filter(
+      (message): message is Extract<ChatMessage, { role: "system" }> => message.role === "system",
+    );
+    expect(thirdSystems[1].content).toContain("RULE TWO");
   });
 
-  it("keeps the base prompt first and mode instructions last across modes", async () => {
+  it("keeps the base prompt stable and moves mode instructions into history", async () => {
     const dir = await mkdtemp(path.join(tmpdir(), "meowcode-runtime-"));
     const workspace = await mkdtemp(path.join(tmpdir(), "meowcode-ws-"));
     await writeFile(path.join(workspace, "AGENTS.md"), "RULE ONE");
@@ -1965,11 +2121,20 @@ describe("workspace instructions", () => {  it("injects AGENTS.md and refreshes 
     const systems = sent.filter(
       (message): message is Extract<ChatMessage, { role: "system" }> => message.role === "system",
     );
-    // 顺序锁死：稳定基础提示 → 工作区规则（可变）→ 模式指令（尾随）。
-    // Anthropic 双断点依赖这个顺序：前缀缓存不被可变段冲掉。
+    // 顺序锁死：稳定基础提示 → 工作区规则。模式指令不再进 system 段（DSH 式 in-history），
+    // 切换模式只追加历史尾注，前缀缓存不失效。
     expect(systems[0].content).toContain("You are MeowCode");
     expect(systems[1].content).toContain("RULE ONE");
-    expect(systems.at(-1)?.content).toContain("plan");
+    expect(systems).toHaveLength(2);
+    const modeNote = sent.find(
+      (message): message is Extract<ChatMessage, { role: "user" }> =>
+        message.role === "user" &&
+        typeof message.content === "string" &&
+        message.content.startsWith("Runtime context: [mode] plan"),
+    );
+    expect(modeNote).toBeDefined();
+    expect(modeNote!.content).toContain("Plan mode is active");
+    expect(modeNote!.content.startsWith("Runtime context:")).toBe(true);
     expect(systems[0].content).not.toContain("RULE ONE");
   });
 });
@@ -2684,10 +2849,35 @@ describe("approval mode: writable roots", () => {
     expect(await readFile(path.join(workspace, "a.txt"), "utf8")).toBe("bye");
   });
 
-  it("still asks before running a command", async () => {
+  it("auto-runs a routine command without prompting", async () => {
     const { runtime, events } = await setup();
     streamMock
-      .mockResolvedValueOnce(toolCall("c1", "run_command", { command: "echo hi" }))
+      .mockResolvedValueOnce(toolCall("c1", "run_command", { command: "Get-Location" }))
+      .mockResolvedValueOnce({ message: { role: "assistant", content: "done" } });
+
+    await runtime.prompt("go");
+
+    expect(events.some((event) => event.type === "approval_required")).toBe(false);
+    expect(runtime.pendingApprovalList).toHaveLength(0);
+    const finished = events.filter(
+      (event): event is Extract<MeowEvent, { type: "tool_finished" }> =>
+        event.type === "tool_finished",
+    );
+    expect(finished.find((event) => event.callId === "c1")?.ok).toBe(true);
+    // 自动批准同样要留痕：回放时得能看出这条命令没人确认过
+    const store = await SessionStore.load(runtime.current!.filePath);
+    const record = store.entries.find(
+      (entry): entry is Extract<SessionEntry, { type: "approval" }> =>
+        entry.type === "approval" && entry.callId === "c1",
+    );
+    expect(record).toMatchObject({ approved: true, reason: "low_risk_command" });
+    await store.close();
+  });
+
+  it("still asks before running a destructive command", async () => {
+    const { runtime, events } = await setup();
+    streamMock
+      .mockResolvedValueOnce(toolCall("c2", "run_command", { command: "diskpart" }))
       .mockResolvedValueOnce({ message: { role: "assistant", content: "done" } });
 
     const promptPromise = runtime.prompt("go");
@@ -2695,10 +2885,35 @@ describe("approval mode: writable roots", () => {
       expect(runtime.pendingApprovalList).toHaveLength(1);
     });
     expect(runtime.pendingApprovalList[0]).toMatchObject({ tool: "run_command" });
-    runtime.respondToApproval("c1", false);
+    runtime.respondToApproval("c2", false);
     await promptPromise;
 
     expect(events.some((event) => event.type === "approval_required")).toBe(true);
+    const finished = events.filter(
+      (event): event is Extract<MeowEvent, { type: "tool_finished" }> =>
+        event.type === "tool_finished",
+    );
+    expect(finished.find((event) => event.callId === "c2")?.ok).toBe(false);
+  });
+
+  it("runs meow.run in the sandbox under the same auto rule", async () => {
+    const { runtime, events } = await setup();
+    const code = `
+      const r = await meow.run("Get-Location");
+      return r.ok ? "auto-ran" : "blocked:" + r.output;
+    `;
+    streamMock
+      .mockResolvedValueOnce(toolCall("rc1", "run_code", { code }))
+      .mockResolvedValueOnce({ message: { role: "assistant", content: "done" } });
+
+    await runtime.prompt("go");
+
+    // 沙箱不得成为审批的例外：常规命令同样免弹审批，且真的执行了
+    expect(events.some((event) => event.type === "approval_required")).toBe(false);
+    const outputs = events.filter(
+      (event): event is Extract<MeowEvent, { type: "tool_output" }> => event.type === "tool_output",
+    );
+    expect(outputs.find((event) => event.callId === "rc1")?.output).toContain("auto-ran");
   });
 
   it("rejects a path outside the workspace without asking", async () => {
@@ -3012,7 +3227,7 @@ describe("session modes", () => {
     expect(events.some((event) => event.type === "plan_documented")).toBe(true);
   });
 
-  it("injects the mode prompt last and gates goal-mode mutations behind admit", async () => {
+  it("appends mode notes into history and gates goal-mode mutations behind admit", async () => {
     const dir = await mkdtemp(path.join(tmpdir(), "meowcode-runtime-"));
     const workspace = await mkdtemp(path.join(tmpdir(), "meowcode-ws-"));
     const runtime = makeRuntime(dir);
@@ -3029,19 +3244,31 @@ describe("session modes", () => {
     await runtime.prompt("goal turn");
     const goalMessages = streamMock.mock.calls[1][0].messages as ChatMessage[];
     const goalSystems = goalMessages.filter((message) => message.role === "system");
-    expect(goalSystems).toHaveLength(plainSystems.length + 1);
-    expect(goalSystems.at(-1)?.content).toContain("Goal mode is active");
-    // 模式指令插在 system 段末尾，用户消息在它之后
+    // 模式切换不改 system 段：指令作为 user 尾注出现在用户消息之前
+    expect(goalSystems).toHaveLength(plainSystems.length);
+    const goalNoteIndex = goalMessages.findIndex(
+      (message) =>
+        message.role === "user" &&
+        typeof message.content === "string" &&
+        message.content.startsWith("Runtime context: [mode] goal"),
+    );
+    expect(goalNoteIndex).toBeGreaterThanOrEqual(0);
+    expect(goalMessages[goalNoteIndex].content).toContain("Goal mode is active");
     const goalUserIndex = goalMessages.findIndex(
       (message) => message.role === "user" && message.content === "goal turn",
     );
-    expect(goalUserIndex).toBeGreaterThan(goalMessages.indexOf(goalSystems.at(-1)!));
+    expect(goalUserIndex).toBeGreaterThan(goalNoteIndex);
 
     await runtime.setSessionMode("plan");
     await runtime.prompt("plan turn");
     const planMessages = streamMock.mock.calls[2][0].messages as ChatMessage[];
-    const planSystems = planMessages.filter((message) => message.role === "system");
-    expect(planSystems.at(-1)?.content).toContain("Plan mode is active");
+    const planNote = planMessages.find(
+      (message) =>
+        message.role === "user" &&
+        typeof message.content === "string" &&
+        message.content.startsWith("Runtime context: [mode] plan"),
+    );
+    expect(planNote?.content).toContain("Plan mode is active");
 
     // goal 模式的治理门禁：未 admit 时 run_command 被拦（不再直接走审批）
     await runtime.setSessionMode("goal");
@@ -3053,7 +3280,7 @@ describe("session modes", () => {
       toolTurn([{ id: "adm", name: "admit", args: { tier: "T0", task_shape: "echo hi" } }]),
     );
     streamMock.mockResolvedValueOnce(
-      toolTurn([{ id: "cmd2", name: "run_command", args: { command: "echo hi" } }]),
+      toolTurn([{ id: "cmd2", name: "run_command", args: { command: "diskpart" } }]),
     );
     streamMock.mockResolvedValueOnce({ message: { role: "assistant", content: "done" } });
     const prompt = runtime.prompt("run it");
@@ -3069,7 +3296,7 @@ describe("session modes", () => {
     expect(
       events.some((event) => event.type === "approval_required" && event.callId === "cmd"),
     ).toBe(false);
-    // admit 之后审批流照旧：run_command 弹审批，拒绝即结束
+    // admit 之后照旧：高危命令仍弹审批，拒绝即结束
     await vi.waitFor(() =>
       expect(
         events.some((event) => event.type === "approval_required" && event.callId === "cmd2"),
@@ -3304,8 +3531,8 @@ describe("context_status virtual tool", () => {
   });
 });
 
-describe("free tool-result pruning (proactive shrink)", () => {
-  it("shrinks old oversized tool outputs before the window fills", async () => {
+describe("free tool-result pruning (over-budget shrink)", () => {
+  it("shrinks old oversized tool outputs when the request exceeds the window", async () => {
     const dir = await mkdtemp(path.join(tmpdir(), "meowcode-runtime-"));
     const workspace = await mkdtemp(path.join(tmpdir(), "meowcode-ws-"));
     const big = Array.from(
@@ -3345,6 +3572,67 @@ describe("free tool-result pruning (proactive shrink)", () => {
     );
     expect(bigResult).toBeTruthy();
   });
+
+  it("does not rewrite tool outputs below the window limit", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "meowcode-cache-first-"));
+    const workspace = await mkdtemp(path.join(tmpdir(), "meowcode-cache-first-ws-"));
+    const files = Array.from({ length: 8 }, (_, index) => `big-${index}.txt`);
+    await Promise.all(
+      files.map((file) =>
+        writeFile(
+          path.join(workspace, file),
+          Array.from(
+            { length: 1_200 },
+            (_, index) => `line ${index} of ${file} with some padding text`,
+          ).join("\n"),
+        ),
+      ),
+    );
+    const runtime = new (await import("./runtime.js")).AgentRuntime({
+      providers: [
+        {
+          id: "p",
+          name: "P",
+          baseUrl: "http://localhost",
+          model: "m",
+          contextWindow: 1_000_000,
+        },
+      ],
+      sessionsDir: dir,
+    });
+    await runtime.newSession(workspace);
+    runtime.setApprovalMode("full");
+    for (let index = 0; index < files.length; index += 1) {
+      streamMock.mockResolvedValueOnce({
+        message: {
+          role: "assistant",
+          content: null,
+          tool_calls: [readCall0(`c${index}`, files[index])],
+        },
+      });
+    }
+    streamMock.mockResolvedValueOnce({ message: { role: "assistant", content: "done" } });
+
+    await runtime.prompt("read all files");
+
+    const requests = streamMock.mock.calls.map((call) => call[0].messages as ChatMessage[]);
+    expect(requests.length).toBe(files.length + 1);
+    for (const request of requests) {
+      expect(
+        request.some(
+          (message) =>
+            message.role === "tool" &&
+            (message.content.includes("chars trimmed") ||
+              message.content.includes("output elided")),
+        ),
+      ).toBe(false);
+    }
+    // 大窗口下每次请求都是上一次的追加：缓存前缀逐字节不变
+    for (let index = 1; index < requests.length; index += 1) {
+      const previous = requests[index - 1];
+      expect(requests[index].slice(0, previous.length)).toEqual(previous);
+    }
+  });
 });
 
 describe("AgentRuntime repeated read short-circuit", () => {
@@ -3374,7 +3662,7 @@ describe("AgentRuntime repeated read short-circuit", () => {
     expect(toolMessages).toHaveLength(2);
     expect(toolMessages[0].role === "tool" ? toolMessages[0].content : "").toContain("1: hello");
     expect(toolMessages[1].role === "tool" ? toolMessages[1].content : "").toContain(
-      "Unchanged since your last read",
+      "Unchanged since your earlier read",
     );
     expect(toolMessages[1].role === "tool" ? toolMessages[1].content : "").not.toContain("1: hello");
 
@@ -3382,7 +3670,7 @@ describe("AgentRuntime repeated read short-circuit", () => {
     const thirdRequest = streamMock.mock.calls[2][0].messages as ChatMessage[];
     const lastTool = [...thirdRequest].reverse().find((message) => message.role === "tool");
     expect(lastTool?.role === "tool" ? lastTool.content : "").toContain(
-      "Unchanged since your last read",
+      "Unchanged since your earlier read",
     );
   });
 
@@ -3422,7 +3710,7 @@ describe("AgentRuntime repeated read short-circuit", () => {
     const lastRead = [...toolMessages].reverse().find((message) => message.name === "read_file");
     expect(lastRead?.role === "tool" ? lastRead.content : "").toContain("1: bye");
     expect(lastRead?.role === "tool" ? lastRead.content : "").not.toContain(
-      "Unchanged since your last read",
+      "Unchanged since your earlier read",
     );
   });
 });
@@ -3434,3 +3722,146 @@ function readCall0(id: string, target: string) {
     function: { name: "read_file", arguments: JSON.stringify({ path: target }) },
   };
 }
+
+function readManyCall(id: string, paths: string[]) {
+  return {
+    id,
+    type: "function",
+    function: { name: "read_many", arguments: JSON.stringify({ paths }) },
+  };
+}
+
+describe("AgentRuntime read_many coverage reuse", () => {
+  const batchTurn = (id: string, paths: string[]) => ({
+    role: "assistant" as const,
+    content: null,
+    tool_calls: [readManyCall(id, paths)],
+  });
+  const readTurn = (id: string, target: string) => ({
+    role: "assistant" as const,
+    content: null,
+    tool_calls: [readCall0(id, target)],
+  });
+
+  it("registers batch ranges so a later read_file is stubbed", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "meowcode-runtime-"));
+    const ws = await mkdtemp(path.join(tmpdir(), "meowcode-ws-"));
+    await writeFile(path.join(ws, "a.txt"), "hello\nworld\n");
+    const runtime = makeRuntime(dir);
+    await runtime.newSession(ws);
+    runtime.setApprovalMode("full");
+    await collectEvents(runtime);
+    streamMock
+      .mockResolvedValueOnce({ message: batchTurn("m1", ["a.txt"]) })
+      .mockResolvedValueOnce({ message: readTurn("r1", "a.txt") })
+      .mockResolvedValueOnce({ message: { role: "assistant", content: "done" } });
+
+    await runtime.prompt("read the batch");
+
+    const tools = runtime.current?.effectiveMessages.filter((message) => message.role === "tool") ?? [];
+    expect(tools).toHaveLength(2);
+    expect(tools[0].role === "tool" ? tools[0].content : "").toContain("1: hello");
+    // read_many 登记了 1..total，后续 read_file 同一文件直接命中占位
+    expect(tools[1].role === "tool" ? tools[1].content : "").toContain(
+      "Unchanged since your earlier read",
+    );
+  });
+
+  it("short-circuits a file that read_file already read in full", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "meowcode-runtime-"));
+    const ws = await mkdtemp(path.join(tmpdir(), "meowcode-ws-"));
+    await writeFile(path.join(ws, "a.txt"), "hello\nworld\n");
+    const runtime = makeRuntime(dir);
+    await runtime.newSession(ws);
+    runtime.setApprovalMode("full");
+    await collectEvents(runtime);
+    streamMock
+      .mockResolvedValueOnce({ message: readTurn("r1", "a.txt") })
+      .mockResolvedValueOnce({ message: batchTurn("m1", ["a.txt"]) })
+      .mockResolvedValueOnce({ message: { role: "assistant", content: "done" } });
+
+    await runtime.prompt("read then batch");
+
+    const tools = runtime.current?.effectiveMessages.filter((message) => message.role === "tool") ?? [];
+    expect(tools).toHaveLength(2);
+    expect(tools[1].role === "tool" ? tools[1].content : "").toContain(
+      "already read in full earlier this session",
+    );
+    expect(tools[1].role === "tool" ? tools[1].content : "").not.toContain("1: hello");
+  });
+});
+
+describe("AgentRuntime compaction quality", () => {
+  const readTurn = (id: string, target: string) => ({
+    role: "assistant" as const,
+    content: null,
+    tool_calls: [readCall0(id, target)],
+  });
+
+  it("counts files re-read inside the window and journals the metric", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "meowcode-runtime-"));
+    const ws = await mkdtemp(path.join(tmpdir(), "meowcode-ws-"));
+    await writeFile(path.join(ws, "a.txt"), "hello\nworld\n");
+    const runtime = makeRuntime(dir);
+    await runtime.newSession(ws);
+    runtime.setApprovalMode("full");
+    await collectEvents(runtime);
+
+    const overflow = new ProviderRequestError(413, "prompt is too long");
+    // 回合 1：读一次 a.txt —— 进入压缩前的基线
+    streamMock
+      .mockResolvedValueOnce({ message: readTurn("r1", "a.txt") })
+      .mockResolvedValueOnce({ message: { role: "assistant", content: "one" } })
+      // 回合 2：溢出 → 摘要 → 重试
+      .mockRejectedValueOnce(overflow)
+      .mockResolvedValueOnce({ message: { role: "assistant", content: "SUMMARY" } })
+      .mockResolvedValueOnce({ message: { role: "assistant", content: "two" } });
+
+    await runtime.prompt("read a.txt");
+    await runtime.prompt("continue");
+
+    // 回合 3..6：压缩后重复读同一个文件（窗口 5 轮，含压缩当轮）
+    for (let index = 0; index < 4; index += 1) {
+      streamMock
+        .mockResolvedValueOnce({ message: readTurn(`r${index + 2}`, "a.txt") })
+        .mockResolvedValueOnce({ message: { role: "assistant", content: `after ${index}` } });
+      await runtime.prompt(`again ${index}`);
+    }
+
+    const quality = runtime.current?.lastCompactionQuality;
+    expect(quality).toBeTruthy();
+    expect(quality?.baselineCount).toBeGreaterThan(0);
+    expect(quality?.rereadPaths).toContain("a.txt");
+    expect(quality?.windowTurns).toBe(5);
+  });
+
+  it("does not carry the baseline into another session", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "meowcode-runtime-"));
+    const ws = await mkdtemp(path.join(tmpdir(), "meowcode-ws-"));
+    await writeFile(path.join(ws, "a.txt"), "hello\nworld\n");
+    const runtime = makeRuntime(dir);
+    await runtime.newSession(ws);
+    runtime.setApprovalMode("full");
+    await collectEvents(runtime);
+
+    const overflow = new ProviderRequestError(413, "prompt is too long");
+    streamMock
+      .mockResolvedValueOnce({ message: readTurn("r1", "a.txt") })
+      .mockResolvedValueOnce({ message: { role: "assistant", content: "one" } })
+      .mockRejectedValueOnce(overflow)
+      .mockResolvedValueOnce({ message: { role: "assistant", content: "SUMMARY" } })
+      .mockResolvedValueOnce({ message: { role: "assistant", content: "two" } });
+    await runtime.prompt("read a.txt");
+    await runtime.prompt("continue");
+
+    // 切到新会话：压缩基线与熔断计数都不该跟过来
+    await runtime.newSession(ws);
+    streamMock.mockResolvedValue({ message: { role: "assistant", content: "ok" } });
+    for (let index = 0; index < 5; index += 1) await runtime.prompt(`turn ${index}`);
+
+    expect(runtime.current?.lastCompactionQuality).toBeNull();
+    expect(
+      runtime.current?.entries.some((entry) => entry.type === "compaction_quality"),
+    ).toBe(false);
+  });
+});

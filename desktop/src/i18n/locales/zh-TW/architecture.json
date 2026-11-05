@@ -1,0 +1,186 @@
+{
+  "nav": {
+    "heading": "Agent 架構",
+    "agentListAria": "Agent 清單",
+    "mainAgentGroup": "主 Agent",
+    "subagentGroup": "子 Agent · {{name}}",
+    "subagentCount_one": "子 Agent {{count}} 個 · {{tagline}}",
+    "subagentCount_other": "子 Agent {{count}} 個 · {{tagline}}",
+    "subagentCount_few": "子 Agent {{count}} 個 · {{tagline}}",
+    "subagentCount_many": "子 Agent {{count}} 個 · {{tagline}}",
+    "addArchitecture": "新增自訂 Agent 架構",
+    "renameHint": "雙擊名稱可重新命名",
+    "deleteAria": "刪除「{{name}}」",
+    "currentBadge": "目前",
+    "profileDisabledBadge": "設定檔停用",
+    "readOnlyBadge": "唯讀",
+    "customTagline": "自訂架構",
+    "loading": "正在載入 Agent…",
+    "emptySubagents": "這個 Agent 沒有包含子 Agent"
+  },
+  "roles": {
+    "general": "通用",
+    "explore": "探索",
+    "planner": "規劃",
+    "scoper": "範圍界定",
+    "depthProber": "深挖",
+    "implementer": "實作",
+    "reviewer": "評審",
+    "verifier": "驗證",
+    "freshVerifier": "獨立複驗",
+    "juror": "終審",
+    "sweeper": "收斂清理",
+    "goalChecker": "目標核對",
+    "custom": "自訂"
+  },
+  "types": {
+    "agent": "Agent",
+    "tier": "層級",
+    "gate": "閘門",
+    "role": "子 Agent"
+  },
+  "nodeCard": {
+    "agent": "主 Agent",
+    "role": "子 Agent",
+    "gate": "閘門",
+    "tier": "層級",
+    "tierPassThrough": "層級 · 直通",
+    "agentTip": "主 Agent 是根 runtime，透過 task 派發子 Agent",
+    "roleTip": "子 Agent 會在 task 派發時實例化",
+    "gateTip": "閘門是一個檢查點，由 gate→role 邊指定結案子 Agent",
+    "tierTip": "任務層級，決定 admit 後要走哪串閘門",
+    "terminalTierTip": "這個層級沒有閘門：admit 之後直接完成"
+  },
+  "edge": {
+    "closeOut": "結案"
+  },
+  "select": {
+    "placeholder": "請選擇"
+  },
+  "defaults": {
+    "standardAgent": "標準 Agent",
+    "mainAgent": "主 Agent",
+    "newTier": "新層級",
+    "newGate": "新閘門",
+    "customRoleDescription": "自訂子 Agent：工具白名單與系統提示詞由這個節點的屬性面板覆寫"
+  },
+  "status": {
+    "loading": "正在載入…",
+    "saving": "正在儲存…",
+    "saved": "已儲存 — 治理 run 會在下一次 admit 前載入新圖",
+    "reset": "已重設為內建架構 — 儲存後生效",
+    "connectTarget": "連線模式：點擊目標節點",
+    "connectPickNode": "先選取一個節點，再點「連線」",
+    "dirty": "有未儲存的修改"
+  },
+  "toolbar": {
+    "addTier": "層級",
+    "addGate": "閘門",
+    "addRole": "子 Agent",
+    "connect": "連線",
+    "cancelConnect": "取消連線",
+    "connectTip": "點擊起點節點，再點擊終點節點連線",
+    "delete": "刪除",
+    "deleteTip": "刪除選取的節點或連線（刪除節點會連帶刪除相鄰的邊）",
+    "fit": "貼合畫布",
+    "fitTip": "置中並縮放以顯示整張架構圖",
+    "reset": "重設內建",
+    "save": "儲存到工作區"
+  },
+  "canvas": {
+    "loading": "正在載入架構圖…",
+    "legend": "拖動節點 · 空白處平移 · 滾輪縮放 | 主 Agent→子 Agent = task 派發，主 Agent→層級 = admit | tier→gate 序號 = 閘門順序，gate→role = 結案"
+  },
+  "inspector": {
+    "ariaLabel": "節點屬性",
+    "close": "關閉屬性面板",
+    "edge": "連線",
+    "agentSubtitle": "主 Agent · {{id}}",
+    "tierSubtitle": "任務層級 · {{id}}",
+    "gateSubtitle": "品質閘門 · {{id}}",
+    "roleSubtitle": "子 Agent · {{role}}",
+    "roleSubtitleNumbered": "子 Agent · {{role}} #{{ordinal}}",
+    "edgeSubtitle": "連線 · {{type}}",
+    "deleteNode": "刪除節點",
+    "deleteEdge": "刪除連線"
+  },
+  "fields": {
+    "nodeName": "節點名稱",
+    "nodeId": "節點 id",
+    "description": "職責說明",
+    "availableTools": "可用工具",
+    "selectAll": "全選",
+    "clearAll": "清除",
+    "restoreDefault": "回復預設",
+    "restoreBuiltin": "回復內建",
+    "systemPrompt": "系統提示詞",
+    "agentPromptPlaceholder": "留空 = 使用目前設定檔的預設提示詞",
+    "dispatch": "派發關係",
+    "dispatchHint": "在連線上修改",
+    "roleType": "子 Agent 識別碼",
+    "displayName": "顯示名稱",
+    "roleDescription": "子 Agent 職責摘要",
+    "gateBindings": "閘門綁定",
+    "gateBindingsHint": "點選改綁",
+    "rolePromptPlaceholder": "留空使用內建提示詞",
+    "gateName": "品質閘門名稱",
+    "invariant": "判定不變量 / 驗收標準",
+    "onFail": "失敗策略",
+    "closer": "結案子 Agent",
+    "tierName": "層級名稱",
+    "tierId": "層級 id（只有 T0 / T1 / T2 會被 admit 辨識）",
+    "tierDescription": "層級說明",
+    "tierPrompt": "層級提示詞（admit 時注入，可選）",
+    "tierPromptPlaceholder": "留空 = 不注入；填了會隨 admit 報告一次性送給主 Agent",
+    "gateSequence": "閘門序列",
+    "gateSequenceHint": "點選增刪",
+    "edgePath": "路徑",
+    "edgeType": "類型",
+    "order": "序號 order（同一層級內依序執行）"
+  },
+  "tools": {
+    "none": "無工具",
+    "allIncludingDynamic": "全量工具，另含 MCP / 瀏覽器動態工具",
+    "selectedCount_one": "已選 {{count}} 項",
+    "selectedCount_other": "已選 {{count}} 項",
+    "selectedCount_few": "已選 {{count}} 項",
+    "selectedCount_many": "已選 {{count}} 項",
+    "selectedFull": "已選全量工具",
+    "followProfile": "跟隨目前設定檔",
+    "inheritedNote": "未覆寫時不額外限制，由設定檔決定",
+    "orchestrationNote": "task / admit 是編排通道，始終可用",
+    "explicitWhitelistNote": "明確白名單不含執行期注入的 MCP / 瀏覽器工具"
+  },
+  "registry": {
+    "unavailable": "註冊表不可用",
+    "loading": "正在讀取註冊表…",
+    "unavailableRetry": "註冊表不可用 — 重新啟動應用程式或點上方重試",
+    "loadFailed": "子 Agent 註冊表載入失敗",
+    "loadFailedHint": "桌面端可能還在執行舊的服務端建置；重新啟動應用程式後再試一次。",
+    "retry": "重試"
+  },
+  "onFail": {
+    "rework": "返工（回跳到第一道閘門）",
+    "loopTo": "loop-to:{{id}}（回跳到 {{id}}）",
+    "block": "block（直接封鎖 lane）"
+  },
+  "closer": {
+    "unbound": "未綁定（admit 會拒絕）"
+  },
+  "empty": {
+    "dispatchEdges": "還沒有派發連線",
+    "gateNodes": "圖中還沒有閘門節點"
+  },
+  "tier": {
+    "executionOrder": "執行順序：{{gates}}；順序在連線上改 order。",
+    "passThrough": "無閘門 · 直通（admit 後直接完成）"
+  },
+  "notes": {
+    "agentPrompt": "輸入框裡預填的是目前設定檔的預設提示詞；改完儲存即生效。自訂內容是<strong>整體覆寫</strong>設定檔提示詞，記得保留工具用法、路徑規則等基本約定。",
+    "agentRoot": "主 Agent 是常駐根 runtime，不參與閘門；結案子 Agent 透過 tier→gate→role 鏈路結案。子 Agent 不能再派發。",
+    "rolePrompt": "留空會回落到內建提示詞。唯讀子 Agent 的審批模式仍由註冊表強制；結案子 Agent 需要保留 JSON 結果契約，否則 ChildResult 驗證會失敗。",
+    "gateBinding": "一個閘門只能有一個結案子 Agent，點選已綁定的會解除綁定。",
+    "gateEvidence": "證據由宿主實測：implementer 看檔案改動，reviewer 看 critical findings，verifier 看命令退出碼；綁給其他子 Agent 時只驗證 completed + valid。閘門不採信模型自述。",
+    "edgeSemantics": "tier→gate 邊決定閘門順序；gate→role 邊決定結案子 Agent；其他連線僅作說明用途。"
+  }
+}

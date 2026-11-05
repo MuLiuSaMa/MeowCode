@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Trans, useTranslation } from "react-i18next";
 import { LuCheck, LuCopy, LuExternalLink, LuLoaderCircle, LuTriangleAlert } from "react-icons/lu";
 import type { GithubDeviceFlow } from "../../api";
 import { Button } from "../ui/Button";
@@ -20,6 +21,7 @@ export function GithubConnectDialog({
   onClose: () => void;
   onConnected: () => void;
 }) {
+  const { t } = useTranslation("marketplace");
   const [phase, setPhase] = useState<Phase>("idle");
   const [flow, setFlow] = useState<GithubDeviceFlow | null>(null);
   const [error, setError] = useState("");
@@ -65,7 +67,7 @@ export function GithubConnectDialog({
           onConnected();
           return;
         }
-        setError(result.message || "授权失败，请重试。");
+        setError(result.message || t("oauth.authFailed"));
         setPhase("error");
       } catch (err) {
         if (cancelled) return;
@@ -78,7 +80,7 @@ export function GithubConnectDialog({
       cancelled = true;
       if (timer) window.clearTimeout(timer);
     };
-  }, [open, phase, flow, intervalSec, onConnected]);
+  }, [open, phase, flow, intervalSec, onConnected, t]);
 
   const copyCode = async (code: string, auto = false) => {
     try {
@@ -93,7 +95,7 @@ export function GithubConnectDialog({
 
   const start = async () => {
     if (typeof window.meow.githubDeviceStart !== "function") {
-      setError("GitHub 登录模块尚未加载，请完全重启 MeowCode 后重试。");
+      setError(t("github.moduleMissing"));
       setPhase("error");
       return;
     }
@@ -122,37 +124,37 @@ export function GithubConnectDialog({
   return (
     <Dialog open={open} onClose={onClose} labelledBy="mc-ghauth-title">
       <span className="mc-dialog__title" id="mc-ghauth-title">
-        连接 GitHub
+        {t("github.title")}
       </span>
-      <p className="mc-dialog__desc">
-        使用 GitHub OAuth 设备流授权 MeowCode。Token 会加密保存在本机，仅用于 GitHub MCP。
-      </p>
+      <p className="mc-dialog__desc">{t("github.desc")}</p>
 
       {phase === "idle" || phase === "starting" ? (
         <>
           <div className="mc-ghauth__hint">
-            <p>授权前请确认 GitHub App 已完成：</p>
+            <p>{t("github.prereq")}</p>
             <ul>
               <li>
-                在{" "}
-                <button
-                  type="button"
-                  className="mc-ghauth__link"
-                  onClick={() => void window.meow.openExternal("https://github.com/settings/apps")}
-                >
-                  GitHub App 设置
-                </button>{" "}
-                中勾选 <code>Enable device flow</code>
+                <Trans
+                  i18nKey="github.deviceFlowStep"
+                  ns="marketplace"
+                  components={[
+                    <button
+                      type="button"
+                      className="mc-ghauth__link"
+                      onClick={() => void window.meow.openExternal("https://github.com/settings/apps")}
+                    />,
+                  ]}
+                />
               </li>
-              <li>按需授予 Contents、Issues、Pull requests、Actions 等仓库权限</li>
+              <li>{t("github.permissions")}</li>
             </ul>
           </div>
           <div className="mc-dialog__footer">
             <Button variant="ghost" onClick={onClose}>
-              取消
+              {t("actions.cancel")}
             </Button>
             <Button variant="primary" disabled={phase === "starting"} onClick={() => void start()}>
-              {phase === "starting" ? "正在连接…" : "开始授权"}
+              {phase === "starting" ? t("github.starting") : t("github.start")}
             </Button>
           </div>
         </>
@@ -162,7 +164,8 @@ export function GithubConnectDialog({
         <>
           <div className="mc-ghauth__codebox">
             <span className="mc-ghauth__codelabel">
-              在 GitHub 输入此代码{autoCopied ? "（已自动复制，直接粘贴即可）" : ""}
+              {t("github.codeLabel")}
+              {autoCopied ? t("github.codeAutoCopied") : ""}
             </span>
             <div className="mc-ghauth__coderow">
               <code className="mc-ghauth__code">{flow.userCode}</code>
@@ -170,27 +173,27 @@ export function GithubConnectDialog({
                 type="button"
                 className="mc-ghauth__copy"
                 onClick={() => void copyCode(flow.userCode)}
-                aria-label="复制设备码"
+                aria-label={t("github.copyCodeAria")}
               >
                 {copied ? <LuCheck size={13} /> : <LuCopy size={13} />}
-                {copied ? "已复制" : "复制"}
+                {copied ? t("actions.copied") : t("actions.copy")}
               </button>
             </div>
           </div>
           <p className="mc-ghauth__wait">
             <LuLoaderCircle size={14} className="mc-ghauth__spin" />
-            等待你在 GitHub 上授权…设备码 {Math.ceil(flow.expiresIn / 60)} 分钟内有效
+            {t("github.waiting", { count: Math.ceil(flow.expiresIn / 60) })}
           </p>
           <div className="mc-dialog__footer">
             <Button variant="ghost" onClick={onClose}>
-              取消
+              {t("actions.cancel")}
             </Button>
             <Button
               variant="primary"
               icon={<LuExternalLink size={14} />}
               onClick={() => void window.meow.openExternal(flow.verificationUri)}
             >
-              在浏览器中打开
+              {t("github.openInBrowser")}
             </Button>
           </div>
         </>
@@ -200,12 +203,12 @@ export function GithubConnectDialog({
         <>
           <div className="mc-ghauth__success">
             <LuCheck size={16} />
-            <span>GitHub 已连接，正在加载 GitHub MCP 工具。</span>
+            <span>{t("github.connected")}</span>
           </div>
           {warning ? <div className="mc-ghauth__warning">{warning}</div> : null}
           <div className="mc-dialog__footer">
             <Button variant="primary" onClick={onClose}>
-              完成
+              {t("actions.done")}
             </Button>
           </div>
         </>
@@ -219,7 +222,7 @@ export function GithubConnectDialog({
           </div>
           <div className="mc-dialog__footer">
             <Button variant="ghost" onClick={onClose}>
-              取消
+              {t("actions.cancel")}
             </Button>
             <Button
               variant="primary"
@@ -228,7 +231,7 @@ export function GithubConnectDialog({
                 setFlow(null);
               }}
             >
-              重试
+              {t("actions.retry")}
             </Button>
           </div>
         </>

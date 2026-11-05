@@ -1,0 +1,213 @@
+{
+  "image": {
+    "readFailed": "Bild konnte nicht gelesen werden",
+    "unsupported": "Nicht unterstütztes Bildformat: {{type}}",
+    "tooLarge": "Bild zu groß: {{name}} ist auch nach der Komprimierung noch über 2 MB. Bitte zuerst zuschneiden oder die Auflösung verringern.",
+    "maxCount_one": "Pro Nachricht kann nur {{count}} Bild angehängt werden",
+    "maxCount_few": "Pro Nachricht können höchstens {{count}} Bilder angehängt werden",
+    "maxCount_many": "Pro Nachricht können höchstens {{count}} Bilder angehängt werden",
+    "maxCount_other": "Pro Nachricht können höchstens {{count}} Bilder angehängt werden",
+    "onlyImages": "Es können nur Bilddateien angehängt werden",
+    "fallbackName": "Bild"
+  },
+  "file": {
+    "pathFailed": "Dateipfad konnte nicht gelesen werden: {{name}}",
+    "skipped": "Leere Datei oder Ordner übersprungen: {{name}}"
+  },
+  "plugin": {
+    "loadFailed": "Laden fehlgeschlagen: {{error}}",
+    "local": "Lokales Plugin"
+  },
+  "permission": {
+    "title": "Tool-Berechtigungen",
+    "readOnly": {
+      "label": "Nur lesen",
+      "desc": "Dateien lesen, suchen und browsen erlaubt; Schreiben, Ändern und Befehle ausführen untersagt"
+    },
+    "ask": {
+      "label": "Jedes Mal fragen",
+      "desc": "Vor dem Schreiben, Ändern von Dateien und Ausführen von Befehlen wird bestätigt"
+    },
+    "auto": {
+      "label": "Automatisch im Workspace",
+      "desc": "Schreiben, Ändern und gängige Entwicklerbefehle im Workspace laufen automatisch; Zugriff auf Zugangsdaten, Download-und-Ausführen, Systemeinstellungen, Veröffentlichen/Deployen, destruktives Git und Pfade außerhalb des Workspace erfordern weiterhin eine Bestätigung"
+    },
+    "full": {
+      "label": "Voller Zugriff",
+      "desc": "Dateien überall auf diesem Computer lesen und schreiben, alle Tools automatisch ausführen"
+    }
+  },
+  "slash": {
+    "plan": {
+      "label": "Planmodus",
+      "desc": "Nur recherchieren; den Umsetzungsplan in ein Dokument unter plans/ schreiben und auf Bestätigung warten"
+    },
+    "goal": {
+      "label": "Zielmodus",
+      "desc": "Kontinuierlich auf das Ziel hinarbeiten und den Fortschritt mit update_plan verfolgen"
+    },
+    "exit": "{{mode}} beenden",
+    "menuAria": "Befehle",
+    "group": {
+      "mode": "Modi",
+      "command": "Befehle",
+      "plugin": "Plugins",
+      "skill": "Skills"
+    }
+  },
+  "mode": {
+    "plan": "Planmodus",
+    "goal": "Zielmodus",
+    "exitAria": "{{mode}}, zum Beenden klicken",
+    "exitTitle": "Klicken, um diesen Modus zu beenden"
+  },
+  "project": {
+    "menuAria": "Projekt wechseln",
+    "search": "Projekte durchsuchen",
+    "empty": "Keine passenden Projekte",
+    "new": "Neues Projekt",
+    "remove": "Aus Liste entfernen",
+    "pickWorkspace": "Workspace auswählen"
+  },
+  "mention": {
+    "aria": "Dateien im Workspace referenzieren",
+    "back": "Eine Ebene höher",
+    "root": "Workspace-Stammverzeichnis",
+    "refresh": "Liste aktualisieren",
+    "loadFailed": "Laden fehlgeschlagen",
+    "loading": "Wird geladen…",
+    "dirFailed": "Ordner kann nicht gelesen werden",
+    "noMatch": "Keine passenden Dateien",
+    "emptyDir": "Dieser Ordner ist leer"
+  },
+  "queue": {
+    "recoveredAria": "Nicht gesendete Nachrichten von zuletzt",
+    "recoveredHead": "Beim letzten Beenden nicht gesendet",
+    "sendAsNew": "Als neue Nachricht senden",
+    "send": "Senden",
+    "discardTitle": "Diese Nachricht verwerfen",
+    "discard": "Verwerfen",
+    "pendingAria": "Nachrichten in der Warteschlange",
+    "steerTitle": "Aktuelle Antwort abbrechen und diese Nachricht sofort senden",
+    "steer": "Sofort einwerfen",
+    "removeTitle": "Aus der Warteschlange entfernen",
+    "remove": "Löschen"
+  },
+  "plan": {
+    "answerAria": "Frage beantworten",
+    "answerSubMultiple": "Antwort auswählen oder unten eingeben · danach geht es automatisch zur nächsten Frage",
+    "answerSub": "Antwort auswählen oder unten eingeben",
+    "answerPlaceholder": "Etwas anderes — Enter führt zur nächsten Frage",
+    "prev": "Zurück",
+    "skipRest": "Rest überspringen",
+    "unanswered": "(unbeantwortet)",
+    "confirmAria": "Plan bestätigen",
+    "exit": "Planmodus beenden",
+    "confirmTitle": "Diesen Plan ausführen?",
+    "confirmSub": "Nach der Bestätigung führe ich den Plan aus und gebe die Ausgabe aus",
+    "start": "Ausführung starten",
+    "adjustPlaceholder": "Plan anpassen — beschreiben Sie, was geändert werden soll",
+    "sendAdjust": "Anpassung senden",
+    "adjustPrompt": "Plan anpassen; nach dem Senden überarbeitet das Modell den Plan weiter…"
+  },
+  "branch": {
+    "detached": "detached HEAD · klicken, um den Branch zu wechseln",
+    "current": "Aktueller Branch {{name}} · klicken zum Wechseln",
+    "search": "Branches durchsuchen",
+    "listAria": "Branch-Liste",
+    "loading": "Branches werden gelesen…",
+    "noMatch": "Keine passenden Branches",
+    "empty": "Dieses Repository hat noch keine Branches",
+    "stashSwitch": "Lokale Änderungen stashen und wechseln",
+    "openGit": "Quellcodeverwaltung öffnen"
+  },
+  "worktree": {
+    "locked": "Diese Sitzung läuft bereits in einem eigenen Worktree",
+    "hint": "Diese Unterhaltung in einem separaten Git-Worktree starten; nicht committete Änderungen werden nicht übernommen"
+  },
+  "input": {
+    "placeholder": {
+      "setup": "Bitte zuerst die Einrichtung abschließen",
+      "compacting": "Der Gesprächsverlauf wird komprimiert; danach können Sie wieder senden",
+      "streaming": "Eingeben und Enter drücken, um in die Warteschlange zu stellen",
+      "default": "@ eingeben, um Projektdateien zu referenzieren; Bilder oder beliebige Dateien hierher ziehen (auch außerhalb des Workspace)"
+    },
+    "polishing": "KI überarbeitet"
+  },
+  "action": {
+    "more": "Weitere Aktionen",
+    "moreTitle": "Anhänge hinzufügen / Modus wechseln",
+    "plusMenuAria": "Hinzufügen, referenzieren und Befehle",
+    "upload": "Anhang hochladen",
+    "plugins": "Plugins",
+    "pluginsCount": "Plugins ({{count}})",
+    "skills": "Skills",
+    "skillsCount": "Skills ({{count}})",
+    "installing": "Wird installiert…",
+    "polish": "Prompt überarbeiten",
+    "send": "Senden",
+    "stop": "Stoppen"
+  },
+  "attach": {
+    "listAria": "Bilder zum Senden",
+    "removeImageAria": "Bild entfernen",
+    "remove": "Entfernen"
+  },
+  "chip": {
+    "listAria": "Referenzierte Skills, Plugins und Anhänge",
+    "remove": "{{name}} entfernen"
+  },
+  "agent": {
+    "title": "Haupt-Agent: {{name}}"
+  },
+  "polish": {
+    "discarded": "Die Eingabe hat sich geändert, das überarbeitete Ergebnis wurde verworfen.",
+    "failed": "Prompt konnte nicht überarbeitet werden: {{error}}"
+  },
+  "ctx": {
+    "title": "Kontextnutzung",
+    "close": "Schließen",
+    "used": "Verwendet",
+    "windowUnset": "kein Fenster festgelegt",
+    "categories": {
+      "system": "System-Prompt",
+      "tools": "Systemtools",
+      "skills": "Fähigkeiten ({{count}})",
+      "messages": "Nachrichten",
+      "other": "Sonstiges"
+    },
+    "hint": "Beim Komprimieren werden frühere Runden zu einer Zusammenfassung gebündelt; der Verlauf in der Oberfläche und die Sitzungsdatei bleiben vollständig erhalten.",
+    "compacting": "Wird komprimiert…",
+    "compact": "Kontext jetzt komprimieren",
+    "cache": {
+      "stateLabel": "Cache",
+      "stateWarm": "Warm",
+      "stateCold": "Kalt",
+      "stateEvicted": "Verdrängt",
+      "stateUnsupported": "Nicht unterstützt",
+      "stateUnknown": "Unbekannt",
+      "roundLabel": "Neueste",
+      "round": "lesen {{read}} · schreiben {{write}}",
+      "busts": "Möglicher Cache-Bruch",
+      "bustTitle": "~{{drop}} Token weniger gelesen als in der letzten Runde: Präfix umgeschrieben oder Cache verdrängt",
+      "reasonPrefixChanged": "Präfix geändert (Tool-Katalog / Systemprompt neu geschrieben)",
+      "reasonFirstRequest": "Erste Anfrage (Kaltstart)",
+      "reasonIdleExceededTtl": "Leerlauf über Cache-TTL",
+      "reasonNotReported": "Anbieter hat Cache-Details nicht gemeldet",
+      "reasonBelowGranularity": "Eingabe unter minimaler cachebarer Länge",
+      "reasonCacheMiss": "Cache-Fehlversuch"
+    }
+  },
+  "effort": {
+    "default": "Standard",
+    "off": "Aus",
+    "on": "Ein",
+    "minimal": "Minimal",
+    "low": "Niedrig",
+    "medium": "Mittel",
+    "high": "Hoch",
+    "xhigh": "Sehr hoch",
+    "max": "Maximal",
+    "ultra": "Ultra"
+  }
+}

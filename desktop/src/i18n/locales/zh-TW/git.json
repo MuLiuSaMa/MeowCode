@@ -1,0 +1,160 @@
+{
+  "nav": {
+    "heading": "Git 管理",
+    "ariaLabel": "Git 管理",
+    "viewAria": "Git 管理檢視"
+  },
+  "group": {
+    "conflicted": "衝突",
+    "staged": "已暫存",
+    "unstaged": "變更",
+    "empty": "暫無",
+    "unstageAll": "全部取消暫存",
+    "stageAll": "全部暫存"
+  },
+  "list": {
+    "truncated": "僅顯示前 {{shown}} 個，共 {{total}} 個",
+    "truncatedStaged": "（其餘請用「全部取消暫存」）",
+    "truncatedUnstaged": "（其餘請用「全部暫存」，或把它們加進 .gitignore）"
+  },
+  "repo": {
+    "unavailable": "未偵測到 git，請先安裝並加入 PATH",
+    "notRepo": "目前工作區不是 Git 儲存庫",
+    "reading": "正在讀取儲存庫狀態…"
+  },
+  "repoHint": {
+    "unavailable": "未偵測到 git：請安裝 Git 並確認 `git --version` 在終端機可用。",
+    "notRepo": "目前工作區不是 Git 儲存庫。在終端機執行 `git init` 後回到這裡重新整理。",
+    "failed": "無法讀取儲存庫狀態。"
+  },
+  "branch": {
+    "switch": "切換分支",
+    "search": "搜尋分支",
+    "listAria": "分支清單",
+    "loading": "正在讀取分支…",
+    "noMatch": "沒有符合的分支",
+    "stash": "切換前貯藏本機變更",
+    "force": "強制切換（捨棄未提交的變更）",
+    "newPlaceholder": "基於目前 HEAD 新建分支，如 feature/login",
+    "create": "新建並切換",
+    "close": "關閉"
+  },
+  "conflict": {
+    "ours": "我方",
+    "oursTitle": "採用我方（ours）",
+    "theirs": "對方",
+    "theirsTitle": "採用對方（theirs）",
+    "mark": "已解決",
+    "markTitle": "標記為已解決（內容已手動處理）",
+    "resolveTitleOurs": "採用我方版本",
+    "resolveTitleTheirs": "採用對方版本",
+    "resolveTitleMark": "標記為已解決",
+    "resolveMessageMark": "會把該衝突檔案標記為已解決（內容保持目前磁碟上的樣子）。",
+    "resolveMessageReplace": "該檔案會被直接替換為所選一側的版本，另一側的內容會遺失。"
+  },
+  "file": {
+    "stage": "暫存",
+    "unstage": "取消暫存",
+    "discard": "捨棄變更"
+  },
+  "discard": {
+    "title": "捨棄變更",
+    "message": "這些檔案的工作區變更會被永久捨棄（未暫存的修改會消失，untracked 檔案會被刪除）。",
+    "confirm": "捨棄"
+  },
+  "dialog": {
+    "cancel": "取消",
+    "confirm": "確認",
+    "processing": "處理中…"
+  },
+  "footer": {
+    "changes_one": "{{count, number}} 個變更",
+    "changes_other": "{{count, number}} 個變更",
+    "changes_few": "{{count, number}} 個變更",
+    "changes_many": "{{count, number}} 個變更"
+  },
+  "action": {
+    "refresh": "重新整理",
+    "pull": "拉取",
+    "push": "推送",
+    "forcePush": "強制推送",
+    "back": "返回"
+  },
+  "pull": {
+    "title": "拉取（--ff-only）",
+    "noUpstream": "目前分支沒有上游"
+  },
+  "push": {
+    "detached": "detached HEAD 無法推送",
+    "forceTitle": "強制推送（--force-with-lease，需兩次確認）",
+    "message": "把 {{branch}} 推送到 {{upstream}}。",
+    "messageNew": "把 {{branch}} 推送到 origin 並設定上游分支。",
+    "forceWarning": "強制推送會用本機歷史覆蓋遠端可能已有的提交（--force-with-lease 僅在遠端未被他人更新時生效）。這通常不可逆。",
+    "forceConfirm": "確認用本機 {{branch}} 覆蓋遠端 {{upstream}}？",
+    "forceStep1": "強制推送（1/2）",
+    "forceStep2": "強制推送（2/2）",
+    "continue": "繼續"
+  },
+  "upstream": {
+    "none": "沒有上游分支",
+    "short": "上游",
+    "ahead": "領先 {{count, number}}",
+    "behind": "落後 {{count, number}}"
+  },
+  "tab": {
+    "changes": "變更",
+    "history": "歷史"
+  },
+  "detail": {
+    "backTitle": "返回清單",
+    "loading": "正在讀取提交詳情…",
+    "mergeCommit": "合併提交",
+    "moreFiles_one": "+{{count, number}} 個檔案未列出",
+    "moreFiles_other": "+{{count, number}} 個檔案未列出",
+    "moreFiles_few": "+{{count, number}} 個檔案未列出",
+    "moreFiles_many": "+{{count, number}} 個檔案未列出"
+  },
+  "diff": {
+    "loading": "正在讀取 diff…",
+    "binary": "二進位檔案，不顯示內容",
+    "empty": "沒有可顯示的變更",
+    "emptyCommit": "這次提交沒有可顯示的變更",
+    "truncated": "補丁過大，已截斷",
+    "select": "選擇一個檔案查看變更",
+    "selectFileHint": "在左側選擇檔案查看變更（已暫存/未暫存分開顯示）",
+    "preparing": "正在準備 diff…"
+  },
+  "commit": {
+    "placeholder": "提交資訊（Ctrl+Enter 提交）",
+    "placeholderEmpty": "先暫存檔案再寫提交資訊",
+    "conflicts_one": "有 {{count, number}} 個衝突待解決，解決後才能提交",
+    "conflicts_other": "有 {{count, number}} 個衝突待解決，解決後才能提交",
+    "conflicts_few": "有 {{count, number}} 個衝突待解決，解決後才能提交",
+    "conflicts_many": "有 {{count, number}} 個衝突待解決，解決後才能提交",
+    "needsStaged": "暫存檔案後即可提交",
+    "staged_one": "{{count, number}} 個檔案已暫存",
+    "staged_other": "{{count, number}} 個檔案已暫存",
+    "staged_few": "{{count, number}} 個檔案已暫存",
+    "staged_many": "{{count, number}} 個檔案已暫存",
+    "aiTitle": "根據已暫存的 diff 產生提交資訊",
+    "aiGenerate": "AI 產生",
+    "aiGenerating": "產生中…",
+    "submit": "提交",
+    "committing": "提交中…",
+    "emptyMessage": "提交資訊不能為空",
+    "aiFailed": "AI 產生失敗：{{message}}"
+  },
+  "history": {
+    "loading": "正在讀取提交歷史…",
+    "empty": "還沒有提交",
+    "loadMore": "載入更多",
+    "loadingMore": "載入中…"
+  },
+  "workspace": {
+    "label": "工作區：",
+    "none": "未選擇"
+  },
+  "error": {
+    "close": "關閉"
+  }
+}

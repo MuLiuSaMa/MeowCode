@@ -1,10 +1,11 @@
+import i18n from "i18next";
 import type { IconType } from "react-icons";
 import { LuCpu, LuFeather, LuLayers } from "react-icons/lu";
 import type { AgentProfileId, SubagentType } from "./api";
 
 /**
  * 与 src/agent/agent-profiles.ts 同步的展示信息（同 agentRoles.ts 的做法）：
- * 服务端决定运行时行为（提示词 / 工具白名单 / 并发上限），这里只管中文名、图标与文案。
+ * 服务端决定运行时行为（提示词 / 工具白名单 / 并发上限），这里只管名称、图标与文案。
  */
 export type AgentProfileDisplay = {
   id: AgentProfileId;
@@ -19,32 +20,38 @@ export type AgentProfileDisplay = {
   icon: IconType;
 };
 
+/** 展示文案只存 key（chat 命名空间）：取值时再查译文，切语言才会跟着刷新。 */
+export const AGENT_PROFILE_KEYS: Record<AgentProfileId, { label: string; tagline: string; description: string }> = {
+  standard: {
+    label: "profile.standard.label",
+    tagline: "profile.standard.tagline",
+    description: "profile.standard.description",
+  },
+  minimal: {
+    label: "profile.minimal.label",
+    tagline: "profile.minimal.tagline",
+    description: "profile.minimal.description",
+  },
+  complex: {
+    label: "profile.complex.label",
+    tagline: "profile.complex.tagline",
+    description: "profile.complex.description",
+  },
+};
+
 export const AGENT_PROFILE_ORDER: AgentProfileId[] = ["standard", "minimal", "complex"];
 
-export const AGENT_PROFILES: Record<AgentProfileId, AgentProfileDisplay> = {
+/** 档位的非文案部分：角色清单与图标是运行时事实，不进词条。 */
+const PROFILE_META: Record<AgentProfileId, { roles: SubagentType[]; icon: IconType }> = {
   standard: {
-    id: "standard",
-    label: "标准 Agent",
-    tagline: "完整能力：全量工具 + 全部子 Agent",
-    description: "默认主 Agent：全量工具，按需派发全部子 Agent 角色。",
     roles: ["general", "explore", "planner", "implementer", "reviewer", "verifier", "custom"],
     icon: LuCpu,
   },
   minimal: {
-    id: "minimal",
-    label: "极简 Agent",
-    tagline: "只有 read_file + run_command，自己动手",
-    description:
-      "只保留 read_file 与 run_command（命令行读写文件），子 Agent 仅通用 / Explore，架构图里也没有门禁。",
     roles: ["general", "explore"],
     icon: LuFeather,
   },
   complex: {
-    id: "complex",
-    label: "复杂 Agent",
-    tagline: "十道门禁：规划→范围→深挖→实现→评审→复验→终审→清扫→目标核对",
-    description:
-      "全量工具 + 13 个角色（含范围 / 深挖 / 独立复验 / 终审 / 收敛清扫 / 目标核对），架构图跑 G0→G1→G2→G3.5→G4→G5→G6→G7→sweep→goal-check。",
     roles: [
       "general",
       "explore",
@@ -62,6 +69,29 @@ export const AGENT_PROFILES: Record<AgentProfileId, AgentProfileDisplay> = {
     ],
     icon: LuLayers,
   },
+};
+
+/**
+ * 本次批次之外的消费点（Composer / ArchitecturePage / AgentProfilePopover 由并行批次负责）
+ * 仍按 `profile.label` 读取，因此 label / tagline / description 做成惰性 getter：
+ * 模块加载期不调用 t()，读取时才解析 key。
+ */
+function defineProfile(id: AgentProfileId): AgentProfileDisplay {
+  const profile = { id, ...PROFILE_META[id] } as AgentProfileDisplay;
+  const keys = AGENT_PROFILE_KEYS[id];
+  for (const field of ["label", "tagline", "description"] as const) {
+    Object.defineProperty(profile, field, {
+      enumerable: true,
+      get: () => i18n.t(`chat:${keys[field]}`),
+    });
+  }
+  return profile;
+}
+
+export const AGENT_PROFILES: Record<AgentProfileId, AgentProfileDisplay> = {
+  standard: defineProfile("standard"),
+  minimal: defineProfile("minimal"),
+  complex: defineProfile("complex"),
 };
 
 export function agentProfileDisplay(id: AgentProfileId): AgentProfileDisplay {

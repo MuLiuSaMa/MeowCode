@@ -1,4 +1,5 @@
 import { useEffect, useRef, type RefObject } from "react";
+import { useTranslation } from "react-i18next";
 import { LuCheck, LuPuzzle } from "react-icons/lu";
 import { AGENT_PROFILES, AGENT_PROFILE_ORDER } from "../agentProfiles";
 import type { AgentProfileId, HarnessArchitectureSummary } from "../api";
@@ -31,6 +32,7 @@ export function AgentProfilePopover({
   onSelectArchitecture?: (id: string) => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
+  const { t } = useTranslation("shell");
   const customs = (architectures ?? []).filter((item) => !item.builtin);
 
   useEffect(() => {
@@ -56,7 +58,7 @@ export function AgentProfilePopover({
       className="mc-permmenu mc-agentmenu"
       ref={ref}
       role="menu"
-      aria-label="主 Agent 档位"
+      aria-label={t("agentProfile.aria")}
     >
       {AGENT_PROFILE_ORDER.map((id) => {
         const profile = AGENT_PROFILES[id];
@@ -80,7 +82,10 @@ export function AgentProfilePopover({
               {profile.label}
             </span>
             <span className="mc-permmenu__desc">
-              {profile.tagline} · 可派发 {profile.roles.length} 个子 Agent
+              {t("agentProfile.dispatchable", {
+                tagline: profile.tagline,
+                count: profile.roles.length,
+              })}
             </span>
             {active ? <LuCheck size={14} className="mc-permmenu__check" /> : null}
           </button>
@@ -109,7 +114,7 @@ export function AgentProfilePopover({
                   <LuPuzzle size={14} />
                   {label}
                 </span>
-                <span className="mc-permmenu__desc">自定义架构 · 沿用当前档位的能力</span>
+                <span className="mc-permmenu__desc">{t("agentProfile.customDesc")}</span>
                 {active ? <LuCheck size={14} className="mc-permmenu__check" /> : null}
               </button>
             );

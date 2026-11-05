@@ -16,7 +16,7 @@
       const scenario = params.get("s") || "chat";
       // ?theme=light|dark 强制首帧主题（未指定则跟随系统）
       const forcedTheme = params.get("theme");
-      // ?sec=general|appearance|models|about 直接打开设置页的某个分区
+      // ?sec=general|appearance|island|models|memory|archive|worktree|rules|about 直接打开设置页的某个分区
       const forcedSection = params.get("sec");
       // ?menu=1 打开模型列表；?menu=2 打开后再点第一个模型，直接跳到思考强度滑杆（预览专用）
       if (params.get("menu") === "1" || params.get("menu") === "2") {
@@ -215,6 +215,28 @@
         },
       ];
 
+      /**
+       * ?s=nav 的多轮样例：≥2 条用户消息 + 长回答撑出滚动，验证右缘对话浏览条
+       * （收起刻度 / 悬停展开 / 点击跳转 / 当前位置高亮）。
+       */
+      const NAV_TURNS = [
+        "帮我把整体配色重写成黑白灰，去掉所有蓝色。",
+        "工具调用能不能折叠成单行摘要？点开再看详情。",
+        "再加一个对话浏览条，悬停展开显示每条用户消息。",
+        "现在跑一下类型检查和构建，确认没有破坏别的。",
+        "最后把这次的改动整理成一条提交信息。",
+      ];
+      const NAV_MESSAGES = NAV_TURNS.flatMap((turn, index) => [
+        { role: "user", content: turn },
+        {
+          role: "assistant",
+          content:
+            index === NAV_TURNS.length - 1
+              ? "好的，这次改动一共五处：\n\n1. 新增 `MessageNavigator` 组件（浏览条本体）\n2. `MessageList` 挂载浏览条并打锚点\n3. `UserBubble` 透出 `data-nl-key`\n4. 预览桩加 `?s=nav` 场景\n\n提交信息建议：`feat(chat): 消息流右缘加对话浏览条，悬停展开可跳转`。"
+              : `收到，第 ${index + 1} 步这样做：\n\n1. 先看现状：相关代码集中在 \`desktop/src/components\` 下，样式令牌都在 \`theme/tokens.css\`。\n2. 动手改：保持黑白灰基调，圆角与阴影复用现有令牌，不引入新颜色。\n3. 自测：\`npx tsc --noEmit\` 过一遍，再用预览桩目检两种主题。\n\n> 备注：动画时长统一走 \`--dur\`/\`--ease\`，尊重系统的减少动态偏好。\n\n接下来我会把剩下的部分逐段补齐，包括边界情况（空会话、单条消息、超长会话内部滚动）的处理，确保行为与视觉都和现有组件一致。`,
+        },
+      ]);
+
       /** 预览用的模型目录，便于核对图标与中文名。 */
       const MOCK_PROVIDERS = [
         {
@@ -275,6 +297,8 @@
           if (path === "/session/messages") {
             // ?s=history：返回带 tool_calls 的存档，验证历史回放重建工具行
             if (scenario === "history") return reply({ messages: HISTORY_MESSAGES });
+            // ?s=nav：多轮长对话，验证对话浏览条
+            if (scenario === "nav") return reply({ messages: NAV_MESSAGES });
             return reply({
               // ?wait=1 时只回用户消息：配合 message_start 验证「等待模型响应」指示器
               messages:
@@ -645,7 +669,17 @@
         }, 50);
         const apply = () => {
           const navs = document.querySelectorAll(".mc-settings__navitem");
-          const map = { general: 0, appearance: 1, models: 2, archive: 3, about: 4 };
+          const map = {
+            general: 0,
+            appearance: 1,
+            island: 2,
+            models: 3,
+            memory: 4,
+            archive: 5,
+            worktree: 6,
+            rules: 7,
+            about: 8,
+          };
           const index = map[forcedSection];
           if (navs.length && index !== undefined) navs[index].click();
           // ?picker=1 时顺带打开「添加模型服务商」选择器（预览专用）

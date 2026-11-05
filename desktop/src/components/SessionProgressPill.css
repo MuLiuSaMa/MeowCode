@@ -1,0 +1,215 @@
+/* 悬浮进度胶囊：绝对定位在输入框上方，不占文档流 */
+.mc-sessionpill-anchor {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 12px);
+  transform: translateX(-50%);
+  z-index: 25;
+}
+
+.mc-sessionpill {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  corner-shape: superellipse(1.5);
+  background: var(--bg-elevated);
+  box-shadow: var(--shadow-md);
+  color: var(--fg-subtle);
+  font-size: var(--fs-sm);
+  line-height: 1;
+  white-space: nowrap;
+  user-select: none;
+}
+
+.mc-sessionpill__part {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  transition: color var(--dur) var(--ease);
+}
+
+.mc-sessionpill__part:hover,
+.mc-sessionpill__part[aria-expanded="true"] {
+  color: var(--fg);
+}
+
+.mc-sessionpill__part:focus-visible {
+  outline: 2px solid var(--accent, currentColor);
+  outline-offset: 2px;
+  border-radius: var(--radius-xs);
+}
+
+.mc-sessionpill__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  color: var(--fg-subtle);
+}
+
+.mc-sessionpill__icon[data-state="done"] {
+  border: 1px solid currentColor;
+  border-radius: 50%;
+  box-sizing: border-box;
+  color: var(--success-strong);
+}
+
+.mc-sessionpill__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--fg-subtlest);
+}
+
+.mc-sessionpill__sep {
+  color: var(--fg-subtlest);
+}
+
+.mc-sessionpill__stats {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: baseline;
+  gap: 4px;
+  font-variant-numeric: tabular-nums;
+}
+
+.mc-sessionpill__add {
+  color: var(--diff-add);
+}
+
+.mc-sessionpill__del {
+  color: var(--diff-del);
+}
+
+/* hover 浮层：在胶囊上方，宽度随内容，长路径截断 */
+.mc-sessionpill-card {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 8px);
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  min-width: 300px;
+  max-width: min(460px, calc(100vw - 40px));
+  max-height: min(360px, 60vh);
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  corner-shape: superellipse(1.5);
+  background: var(--bg-elevated);
+  box-shadow: var(--shadow-lg);
+  animation: mc-sessionpill-fade 120ms var(--ease);
+  overflow: hidden;
+}
+
+@keyframes mc-sessionpill-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.mc-sessionpill__cardtitle {
+  padding: 2px 6px 6px;
+  color: var(--fg);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+}
+
+.mc-sessionpill__files,
+.mc-sessionpill__steps {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 1px;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.mc-sessionpill__file {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 5px 6px;
+  border-radius: var(--radius-sm);
+  font-size: var(--fs-sm);
+}
+
+.mc-sessionpill__file:hover {
+  background: var(--surface-hover);
+}
+
+.mc-sessionpill__path {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--fg-subtle);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mc-sessionpill__step {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 5px 6px;
+  border-radius: var(--radius-sm);
+  color: var(--fg-subtle);
+  font-size: var(--fs-sm);
+  line-height: 1.4;
+}
+
+.mc-sessionpill__step[data-status="completed"],
+.mc-sessionpill__step[data-status="in_progress"] {
+  color: var(--fg);
+}
+
+.mc-sessionpill__step[data-status="cancelled"] {
+  color: var(--fg-subtlest);
+  text-decoration: line-through;
+}
+
+.mc-sessionpill__status {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  margin-top: 1px;
+  border-radius: 50%;
+}
+
+.mc-sessionpill__status[data-kind="completed"] {
+  border: 1px solid var(--success-strong);
+  color: var(--success-strong);
+}
+
+.mc-sessionpill__status[data-kind="pending"] {
+  border: 1px solid var(--border-strong);
+}
+
+.mc-sessionpill__status[data-kind="cancelled"] {
+  border: 1px solid var(--border-strong);
+  color: var(--danger);
+}
+
+.mc-sessionpill__steptitle {
+  min-width: 0;
+}

@@ -23,7 +23,9 @@ describe("resolveCachePlan", () => {
   it("gives the native Anthropic endpoint all four breakpoints", () => {
     const plan = resolveCachePlan(provider({}));
     expect(plan.profile).toBe("anthropic-native");
-    expect(plan.breakpoints).toEqual(["tools", "system0", "system1", "tail"]);
+    expect(plan.breakpoints).toEqual(["tools", "system1", "anchor", "tail"]);
+    expect(hasBreakpoint(plan, "anchor")).toBe(true);
+    expect(hasBreakpoint(plan, "system0")).toBe(false);
     expect(plan.enabled).toBe(true);
     expect(plan.dropped).toBe(0);
   });
@@ -89,6 +91,38 @@ describe("cacheControlFor", () => {
       type: "ephemeral",
       ttl: "1h",
     });
+  });
+});
+
+describe("auto cache TTL", () => {
+  it("gives human-paced sessions 1h and machine-paced ones 5m", () => {
+    expect(resolveCachePlan(provider({ cacheTtl: "auto", pace: "interactive" })).ttl).toBe("1h");
+    expect(resolveCachePlan(provider({ cacheTtl: "auto", pace: "machine" })).ttl).toBe("5m");
+    // 未盖章 pace 走最保守档
+    expect(resolveCachePlan(provider({ cacheTtl: "auto" })).ttl).toBe("5m");
+  });
+
+  it("clamps 1h down on endpoints that were never measured", () => {
+    // 画像仍是 native（模型名含 claude），但端点没进实测白名单 → 不发 1h
+    expect(
+      resolveCachePlan(
+        provider({ cacheTtl: "1h", baseUrl: "https://gateway.example.com/v1", model: "claude-x" }),
+      ).ttl,
+    ).toBe("5m");
+    // Qwen 恒 5m
+    expect(
+      resolveCachePlan(
+        provider({ cacheTtl: "auto", pace: "interactive", baseUrl: "https://dashscope.aliyuncs.com/v1", model: "qwen3-max" }),
+      ).ttl,
+    ).toBe("5m");
+  });
+
+  it("never emits a ttl on protocols without breakpoints", () => {
+    const chat = resolveCachePlan(
+      provider({ protocol: "openai-chat-completions", baseUrl: "https://api.deepseek.com/v1", model: "deepseek-chat", cacheTtl: "auto", pace: "interactive" }),
+    );
+    expect(chat.enabled).toBe(false);
+    expect(chat.ttl).toBe("5m");
   });
 });
 

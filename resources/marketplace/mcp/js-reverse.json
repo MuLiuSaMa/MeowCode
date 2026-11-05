@@ -1,0 +1,10 @@
+{
+  "description": "JS 逆向调试：Chrome 断点/单步/调用栈、脚本源码搜索与保存、XHR/WebSocket 抓包与调用链定位、页面脚本执行（npx 启动，需本地 Chrome）。",
+  "server": {
+    "command": "npx",
+    "args": [
+      "-y",
+      "js-reverse-mcp@4.0.5"
+    ]
+  }
+}

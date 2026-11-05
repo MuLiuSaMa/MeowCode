@@ -87,9 +87,18 @@ function normalizeResults(value: unknown, fallback: number): number {
   return Math.min(Math.floor(parsed), MAX_SEARCH_RESULTS);
 }
 
-function truncateSearchOutput(text: string): string {
-  if (text.length <= MAX_SEARCH_CHARS) return text;
-  return `${text.slice(0, MAX_SEARCH_CHARS)}\n... [truncated ${text.length - MAX_SEARCH_CHARS} characters]`;
+/**
+ * 内联文本裁到 12k，但**完整 body 通过 spillText 交回调用方**。
+ *
+ * 落盘必须存裁剪前的全文：否则模型按提示去读 artifact 却读不到 12k 之后的内容，
+ * 只能重跑整次搜索 —— 那是一次完整上下文重发，比多存几百 KB 贵得多。
+ */
+function truncateSearchOutput(text: string): { inline: string; spillText?: string } {
+  if (text.length <= MAX_SEARCH_CHARS) return { inline: text };
+  return {
+    inline: `${text.slice(0, MAX_SEARCH_CHARS)}\n... [truncated ${text.length - MAX_SEARCH_CHARS} characters]`,
+    spillText: text,
+  };
 }
 
 function ignoredGlobArgs(): string[] {
@@ -268,9 +277,11 @@ export async function searchGlob(  workspace: string,
     allFiles.length > limit
       ? `\n... [truncated: showing first ${limit} of ${allFiles.length} paths; narrow the pattern or raise maxResults (max ${MAX_SEARCH_RESULTS})]`
       : "";
+  const truncated = truncateSearchOutput(body);
   return {
-    output: truncateSearchOutput(body) + limitNotice,
+    output: truncated.inline + limitNotice,
     ok: true,
+    ...(truncated.spillText ? { spillText: truncated.spillText + limitNotice } : {}),
   };
 }
 
@@ -349,9 +360,11 @@ export async function searchGrep(
     matches >= limit
       ? `\n... [truncated: showing first ${matches} matches; narrow the pattern or raise maxResults (max ${MAX_SEARCH_RESULTS})]`
       : "";
+  const truncated = truncateSearchOutput(body);
   return {
-    output: truncateSearchOutput(body) + limitNotice,
+    output: truncated.inline + limitNotice,
     ok: true,
+    ...(truncated.spillText ? { spillText: truncated.spillText + limitNotice } : {}),
   };
 }
 

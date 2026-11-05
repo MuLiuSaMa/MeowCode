@@ -9,19 +9,14 @@ function delay(ms: number): Promise<void> {
 }
 
 /**
- * Write JSON via same-directory tmp + fsync + rename.
+ * Write text via same-directory tmp + fsync + rename.
  * Windows antivirus/indexer can briefly lock the target; retry the rename a few times.
  * Directory fsync is intentionally skipped: it fails on Windows and is not portable.
  */
-export async function writeJsonAtomic(
-  filePath: string,
-  value: unknown,
-  options: { pretty?: boolean } = {},
-): Promise<void> {
+export async function writeTextAtomic(filePath: string, text: string): Promise<void> {
   const directory = path.dirname(filePath);
   await fs.mkdir(directory, { recursive: true });
   const tmpPath = `${filePath}.${process.pid}.${randomUUID().slice(0, 8)}.tmp`;
-  const text = options.pretty ? JSON.stringify(value, null, 2) : JSON.stringify(value);
   const handle = await fs.open(tmpPath, "w");
   try {
     await handle.writeFile(text, "utf8");
@@ -43,6 +38,16 @@ export async function writeJsonAtomic(
       throw error;
     }
   }
+}
+
+/** Write JSON atomically (see writeTextAtomic for the durability strategy). */
+export async function writeJsonAtomic(
+  filePath: string,
+  value: unknown,
+  options: { pretty?: boolean } = {},
+): Promise<void> {
+  const text = options.pretty ? JSON.stringify(value, null, 2) : JSON.stringify(value);
+  await writeTextAtomic(filePath, text);
 }
 
 /** Read + parse JSON; returns undefined for ENOENT, throws for malformed content. */

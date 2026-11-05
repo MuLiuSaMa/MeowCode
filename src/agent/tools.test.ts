@@ -1,11 +1,46 @@
+import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { previewEditDiff } from "./diff";
-import { commandEnv, degradeStructuredOutput, executeTool, truncateMiddle } from "./tools";
+import {
+  commandEnv,
+  decodeCommandOutput,
+  degradeStructuredOutput,
+  executeTool,
+  deferredDynamicToolNames,
+  hasDynamicTool,
+  listDynamicToolDefinitions,
+  registerDynamicTool,
+  truncateMiddle,
+  unregisterDynamicTool,
+} from "./tools";
+
+// 这里会真实 spawn 子进程（冷启动约 1.5s/次），并行负载下给足超时余量。
+vi.setConfig({ testTimeout: 30_000 });
 
 const linkType = process.platform === "win32" ? "junction" : "dir";
+const POWER_SHELL_51 = path.join(
+  process.env.SystemRoot ?? "C:\\Windows",
+  "System32",
+  "WindowsPowerShell",
+  "v1.0",
+  "powershell.exe",
+);
+const hasPowerShell51 = process.platform === "win32" && existsSync(POWER_SHELL_51);
+
+/** Windows PowerShell 5.1 的 $OutputEncoding/Python 默认编码与 pwsh 7 不同，用例必须锁 5.1。 */
+async function withPowerShell51<T>(run: () => Promise<T>): Promise<T> {
+  const previous = process.env.MEOWCODE_POWERSHELL;
+  process.env.MEOWCODE_POWERSHELL = POWER_SHELL_51;
+  try {
+    return await run();
+  } finally {
+    if (previous === undefined) delete process.env.MEOWCODE_POWERSHELL;
+    else process.env.MEOWCODE_POWERSHELL = previous;
+  }
+}
 
 describe("tools", () => {
   it("lists files while ignoring build directories and app artifacts", async () => {
@@ -159,6 +194,39 @@ describe("tools", () => {
     expect(result.output).not.toContain(String.fromCharCode(0xfffd));
   });
 
+  it.skipIf(!hasPowerShell51)("keeps Chinese text piped into native commands", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "meowcode-tools-"));
+    try {
+      const result = await withPowerShell51(() =>
+        executeTool("run_command", { command: '"中文测试" | findstr .' }, root),
+      );
+      expect(result.ok).toBe(true);
+      expect(result.output).toContain("中文测试");
+      expect(result.output).not.toContain("????");
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("forces UTF-8 Python env for commands", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "meowcode-tools-"));
+    const previous = process.env.PYTHONUTF8;
+    process.env.PYTHONUTF8 = "0";
+    try {
+      const result = await executeTool(
+        "run_command",
+        { command: "Write-Output ($env:PYTHONUTF8 + '|' + $env:PYTHONIOENCODING)" },
+        root,
+      );
+      expect(result.ok).toBe(true);
+      expect(result.output).toContain("1|utf-8");
+    } finally {
+      if (previous === undefined) delete process.env.PYTHONUTF8;
+      else process.env.PYTHONUTF8 = previous;
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   it("truncates long output", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "meowcode-tools-"));
     const result = await executeTool("run_command", { command: "1..1000" }, root);
@@ -179,9 +247,8 @@ describe("tools", () => {
     const result = await executeTool("run_command", { command: "'x' * 20000" }, root);
     expect(result.ok).toBe(true);
     expect(result.output).toContain("full output saved to .meowcode/tool-output/");
-    const saved = result.output.match(/full output saved to ([^;]+);/)?.[1];
-    expect(saved).toBeTruthy();
-    const full = await readFile(path.join(root, saved!.trim()), "utf8");
+    expect(result.spilled).toContain(".meowcode/tool-output/run_command-");
+    const full = await readFile(path.join(root, result.spilled!), "utf8");
     expect(full.length).toBeGreaterThanOrEqual(20_000);
   });
 
@@ -636,10 +703,25 @@ describe("structured search output degradation", () => {
     expect(result.output).toContain("full result saved to .meowcode/tool-output/");
     expect(result.output).toContain("read_file (offset/limit)");
     // 落盘的是完整内容，模型可以分页续读
-    const saved = result.output.match(/saved to (\S+)/)?.[1];
-    expect(saved).toBeTruthy();
-    const full = await readFile(path.join(root, saved!.replace(/\//g, path.sep)), "utf8");
+    expect(result.spilled).toContain(".meowcode/tool-output/grep-");
+    const full = await readFile(path.join(root, result.spilled!), "utf8");
     expect(full).toBe(body);
+  });
+
+  it("spills the untruncated body when the inline text was already capped", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "meowcode-tools-"));
+    const full = Array.from(
+      { length: 600 },
+      (_, index) => `src/file${index}.ts:${index + 1}: const value = ${index};`,
+    ).join("\n");
+    // 搜索层内联只留前 12k，落盘必须是裁剪前的全文
+    const inline = `${full.slice(0, 12_000)}\n... [truncated ${full.length - 12_000} characters]`;
+
+    const result = await degradeStructuredOutput(root, "grep", inline, full);
+    expect(result.spilled).toBeTruthy();
+    const saved = await readFile(path.join(root, result.spilled!), "utf8");
+    expect(saved).toBe(full);
+    expect(saved).toContain("file599");
   });
 
   it("keeps the trailing truncation notice when degrading", async () => {
@@ -837,6 +919,50 @@ describe("read_many batch reads", () => {
     expect(result.output).toContain("=== small.ts ===");
   });
 
+  it("previews and spills files that no longer fit the shared budget", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "meowcode-tools-"));
+    const body = Array.from({ length: 400 }, (_, index) => `line ${index} padding padding padding`).join("\n");
+    const names = Array.from({ length: 12 }, (_, index) => `f${index}.ts`);
+    for (const name of names) await writeFile(path.join(root, name), body);
+
+    const result = await executeTool("read_many", { paths: names }, root);
+    expect(result.ok).toBe(true);
+    // 预算耗尽后不再只回一句「自己用 read_file」：给预览 + 全文落盘
+    expect(result.output).toContain("full content saved to .meowcode/tool-output/read_many-");
+    expect(result.output).toContain("=== f11.ts ===");
+    expect(result.output.length).toBeLessThanOrEqual(20_100);
+  });
+
+  it("returns readRanges and short-circuits fully covered files", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "meowcode-tools-"));
+    await writeFile(path.join(root, "a.ts"), "alpha\nbeta");
+    await writeFile(path.join(root, "b.ts"), "gamma");
+
+    const first = await executeTool("read_many", { paths: ["a.ts", "b.ts"] }, root);
+    expect(first.readRanges).toEqual([
+      { path: "a.ts", start: 1, end: 2, total: 2 },
+      { path: "b.ts", start: 1, end: 1, total: 1 },
+    ]);
+
+    // runtime 注入的覆盖查询命中 a.ts：正文不再重发
+    const second = await executeTool("read_many", { paths: ["a.ts", "b.ts"] }, root, {
+      readCoverage: async (target) => target === "a.ts",
+    });
+    expect(second.output).toContain("[already read in full earlier this session and unchanged");
+    expect(second.output).not.toContain("1: alpha");
+    expect(second.output).toContain("1: gamma");
+  });
+
+  it("treats ./a.ts and a.ts as the same file", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "meowcode-tools-"));
+    await writeFile(path.join(root, "a.ts"), "alpha");
+    const result = await executeTool("read_many", { paths: ["./a.ts", "a.ts"] }, root);
+    expect(result.output.match(/=== \.\/a\.ts ===/g)).toHaveLength(1);
+    expect(result.output).not.toContain("=== a.ts ===");
+    // 头部按实际段落数算，不能写「Read 2 files」
+    expect(result.output).not.toContain("Read 2 files:");
+  });
+
   it("routes image files to read_file instead of inlining base64", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "meowcode-tools-"));
     await writeFile(path.join(root, "pic.png"), "fake-png");
@@ -959,5 +1085,227 @@ describe("read_video guards", () => {
     const result = await executeTool("read_video", {}, process.cwd());
     expect(result.ok).toBe(false);
     expect(result.output).toContain('requires a "path"');
+  });
+});
+
+describe("dynamic tool definitions", () => {
+  const stub = (name: string, description: string) => ({
+    definition: {
+      type: "function" as const,
+      function: {
+        name,
+        description,
+        parameters: {
+          type: "object",
+          properties: { q: { type: "string", description: "query" } },
+        },
+      },
+    },
+    execute: async () => ({ output: "ok", ok: true }),
+  });
+
+  it("is byte-identical regardless of registration order", () => {
+    registerDynamicTool("mcp__z__last", stub("mcp__z__last", "z"));
+    registerDynamicTool("mcp__a__first", stub("mcp__a__first", "a"));
+    const first = JSON.stringify(listDynamicToolDefinitions());
+    unregisterDynamicTool("mcp__z__last");
+    unregisterDynamicTool("mcp__a__first");
+
+    registerDynamicTool("mcp__a__first", stub("mcp__a__first", "a"));
+    registerDynamicTool("mcp__z__last", stub("mcp__z__last", "z"));
+    const second = JSON.stringify(listDynamicToolDefinitions());
+    unregisterDynamicTool("mcp__z__last");
+    unregisterDynamicTool("mcp__a__first");
+
+    expect(second).toBe(first);
+    expect(first.indexOf("mcp__a__first")).toBeLessThan(first.indexOf("mcp__z__last"));
+  });
+
+  it("超预算的动态工具转入 deferred，tool_search 命中后提升回可见区", async () => {
+    const names: string[] = [];
+    try {
+      // 单工具注册时被冻结到 ≤400 tokens，但极简 stub 实际 ~50 tokens：
+      // 200 个 × ~50 ≈ 10k，必然越过 8k 整体预算
+      for (let index = 0; index < 200; index += 1) {
+        const name = `mcp__bulk__tool_${String(index).padStart(2, "0")}`;
+        names.push(name);
+        registerDynamicTool(name, stub(name, `bulk test tool number ${index}`));
+      }
+      const visible = listDynamicToolDefinitions();
+      const visibleNames = visible.map((definition) => definition.function.name);
+      // 有工具被延迟：可见数 < 30，且可见集是名字序的前缀
+      expect(visibleNames.length).toBeLessThan(200);
+      expect(visibleNames).toEqual([...visibleNames].sort());
+      const deferred = deferredDynamicToolNames();
+      expect(deferred.length).toBeGreaterThan(0);
+      for (const name of deferred) {
+        expect(visibleNames).not.toContain(name);
+        expect(hasDynamicTool(name)).toBe(true); // 在册可调用，只是 schema 不发
+      }
+
+      // tool_search 按名字命中一个 deferred 工具 → 提升回可见区（下轮生效）
+      const target = deferred[0];
+      const search = await executeTool("tool_search", { query: target });
+      expect(search.ok).toBe(true);
+      expect(search.output).toContain(target);
+      const after = listDynamicToolDefinitions().map((definition) => definition.function.name);
+      expect(after).toContain(target);
+      expect(deferredDynamicToolNames()).not.toContain(target);
+
+      // 无命中 → 列出全部在册工具兜底
+      const miss = await executeTool("tool_search", { query: "zzz-no-such-keyword" });
+      expect(miss.ok).toBe(true);
+      expect(miss.output).toContain("No registered tool matches");
+    } finally {
+      for (const name of names) unregisterDynamicTool(name);
+      listDynamicToolDefinitions(); // 触发重算，清空 deferred 集
+    }
+  });
+});
+
+describe("memory tools", () => {
+  it("writes, reads and deletes a project memory with its index", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "meowcode-tools-mem-"));
+    try {
+      const write = await executeTool(
+        "memory_write",
+        {
+          scope: "project",
+          name: "build-setup",
+          description: "构建走 pnpm",
+          content: "仓库用 pnpm，不要 npm install。",
+        },
+        root,
+      );
+      expect(write.ok).toBe(true);
+      expect(write.output).toContain('Saved project memory "build-setup"');
+
+      const read = await executeTool(
+        "memory_read",
+        { scope: "project", name: "build-setup" },
+        root,
+      );
+      expect(read.ok).toBe(true);
+      expect(read.output).toContain("pnpm");
+      expect(read.output).toContain("description: 构建");
+
+      const index = await readFile(
+        path.join(root, ".meowcode", "memory", "MEMORY.md"),
+        "utf8",
+      );
+      expect(index).toContain("- [build-setup](build-setup.md) — 构建走 pnpm");
+
+      const remove = await executeTool(
+        "memory_delete",
+        { scope: "project", name: "build-setup" },
+        root,
+      );
+      expect(remove.ok).toBe(true);
+      const missing = await executeTool(
+        "memory_read",
+        { scope: "project", name: "build-setup" },
+        root,
+      );
+      expect(missing.ok).toBe(false);
+      expect(missing.output).toContain("not found");
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects bad scope, bad name and empty content", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "meowcode-tools-mem-"));
+    try {
+      const scope = await executeTool(
+        "memory_write",
+        { scope: "global", name: "x", description: "d", content: "c" },
+        root,
+      );
+      expect(scope.ok).toBe(false);
+      expect(scope.output).toContain('scope "user" or "project"');
+
+      const name = await executeTool(
+        "memory_write",
+        { scope: "project", name: "../evil", description: "d", content: "c" },
+        root,
+      );
+      expect(name.ok).toBe(false);
+      expect(name.output).toContain("Invalid memory name");
+
+      const empty = await executeTool(
+        "memory_write",
+        { scope: "project", name: "ok-name", description: "d", content: "  " },
+        root,
+      );
+      expect(empty.ok).toBe(false);
+      expect(empty.output).toContain("requires a one-line description");
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("reserves memory tool names against dynamic registration", () => {
+    const stub = {
+      definition: {
+        type: "function" as const,
+        function: {
+          name: "memory_write",
+          description: "x",
+          parameters: { type: "object", properties: {} },
+        },
+      },
+      execute: async () => ({ output: "ok", ok: true }),
+    };
+    expect(registerDynamicTool("memory_write", stub).ok).toBe(false);
+  });
+});
+
+describe("decodeCommandOutput", () => {
+  /** “中文测试”的 GBK 字节 */
+  const gbkChinese = Buffer.from("d6d0cec4b2e2cad4", "hex");
+
+  it("returns empty output as-is", () => {
+    expect(decodeCommandOutput(Buffer.alloc(0), "gb18030")).toBe("");
+  });
+
+  it("keeps valid UTF-8 untouched", () => {
+    const text = "UTF8 中文测试";
+    expect(decodeCommandOutput(Buffer.from(text, "utf8"), "gb18030")).toBe(text);
+  });
+
+  it("falls back to the OEM code page for legacy bytes", () => {
+    expect(decodeCommandOutput(gbkChinese, "gb18030")).toBe("中文测试");
+    expect(decodeCommandOutput(gbkChinese)).toContain("\uFFFD");
+  });
+
+  it("decodes mixed UTF-8 and legacy lines independently", () => {
+    const mixed = Buffer.concat([
+      Buffer.from("UTF8 中文\r\n", "utf8"),
+      gbkChinese,
+      Buffer.from("\n"),
+    ]);
+    const output = decodeCommandOutput(mixed, "gb18030");
+    expect(output).toContain("UTF8 中文");
+    expect(output).toContain("中文测试");
+  });
+
+  it("keeps CR-only progress lines readable", () => {
+    const output = decodeCommandOutput(
+      Buffer.concat([gbkChinese, Buffer.from("\r"), gbkChinese]),
+      "gb18030",
+    );
+    expect(output).toBe("中文测试\r中文测试");
+  });
+
+  it("drops an incomplete trailing character instead of poisoning the whole buffer", () => {
+    const full = Buffer.from("前缀 中文", "utf8");
+    const cut = full.subarray(0, full.length - 1);
+    const output = decodeCommandOutput(cut, "gb18030");
+    expect(output).toBe("前缀 中");
+    expect(output).not.toContain("\uFFFD");
+  });
+
+  it("decodes pure ASCII without a fallback", () => {
+    expect(decodeCommandOutput(Buffer.from("plain ascii\n", "latin1"))).toBe("plain ascii\n");
   });
 });

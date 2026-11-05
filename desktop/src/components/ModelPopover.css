@@ -19,7 +19,7 @@
   align-items: center;
   gap: 8px;
 }
-/* 滑杆视图：26px | 1fr | 26px 三列，中间块严格居中，重置按钮贴右 */
+/* 滑杆视图：26px | 1fr | 26px 三列，左右对称留白让中间块严格居中 */
 .mc-popover__head--slider {
   display: grid;
   grid-template-columns: 26px 1fr 26px;
@@ -74,25 +74,6 @@
   color: var(--fg);
   transform: translateX(1px);
 }
-.mc-popover__reset {
-  margin-left: auto;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 26px;
-  height: 26px;
-  border: 0;
-  border-radius: var(--radius-sm);
-  background: transparent;
-  color: var(--fg-subtle);
-  cursor: pointer;
-  transition: background-color var(--dur) var(--ease), color var(--dur) var(--ease);
-}
-.mc-popover__reset:hover {
-  background: var(--surface-hover);
-  color: var(--fg);
-}
-
 /* ---- 粗胶囊滑杆 + 刻度点 + 大圆滑块 ---- */
 .mc-slider {
   position: relative;

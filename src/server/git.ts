@@ -66,7 +66,17 @@ export type GitStatus = {
   staged: GitFileEntry[];
   unstaged: GitFileEntry[];
   conflicted: GitFileEntry[];
+  /** 各分组截断前的总数；缺省时前端按数组长度处理 */
+  stagedCount?: number;
+  unstagedCount?: number;
+  conflictedCount?: number;
+  /** 去重后的总增删行数（截断前的全量；untracked 文件没有 numstat，按 0 计） */
+  addedTotal?: number;
+  removedTotal?: number;
 };
+
+/** 单组最多回传多少条：几万个未跟踪文件整包回传会拖死渲染进程 */
+export const MAX_STATUS_ENTRIES = 1_000;
 
 export type GitBranch = {
   name: string;
@@ -605,8 +615,15 @@ export async function isGitAvailable(): Promise<boolean> {
 
 /**
  * 仓库状态。不是仓库时**不抛错**，返回 `{ isRepo: false, reason }` 让前端渲染空态。
+ *
+ * 分组列表有上限：仓库里存在几万个未跟踪文件时（例如把参考仓库直接拷进工作区），
+ * 整包回传会让桌面端渲染几万行直接卡死。超过上限只截断列表，总数另见 `*Count`。
  */
-export async function getStatus(workspace: string): Promise<GitStatus> {
+export async function getStatus(
+  workspace: string,
+  options: { maxEntries?: number } = {},
+): Promise<GitStatus> {
+  const cap = options.maxEntries ?? MAX_STATUS_ENTRIES;
   const empty: GitStatus = { isRepo: false, staged: [], unstaged: [], conflicted: [] };
   try {
     const root = await resolveRoot(workspace);
@@ -635,6 +652,16 @@ export async function getStatus(workspace: string): Promise<GitStatus> {
       if (merged.index) staged.push(merged);
       if (merged.worktree) unstaged.push(merged);
     }
+    // 同路径可能同时出现在 staged/unstaged（同一对象引用），按 path 去重后再累加
+    const seenTotals = new Set<string>();
+    let addedTotal = 0;
+    let removedTotal = 0;
+    for (const entry of [...conflicted, ...unstaged, ...staged]) {
+      if (seenTotals.has(entry.path)) continue;
+      seenTotals.add(entry.path);
+      addedTotal += entry.added ?? 0;
+      removedTotal += entry.removed ?? 0;
+    }
     return {
       isRepo: true,
       root,
@@ -644,9 +671,14 @@ export async function getStatus(workspace: string): Promise<GitStatus> {
       ...(parsed.upstream ? { upstream: parsed.upstream } : {}),
       ahead: parsed.ahead,
       behind: parsed.behind,
-      staged,
-      unstaged,
-      conflicted,
+      staged: staged.slice(0, cap),
+      unstaged: unstaged.slice(0, cap),
+      conflicted: conflicted.slice(0, cap),
+      stagedCount: staged.length,
+      unstagedCount: unstaged.length,
+      conflictedCount: conflicted.length,
+      addedTotal,
+      removedTotal,
     };
   } catch (error) {
     if (error instanceof GitError) {
@@ -1009,8 +1041,36 @@ export async function unstage(workspace: string, paths: unknown): Promise<void> 
   });
 }
 
-export async function discard(workspace: string, paths: unknown): Promise<{ discarded: number }> {
-  const list = assertPathList(paths);
+/**
+ * 全部暂存。列表可能被 `MAX_STATUS_ENTRIES` 截断，不能拿前端手里的路径拼参数
+ * （几万个路径会顶爆 Windows 命令行长度上限），直接让 git 自己走一遍仓库。
+ */
+export async function stageAll(workspace: string): Promise<void> {
+  const root = await resolveRoot(workspace);
+  await withLock(async () => {
+    await runGit(root, ["add", "-A", "--", "."], { timeoutMs: TIMEOUTS.write });
+  });
+}
+
+/** 全部取消暂存：把索引重置回 HEAD；空仓库没有 HEAD 时退回 `rm --cached` */
+export async function unstageAll(workspace: string): Promise<void> {
+  const root = await resolveRoot(workspace);
+  await withLock(async () => {
+    if (await hasHead(root)) {
+      await runGit(root, ["reset", "--quiet", "HEAD", "--", "."], { timeoutMs: TIMEOUTS.write });
+      return;
+    }
+    await runGit(root, ["rm", "--cached", "-r", "--quiet", "--", "."], {
+      timeoutMs: TIMEOUTS.write,
+    }).catch((error: unknown) => {
+      // 索引本来就是空的：git 会报 pathspec 不匹配，这里当成功处理
+      if (error instanceof GitError && /did not match any files/i.test(error.message)) return;
+      throw error;
+    });
+  });
+}
+
+export async function discard(workspace: string, paths: unknown): Promise<{ discarded: number }> {  const list = assertPathList(paths);
   const root = await resolveRoot(workspace);
   const normalized = list.map((item) => {
     const relative = normalizeRepoPath(root, item);
@@ -1247,7 +1307,9 @@ export function createGitService(options: { workspace: string }) {
     log: (input?: { limit?: number; skip?: number }) => listLog(workspace, input),
     showCommit: (sha: string) => showCommit(workspace, sha),
     stage: (paths: unknown) => stage(workspace, paths),
+    stageAll: () => stageAll(workspace),
     unstage: (paths: unknown) => unstage(workspace, paths),
+    unstageAll: () => unstageAll(workspace),
     discard: (paths: unknown) => discard(workspace, paths),
     commit: (message: string) => commit(workspace, message),
     createBranch: (name: string, startPoint?: string) => createBranch(workspace, name, startPoint),

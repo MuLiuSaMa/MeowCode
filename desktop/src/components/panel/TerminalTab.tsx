@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { useTranslation } from "react-i18next";
 import { FitAddon } from "@xterm/addon-fit";
 import { Terminal } from "@xterm/xterm";
 import "./TerminalTab.css";
@@ -9,6 +10,10 @@ import "./TerminalTab.css";
  * fit 守卫：收起动画 / 隐藏期间容器宽度为 0，此时 fit 会坏列数——去抖 + 宽度检查。
  */
 export function TerminalTab({ active, cwd }: { active: boolean; cwd?: string }) {
+  const { t } = useTranslation("panel");
+  /** 译文只用于退出提示：用 ref 取值，切语言时不重建终端（会杀 PTY） */
+  const tRef = useRef(t);
+  tRef.current = t;
   const containerRef = useRef<HTMLDivElement>(null);
   const termRef = useRef<Terminal | null>(null);
   const fitRef = useRef<FitAddon | null>(null);
@@ -73,7 +78,7 @@ export function TerminalTab({ active, cwd }: { active: boolean; cwd?: string }) 
     });
     const offExit = window.meow.onTermExit((payload) => {
       if (payload.id === createdId) {
-        term.writeln("\r\n\x1b[90m[进程已退出]\x1b[0m");
+        term.writeln(`\r\n\x1b[90m${tRef.current("terminal.exited")}\x1b[0m`);
       }
     });
     const dataSub = term.onData((data) => {

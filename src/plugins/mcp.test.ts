@@ -1,7 +1,7 @@
 import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { hasDynamicTool, isDynamicToolRequiringApproval, listDynamicToolDefinitions } from "../agent/tools.js";
 import {
   McpManager,
@@ -9,6 +9,7 @@ import {
   mcpContentToResult,
   readMcpConfig,
   toToolDefinition,
+  unresolvedEnvVars,
   type McpClientLike,
   type McpClientFactory,
 } from "./mcp.js";
@@ -98,7 +99,7 @@ describe("McpManager.start", () => {
   });
 
   it("listTools 超时 → failed", async () => {
-    const slow = fakeClient({
+    const _slow = fakeClient({
       listTools: async () => {
         await new Promise((resolve) => setTimeout(resolve, 200));
         return { tools: [] };
@@ -110,6 +111,73 @@ describe("McpManager.start", () => {
     const { manager } = managerWith([broken]);
     await manager.start({ demo: { url: "http://localhost:9" } });
     expect(manager.statuses().demo).toMatchObject({ status: "failed", error: "timeout" });
+    await manager.dispose();
+  });
+});
+
+describe("缺凭据跳过连接", () => {
+  const TOKEN_ENV = "MEOWCODE_TEST_TOKEN";
+  // 配置里要的是字面占位符 "${MEOWCODE_TEST_TOKEN}"，不是 JS 插值
+  const tokenTemplate = () => `\${${TOKEN_ENV}}`;
+
+  afterEach(() => {
+    delete process.env[TOKEN_ENV];
+  });
+
+  it("unresolvedEnvVars 扫 url/headers/env/command/args，空串也算缺", () => {
+    process.env[TOKEN_ENV] = "tok";
+    expect(
+      unresolvedEnvVars({
+        url: `https://x/${tokenTemplate()}/y`,
+        headers: { Authorization: `Bearer ${tokenTemplate()}` },
+      } as never),
+    ).toEqual([]);
+    delete process.env[TOKEN_ENV];
+    expect(
+      unresolvedEnvVars({
+        url: "https://x/y",
+        headers: { Authorization: `Bearer ${tokenTemplate()}` },
+        env: { K: tokenTemplate() },
+      } as never),
+    ).toEqual([TOKEN_ENV]);
+    // 空串环境变量视为缺失
+    process.env[TOKEN_ENV] = "";
+    expect(unresolvedEnvVars({ headers: { A: `Bearer ${tokenTemplate()}` } } as never)).toEqual([TOKEN_ENV]);
+    // stdio 侧：command/args 里的占位也扫
+    delete process.env[TOKEN_ENV];
+    expect(
+      unresolvedEnvVars({ command: "npx", args: ["-y", `pkg@${tokenTemplate()}`] } as never),
+    ).toEqual([TOKEN_ENV]);
+  });
+
+  it("headers 里有缺 env 的占位 → 标 unconfigured，工厂不被调用", async () => {
+    const { manager, created } = managerWith([fakeClient()]);
+    await manager.start({
+      luckin: { url: "https://x/y", headers: { Authorization: `Bearer ${tokenTemplate()}` } },
+    });
+    expect(created).toHaveLength(0);
+    expect(manager.statuses().luckin).toMatchObject({ status: "unconfigured", missingEnv: [TOKEN_ENV] });
+    expect(hasDynamicTool("mcp__luckin__echo")).toBe(false);
+    await manager.dispose();
+  });
+
+  it("补上 env 后 restart 热重连 → ready；再清掉 env → 回到 unconfigured", async () => {
+    const { manager, created } = managerWith([fakeClient(), fakeClient()]);
+    const config = { url: "https://x/y", headers: { Authorization: `Bearer ${tokenTemplate()}` } };
+    await manager.start({ luckin: config });
+    expect(manager.statuses().luckin.status).toBe("unconfigured");
+
+    process.env[TOKEN_ENV] = "tok";
+    await manager.restart({ luckin: config });
+    expect(created).toHaveLength(1);
+    expect(manager.statuses().luckin).toMatchObject({ status: "ready", toolCount: 2 });
+    expect(hasDynamicTool("mcp__luckin__echo")).toBe(true);
+
+    delete process.env[TOKEN_ENV];
+    await manager.restart({ luckin: config });
+    expect(created).toHaveLength(1);
+    expect(manager.statuses().luckin).toMatchObject({ status: "unconfigured", missingEnv: [TOKEN_ENV] });
+    expect(hasDynamicTool("mcp__luckin__echo")).toBe(false);
     await manager.dispose();
   });
 });
@@ -237,8 +305,103 @@ describe("工具函数", () => {
 
   it("caps overly long MCP tool descriptions", () => {
     const def = toToolDefinition("mcp__x__y", "x".repeat(5_000), undefined);
-    expect(def.function.description.length).toBeLessThan(1_100);
-    expect(def.function.description).toContain("description truncated");
+    expect(def.function.description.length).toBeLessThan(320);
+    expect(def.function.description.endsWith("…")).toBe(true);
+  });
+
+  it("keeps the first sentence and the usage hint when clipping", () => {
+    const description = [
+      "Create an issue in the tracker with a title and body.",
+      "This paragraph is pure marketing filler about how great the product is and how much time it saves teams.",
+      "Use this when you need to file a bug or a feature request from the agent.",
+      "Another long paragraph that should not survive the budget at all because it is just noise.",
+    ].join(" ");
+    const def = toToolDefinition("mcp__x__create_issue", description, undefined);
+    expect(def.function.description).toContain("Create an issue in the tracker");
+    expect(def.function.description).toContain("Use this when");
+    expect(def.function.description.length).toBeLessThanOrEqual(242);
+  });
+
+  it("drops json-schema noise keys but keeps constraints", () => {
+    const def = toToolDefinition("mcp__x__y", "desc", {
+      type: "object",
+      $schema: "https://json-schema.org/draft/2020-12/schema",
+      title: "Payload",
+      properties: {
+        mode: {
+          type: "string",
+          title: "Mode",
+          description: "How to run it.",
+          enum: ["fast", "safe"],
+          examples: ["fast"],
+          $comment: "internal",
+        },
+        nested: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            level: { type: "integer", minimum: 1, default: 2, description: "Depth." },
+          },
+        },
+      },
+      required: ["mode"],
+    });
+    const parameters = def.function.parameters as Record<string, unknown>;
+    expect(parameters.$schema).toBeUndefined();
+    expect(parameters.title).toBeUndefined();
+    expect(parameters.required).toEqual(["mode"]);
+    const mode = (parameters.properties as Record<string, Record<string, unknown>>).mode;
+    expect(mode.enum).toEqual(["fast", "safe"]);
+    expect(mode.examples).toBeUndefined();
+    expect(mode.$comment).toBeUndefined();
+    // 有 description 时 title 是重复信息
+    expect(mode.title).toBeUndefined();
+    const nested = (parameters.properties as Record<string, Record<string, unknown>>).nested;
+    expect(nested.additionalProperties).toBeUndefined();
+    const level = (nested.properties as Record<string, Record<string, unknown>>).level;
+    expect(level.minimum).toBe(1);
+    expect(level.default).toBe(2);
+  });
+
+  it("clips property descriptions and collapses deep schemas", () => {
+    const deep = {
+      type: "object",
+      properties: {
+        a: {
+          type: "object",
+          properties: {
+            b: {
+              type: "object",
+              properties: {
+                c: {
+                  type: "object",
+                  properties: { d: { type: "string", description: "too deep to matter" } },
+                },
+              },
+            },
+          },
+        },
+      },
+    };
+    const def = toToolDefinition("mcp__x__deep", "desc", deep);
+    const properties = (def.function.parameters as Record<string, Record<string, unknown>>)
+      .properties as Record<string, Record<string, unknown>>;
+    const a = properties.a;
+    const b = (a.properties as Record<string, Record<string, unknown>>).b;
+    const c = (b.properties as Record<string, Record<string, unknown>>).c;
+    // depth > 3 之后只留类型
+    expect(c).toEqual({ type: "object" });
+    expect(JSON.stringify(def.function.parameters)).not.toContain("too deep to matter");
+  });
+
+  it("clips long property descriptions to the field budget", () => {
+    const def = toToolDefinition("mcp__x__y", "desc", {
+      type: "object",
+      properties: { query: { type: "string", description: "q".repeat(800) } },
+    });
+    const query = ((def.function.parameters as Record<string, Record<string, unknown>>)
+      .properties as Record<string, Record<string, unknown>>).query;
+    expect(String(query.description).length).toBeLessThanOrEqual(122);
   });
 
   it("mcpContentToResult：text/image/resource 各形态", () => {

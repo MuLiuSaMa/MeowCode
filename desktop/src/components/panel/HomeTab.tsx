@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 import {
   LuArrowDownToLine,
   LuArrowUpFromLine,
@@ -21,35 +22,40 @@ import {
 } from "react-icons/lu";
 import type { ProviderSettings, TurnMetrics } from "../../api";
 import type { SideTabOpen } from "../../panel/useSideTabs";
+import { formatNumber } from "../../i18n/format";
 
-/** 工具卡片：点击开页签；hovering 浮出「…」菜单 */
+/** 工具卡片：点击开页签（search 例外，开检索弹窗）；hovering 浮出「…」菜单。表里只存 key，标题在组件里查表。 */
 const CARDS: Array<{
-  kind: "workspace" | "sidechat" | "terminal" | "review" | "subagents";
-  label: string;
+  kind: "workspace" | "search" | "sidechat" | "terminal" | "review" | "subagents";
+  labelKey: string;
   shortcut?: string;
   icon: ReactNode;
 }> = [
-  { kind: "workspace", label: "文件", shortcut: "Ctrl+P", icon: <LuFolder size={15} /> },
-  { kind: "sidechat", label: "侧边聊天", shortcut: "Ctrl+Alt+S", icon: <LuMessageSquare size={15} /> },
-  { kind: "terminal", label: "终端", shortcut: "Ctrl+`", icon: <LuTerminal size={15} /> },
-  { kind: "review", label: "审阅", icon: <LuListChecks size={15} /> },
-  { kind: "subagents", label: "子 Agent", icon: <LuUsers size={15} /> },
+  { kind: "workspace", labelKey: "home.card.workspace", shortcut: "Ctrl+P", icon: <LuFolder size={15} /> },
+  { kind: "search", labelKey: "home.card.search", shortcut: "Ctrl+K", icon: <LuSearch size={15} /> },
+  { kind: "sidechat", labelKey: "home.card.sidechat", shortcut: "Ctrl+Alt+S", icon: <LuMessageSquare size={15} /> },
+  { kind: "terminal", labelKey: "home.card.terminal", shortcut: "Ctrl+`", icon: <LuTerminal size={15} /> },
+  { kind: "review", labelKey: "home.card.review", icon: <LuListChecks size={15} /> },
+  { kind: "subagents", labelKey: "home.card.subagents", icon: <LuUsers size={15} /> },
 ];
 
-function Field({ icon, label, value, mono }: { icon: ReactNode; label: string; value: string; mono?: boolean }) {
+function Field({ icon, label, value }: { icon: ReactNode; label: string; value: string }) {
   return (
     <div className="mc-rtp__field">
       <span className="mc-rtp__fieldlabel">
         {icon}
         {label}
       </span>
-      <span className={["mc-rtp__fieldvalue", mono ? "mc-mono" : ""].filter(Boolean).join(" ")}>{value}</span>
+      <span className="mc-rtp__fieldvalue">{value}</span>
     </div>
   );
 }
 
-function formatTokenValue(value: number | null | undefined): string {
-  return typeof value === "number" ? `${value.toLocaleString("zh-CN")} tok` : "—";
+function formatTokenValue(
+  value: number | null | undefined,
+  format: (tokens: string) => string,
+): string {
+  return typeof value === "number" ? format(formatNumber(value)) : "—";
 }
 
 function formatDuration(value: number | null | undefined): string {
@@ -72,6 +78,7 @@ export function HomeTab({
   onOpen,
   onOpenPalette,
   onOpenWorkspace,
+  onOpenSearch,
   workspace,
   session,
   metrics,
@@ -83,6 +90,8 @@ export function HomeTab({
   onOpenPalette: () => void;
   /** 在资源管理器中打开工作区（文件卡片「…」菜单） */
   onOpenWorkspace: (cwd: string) => void;
+  /** 搜索卡片：打开会话全文检索弹窗（Ctrl+K 同款） */
+  onOpenSearch: () => void;
   workspace?: string;
   session: { id: string; cwd: string } | null;
   /** 最近一次 AI 回合的响应统计 */
@@ -90,9 +99,12 @@ export function HomeTab({
   provider?: ProviderSettings;
   toolCount: number;
 }) {
+  const { t } = useTranslation("panel");
   /** 「…」菜单展开的卡片 kind */
   const [menuFor, setMenuFor] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+  const tokenValue = (value: number | null | undefined) =>
+    formatTokenValue(value, (tokens) => t("home.tokenValue", { value: tokens }));
 
   useEffect(() => {
     if (!menuFor) return;
@@ -113,32 +125,56 @@ export function HomeTab({
     };
   }, [menuFor]);
 
-  /** 未命中缓存的输入 = 总输入 - 缓存读取；服务商未报告缓存明细时按全部未缓存显示。 */
+  /** 未命中缓存的输入 = 总输入 - 缓存读取；服务商未报告缓存明细时显示「未报告」，不伪装成 0。 */
   const uncachedInputTokens =
     typeof metrics?.inputTokens === "number"
       ? Math.max(0, metrics.inputTokens - (metrics.cacheReadTokens ?? 0))
       : null;
+  /** 缓存归属：Anthropic 断点由本地控制；OpenAI 兼容网关的 TTL/逐出由服务端决定。 */
+  const cacheStatus = (() => {
+    if (!provider) return "—";
+    const protocol = provider.protocol ?? "openai-chat-completions";
+    const ttl =
+      provider.cacheTtl === "1h"
+        ? "1h"
+        : provider.cacheTtl === "auto"
+          ? t("home.cache.autoTtl")
+          : "5m";
+    const base =
+      protocol === "anthropic-messages"
+        ? t("home.cache.localBreakpoint", { ttl })
+        : protocol === "openai-responses"
+          ? t("home.cache.serverManaged")
+          : t("home.cache.serverManagedUncontrolled");
+    if (!metrics || metrics.inputTokens == null) return base;
+    if (metrics.cacheHitRate == null) return t("home.cache.notReported", { base });
+    return metrics.cacheHitRate === 0
+      ? t("home.cache.miss", { base })
+      : t("home.cache.hitting", { base });
+  })();
 
   return (
     <div className="mc-rtp__home">
-      <p className="mc-rtp__section">工具</p>
+      <p className="mc-rtp__section">{t("home.toolsSection")}</p>
       <div className="mc-rtp__grid">
         {CARDS.map((card) => (
           <div className="mc-rtp__cardwrap" key={card.kind}>
             <button
               type="button"
               className="mc-rtp__card"
-              onClick={() => onOpen({ kind: card.kind })}
+              onClick={() =>
+                card.kind === "search" ? onOpenSearch() : onOpen({ kind: card.kind })
+              }
             >
               <span className="mc-rtp__cardicon">{card.icon}</span>
-              <span className="mc-rtp__cardlabel mc-truncate">{card.label}</span>
+              <span className="mc-rtp__cardlabel mc-truncate">{t(card.labelKey)}</span>
               {card.shortcut ? <span className="mc-rtp__cardkbd">{card.shortcut}</span> : null}
             </button>
             {card.kind === "workspace" ? (
               <button
                 type="button"
                 className="mc-rtp__cardmenu"
-                aria-label="文件菜单"
+                aria-label={t("home.fileMenu")}
                 data-open={menuFor === card.kind}
                 onClick={() => setMenuFor(menuFor === card.kind ? null : card.kind)}
               >
@@ -158,7 +194,7 @@ export function HomeTab({
                   }}
                 >
                   <LuSearch size={14} />
-                  快速打开（Ctrl+P）
+                  {t("home.quickOpen")}
                 </button>
                 <button
                   type="button"
@@ -171,7 +207,7 @@ export function HomeTab({
                   }}
                 >
                   <LuFolderOpen size={14} />
-                  在文件管理器中打开
+                  {t("home.revealInExplorer")}
                 </button>
               </div>
             ) : null}
@@ -179,60 +215,61 @@ export function HomeTab({
         ))}
       </div>
 
-      <p className="mc-rtp__section">会话信息</p>
+      <p className="mc-rtp__section">{t("home.sessionSection")}</p>
       <div className="mc-rtp__fields">
-        <Field icon={<LuFolder size={13} />} label="工作区" value={session?.cwd ?? "—"} mono />
-        <Field icon={<LuCpu size={13} />} label="服务商" value={provider?.name ?? "—"} />
-        <Field icon={<LuCpu size={13} />} label="模型" value={provider?.model ?? "—"} mono />
-        <Field icon={<LuHash size={13} />} label="会话 ID" value={session?.id ?? "—"} mono />
-        <Field icon={<LuSquare size={13} />} label="工具调用" value={String(toolCount)} />
+        <Field icon={<LuFolder size={13} />} label={t("home.field.workspace")} value={session?.cwd ?? "—"} />
+        <Field icon={<LuCpu size={13} />} label={t("home.field.provider")} value={provider?.name ?? "—"} />
+        <Field icon={<LuCpu size={13} />} label={t("home.field.model")} value={provider?.model ?? "—"} />
+        <Field icon={<LuHash size={13} />} label={t("home.field.sessionId")} value={session?.id ?? "—"} />
+        <Field icon={<LuSquare size={13} />} label={t("home.field.toolCalls")} value={String(toolCount)} />
         <Field
           icon={<LuArrowDownToLine size={13} />}
-          label="未缓存输入"
-          value={formatTokenValue(uncachedInputTokens)}
-          mono
+          label={t("home.field.uncachedInput")}
+          value={
+            metrics?.inputTokens != null && metrics.cacheReadTokens == null
+              ? t("home.notReported")
+              : tokenValue(uncachedInputTokens)
+          }
         />
         <Field
           icon={<LuDatabase size={13} />}
-          label="缓存读取"
-          value={formatTokenValue(metrics?.cacheReadTokens)}
-          mono
+          label={t("home.field.cacheRead")}
+          value={
+            metrics?.inputTokens != null && metrics.cacheReadTokens == null
+              ? t("home.notReported")
+              : tokenValue(metrics?.cacheReadTokens)
+          }
         />
+        <Field icon={<LuHourglass size={13} />} label={t("home.field.cacheStatus")} value={cacheStatus} />
         <Field
           icon={<LuDatabase size={13} />}
-          label="缓存写入"
-          value={formatTokenValue(metrics?.cacheWriteTokens)}
-          mono
+          label={t("home.field.cacheWrite")}
+          value={tokenValue(metrics?.cacheWriteTokens)}
         />
         <Field
           icon={<LuArrowUpFromLine size={13} />}
-          label="输出"
-          value={formatTokenValue(metrics?.outputTokens)}
-          mono
+          label={t("home.field.output")}
+          value={tokenValue(metrics?.outputTokens)}
         />
         <Field
           icon={<LuPercent size={13} />}
-          label="缓存命中率（会话）"
+          label={t("home.field.cacheHitRate")}
           value={formatPercent(metrics?.cacheHitRate)}
-          mono
         />
         <Field
           icon={<LuGauge size={13} />}
-          label="生成速度"
+          label={t("home.field.speed")}
           value={formatSpeed(metrics?.tokensPerSecond)}
-          mono
         />
         <Field
           icon={<LuTimer size={13} />}
-          label="响应时间"
+          label={t("home.field.response")}
           value={formatDuration(metrics?.responseMs)}
-          mono
         />
         <Field
           icon={<LuHourglass size={13} />}
-          label="首字延迟"
+          label={t("home.field.firstToken")}
           value={formatDuration(metrics?.firstTokenMs)}
-          mono
         />
       </div>
     </div>

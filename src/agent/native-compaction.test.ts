@@ -146,6 +146,8 @@ describe("requestNativeCompaction — Anthropic", () => {
     expect(edit.pause_after_compaction).toBe(true);
     expect(captured[0].body.stream).toBe(false);
     expect(captured[0].body.tool_choice).toBeUndefined();
+    // 一次性请求：压缩点生成后没有请求能在这个前缀上读回缓存，任何标记都是白付写入
+    expect(JSON.stringify(captured[0].body)).not.toContain("cache_control");
   });
 
   it("输入低于服务端下限时不发请求，直接判定不可用", async () => {

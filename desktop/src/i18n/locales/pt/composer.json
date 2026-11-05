@@ -1,0 +1,213 @@
+{
+  "image": {
+    "readFailed": "Não foi possível ler a imagem",
+    "unsupported": "Formato de imagem não suportado: {{type}}",
+    "tooLarge": "Imagem grande demais: {{name}} ainda passa de 2 MB após a compressão. Recorte-a ou reduza a resolução primeiro.",
+    "maxCount_one": "Você só pode anexar {{count}} imagem por mensagem",
+    "maxCount_few": "Você pode anexar no máximo {{count}} imagens por mensagem",
+    "maxCount_many": "Você pode anexar no máximo {{count}} imagens por mensagem",
+    "maxCount_other": "Você pode anexar no máximo {{count}} imagens por mensagem",
+    "onlyImages": "Só é possível anexar arquivos de imagem",
+    "fallbackName": "Imagem"
+  },
+  "file": {
+    "pathFailed": "Não foi possível ler o caminho do arquivo: {{name}}",
+    "skipped": "Arquivo ou pasta vazio ignorado: {{name}}"
+  },
+  "plugin": {
+    "loadFailed": "Falha ao carregar: {{error}}",
+    "local": "Plugin local"
+  },
+  "permission": {
+    "title": "Permissões de ferramentas",
+    "readOnly": {
+      "label": "Somente leitura",
+      "desc": "Permite ler arquivos, pesquisar e usar o navegador; proíbe escrever, alterar arquivos e executar comandos"
+    },
+    "ask": {
+      "label": "Perguntar sempre",
+      "desc": "Pede confirmação antes de escrever, alterar arquivos ou executar comandos"
+    },
+    "auto": {
+      "label": "Automático no workspace",
+      "desc": "Escritas, alterações e comandos de desenvolvimento comuns dentro do workspace rodam automaticamente; acesso a credenciais, baixar e executar, configurações do sistema, publicação/implantação, comandos git destrutivos e caminhos fora do workspace ainda pedem confirmação"
+    },
+    "full": {
+      "label": "Acesso total",
+      "desc": "Lê e escreve arquivos em todo o computador e executa todas as ferramentas automaticamente"
+    }
+  },
+  "slash": {
+    "plan": {
+      "label": "Modo plano",
+      "desc": "Pesquisa somente leitura; grava o plano de implementação em um documento em plans/ e aguarda sua confirmação"
+    },
+    "goal": {
+      "label": "Modo objetivo",
+      "desc": "Avança continuamente rumo ao objetivo e acompanha o progresso com update_plan"
+    },
+    "exit": "Sair do {{mode}}",
+    "menuAria": "Comandos",
+    "group": {
+      "mode": "Modos",
+      "command": "Comandos",
+      "plugin": "Plugins",
+      "skill": "Habilidades"
+    }
+  },
+  "mode": {
+    "plan": "Modo plano",
+    "goal": "Modo objetivo",
+    "exitAria": "{{mode}}, clique para sair",
+    "exitTitle": "Clique para sair deste modo"
+  },
+  "project": {
+    "menuAria": "Trocar de projeto",
+    "search": "Pesquisar projetos",
+    "empty": "Nenhum projeto correspondente",
+    "new": "Novo projeto",
+    "remove": "Remover da lista",
+    "pickWorkspace": "Selecionar workspace"
+  },
+  "mention": {
+    "aria": "Referenciar arquivos do workspace",
+    "back": "Subir um nível",
+    "root": "Raiz do workspace",
+    "refresh": "Atualizar lista",
+    "loadFailed": "Falha na leitura",
+    "loading": "Carregando…",
+    "dirFailed": "Não é possível ler a pasta",
+    "noMatch": "Nenhum arquivo correspondente",
+    "emptyDir": "Esta pasta está vazia"
+  },
+  "queue": {
+    "recoveredAria": "Mensagens não enviadas da última vez",
+    "recoveredHead": "Não enviada ao sair da última vez",
+    "sendAsNew": "Enviar como nova mensagem",
+    "send": "Enviar",
+    "discardTitle": "Descartar esta mensagem",
+    "discard": "Descartar",
+    "pendingAria": "Mensagens na fila",
+    "steerTitle": "Interromper a resposta atual e enviar esta mensagem agora",
+    "steer": "Interromper agora",
+    "removeTitle": "Remover da fila",
+    "remove": "Excluir"
+  },
+  "plan": {
+    "answerAria": "Responder à pergunta",
+    "answerSubMultiple": "Escolha uma resposta ou digite abaixo · avança sozinho para a próxima pergunta",
+    "answerSub": "Escolha uma resposta ou digite abaixo",
+    "answerPlaceholder": "Outra ideia — Enter vai para a próxima pergunta",
+    "prev": "Anterior",
+    "skipRest": "Pular o restante",
+    "unanswered": "(sem resposta)",
+    "confirmAria": "Confirmar plano",
+    "exit": "Sair do modo plano",
+    "confirmTitle": "Executar conforme este plano?",
+    "confirmSub": "Após confirmar, vou executar este plano e gerar o resultado",
+    "start": "Começar a executar",
+    "adjustPlaceholder": "Ajuste o plano — diga o que mudar",
+    "sendAdjust": "Enviar ajuste",
+    "adjustPrompt": "Ajuste o plano; após o envio, o modelo continuará alterando-o…"
+  },
+  "branch": {
+    "detached": "detached HEAD · clique para trocar de branch",
+    "current": "Branch atual {{name}} · clique para trocar",
+    "search": "Pesquisar branches",
+    "listAria": "Lista de branches",
+    "loading": "Lendo branches…",
+    "noMatch": "Nenhum branch correspondente",
+    "empty": "Este repositório ainda não tem branches",
+    "stashSwitch": "Guardar alterações locais e trocar",
+    "openGit": "Abrir controle de código-fonte"
+  },
+  "worktree": {
+    "locked": "Esta sessão já roda em um worktree próprio",
+    "hint": "Iniciar esta conversa em um worktree git separado; alterações não commitadas não são levadas"
+  },
+  "input": {
+    "placeholder": {
+      "setup": "Conclua a configuração primeiro",
+      "compacting": "Compactando o histórico da conversa; você poderá enviar quando terminar",
+      "streaming": "Digite e pressione Enter para entrar na fila",
+      "default": "Digite @ para referenciar arquivos do projeto; arraste imagens ou qualquer arquivo (inclusive fora do workspace)"
+    },
+    "polishing": "IA aprimorando"
+  },
+  "action": {
+    "more": "Mais ações",
+    "moreTitle": "Adicionar anexos / trocar de modo",
+    "plusMenuAria": "Adicionar, referenciar e comandos",
+    "upload": "Enviar anexo",
+    "plugins": "Plugins",
+    "pluginsCount": "Plugins ({{count}})",
+    "skills": "Habilidades",
+    "skillsCount": "Habilidades ({{count}})",
+    "installing": "Instalando…",
+    "polish": "Aprimorar prompt",
+    "send": "Enviar",
+    "stop": "Parar"
+  },
+  "attach": {
+    "listAria": "Imagens a enviar",
+    "removeImageAria": "Remover imagem",
+    "remove": "Remover"
+  },
+  "chip": {
+    "listAria": "Habilidades, plugins e anexos referenciados",
+    "remove": "Remover {{name}}"
+  },
+  "agent": {
+    "title": "Agente principal: {{name}}"
+  },
+  "polish": {
+    "discarded": "A entrada mudou, então o resultado aprimorado foi descartado.",
+    "failed": "Falha ao aprimorar o prompt: {{error}}"
+  },
+  "ctx": {
+    "title": "Uso do contexto",
+    "close": "Fechar",
+    "used": "Usado",
+    "windowUnset": "janela não definida",
+    "categories": {
+      "system": "Prompt do sistema",
+      "tools": "Ferramentas do sistema",
+      "skills": "Habilidades ({{count}})",
+      "messages": "Mensagens",
+      "other": "Outros"
+    },
+    "hint": "A compactação agrupa turnos anteriores em um resumo; o histórico na tela e o arquivo da sessão permanecem completos.",
+    "compacting": "Compactando…",
+    "compact": "Compactar contexto agora",
+    "cache": {
+      "stateLabel": "Cache",
+      "stateWarm": "Morno",
+      "stateCold": "Frio",
+      "stateEvicted": "Despejado",
+      "stateUnsupported": "Não suportado",
+      "stateUnknown": "Desconhecido",
+      "roundLabel": "Mais recente",
+      "round": "leitura {{read}} · escrita {{write}}",
+      "busts": "Provável quebra de cache",
+      "bustTitle": "~{{drop}} tokens a menos que a rodada anterior: prefixo reescrito ou cache despejado",
+      "reasonPrefixChanged": "Prefixo alterado (catálogo de ferramentas / prompt do sistema reescrito)",
+      "reasonFirstRequest": "Primeira solicitação (início a frio)",
+      "reasonIdleExceededTtl": "Ocioso além do TTL do cache",
+      "reasonNotReported": "O provedor não relatou detalhes do cache",
+      "reasonBelowGranularity": "Entrada abaixo do comprimento mínimo armazenável em cache",
+      "reasonCacheMiss": "Falha no cache"
+    }
+  },
+  "effort": {
+    "default": "Padrão",
+    "off": "Desligado",
+    "on": "Ligado",
+    "minimal": "Mínimo",
+    "low": "Baixo",
+    "medium": "Médio",
+    "high": "Alto",
+    "xhigh": "Muito alto",
+    "max": "Máximo",
+    "ultra": "Ultra"
+  }
+}

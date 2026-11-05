@@ -1,0 +1,57 @@
+{
+  "actions": {
+    "back": "Atrás",
+    "next": "Continuar",
+    "skip": "Omitir",
+    "later": "Configurar más tarde",
+    "connect": "Conectar",
+    "connecting": "Conectando…",
+    "start": "Empezar",
+    "finishing": "Finalizando…",
+    "close": "Cerrar la introducción"
+  },
+  "language": {
+    "title": "Elegir idioma",
+    "label": "Idioma",
+    "previewLabel": "Vista previa del idioma",
+    "previewText": "Hola, te damos la bienvenida a MeowCode.",
+    "systemMeta": "Idioma del sistema · actualmente {{language}}",
+    "selectedMeta": "Idioma de la interfaz · {{language}}"
+  },
+  "theme": {
+    "title": "Elegir tema",
+    "desc": "Se aplica al instante. Puedes cambiarlo cuando quieras en Configuración → Apariencia.",
+    "options": {
+      "system": {
+        "label": "Sistema",
+        "desc": "Sigue en tiempo real el modo claro / oscuro de Windows"
+      },
+      "light": {
+        "label": "Claro",
+        "desc": "Usar siempre la interfaz clara"
+      },
+      "dark": {
+        "label": "Oscuro",
+        "desc": "Usar siempre la interfaz oscura"
+      }
+    }
+  },
+  "provider": {
+    "title": "Elegir proveedor de IA",
+    "searchLabel": "Buscar proveedores",
+    "searchPlaceholder": "Busca por nombre o id, p. ej. deepseek",
+    "empty": "Ningún proveedor coincide — prueba «Proveedor personalizado»",
+    "customName": "Proveedor personalizado",
+    "customMeta": "Introduce el punto de acceso y la clave a mano",
+    "needsEndpoint": "Punto de acceso obligatorio"
+  },
+  "connect": {
+    "title": "Conectar proveedor de IA",
+    "saveFailed": "No se pudo conectar. Revisa la configuración e inténtalo de nuevo."
+  },
+  "finish": {
+    "title": "Todo listo",
+    "desc": "La configuración ha terminado. Ya puedes empezar a usar MeowCode.",
+    "noProvider": "Aún no hay ningún modelo configurado — puedes añadirlo más tarde en Configuración → Modelos."
+  }
+}

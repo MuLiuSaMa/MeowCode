@@ -4,23 +4,30 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { SessionStore } from "../agent/session-store";
+import { searchIndexPath } from "../agent/session-search";
+import { MAX_POLISH_INPUT_CHARS } from "../agent/prompt-polish";
 import { startServer, type AgentServer } from "./server";
 
 const TOKEN = "test-server-token";
 let server: AgentServer;
 let baseUrl = "";
 let sessionsDir = "";
+let memoryHomeDir = "";
 
 beforeAll(async () => {
   sessionsDir = await mkdtemp(path.join(tmpdir(), "meowcode-server-"));
+  memoryHomeDir = await mkdtemp(path.join(tmpdir(), "meowcode-server-home-"));
   process.env.MEOWCODE_SESSIONS_DIR = sessionsDir;
   process.env.MEOWCODE_PROVIDER_ID = "";
   process.env.MEOWCODE_WORKSPACE = "";
+  process.env.MEOWCODE_HOME_DIR = memoryHomeDir;
   process.env.MEOWCODE_PROVIDERS = JSON.stringify([
     { id: "p1", name: "provider", baseUrl: "http://127.0.0.1:1", model: "m", apiKey: "secret" },
   ]);
   process.env.MEOWCODE_BROWSER_HOST_TOKEN = "browser-secret";
   process.env.MEOWCODE_SERVER_TOKEN = TOKEN;
+  // 记忆蒸馏初值走 env：模拟桌面端关闭开关后启动 server（PUT 用例再实时打开）
+  process.env.MEOWCODE_MEMORY_EXTRACTION = "0";
 
   server = await startServer({ port: 0 });
   const address = server.address();
@@ -31,9 +38,12 @@ beforeAll(async () => {
 afterAll(async () => {
   await server.shutdown("test");
   await rm(sessionsDir, { recursive: true, force: true });
+  await rm(memoryHomeDir, { recursive: true, force: true });
   delete process.env.MEOWCODE_SESSIONS_DIR;
   delete process.env.MEOWCODE_PROVIDER_ID;
   delete process.env.MEOWCODE_WORKSPACE;
+  delete process.env.MEOWCODE_HOME_DIR;
+  delete process.env.MEOWCODE_MEMORY_EXTRACTION;
 });
 
 describe("agent server auth", () => {
@@ -147,6 +157,98 @@ describe("agent server auth", () => {
 
   it("fails closed when no token is configured", async () => {
     await expect(startServer({ port: 0 })).rejects.toThrow("MEOWCODE_SERVER_TOKEN is required");
+  });
+});
+
+describe("memory extraction config", () => {
+  it("GET reflects the env boot value", async () => {
+    // beforeAll 里 MEOWCODE_MEMORY_EXTRACTION="0"：桌面端关掉开关后重启 server 的形态
+    const response = await fetch(`${baseUrl}/config/memory-extraction`, {
+      headers: { authorization: `Bearer ${TOKEN}` },
+    });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ enabled: false });
+  });
+
+  it("PUT switches the flag live and rejects non-boolean values", async () => {
+    const put = await fetch(`${baseUrl}/config/memory-extraction`, {
+      method: "PUT",
+      headers: { authorization: `Bearer ${TOKEN}`, "content-type": "application/json" },
+      body: JSON.stringify({ enabled: true }),
+    });
+    expect(put.status).toBe(200);
+    expect(await put.json()).toEqual({ enabled: true });
+
+    const get = await fetch(`${baseUrl}/config/memory-extraction`, {
+      headers: { authorization: `Bearer ${TOKEN}` },
+    });
+    expect(await get.json()).toEqual({ enabled: true });
+
+    const invalid = await fetch(`${baseUrl}/config/memory-extraction`, {
+      method: "PUT",
+      headers: { authorization: `Bearer ${TOKEN}`, "content-type": "application/json" },
+      body: JSON.stringify({ enabled: "yes" }),
+    });
+    expect(invalid.status).toBe(400);
+  });
+});
+
+describe("sandbox config", () => {
+  it("GET returns the disabled defaults and platform support", async () => {
+    const response = await fetch(`${baseUrl}/config/sandbox`, {
+      headers: { authorization: `Bearer ${TOKEN}` },
+    });
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as Record<string, unknown>;
+    expect(body).toMatchObject({
+      enabled: false,
+      mode: "workspace-write",
+      writableRoots: [],
+      allowTemp: true,
+      grantTimeoutMs: 120_000,
+      platform: process.platform,
+      supported: process.platform === "win32",
+    });
+  });
+
+  it("rejects a non-boolean enabled value", async () => {
+    const response = await fetch(`${baseUrl}/config/sandbox`, {
+      method: "PUT",
+      headers: { authorization: `Bearer ${TOKEN}`, "content-type": "application/json" },
+      body: JSON.stringify({ enabled: "yes" }),
+    });
+    expect(response.status).toBe(400);
+  });
+
+  it("cannot enable without a workspace", async () => {
+    const response = await fetch(`${baseUrl}/config/sandbox`, {
+      method: "PUT",
+      headers: { authorization: `Bearer ${TOKEN}`, "content-type": "application/json" },
+      body: JSON.stringify({ enabled: true }),
+    });
+    expect(response.status).toBe(400);
+    const body = (await response.json()) as { error?: { code?: string } };
+    expect(["sandbox_unavailable", "invalid_request"]).toContain(body.error?.code);
+  });
+
+  it("refuses probe and revoke without a workspace", async () => {
+    for (const route of ["/config/sandbox/probe", "/config/sandbox/revoke"]) {
+      const response = await fetch(`${baseUrl}${route}`, {
+        method: "POST",
+        headers: { authorization: `Bearer ${TOKEN}` },
+      });
+      expect(response.status).toBe(400);
+    }
+  });
+
+  it("accepts disabling even with no workspace", async () => {
+    const response = await fetch(`${baseUrl}/config/sandbox`, {
+      method: "PUT",
+      headers: { authorization: `Bearer ${TOKEN}`, "content-type": "application/json" },
+      body: JSON.stringify({ enabled: false }),
+    });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ enabled: false });
   });
 });
 
@@ -453,8 +555,13 @@ describe("session recovery endpoints", () => {
       await fetch(`${baseUrl}/session/messages`, {
         headers: { authorization: `Bearer ${TOKEN}` },
       })
-    ).json()) as { compactions: Array<{ messageIndex: number; status: string }> };
+    ).json()) as {
+      compactions: Array<{ messageIndex: number; status: string }>;
+      compactionQuality: unknown;
+    };
     expect(messages.compactions).toEqual([{ messageIndex: 1, status: "interrupted" }]);
+    // 没有压缩质量观测时字段显式为 null（前端据此显示「—」）
+    expect(messages.compactionQuality).toBeNull();
 
     const discard = await fetch(`${baseUrl}/session/recovered/discard`, {
       method: "POST",
@@ -828,6 +935,63 @@ describe("session management", () => {
     });
     expect(switched.status).toBe(400);
   });
+
+  it("searches session content and cleans the shadow index on delete", async () => {
+    const filePath = path.join(sessionsDir, "searchable.jsonl");
+    const store = await SessionStore.create(filePath, sessionsDir);
+    await store.appendMessage({ role: "user", content: "珊瑚绒毯的清洗指南" });
+    await store.appendMessage({ role: "assistant", content: "珊瑚绒毯要用冷水手洗。" });
+    await store.close();
+
+    const authed = { authorization: `Bearer ${TOKEN}` };
+
+    const hit = await fetch(`${baseUrl}/sessions/search?q=${encodeURIComponent("珊瑚绒毯")}`, {
+      headers: authed,
+    });
+    expect(hit.status).toBe(200);
+    const hitBody = (await hit.json()) as {
+      hits: Array<{ filePath: string; totalMatches: number; snippets: unknown[] }>;
+    };
+    expect(hitBody.hits).toHaveLength(1);
+    expect(hitBody.hits[0].filePath).toBe(filePath);
+    expect(hitBody.hits[0].totalMatches).toBe(2);
+    expect(hitBody.hits[0].snippets.length).toBeGreaterThan(0);
+
+    const empty = await fetch(`${baseUrl}/sessions/search?q=`, { headers: authed });
+    expect(empty.status).toBe(200);
+    expect(((await empty.json()) as { hits: unknown[] }).hits).toEqual([]);
+
+    const tooLong = await fetch(`${baseUrl}/sessions/search?q=${encodeURIComponent("长".repeat(201))}`, {
+      headers: authed,
+    });
+    expect(tooLong.status).toBe(400);
+
+    const clamped = await fetch(
+      `${baseUrl}/sessions/search?q=${encodeURIComponent("珊瑚绒毯")}&limit=999`,
+      { headers: authed },
+    );
+    expect(clamped.status).toBe(200);
+
+    // 等首次搜索的异步影子落盘，确认存在后再验证删除联动
+    const shadowPath = searchIndexPath(sessionsDir, path.basename(filePath));
+    let shadowExists = false;
+    for (let attempt = 0; attempt < 40 && !shadowExists; attempt += 1) {
+      shadowExists = await stat(shadowPath).then(
+        () => true,
+        () => false,
+      );
+      if (!shadowExists) await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+    expect(shadowExists).toBe(true);
+
+    const deleted = await fetch(`${baseUrl}/sessions/delete`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ filePath }),
+    });
+    expect(deleted.status).toBe(200);
+    await expect(stat(shadowPath)).rejects.toThrow();
+  });
 });
 
 describe("session mode endpoints", () => {
@@ -854,6 +1018,63 @@ describe("session mode endpoints", () => {
       });
       expect(invalid.status).toBe(400);
     }
+  });
+
+  it("exports a session as markdown, html and json", async () => {
+    const created = await fetch(`${baseUrl}/session/new`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ cwd: sessionsDir }),
+    });
+    expect(created.status).toBe(200);
+    const { filePath } = (await created.json()) as { filePath: string };
+    // 造一条内容：用户消息 + assistant 回复 + turn 收尾（走真实 HTTP 会触发模型，这里直接写文件）
+    const store = await SessionStore.load(filePath);
+    try {
+      await store.appendTurnStart({ turnId: "t1", providerId: "p1", model: "m" });
+      await store.appendMessage({ role: "user", content: "导出测试的问题" });
+      await store.appendMessage({ role: "assistant", content: "导出测试的回答" });
+      await store.appendTurnEnd({ turnId: "t1", status: "completed" });
+      await store.flush();
+    } finally {
+      await store.close();
+    }
+
+    const markdown = await fetch(`${baseUrl}/session/export`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ filePath, format: "markdown" }),
+    });
+    expect(markdown.status).toBe(200);
+    expect(markdown.headers.get("content-type")).toContain("text/markdown");
+    const markdownText = await markdown.text();
+    expect(markdownText).toContain("> 导出测试的问题");
+    expect(markdownText).toContain("导出测试的回答");
+
+    const html = await fetch(`${baseUrl}/session/export`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ filePath, format: "html" }),
+    });
+    expect(html.status).toBe(200);
+    expect(await html.text()).toContain("<!doctype html>");
+
+    const json = await fetch(`${baseUrl}/session/export`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ filePath, format: "json" }),
+    });
+    expect(json.status).toBe(200);
+    expect(((await json.json()) as { format: string }).format).toBe("meowcode.session.export");
+  });
+
+  it("rejects an export path outside the sessions dir", async () => {
+    const response = await fetch(`${baseUrl}/session/export`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ filePath: path.join(sessionsDir, "..", "evil.jsonl") }),
+    });
+    expect(response.status).toBe(400);
   });
 
   it("exposes the session mode on GET /session and persists it", async () => {
@@ -1068,5 +1289,131 @@ describe("git routes", () => {
       body: JSON.stringify({ paths: ["a.txt"] }),
     });
     expect(stage.status).toBe(409);
+  });
+});
+
+describe("prompt polish", () => {
+  const headers = { authorization: `Bearer ${TOKEN}`, "content-type": "application/json" };
+  const post = (body: unknown) =>
+    fetch(`${baseUrl}/prompt/polish`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(body),
+    });
+
+  it("rejects empty text", async () => {
+    const response = await post({ text: "   " });
+    expect(response.status).toBe(400);
+    const payload = (await response.json()) as { error: { code: string } };
+    expect(payload.error.code).toBe("invalid_request");
+  });
+
+  it("rejects oversized text", async () => {
+    const response = await post({ text: "x".repeat(MAX_POLISH_INPUT_CHARS + 1) });
+    expect(response.status).toBe(400);
+    const payload = (await response.json()) as { error: { code: string } };
+    expect(payload.error.code).toBe("invalid_request");
+  });
+
+  it("rejects a non-boolean side flag", async () => {
+    const response = await post({ text: "修复登录", side: "yes" });
+    expect(response.status).toBe(400);
+    const payload = (await response.json()) as { error: { code: string } };
+    expect(payload.error.code).toBe("invalid_request");
+  });
+
+  it("fails gracefully when the model endpoint is unreachable", async () => {
+    const response = await post({ text: "修复登录" });
+    // provider 指向 127.0.0.1:1：模型失败必须是 502，而不是把路由打挂
+    expect(response.status).toBe(502);
+    const payload = (await response.json()) as { error: { code: string } };
+    expect(payload.error.code).toBe("prompt_polish_failed");
+  }, 45_000);
+});
+
+describe("memory routes", () => {
+  it("manages memories in both scopes for a given cwd", async () => {
+    const workspace = await mkdtemp(path.join(tmpdir(), "meowcode-memory-ws-"));
+    const auth = { authorization: `Bearer ${TOKEN}`, "content-type": "application/json" };
+    try {
+      const put = await fetch(`${baseUrl}/memory/file`, {
+        method: "PUT",
+        headers: auth,
+        body: JSON.stringify({
+          scope: "project",
+          name: "build-setup",
+          content: "---\ndescription: 构建走 pnpm\ncreated: 2026-10-25\n---\n用 pnpm。",
+          cwd: workspace,
+        }),
+      });
+      expect(put.status).toBe(200);
+
+      const putUser = await fetch(`${baseUrl}/memory/file`, {
+        method: "PUT",
+        headers: auth,
+        body: JSON.stringify({
+          scope: "user",
+          name: "user-pref",
+          content: "---\ndescription: 用户偏好\ncreated: 2026-10-25\n---\n偏好简洁回复。",
+          cwd: workspace,
+        }),
+      });
+      expect(putUser.status).toBe(200);
+
+      const list = (await (
+        await fetch(`${baseUrl}/memory?cwd=${encodeURIComponent(workspace)}`, { headers: auth })
+      ).json()) as {
+        user: Array<{ name: string; description: string }>;
+        project: Array<{ name: string; description: string }>;
+      };
+      expect(list.user.map((item) => item.name)).toEqual(["user-pref"]);
+      expect(list.project.map((item) => item.name)).toEqual(["build-setup"]);
+      expect(list.project[0].description).toBe("构建走 pnpm");
+
+      const file = (await (
+        await fetch(
+          `${baseUrl}/memory/file?scope=project&name=build-setup&cwd=${encodeURIComponent(workspace)}`,
+          { headers: auth },
+        )
+      ).json()) as { content: string };
+      expect(file.content).toContain("pnpm");
+
+      const remove = await fetch(
+        `${baseUrl}/memory/file?scope=project&name=build-setup&cwd=${encodeURIComponent(workspace)}`,
+        { method: "DELETE", headers: auth },
+      );
+      expect(remove.status).toBe(200);
+      const again = await fetch(
+        `${baseUrl}/memory/file?scope=project&name=build-setup&cwd=${encodeURIComponent(workspace)}`,
+        { method: "DELETE", headers: auth },
+      );
+      expect(again.status).toBe(404);
+    } finally {
+      await rm(workspace, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects invalid scope and name", async () => {
+    const auth = { authorization: `Bearer ${TOKEN}`, "content-type": "application/json" };
+    const workspace = await mkdtemp(path.join(tmpdir(), "meowcode-memory-ws-"));
+    try {
+      const scope = await fetch(`${baseUrl}/memory/file`, {
+        method: "PUT",
+        headers: auth,
+        body: JSON.stringify({ scope: "global", name: "x", content: "c", cwd: workspace }),
+      });
+      expect(scope.status).toBe(400);
+      expect(((await scope.json()) as { error: { code: string } }).error.code).toBe("invalid_scope");
+
+      const name = await fetch(`${baseUrl}/memory/file`, {
+        method: "PUT",
+        headers: auth,
+        body: JSON.stringify({ scope: "project", name: "../evil", content: "c", cwd: workspace }),
+      });
+      expect(name.status).toBe(400);
+      expect(((await name.json()) as { error: { code: string } }).error.code).toBe("invalid_name");
+    } finally {
+      await rm(workspace, { recursive: true, force: true });
+    }
   });
 });

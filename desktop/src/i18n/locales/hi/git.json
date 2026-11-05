@@ -1,0 +1,160 @@
+{
+  "nav": {
+    "heading": "स्रोत नियंत्रण",
+    "ariaLabel": "स्रोत नियंत्रण",
+    "viewAria": "स्रोत नियंत्रण दृश्य"
+  },
+  "group": {
+    "conflicted": "टकराव",
+    "staged": "स्टेज किया गया",
+    "unstaged": "परिवर्तन",
+    "empty": "कोई नहीं",
+    "unstageAll": "सभी अनस्टेज करें",
+    "stageAll": "सभी स्टेज करें"
+  },
+  "list": {
+    "truncated": "{{total}} में से पहले {{shown}} दिखाए जा रहे हैं",
+    "truncatedStaged": " (बाकी के लिए «सभी अनस्टेज करें» का उपयोग करें)",
+    "truncatedUnstaged": " (बाकी के लिए «सभी स्टेज करें» का उपयोग करें, या उन्हें .gitignore में जोड़ें)"
+  },
+  "repo": {
+    "unavailable": "git नहीं मिला। इसे इंस्टॉल करके PATH में जोड़ें",
+    "notRepo": "यह कार्यक्षेत्र Git रिपॉज़िटरी नहीं है",
+    "reading": "रिपॉज़िटरी की स्थिति पढ़ी जा रही है…"
+  },
+  "repoHint": {
+    "unavailable": "git नहीं मिला: Git इंस्टॉल करें और जाँचें कि टर्मिनल में `git --version` काम करता है।",
+    "notRepo": "यह कार्यक्षेत्र Git रिपॉज़िटरी नहीं है। टर्मिनल में `git init` चलाएँ, फिर यहाँ रीफ़्रेश करें।",
+    "failed": "रिपॉज़िटरी की स्थिति पढ़ी नहीं जा सकी।"
+  },
+  "branch": {
+    "switch": "ब्रांच बदलें",
+    "search": "ब्रांच खोजें",
+    "listAria": "ब्रांच सूची",
+    "loading": "ब्रांच पढ़ी जा रही हैं…",
+    "noMatch": "कोई मेल खाती ब्रांच नहीं",
+    "stash": "बदलने से पहले स्थानीय परिवर्तन स्टैश करें",
+    "force": "ज़बरदस्ती बदलें (बिना कमिट किए परिवर्तन छोड़ें)",
+    "newPlaceholder": "मौजूदा HEAD से नई ब्रांच बनाएँ, जैसे feature/login",
+    "create": "बनाएँ और बदलें",
+    "close": "बंद करें"
+  },
+  "conflict": {
+    "ours": "मेरा",
+    "oursTitle": "मेरा संस्करण लें (ours)",
+    "theirs": "उनका",
+    "theirsTitle": "उनका संस्करण लें (theirs)",
+    "mark": "सुलझ गया",
+    "markTitle": "सुलझा हुआ चिह्नित करें (सामग्री मैन्युअली संभाली गई है)",
+    "resolveTitleOurs": "मेरा संस्करण लें",
+    "resolveTitleTheirs": "उनका संस्करण लें",
+    "resolveTitleMark": "सुलझा हुआ चिह्नित करें",
+    "resolveMessageMark": "टकराव वाली फ़ाइल सुलझी हुई के रूप में चिह्नित होगी (सामग्री डिस्क पर जैसी है वैसी ही रहेगी)।",
+    "resolveMessageReplace": "फ़ाइल चुने गए पक्ष के संस्करण से बदल दी जाएगी, दूसरे पक्ष की सामग्री खो जाएगी।"
+  },
+  "file": {
+    "stage": "स्टेज करें",
+    "unstage": "अनस्टेज करें",
+    "discard": "परिवर्तन छोड़ें"
+  },
+  "discard": {
+    "title": "परिवर्तन छोड़ें",
+    "message": "इन फ़ाइलों के कार्यक्षेत्र परिवर्तन स्थायी रूप से छोड़ दिए जाएँगे (बिना स्टेज किए बदलाव खो जाएँगे और ट्रैक न की गई फ़ाइलें हट जाएँगी)।",
+    "confirm": "छोड़ें"
+  },
+  "dialog": {
+    "cancel": "रद्द करें",
+    "confirm": "पुष्टि करें",
+    "processing": "प्रोसेस हो रहा है…"
+  },
+  "footer": {
+    "changes_one": "{{count, number}} परिवर्तन",
+    "changes_other": "{{count, number}} परिवर्तन",
+    "changes_few": "{{count, number}} परिवर्तन",
+    "changes_many": "{{count, number}} परिवर्तन"
+  },
+  "action": {
+    "refresh": "रीफ़्रेश करें",
+    "pull": "पुल करें",
+    "push": "पुश करें",
+    "forcePush": "ज़बरदस्ती पुश करें",
+    "back": "वापस"
+  },
+  "pull": {
+    "title": "पुल करें (--ff-only)",
+    "noUpstream": "इस ब्रांच का कोई अपस्ट्रीम नहीं है"
+  },
+  "push": {
+    "detached": "detached HEAD से पुश नहीं किया जा सकता",
+    "forceTitle": "ज़बरदस्ती पुश (--force-with-lease, दो पुष्टियाँ आवश्यक)",
+    "message": "{{branch}} को {{upstream}} पर पुश करें।",
+    "messageNew": "{{branch}} को origin पर पुश करें और अपस्ट्रीम ब्रांच सेट करें।",
+    "forceWarning": "ज़बरदस्ती पुश स्थानीय इतिहास से रिमोट पर मौजूद कमिट्स को ओवरराइट कर देगा (--force-with-lease केवल तब सुरक्षित है जब किसी और ने रिमोट अपडेट न किया हो)। यह आमतौर पर अपरिवर्तनीय है।",
+    "forceConfirm": "रिमोट {{upstream}} को स्थानीय {{branch}} से ओवरराइट करें?",
+    "forceStep1": "ज़बरदस्ती पुश (1/2)",
+    "forceStep2": "ज़बरदस्ती पुश (2/2)",
+    "continue": "जारी रखें"
+  },
+  "upstream": {
+    "none": "कोई अपस्ट्रीम ब्रांच नहीं",
+    "short": "अपस्ट्रीम",
+    "ahead": "{{count, number}} आगे",
+    "behind": "{{count, number}} पीछे"
+  },
+  "tab": {
+    "changes": "परिवर्तन",
+    "history": "इतिहास"
+  },
+  "detail": {
+    "backTitle": "सूची पर वापस",
+    "loading": "कमिट विवरण पढ़ा जा रहा है…",
+    "mergeCommit": "मर्ज कमिट",
+    "moreFiles_one": "+{{count, number}} फ़ाइल सूचीबद्ध नहीं",
+    "moreFiles_other": "+{{count, number}} फ़ाइलें सूचीबद्ध नहीं",
+    "moreFiles_few": "+{{count, number}} फ़ाइलें सूचीबद्ध नहीं",
+    "moreFiles_many": "+{{count, number}} फ़ाइलें सूचीबद्ध नहीं"
+  },
+  "diff": {
+    "loading": "diff पढ़ा जा रहा है…",
+    "binary": "बाइनरी फ़ाइल, सामग्री नहीं दिखाई जाती",
+    "empty": "दिखाने के लिए कोई परिवर्तन नहीं",
+    "emptyCommit": "इस कमिट में दिखाने के लिए कोई परिवर्तन नहीं",
+    "truncated": "पैच बहुत बड़ा है, काट दिया गया",
+    "select": "परिवर्तन देखने के लिए फ़ाइल चुनें",
+    "selectFileHint": "परिवर्तन देखने के लिए बाईं ओर फ़ाइल चुनें (स्टेज और अनस्टेज अलग-अलग दिखाए जाते हैं)",
+    "preparing": "diff तैयार हो रहा है…"
+  },
+  "commit": {
+    "placeholder": "कमिट संदेश (कमिट करने के लिए Ctrl+Enter)",
+    "placeholderEmpty": "पहले फ़ाइलें स्टेज करें, फिर कमिट संदेश लिखें",
+    "conflicts_one": "कमिट करने से पहले {{count, number}} टकराव सुलझाना होगा",
+    "conflicts_other": "कमिट करने से पहले {{count, number}} टकराव सुलझाने होंगे",
+    "conflicts_few": "कमिट करने से पहले {{count, number}} टकराव सुलझाने होंगे",
+    "conflicts_many": "कमिट करने से पहले {{count, number}} टकराव सुलझाने होंगे",
+    "needsStaged": "कमिट करने के लिए फ़ाइलें स्टेज करें",
+    "staged_one": "{{count, number}} फ़ाइल स्टेज की गई",
+    "staged_other": "{{count, number}} फ़ाइलें स्टेज की गईं",
+    "staged_few": "{{count, number}} फ़ाइलें स्टेज की गईं",
+    "staged_many": "{{count, number}} फ़ाइलें स्टेज की गईं",
+    "aiTitle": "स्टेज किए गए diff से कमिट संदेश बनाएँ",
+    "aiGenerate": "AI से बनाएँ",
+    "aiGenerating": "बनाया जा रहा है…",
+    "submit": "कमिट करें",
+    "committing": "कमिट हो रहा है…",
+    "emptyMessage": "कमिट संदेश खाली नहीं हो सकता",
+    "aiFailed": "AI जनरेशन विफल: {{message}}"
+  },
+  "history": {
+    "loading": "कमिट इतिहास पढ़ा जा रहा है…",
+    "empty": "अभी कोई कमिट नहीं",
+    "loadMore": "और लोड करें",
+    "loadingMore": "लोड हो रहा है…"
+  },
+  "workspace": {
+    "label": "कार्यक्षेत्र:",
+    "none": "चयनित नहीं"
+  },
+  "error": {
+    "close": "बंद करें"
+  }
+}

@@ -1,0 +1,160 @@
+{
+  "nav": {
+    "heading": "Controle de Código-Fonte",
+    "ariaLabel": "Controle de Código-Fonte",
+    "viewAria": "Visão do controle de código-fonte"
+  },
+  "group": {
+    "conflicted": "Conflitos",
+    "staged": "Preparado",
+    "unstaged": "Alterações",
+    "empty": "Nenhum",
+    "unstageAll": "Remover tudo da preparação",
+    "stageAll": "Preparar tudo"
+  },
+  "list": {
+    "truncated": "Mostrando os primeiros {{shown}} de {{total}}",
+    "truncatedStaged": " (use «Remover tudo da preparação» para o restante)",
+    "truncatedUnstaged": " (use «Preparar tudo» para o restante ou adicione-os ao .gitignore)"
+  },
+  "repo": {
+    "unavailable": "git não encontrado. Instale-o e adicione ao PATH",
+    "notRepo": "O espaço de trabalho atual não é um repositório Git",
+    "reading": "Lendo o estado do repositório…"
+  },
+  "repoHint": {
+    "unavailable": "git não encontrado: instale o Git e confirme que `git --version` funciona no terminal.",
+    "notRepo": "O espaço de trabalho atual não é um repositório Git. Execute `git init` no terminal e atualize aqui.",
+    "failed": "Não foi possível ler o estado do repositório."
+  },
+  "branch": {
+    "switch": "Mudar de branch",
+    "search": "Pesquisar branches",
+    "listAria": "Lista de branches",
+    "loading": "Lendo branches…",
+    "noMatch": "Nenhuma branch correspondente",
+    "stash": "Guardar alterações locais antes de mudar",
+    "force": "Forçar a mudança (descartar alterações não commitadas)",
+    "newPlaceholder": "Criar uma branch a partir do HEAD atual, ex.: feature/login",
+    "create": "Criar e mudar",
+    "close": "Fechar"
+  },
+  "conflict": {
+    "ours": "Minha",
+    "oursTitle": "Usar a minha (ours)",
+    "theirs": "Dele",
+    "theirsTitle": "Usar a dele (theirs)",
+    "mark": "Resolvido",
+    "markTitle": "Marcar como resolvido (conteúdo já tratado manualmente)",
+    "resolveTitleOurs": "Usar minha versão",
+    "resolveTitleTheirs": "Usar a versão dele",
+    "resolveTitleMark": "Marcar como resolvido",
+    "resolveMessageMark": "O arquivo em conflito será marcado como resolvido (o conteúdo atual no disco é mantido).",
+    "resolveMessageReplace": "O arquivo será substituído pela versão do lado escolhido; o conteúdo do outro lado será perdido."
+  },
+  "file": {
+    "stage": "Preparar",
+    "unstage": "Remover da preparação",
+    "discard": "Descartar alterações"
+  },
+  "discard": {
+    "title": "Descartar alterações",
+    "message": "As alterações da árvore de trabalho desses arquivos serão descartadas permanentemente (modificações não preparadas serão perdidas e arquivos não rastreados serão excluídos).",
+    "confirm": "Descartar"
+  },
+  "dialog": {
+    "cancel": "Cancelar",
+    "confirm": "Confirmar",
+    "processing": "Processando…"
+  },
+  "footer": {
+    "changes_one": "{{count, number}} alteração",
+    "changes_other": "{{count, number}} alterações",
+    "changes_few": "{{count, number}} alterações",
+    "changes_many": "{{count, number}} alterações"
+  },
+  "action": {
+    "refresh": "Atualizar",
+    "pull": "Pull",
+    "push": "Push",
+    "forcePush": "Forçar push",
+    "back": "Voltar"
+  },
+  "pull": {
+    "title": "Pull (--ff-only)",
+    "noUpstream": "Esta branch não tem upstream"
+  },
+  "push": {
+    "detached": "Não é possível fazer push a partir de um HEAD destacado",
+    "forceTitle": "Push forçado (--force-with-lease, duas confirmações necessárias)",
+    "message": "Enviar {{branch}} para {{upstream}}.",
+    "messageNew": "Enviar {{branch}} para origin e definir a branch upstream.",
+    "forceWarning": "Um push forçado substitui por seu histórico local os commits que possam existir no remoto (--force-with-lease só protege se ninguém mais atualizou o remoto). Normalmente é irreversível.",
+    "forceConfirm": "Substituir {{upstream}} remoto pelo {{branch}} local?",
+    "forceStep1": "Push forçado (1/2)",
+    "forceStep2": "Push forçado (2/2)",
+    "continue": "Continuar"
+  },
+  "upstream": {
+    "none": "Nenhuma branch upstream",
+    "short": "upstream",
+    "ahead": "{{count, number}} à frente",
+    "behind": "{{count, number}} atrás"
+  },
+  "tab": {
+    "changes": "Alterações",
+    "history": "Histórico"
+  },
+  "detail": {
+    "backTitle": "Voltar à lista",
+    "loading": "Lendo detalhes do commit…",
+    "mergeCommit": "Commit de merge",
+    "moreFiles_one": "+{{count, number}} arquivo não listado",
+    "moreFiles_other": "+{{count, number}} arquivos não listados",
+    "moreFiles_few": "+{{count, number}} arquivos não listados",
+    "moreFiles_many": "+{{count, number}} arquivos não listados"
+  },
+  "diff": {
+    "loading": "Lendo diff…",
+    "binary": "Arquivo binário, conteúdo não exibido",
+    "empty": "Nenhuma alteração para exibir",
+    "emptyCommit": "Este commit não tem alterações para exibir",
+    "truncated": "Patch muito grande, truncado",
+    "select": "Selecione um arquivo para ver as alterações",
+    "selectFileHint": "Selecione um arquivo à esquerda para ver as alterações (preparadas e não preparadas são exibidas separadamente)",
+    "preparing": "Preparando diff…"
+  },
+  "commit": {
+    "placeholder": "Mensagem do commit (Ctrl+Enter para commitar)",
+    "placeholderEmpty": "Prepare arquivos primeiro e depois escreva a mensagem",
+    "conflicts_one": "{{count, number}} conflito precisa ser resolvido antes de commitar",
+    "conflicts_other": "{{count, number}} conflitos precisam ser resolvidos antes de commitar",
+    "conflicts_few": "{{count, number}} conflitos precisam ser resolvidos antes de commitar",
+    "conflicts_many": "{{count, number}} conflitos precisam ser resolvidos antes de commitar",
+    "needsStaged": "Prepare arquivos para poder commitar",
+    "staged_one": "{{count, number}} arquivo preparado",
+    "staged_other": "{{count, number}} arquivos preparados",
+    "staged_few": "{{count, number}} arquivos preparados",
+    "staged_many": "{{count, number}} arquivos preparados",
+    "aiTitle": "Gerar mensagem de commit a partir do diff preparado",
+    "aiGenerate": "Gerar com IA",
+    "aiGenerating": "Gerando…",
+    "submit": "Commitar",
+    "committing": "Commitando…",
+    "emptyMessage": "A mensagem do commit não pode ficar vazia",
+    "aiFailed": "Falha na geração por IA: {{message}}"
+  },
+  "history": {
+    "loading": "Lendo o histórico de commits…",
+    "empty": "Ainda não há commits",
+    "loadMore": "Carregar mais",
+    "loadingMore": "Carregando…"
+  },
+  "workspace": {
+    "label": "Espaço de trabalho:",
+    "none": "Não selecionado"
+  },
+  "error": {
+    "close": "Fechar"
+  }
+}

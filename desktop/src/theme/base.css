@@ -130,10 +130,6 @@ img {
   0%, 100% { opacity: 0.30; }
   50% { opacity: 1; }
 }
-@keyframes mc-blink {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0; }
-}
 @keyframes mc-fade-in {
   from { opacity: 0; transform: translateY(4px); }
   to { opacity: 1; transform: translateY(0); }
@@ -186,7 +182,7 @@ img {
   font-size: var(--fs-caption);
 }
 .mc-markdown ul,
-.mc-markdown ol { margin: 10px 0 10px 22px; }
+.mc-markdown ol { margin: 10px 0; padding-inline-start: 22px; }
 .mc-markdown li { margin: 4px 0; }
 .mc-markdown blockquote {
   margin: 12px 0;

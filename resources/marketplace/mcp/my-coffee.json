@@ -1,0 +1,9 @@
+{
+  "description": "瑞幸咖啡官方点单 MCP：门店查询、商品搜索、自提下单、支付二维码、订单状态与取餐码查询、取消订单。Token 在 open.lkcoffee.com/mcp 登录后创建。",
+  "server": {
+    "url": "https://gwmcp.lkcoffee.com/order/user/mcp",
+    "headers": {
+      "Authorization": "Bearer ${LUCKIN_MCP_TOKEN}"
+    }
+  }
+}

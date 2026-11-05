@@ -1,0 +1,176 @@
+{
+  "tabs": {
+    "home": "New Tab",
+    "workspace": "Files",
+    "review": "Review",
+    "sidechat": "Side Chat",
+    "terminal": "Terminal",
+    "plan": "Plan",
+    "subagents": "Subagents",
+    "subagent": "Subagent"
+  },
+  "runStatus": {
+    "running": "Running",
+    "completed": "Completed",
+    "failed": "Failed",
+    "aborted": "Stopped",
+    "interrupted": "Interrupted"
+  },
+  "laneStatus": {
+    "queued": "Queued",
+    "active": "In progress",
+    "done": "Done",
+    "blocked": "Blocked"
+  },
+  "home": {
+    "toolsSection": "Tools",
+    "sessionSection": "Session info",
+    "card": {
+      "workspace": "Files",
+      "search": "Search chats",
+      "sidechat": "Side chat",
+      "terminal": "Terminal",
+      "review": "Review",
+      "subagents": "Subagents"
+    },
+    "fileMenu": "File menu",
+    "quickOpen": "Quick Open (Ctrl+P)",
+    "revealInExplorer": "Open in File Explorer",
+    "field": {
+      "workspace": "Workspace",
+      "provider": "Provider",
+      "model": "Model",
+      "sessionId": "Session ID",
+      "toolCalls": "Tool calls",
+      "uncachedInput": "Uncached input",
+      "cacheRead": "Cache read",
+      "cacheStatus": "Cache status",
+      "cacheWrite": "Cache write",
+      "output": "Output",
+      "cacheHitRate": "Cache hit rate (session)",
+      "speed": "Output speed",
+      "response": "Response time",
+      "firstToken": "First-token latency"
+    },
+    "notReported": "Not reported",
+    "cache": {
+      "localBreakpoint": "Local breakpoints · {{ttl}}",
+      "autoTtl": "Automatic (1h for people / 5m for machines)",
+      "serverManaged": "Server-managed",
+      "serverManagedUncontrolled": "Server-managed · TTL/eviction not controllable",
+      "notReported": "{{base}} (not reported)",
+      "miss": "{{base}} (miss)",
+      "hitting": "{{base}} (hitting)"
+    },
+    "tokenValue": "{{value}} tok"
+  },
+  "subagent": {
+    "fallbackTitle": "Subagent",
+    "background": "Background",
+    "stop": "Stop this subagent",
+    "readOnly": "Read-only",
+    "canContinue": "Can keep chatting",
+    "tokensIn": "In {{tokens}}",
+    "tokensOut": "Out {{tokens}}",
+    "loadingTranscript": "Loading transcript…",
+    "emptyTranscript": "No transcript yet",
+    "pendingSteers_one": "{{count}} message queued for the next step",
+    "pendingSteers_other": "{{count}} messages queued for the next step",
+    "pendingSteers_few": "{{count}} messages queued for the next step",
+    "pendingSteers_many": "{{count}} messages queued for the next step",
+    "steerPlaceholderReadOnly": "Message {{role}} (takes effect next step, read-only)…",
+    "steerPlaceholder": "Message: takes effect next step without interrupting the current run…",
+    "steer": "Message",
+    "steerTitle": "Takes effect next step",
+    "runningHint": "Running — you can keep chatting when it finishes",
+    "continuePlaceholderReadOnly": "Ask {{role}} to continue (read-only)…",
+    "continuePlaceholder": "Ask the subagent to continue…",
+    "send": "Send"
+  },
+  "subagents": {
+    "emptyTitle": "No subagents in this chat yet",
+    "emptyHint": "They show up here once the main agent dispatches a task",
+    "onlyCurrentSession": "Only subagents from this chat are listed",
+    "open": "Open subagent transcript",
+    "invalidFallback": "Host validation failed",
+    "invalidTooltip": "{{reason}}: {{summary}}",
+    "verified": "Verified",
+    "unverified": "Unverified",
+    "criticalFindings_one": "{{count}} critical",
+    "criticalFindings_other": "{{count}} critical",
+    "criticalFindings_few": "{{count}} critical",
+    "criticalFindings_many": "{{count}} critical"
+  },
+  "sidechat": {
+    "interruptedNotice": "The last run was interrupted when the app quit. The generated content was kept, so you can continue the chat.",
+    "generating": "Generating…",
+    "standalone": "Standalone chat · runs alongside the main conversation",
+    "initializing": "Initializing…",
+    "newSession": "New chat",
+    "noModel": "No model configured",
+    "planConfirmedWithPath": "Plan confirmed. Start implementing according to {{path}}.",
+    "planConfirmed": "Plan confirmed. Start implementing."
+  },
+  "browser": {
+    "back": "Back",
+    "forward": "Forward",
+    "reload": "Reload",
+    "addressPlaceholder": "Search or enter a URL"
+  },
+  "filePreview": {
+    "copyPath": "Copy path",
+    "openInEditor": "Open in editor",
+    "loading": "Loading…",
+    "truncated": "Showing the first {{shown}} of {{total}} lines"
+  },
+  "plan": {
+    "governance": "Governance · {{tier}}",
+    "allPassed": "All gates passed",
+    "inProgress": "In progress",
+    "repairs": "Rework {{count}}/3",
+    "trivial": "Trivial T0 task: no gates, implement and verify directly.",
+    "emptyTitle": "No plan document yet",
+    "emptyHint": "Plan mode researches with read-only tools first, then writes the implementation plan under plans/; it shows up here.",
+    "updating": "Updating",
+    "writing": "Writing",
+    "reload": "Reload",
+    "writingBody": "Writing the plan document…",
+    "loadingBody": "Reading the plan document…"
+  },
+  "quickOpen": {
+    "title": "Quick Open",
+    "placeholder": "Type a file name or path",
+    "failed": "Couldn't read the file list, please retry",
+    "loading": "Loading…",
+    "noMatch": "No matching files",
+    "empty": "No files in the workspace"
+  },
+  "review": {
+    "loading": "Loading…",
+    "changedFiles_one": "{{count}} file changed",
+    "changedFiles_other": "{{count}} files changed",
+    "changedFiles_few": "{{count}} files changed",
+    "changedFiles_many": "{{count}} files changed",
+    "refresh": "Refresh",
+    "failed": "Couldn't load, please try again later",
+    "empty": "No file changes in this chat yet",
+    "changeCount_one": "Changed {{count}} time",
+    "changeCount_other": "Changed {{count}} times",
+    "changeCount_few": "Changed {{count}} times",
+    "changeCount_many": "Changed {{count}} times",
+    "diffAria": "Changes in {{path}}"
+  },
+  "workspace": {
+    "loading": "Loading…",
+    "readFailed": "Couldn't load",
+    "truncated": "…{{total}} items in total, showing the first {{shown}}",
+    "selectFile": "Select a file on the right to preview (text / image / video / audio / PDF)",
+    "resizeAria": "Resize the file list",
+    "filterPlaceholder": "Filter files…",
+    "searching": "Searching…",
+    "noMatch": "No matching files"
+  },
+  "terminal": {
+    "exited": "[Process exited]"
+  }
+}

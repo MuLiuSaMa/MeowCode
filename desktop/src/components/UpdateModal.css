@@ -1,0 +1,76 @@
+/* 更新弹窗：版本 / 更新说明 / 下载进度 */
+.mc-updatemodal {
+  max-width: 520px;
+  width: 520px;
+}
+
+.mc-updatemodal__current {
+  margin-left: 8px;
+  color: var(--fg-subtlest);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-regular);
+}
+
+/* 仅在发布没带当前平台安装包时出现的一行警示 */
+.mc-updatemodal__asset[data-kind="warn"] {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 10px;
+  color: var(--warning);
+  font-size: var(--fs-sm);
+}
+
+.mc-updatemodal__notes {
+  max-height: 220px;
+  overflow: auto;
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  color: var(--fg-subtle);
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.mc-updatemodal__nonotes {
+  color: var(--fg-subtlest);
+}
+
+.mc-updatemodal__progress {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin-bottom: 12px;
+}
+.mc-updatemodal__bar {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--surface-hover);
+  overflow: hidden;
+}
+.mc-updatemodal__fill {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--fg);
+  transition: width 0.15s linear;
+}
+.mc-updatemodal__progresstext {
+  color: var(--fg-subtle);
+  font-size: var(--fs-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.mc-updatemodal__error {
+  margin: 0 0 10px;
+  padding: 6px 10px;
+  border: 1px solid color-mix(in oklab, var(--danger) 40%, transparent);
+  border-radius: var(--radius-md);
+  background: var(--danger-surface);
+  color: var(--fg);
+  font-size: var(--fs-sm);
+  word-break: break-word;
+}

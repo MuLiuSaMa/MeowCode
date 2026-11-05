@@ -9,15 +9,15 @@
   justify-content: space-between;
   gap: 10px;
   width: 100%;
-  height: 38px;
-  padding: 0 12px;
+  height: 30px;
+  padding: 0 10px;
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   corner-shape: superellipse(1.5);
   background: var(--input-fill);
   color: var(--fg);
   font-family: inherit;
-  font-size: var(--fs-base);
+  font-size: var(--fs-sm);
   text-align: left;
   cursor: pointer;
   transition:
@@ -29,6 +29,17 @@
 }
 .mc-customselect[data-open="true"] .mc-customselect__button {
   border-color: var(--border-hover);
+}
+.mc-customselect__label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.mc-customselect__icon {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
 }
 .mc-customselect__value {
   overflow: hidden;
@@ -44,29 +55,22 @@
   transform: rotate(180deg);
 }
 
+/* 菜单经 portal 挂在 body 下，fixed 定位（坐标由组件内联样式给出） */
 .mc-customselect__menu {
-  position: absolute;
-  left: 0;
-  right: 0;
-  z-index: 20;
+  position: fixed;
+  z-index: 500;
   display: flex;
   flex-direction: column;
   gap: 2px;
-  max-height: 240px;
-  padding: 4px;
+  max-height: 320px;
+  padding: 3px;
   overflow-y: auto;
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   corner-shape: superellipse(1.5);
   background: var(--bg-elevated);
-  box-shadow: var(--shadow-md);
+  box-shadow: var(--shadow-lg);
   animation: mc-fade-in var(--dur) var(--ease);
-}
-.mc-customselect__menu[data-placement="bottom"] {
-  top: calc(100% + 6px);
-}
-.mc-customselect__menu[data-placement="top"] {
-  bottom: calc(100% + 6px);
 }
 
 .mc-customselect__option {
@@ -75,13 +79,13 @@
   justify-content: space-between;
   gap: 10px;
   width: 100%;
-  padding: 9px 10px;
+  padding: 5px 9px;
   border: 0;
   border-radius: var(--radius-sm);
   background: transparent;
   color: var(--fg);
   font-family: inherit;
-  font-size: var(--fs-caption);
+  font-size: var(--fs-sm);
   text-align: left;
   cursor: pointer;
   transition: background-color var(--dur) var(--ease);
@@ -104,6 +108,32 @@
 .mc-customselect__option > svg {
   flex-shrink: 0;
   color: var(--brand);
+}
+/* 选中勾号（现在包在 optionactions 里，不再是选项直接子级） */
+.mc-customselect__optionactions > svg {
+  color: var(--brand);
+}
+.mc-customselect__optionactions {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+/* 行内删除按钮（span 而非 button：选项本身是 button，不能嵌套） */
+.mc-customselect__optiondelete {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  color: var(--fg-subtlest);
+  cursor: pointer;
+  transition: background-color var(--dur) var(--ease), color var(--dur) var(--ease);
+}
+.mc-customselect__optiondelete:hover {
+  background: var(--danger-surface);
+  color: var(--danger);
 }
 .mc-customselect__optiontext {
   display: flex;

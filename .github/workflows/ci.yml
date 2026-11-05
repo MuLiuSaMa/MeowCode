@@ -1,0 +1,35 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    # 主平台 windows-latest：PowerShell 语义、路径大小写、node-pty ConPTY 与开发环境一致
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # 62→0 起步：零告警门禁（ZCode/dsh/opencode 同款 oxlint）
+      - run: pnpm lint
+
+      # 根 tsconfig 含 src/plugins 等全部非测试源码
+      - run: pnpm build:agent
+
+      - run: pnpm --filter @meowcode/desktop typecheck
+
+      # vitest.config.ts 在 CI 下自带 retry:1，吸收残余网络级抖动
+      - run: pnpm test

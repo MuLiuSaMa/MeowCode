@@ -117,7 +117,8 @@ export function GlobalTooltip() {
       stripped.delete(anchor);
     };
     const restoreAll = () => {
-      for (const anchor of [...stripped]) restore(anchor);
+      // Set 迭代中删除「当前项」是安全的（restore 只删正在访问的 anchor）
+      for (const anchor of stripped) restore(anchor);
     };
     const onOverLink = (event: PointerEvent) => {
       if (event.buttons) return;

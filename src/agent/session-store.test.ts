@@ -26,8 +26,28 @@ describe("SessionStore", () => {
     expect((await listSessions(dir)).length).toBe(1);
   });
 
-  it("persists plans and compaction summaries, and slices effective messages", async () => {
+  it("round-trips worktree metadata through header and summary", async () => {
     const dir = await mkdtemp(path.join(tmpdir(), "meowcode-sessions-"));
+    const filePath = path.join(dir, "session.jsonl");
+    const worktree = {
+      sourceCwd: "D:/work",
+      repoRoot: "D:/work",
+      path: "C:/data/worktrees/work-1",
+      branch: "meowcode/work-1",
+      baseSha: "abc123",
+      createdAt: "2026-10-25T00:00:00.000Z",
+    };
+    const session = await SessionStore.create(filePath, worktree.path, { worktree });
+    expect(session.worktree).toEqual(worktree);
+    await session.appendMessage({ role: "user", content: "hello" });
+    await session.flush();
+
+    expect((await SessionStore.load(filePath)).worktree).toEqual(worktree);
+    const [summary] = await listSessions(dir);
+    expect(summary.worktree).toEqual(worktree);
+  });
+
+  it("persists plans and compaction summaries, and slices effective messages", async () => {    const dir = await mkdtemp(path.join(tmpdir(), "meowcode-sessions-"));
     const filePath = path.join(dir, "session.jsonl");
     const session = await SessionStore.create(filePath, "D:/work");
     await session.appendMessage({ role: "user", content: "before" });
@@ -687,8 +707,8 @@ describe("SessionStore message documents", () => {
     });
     const files = (await readdir(path.join(dir, "assets", session.id))).sort();
     expect(files).toHaveLength(2);
-    expect(files.some((file) => /-0\.png$/.test(file))).toBe(true);
-    expect(files.some((file) => /-doc0\.pdf$/.test(file))).toBe(true);
+    expect(files.some((file) => file.endsWith('-0.png'))).toBe(true);
+    expect(files.some((file) => file.endsWith('-doc0.pdf'))).toBe(true);
   });
 
   it("still loads old sessions that have no document fields", async () => {
@@ -697,5 +717,69 @@ describe("SessionStore message documents", () => {
     const loaded = await SessionStore.load(filePath);
     expect(loaded.effectiveMessages[0]).toEqual({ role: "user", content: "legacy" });
     expect(loaded.messagesForClient[0]).toEqual({ role: "user", content: "legacy" });
+  });
+});
+
+describe("checkpoints", () => {
+  it("appends checkpoints and keeps messageIndex aligned with messages", async () => {
+    const { filePath, session } = await makeStore();
+    await session.appendMessage({ role: "user", content: "one" });
+    await session.appendMessage({ role: "assistant", content: "two" });
+    const manual = await session.appendCheckpoint({
+      label: "手工点",
+      auto: false,
+      fileChanges: [],
+    });
+    await session.appendMessage({ role: "user", content: "three" });
+    const auto = await session.appendCheckpoint({
+      auto: true,
+      turnId: "t1",
+      fileChanges: ["a.ts"],
+    });
+
+    const points = session.checkpoints;
+    expect(points.map((point) => point.id)).toEqual([manual.id, auto.id]);
+    expect(points[0]).toMatchObject({ label: "手工点", auto: false, messageIndex: 2 });
+    expect(points[1]).toMatchObject({
+      auto: true,
+      turnId: "t1",
+      fileChanges: ["a.ts"],
+      messageIndex: 3,
+    });
+
+    // 重载后视图一致（含 messageIndex 口径）
+    const reloaded = await SessionStore.load(filePath);
+    expect(reloaded.checkpoints).toEqual(points);
+    // 检查点不参与消息重放
+    expect(reloaded.messagesForClient).toHaveLength(3);
+  });
+});
+
+describe("SessionStore compaction quality", () => {
+  it("records the metric without touching effective messages", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "meowcode-sessions-"));
+    const filePath = path.join(dir, "session.jsonl");
+    const session = await SessionStore.create(filePath, "D:/work");
+    await session.appendMessage({ role: "user", content: "hello" });
+    await session.appendCompactionQuality({
+      compactionId: "c1",
+      baselineCount: 3,
+      rereadPaths: ["src/a.ts"],
+      windowTurns: 5,
+    });
+    await session.appendMessage({ role: "assistant", content: "hi" });
+
+    // 观测条目不进请求历史
+    expect(session.effectiveMessages.map((message) => message.content)).toEqual(["hello", "hi"]);
+    expect(session.lastCompactionQuality).toMatchObject({
+      compactionId: "c1",
+      baselineCount: 3,
+      rereadPaths: ["src/a.ts"],
+      windowTurns: 5,
+    });
+
+    const loaded = await SessionStore.load(filePath);
+    expect(loaded.lastCompactionQuality?.rereadPaths).toEqual(["src/a.ts"]);
+    expect(loaded.effectiveMessages).toHaveLength(2);
   });
 });

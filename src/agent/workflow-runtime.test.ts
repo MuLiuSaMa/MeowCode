@@ -38,6 +38,68 @@ describe("WorkflowRuntime admit", () => {
     expect(workflow.frontier()).toBeNull();
   });
 
+  it("层级提示词：tier 配了 instructions 时随 admit 报告注入", () => {
+    const harness: HarnessDocument = {
+      version: 1,
+      nodes: [
+        {
+          id: "T1",
+          type: "tier",
+          data: { id: "T1", name: "单车道", instructions: "所有改动先跑 pnpm test" },
+        },
+        { id: "G4", type: "gate", data: { id: "G4", name: "实现" } },
+        { id: "implementer", type: "role", data: { id: "implementer", name: "实现", role: "implementer" } },
+      ],
+      edges: [
+        { id: "t1-g4", source: "T1", target: "G4", type: "tier-gate", order: 1 },
+        { id: "g4-impl", source: "G4", target: "implementer", type: "gate-role" },
+      ],
+    };
+    const workflow = new WorkflowRuntime({ harness });
+    const admitted = workflow.admit(T1_INPUT);
+    expect(admitted.ok).toBe(true);
+    if (admitted.ok) {
+      expect(admitted.report).toContain("Governed run admitted (T1");
+      expect(admitted.report).toContain("Tier instructions: 所有改动先跑 pnpm test");
+    }
+  });
+
+  it("层级提示词：缺省 / 空串 / 纯空白不注入", () => {
+    const harness = (instructions?: string): HarnessDocument => ({
+      version: 1,
+      nodes: [
+        {
+          id: "T1",
+          type: "tier",
+          data: {
+            id: "T1",
+            name: "单车道",
+            ...(instructions === undefined ? {} : { instructions }),
+          },
+        },
+        { id: "G4", type: "gate", data: { id: "G4", name: "实现" } },
+        { id: "implementer", type: "role", data: { id: "implementer", name: "实现", role: "implementer" } },
+      ],
+      edges: [
+        { id: "t1-g4", source: "T1", target: "G4", type: "tier-gate", order: 1 },
+        { id: "g4-impl", source: "G4", target: "implementer", type: "gate-role" },
+      ],
+    });
+    for (const value of [undefined, "", "   \n "]) {
+      const workflow = new WorkflowRuntime({ harness: harness(value) });
+      const admitted = workflow.admit(T1_INPUT);
+      expect(admitted.ok).toBe(true);
+      if (admitted.ok) expect(admitted.report).not.toContain("Tier instructions");
+    }
+  });
+
+  it("层级提示词：内置种子不带该字段，T0 直通报告也不含", () => {
+    const workflow = new WorkflowRuntime();
+    const admitted = workflow.admit({ tier: "T0", task_shape: "rename variable" });
+    expect(admitted.ok).toBe(true);
+    if (admitted.ok) expect(admitted.report).not.toContain("Tier instructions");
+  });
+
   it("T1：带 lanes 拒绝；成功后创建隐式 main lane", () => {
     const workflow = new WorkflowRuntime();
     expect(workflow.admit({ ...T1_INPUT, lanes: [{ id: "a", objective: "x" }] }).ok).toBe(false);

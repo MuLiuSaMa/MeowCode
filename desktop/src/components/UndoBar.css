@@ -1,0 +1,37 @@
+/* 撤销回滚横幅：对话区顶部的一条浅色提示条 */
+.mc-undobar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 auto;
+  padding: 6px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  font-size: var(--fs-sm);
+  width: fit-content;
+}
+.mc-undobar__text {
+  color: var(--muted, var(--fg));
+}
+.mc-undobar__button {
+  padding: 2px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--fg);
+  font-size: var(--fs-xs);
+  cursor: pointer;
+}
+.mc-undobar__button:hover {
+  border-color: var(--border-strong, var(--border));
+}
+.mc-undobar__close {
+  border: none;
+  background: transparent;
+  color: var(--muted, var(--fg));
+  font-size: var(--fs-base);
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 2px;
+}

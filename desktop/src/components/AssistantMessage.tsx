@@ -1,6 +1,6 @@
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { LuBrain, LuChevronDown } from "react-icons/lu";
-import appIcon from "../assets/icon.png";
 import { Markdown } from "./ui/Markdown";
 import "./AssistantMessage.css";
 
@@ -8,24 +8,22 @@ import "./AssistantMessage.css";
 export function AssistantMessage({
   content,
   thinking,
-  streaming,
-  preparing,
+  messageIndex,
 }: {
   content: string;
   thinking?: string;
-  streaming?: boolean;
-  /** 正在生成工具调用参数：此时没有正文，不要留一个孤立的光标 */
-  preparing?: boolean;
+  /** 历史回放时的消息下标；会话全文检索跳转锚点（data-message-index）用 */
+  messageIndex?: number;
 }) {
+  const { t } = useTranslation("chat");
   const hasThinking = Boolean(thinking);
   const [open, setOpen] = useState(false);
 
   return (
-    <article className="mc-assistant">
-      <div className="mc-assistant__label">
-        <img src={appIcon} alt="" draggable={false} className="mc-assistant__logo" />
-        <span>MeowCode</span>
-      </div>
+    <article
+      className="mc-assistant"
+      {...(messageIndex !== undefined ? { "data-message-index": String(messageIndex) } : {})}
+    >
       <div className="mc-assistant__body">
         {hasThinking ? (
           <details className="mc-thinking" open={open}>
@@ -37,14 +35,13 @@ export function AssistantMessage({
               }}
             >
               <LuBrain size={12} className="mc-thinking__icon" />
-              <span>{streaming && !content ? "思考中…" : "思考过程"}</span>
+              <span>{t("assistant.thinking")}</span>
               <LuChevronDown size={12} className="mc-thinking__chevron" data-open={open} />
             </summary>
             <div className="mc-thinking__body">{thinking}</div>
           </details>
         ) : null}
         <Markdown content={content} />
-        {streaming && !preparing ? <span className="mc-assistant__caret" aria-hidden="true" /> : null}
       </div>
     </article>
   );

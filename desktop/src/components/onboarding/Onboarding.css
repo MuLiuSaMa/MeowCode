@@ -68,6 +68,21 @@
   background: var(--surface);
   color: var(--fg-subtle);
 }
+/* 换步骤时图标旋入（纯 transform，不做淡入淡出）：key 随 step 变化触发重挂载 */
+.mc-onboarding__stepglyph {
+  display: grid;
+  place-items: center;
+  animation: mc-onboarding-icon-in 300ms cubic-bezier(0.22, 0.85, 0.3, 1.12);
+}
+
+@keyframes mc-onboarding-icon-in {
+  from {
+    transform: rotate(-75deg) scale(0.55);
+  }
+  to {
+    transform: rotate(0deg) scale(1);
+  }
+}
 
 .mc-onboarding__title {
   margin: 0;
@@ -112,8 +127,9 @@
   text-align: center;
 }
 
-/* 引导里的表单直接复用设置页的 .mc-modelform__grid，去掉它给弹窗留的上边距 */
-.mc-onboarding__panel > .mc-modelform__grid {
+/* 引导里的表单直接复用设置页的 .mc-modelform__grid / .mc-modelrows，去掉它们给弹窗留的上边距 */
+.mc-onboarding__panel > .mc-modelform__grid,
+.mc-onboarding__panel > .mc-modelrows {
   margin-top: 0;
 }
 
@@ -145,6 +161,59 @@
 .mc-onboarding__langmeta {
   color: var(--fg-subtle);
   font-size: var(--fs-xs);
+}
+
+/* 语言选择：一个语种一张卡片（预览框收窄居中，卡片铺满整行） */
+.mc-onboarding__panel--lang .mc-onboarding__langpreview {
+  width: min(560px, 100%);
+  margin: 0 auto;
+}
+.mc-onboarding__langgrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 6px;
+}
+.mc-onboarding__langcard {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 46px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  corner-shape: superellipse(1.5);
+  background: var(--surface);
+  color: var(--fg);
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background-color var(--dur) var(--ease),
+    border-color var(--dur) var(--ease);
+}
+.mc-onboarding__langcard:hover {
+  background: var(--surface-hover);
+  border-color: var(--border-strong);
+}
+.mc-onboarding__langcard[data-active="true"] {
+  border-color: var(--brand);
+  background: color-mix(in oklab, var(--brand) 7%, var(--surface));
+}
+.mc-onboarding__langicon {
+  flex: none;
+  color: var(--fg-subtle);
+}
+.mc-onboarding__langname {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  font-size: var(--fs-base);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mc-onboarding__langcheck {
+  flex: none;
+  color: var(--brand);
 }
 
 /* ---- 主题卡片 ---- */

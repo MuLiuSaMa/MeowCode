@@ -19,6 +19,12 @@ export type ToolName =
 
 export type SubagentStatus = "running" | "completed" | "failed" | "aborted" | "interrupted";
 
+/** 前缀缓存诊断状态：warm 命中 / cold 首次写入或前缀变化 / evicted 疑似逐出 / unsupported 不支持 / unknown 未报告 */
+export type CacheState = "warm" | "cold" | "evicted" | "unsupported" | "unknown";
+
+/** 工具目录重建原因（缓存安全边界） */
+export type ToolCatalogReason = "session" | "compaction" | "profile" | "plugin_reload";
+
 /**
  * 子 Agent 角色（metis 式角色注册表的键）：每个角色在 agent-definition.ts
  * 里有一份定义（系统提示词、工具白名单、可关闭的 gate）。general 保持全量
@@ -66,14 +72,41 @@ export type MeowEvent = AgentEventMeta &
       sessionId: string;
       /** 由排队消息启动的回合：对应排队项 id，前端据此把消息放进时间线 */
       queuedId?: string;
+      /** 本回合的用户消息文本：悬浮岛等没有乐观追加的订阅方据此补用户气泡 */
+      text?: string;
     }
   /** 模型思考内容（reasoning/thinking）的流式增量，先于正文 delta */
   | { type: "thinking_delta"; sessionId: string; delta: string }
   | { type: "assistant_delta"; sessionId: string; delta: string }
   | { type: "message_complete"; sessionId: string; text: string; reasoning?: string }
   | { type: "tool_started"; sessionId: string; callId: string; tool: string; input: unknown }
-  | { type: "tool_output"; sessionId: string; callId: string; output: string; truncated: boolean }
+  | {
+      type: "tool_output";
+      sessionId: string;
+      callId: string;
+      output: string;
+      truncated: boolean;
+      /** 完整内容已落盘时的相对路径（UI 显示「已落盘」） */
+      spilled?: string;
+    }
   | { type: "tool_finished"; sessionId: string; callId: string; ok: boolean }
+  | {
+      /** 回合开始的可回滚点已落盘：前端给刚发送的用户气泡补挂「回退」入口（流式路径） */
+      type: "checkpoint_created";
+      sessionId: string;
+      checkpointId: string;
+      turnId: string;
+      hasSnapshot: boolean;
+      label?: string;
+    }
+  | {
+      /** 仅回滚代码（mode="code"）完成：前端刷新审阅面板/git 面板，不动时间线 */
+      type: "files_rewound";
+      sessionId: string;
+      checkpointId: string;
+      restored: number;
+      deleted: number;
+    }
   | {
       type: "approval_required";
       sessionId: string;
@@ -85,8 +118,42 @@ export type MeowEvent = AgentEventMeta &
       risk?: CommandRisk;
       /** 审批期间文件被改动，预览已重新生成 */
       stale?: boolean;
+      /** tool = 工具审批；hook = 每次询问模式下 hook 命令运行审批 */
+      kind?: "tool" | "hook";
+      /** hook 命令审批的展示字段 */
+      command?: string;
+      hookEvent?: string;
+      matcher?: string;
+      source?: string;
+      /** PreToolUse hook 要求人工确认的原因 */
+      hookReason?: string;
+      /** 沙箱拒绝后的「沙箱外重试」审批：命令与拦截证据 */
+      sandboxEscape?: { command: string; detail: string };
+    }
+  | {
+      type: "approval_resolved";
+      sessionId: string;
+      callId: string;
+      approved: boolean;
+      /** user = 用户点选；hook = PermissionRequest 自动应答；abort = 回合中止 */
+      by: "user" | "hook" | "abort";
     }
   | { type: "error"; sessionId: string; message: string }
+  /**
+   * 自我学习进度：观察 → 复盘 → 守卫 → 写入 → 评估。
+   * 与流式响应解耦，前端只用来画一个低调的状态提示，不打断对话。
+   */
+  | {
+      type: "learning_progress";
+      sessionId: string;
+      runId: string;
+      trigger: "turn" | "idle";
+      phase: "observe" | "review" | "guard" | "write" | "evaluate";
+      step: number;
+      total: number;
+      status: "running" | "completed" | "skipped" | "failed";
+      summary?: string;
+    }
   /** ask_user 虚拟工具：模型提出澄清问题（可批量多题），回合挂起等用户点选/输入（答案作为工具结果） */
   | {
       type: "ask_user";
@@ -97,6 +164,17 @@ export type MeowEvent = AgentEventMeta &
   | {
       type: "usage";
       sessionId: string;
+      /**
+       * 本次模型调用的稳定 id：流中实时样本与最终真值共用一个。
+       * 前端按它「替换」该轮样本再派生会话累计，避免实时值与最终值双计。
+       */
+      roundId: string;
+      /** true = 该轮的最终真值（recordUsage 之后）；缺省 = 流中实时样本 */
+      final?: boolean;
+      /** 该轮被放弃（重试/中止）：前端应删除对应样本并回减 */
+      retracted?: boolean;
+      /** 实际应答的模型名（前端 cache-bust 检测按模型分基线） */
+      model?: string;
       /** 本次调用总输入（含缓存读/写） */
       inputTokens?: number;
       outputTokens?: number;
@@ -104,8 +182,17 @@ export type MeowEvent = AgentEventMeta &
       cacheReadTokens?: number;
       /** 写入缓存的输入 token（Anthropic 类协议）；未报告时不带 */
       cacheWriteTokens?: number;
+      /** 前缀缓存诊断状态（仅主会话请求计算） */
+      cacheState?: CacheState;
+      /** 状态变化原因；状态未变化时不带，避免重复提醒 */
+      cacheReason?: string;
     }
-  | { type: "turn_complete"; sessionId: string }
+  | {
+      type: "turn_complete";
+      sessionId: string;
+      /** 回合收尾状态：桌面端据此区分「正常完成 / 被用户中断 / 出错」并决定通知文案 */
+      status?: TurnStatus;
+    }
   /**
    * 供应商故障转移：可重试错误（超时 / 429 / 5xx）触发了 fallback 链切换。
    * from/to 为 provider id，reason 是错误分类，供前端提示"当前服务方"已变更。
@@ -133,6 +220,15 @@ export type MeowEvent = AgentEventMeta &
   | { type: "compaction_started"; sessionId: string }  | { type: "compaction_completed"; sessionId: string; summary: string }
   /** 压缩失败（摘要请求报错/被中止）：清掉前端的压缩状态 */
   | { type: "compaction_failed"; sessionId: string; message: string }
+  /** 压缩质量观测结算：窗口期内重复读了哪些压缩前已碰过的文件 */
+  | {
+      type: "compaction_quality";
+      sessionId: string;
+      compactionId: string;
+      baselineCount: number;
+      rereadPaths: string[];
+      windowTurns: number;
+    }
   /**
    * 后台预热压缩（不阻塞回合）：占用过阈值就提前生成摘要，溢出时直接采用。
    * started/completed/failed 三相；前端可显示为轻提示，不要按“压缩中”阻塞输入。
@@ -207,6 +303,28 @@ export type MeowEvent = AgentEventMeta &
       endedAt: string;
       durationMs: number;
       usage?: UsageSummary;
+    }
+  /** 子 Agent 运行中用户插话：已入队，下一步生效 */
+  | {
+      type: "subagent_steer_queued";
+      sessionId: string;
+      steerId: string;
+      text: string;
+    }
+  /** 插话已注入子 Agent 上下文并落盘 */
+  | {
+      type: "subagent_steer_delivered";
+      sessionId: string;
+      steerId: string;
+      text: string;
+    }
+  /** 子 Agent 在插话生效前结束/被停止 */
+  | {
+      type: "subagent_steer_dropped";
+      sessionId: string;
+      steerId: string;
+      text: string;
+      reason: "aborted" | "completed";
     }
   /** 治理 run 已准入（admit 工具成功）；roadmap 快照随后单独发 */
   | {
@@ -301,9 +419,30 @@ export type ProviderConfig = {
   thinkingBudget?: number;
   /**
    * 前缀缓存 TTL。缺省 5m（Anthropic 默认，不发字段）；"1h" 时在断点上带
-   * `ttl: "1h"`——只有显式配置才发，避免不支持长 TTL 的网关 400。
+   * `ttl: "1h"`；"auto" 由会话节奏决定（人驱动 → 1h，机器节奏 → 5m），
+   * 但**只在实测过保留 1h 的端点上真的发字段**，否则一律回落到 5m。
    */
-  cacheTtl?: "5m" | "1h";
+  cacheTtl?: "5m" | "1h" | "auto";
+  /**
+   * 会话节奏，由 runtime 按会话来源盖章，用户配置不写这个字段：
+   * 交互式主会话 / side 聊天 = "interactive"，子代理与后台批量 = "machine"。
+   * cacheTtl="auto" 时的判据；未盖章一律按最保守的 5m 处理。
+   */
+  pace?: "interactive" | "machine";
+  /**
+   * 鉴权头风格。缺省按协议传统（Anthropic 系 x-api-key / OpenAI 系 Bearer）。
+   * Azure OpenAI 选 "api-key"；Bedrock API key 选 "bedrock-api-key"；
+   * 本地推理框架或鉴权全靠 extraHeaders 时选 "none"。
+   */
+  authStyle?: "bearer" | "api-key" | "bedrock-api-key" | "none";
+  /** 额外请求头，原样合并（同名覆盖内置头）。OpenRouter 的 HTTP-Referer / X-Title 等 */
+  extraHeaders?: Record<string, string>;
+  /**
+   * 额外请求体字段，展开合并进请求体顶层（同名覆盖内置字段）。
+   * 用于服务商特有的开关：Qwen/dashscope 的 `enable_thinking`、
+   * vLLM/部分网关的 `chat_template_kwargs` 等。
+   */
+  extraBody?: Record<string, unknown>;
   /**
    * 故障转移链（provider id，按顺序）。留空 = 自动链：当前 provider + 其余
    * enabled provider（设置页顺序），最多 2 跳。显式配置时只走声明的顺序。
@@ -486,7 +625,7 @@ export type ToolDocument = {
  * 工具审批模式（粒度由粗到细）：
  *  - "read-only"：只读，写/改/命令一律拒绝
  *  - "ask"：每次写文件、改文件、跑命令都弹审批（旧版 "default" 的语义）
- *  - "auto"：**可写根（工作区）内的写/改自动批准**，越界路径与命令仍然弹审批（codex 式）
+ *  - "auto"：**可写根（工作区）内的写/改与未命中高危特征的命令自动批准**，越界路径与高危命令仍然弹审批（codex 式）
  *  - "full"：全部工具自动放行，并允许工作区外的绝对路径
  */
 export type ApprovalMode = "read-only" | "ask" | "auto" | "full";
@@ -541,7 +680,7 @@ export type AgentProfileId = "standard" | "minimal" | "complex";
 export type TurnStatus = "completed" | "aborted" | "error" | "interrupted";
 
 /** 模型调用的来源：主对话 / 自动标题 / 上下文压缩。 */
-export type UsageSource = "chat" | "title" | "compaction";
+export type UsageSource = "chat" | "title" | "compaction" | "memory" | "learning";
 
 export type SessionSettings = {
   approvalMode?: ApprovalMode;
@@ -564,8 +703,67 @@ export type CompactionPoint = {
   status: "completed" | "interrupted" | "failed";
 };
 
+/** 快照索引：展示路径 → 内容 sha256；null 表示「该时刻文件不存在」 */
+export type SnapshotFiles = Record<string, string | null>;
+
+/** 超过单文件大小上限时不存 blob，索引里写这个哨兵值 */
+export const SNAPSHOT_SKIPPED = "__skipped";
+
+/**
+ * 检查点指向的文件快照引用。旧会话的 checkpoint entry 没有这个字段 ——
+ * 读出来就是 undefined，按「该点不可回滚代码」处理，天然向前兼容。
+ */
+export type CheckpointSnapshotRef = {
+  /** 快照目录归属：派生会话沿用源会话的 ownerId，避免复制 blob */
+  ownerId: string;
+  /** 索引文件名，相对 <sessionsDir>/snapshots/<ownerId>/，形如 "index/<checkpointId>.json" */
+  file: string;
+  /** 索引里的文件条数（UI 展示用，不必读文件） */
+  count: number;
+  /** 索引里记录的文件总字节（容量展示） */
+  bytes: number;
+  /** 打点时的绝对工作区根；回滚前校验 cwd 未变，防止 worktree 换址后串味 */
+  cwd: string;
+};
+
+/** 检查点的客户端视图；messageIndex 与 messagesForClient 对齐（前端时间线定位用）。 */
+export type SessionCheckpoint = {
+  id: string;
+  timestamp: string;
+  label?: string;
+  auto: boolean;
+  turnId?: string;
+  fileChanges: string[];
+  messageIndex: number;
+  /** 有文件快照 = 可以回滚代码；旧会话缺省 undefined */
+  snapshot?: CheckpointSnapshotRef;
+  /** 便捷字段：= Boolean(snapshot)，前端不用嵌套取值 */
+  hasSnapshot: boolean;
+  /** 便捷字段：= snapshot?.count */
+  fileCount: number;
+};
+
+/**
+ * 命令风险的独立授权类别（codex AskForApproval::Granular 同款思路）：
+ * auto 模式按类别决定「自动放行 or 弹审批」，而不是一刀切。
+ */
+export type CommandRiskCategory =
+  | "disk_system"
+  | "recursive_delete"
+  | "credential_access"
+  | "env_dump"
+  | "remote_exec"
+  | "inline_exec"
+  | "system_config"
+  | "privilege_escalation"
+  | "process_kill"
+  | "destructive_git"
+  | "publish_deploy";
+
 export type CommandRisk = {
-  level: "high";
+  /** 命中的最高档：high = 不可逆/凭据/任意代码执行，medium = 可逆但敏感 */
+  level: "medium" | "high";
+  categories: CommandRiskCategory[];
   reasons: string[];
 };
 
@@ -584,7 +782,20 @@ export type PendingApproval = {
   risk?: CommandRisk;
   /** 审批期间目标文件被外部改动，diff 已重新生成：这是第二次（也是最后一次）确认 */
   stale?: boolean;
+  /** tool = 工具审批；hook = 每次询问模式下 hook 命令运行审批 */
+  kind?: "tool" | "hook";
+  /** hook 命令审批的展示字段 */
+  command?: string;
+  hookEvent?: string;
+  matcher?: string;
+  source?: string;
+  /** PreToolUse hook 要求人工确认的原因 */
+  hookReason?: string;
+  /** 沙箱拒绝后的「沙箱外重试」审批：命令与拦截证据 */
+  sandboxEscape?: { command: string; detail: string };
 };
+
+import type { SandboxDenial } from "./sandbox/types.js";
 
 export type ToolResult = {
   output: string;
@@ -594,6 +805,27 @@ export type ToolResult = {
   documents?: ToolDocument[];
   /** 内容被省略（已落盘或明确提示），UI 用它显示截断标记。 */
   truncated?: boolean;
+  /** 完整内容已落盘的相对路径；UI 用「已落盘」区分于「已截断」。 */
+  spilled?: string;
+  /** 内部用：run_command 被写沙箱拒绝的证据；不进入模型可见输出。 */
+  sandboxDenial?: SandboxDenial;
+  /**
+   * 内部用：落盘时应写入的全文。
+   * 搜索类工具会先把内联文本裁到 12k，但落盘必须是裁剪前的完整结果 ——
+   * 否则模型按提示去读 artifact 却读不到，只能重跑整次搜索。
+   */
+  spillText?: string;
+  /**
+   * read_file 实际返回的行区间（1-based，含端点）与文件总行数。
+   * 用于「已读区间」去重：模型再读同一段时可以直接给占位，不必重发全文。
+   * total 让请求区间能在文件末尾收敛 —— 否则 limit=400 读 3 行文件永远算「只覆盖 0.75%」。
+   */
+  readRange?: { start: number; end: number; total: number };
+  /**
+   * read_many 每个文件实际返回的区间（一次调用可能读多个文件）。
+   * 与 readRange 分开：readRange 只描述单文件的 read_file。
+   */
+  readRanges?: Array<{ path: string; start: number; end: number; total: number }>;
 };
 
 export type PlanStepStatus = "pending" | "in_progress" | "completed" | "cancelled";
@@ -624,6 +856,20 @@ export type DocumentRef = {
   name?: string;
 };
 
+/** 会话级 git worktree 元数据；cwd 存 worktree 内的实际工作目录 */
+export type SessionWorktree = {
+  /** 用户选的项目目录（可能只是仓库子目录） */
+  sourceCwd: string;
+  /** git 仓库根 */
+  repoRoot: string;
+  /** worktree 根（appData 下） */
+  path: string;
+  branch: string;
+  /** 创建时的 HEAD */
+  baseSha: string;
+  createdAt: string;
+};
+
 export type SessionHeader = {
   type: "session";
   version: 1 | 2;
@@ -641,6 +887,13 @@ export type SessionHeader = {
   parentCallId?: string;
   /** 任务描述（页签标题） */
   description?: string;
+  /** 该会话在独立 git worktree 中运行时的元数据 */
+  worktree?: SessionWorktree;
+  /**
+   * 文件快照目录的归属会话 id（<sessionsDir>/snapshots/<snapshotOwnerId>/）。
+   * 派生/恢复出的会话沿用源会话的 owner 以共享 blob；缺省 = 自己的 id。
+   */
+  snapshotOwnerId?: string;
 };
 
 export type SessionEntry =
@@ -700,6 +953,8 @@ export type SessionEntry =
       input: unknown;
       diff?: string;
       risk?: CommandRisk;
+      /** 沙箱拒绝后的「沙箱外重试」审批：命令与拦截证据 */
+      sandboxEscape?: { command: string; detail: string };
     }
   | {
       type: "queued_prompt";
@@ -751,6 +1006,23 @@ export type SessionEntry =
       error?: string;
     }
   | {
+      /**
+       * 压缩质量观测：压缩后窗口期内，模型又重复读了哪些「压缩前已读过」的文件。
+       * 只用于评估摘要是否漏了关键上下文，不参与请求组装与回放。
+       */
+      type: "compaction_quality";
+      id: string;
+      parentId: string | null;
+      timestamp: string;
+      compactionId: string;
+      /** 压缩前记录在案的已碰文件数 */
+      baselineCount: number;
+      /** 窗口期内被重复读取的路径（工作区相对路径） */
+      rereadPaths: string[];
+      /** 统计窗口的回合数 */
+      windowTurns: number;
+    }
+  | {
       type: "recovery";
       id: string;
       parentId: string | null;
@@ -766,8 +1038,17 @@ export type SessionEntry =
       tool: string;
       input: unknown;
       approved: boolean;
-      /** 恢复时补写的拒绝记录、可写根内自动批准、计划模式下写计划文档的自动批准 */
-      reason?: "restored_denied" | "writable_root" | "plan_mode" | "stale" | "stale_rechecked";
+      /** 恢复时补写的拒绝记录、可写根内自动批准、常规命令自动批准、计划模式下写计划文档的自动批准 */
+      reason?:
+        | "restored_denied"
+        | "writable_root"
+        | "low_risk_command"
+        | "plan_mode"
+        | "stale"
+        | "stale_rechecked"
+        | "permission_request_hook"
+        | "sandbox_escape"
+        | "sandbox_denied";
       turnId?: string;
     }
   | {
@@ -776,6 +1057,36 @@ export type SessionEntry =
       parentId: string | null;
       timestamp: string;
       title: string;
+    }
+  | {
+      /** 会话检查点：自动（每个用户回合开始）或手动；restore 据此截断分支，不参与消息重放 */
+      type: "checkpoint";
+      id: string;
+      parentId: string | null;
+      timestamp: string;
+      label?: string;
+      auto: boolean;
+      turnId?: string;
+      fileChanges: string[];
+      /** 文件快照引用；旧条目无此键 = 该点没有代码可回滚 */
+      snapshot?: CheckpointSnapshotRef;
+    }
+  | {
+      /** 回滚留痕（审计 + 撤销回滚入口）；不参与消息重放与检查点计数 */
+      type: "rewind";
+      id: string;
+      parentId: string | null;
+      timestamp: string;
+      checkpointId: string;
+      mode: "both" | "conversation" | "code";
+      /** 回滚前磁盘状态清单文件名，相对 <sessionsDir>/snapshots/<owner>/journal/ */
+      journal: string;
+      /** both 模式下派生出的新会话 id */
+      derivedSessionId?: string;
+      /** 发起回滚的会话 id（undo 时切回用） */
+      sourceSessionId?: string;
+      /** 回滚涉及的文件数（列表展示，免读 journal） */
+      fileCount: number;
     }
   | {
       type: "plan";
@@ -845,7 +1156,8 @@ export type SessionEntry =
       id: string;
       parentId: string | null;
       timestamp: string;
-      source: "plan" | "file" | "subagent" | "workflow";
+      /** plugin = context_inject hook 注入（会话日志 schema v2 内向后兼容） */
+      source: "plan" | "file" | "subagent" | "workflow" | "plugin";
       content: string;
     }
   | {
@@ -956,6 +1268,8 @@ export type PlanEntry = Extract<SessionEntry, { type: "plan" }>;
 export type CompactionSummaryEntry = Extract<SessionEntry, { type: "compaction_summary" }>;
 export type NativeCompactionEntry = Extract<SessionEntry, { type: "native_compaction" }>;
 export type FileChangeEntry = Extract<SessionEntry, { type: "file_change" }>;
+export type CheckpointEntry = Extract<SessionEntry, { type: "checkpoint" }>;
+export type RewindEntry = Extract<SessionEntry, { type: "rewind" }>;
 export type UsageEntry = Extract<SessionEntry, { type: "usage" }>;
 export type MetricsEntry = Extract<SessionEntry, { type: "metrics" }>;
 

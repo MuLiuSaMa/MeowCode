@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -71,7 +71,7 @@ describe("run_code sandbox", () => {
     expect(result.output).toContain("fine|ERR");
   });
 
-  it("blocks require/process access and escapes", async () => {
+  it("blocks require/process access and every known escape vector", async () => {
     const root = await tempWorkspace();
     for (const snippet of ["return typeof require;", "return typeof process;"]) {
       const result = await executeTool("run_code", { code: snippet }, root);
@@ -79,13 +79,39 @@ describe("run_code sandbox", () => {
       // 沙箱里根本没有这些全局：typeof 返回 undefined 而不是抛错
       expect(result.output).toContain("undefined");
     }
-    const evil = await executeTool("run_code", {
-      code: "const F = (function(){ return this; }).call(null).constructor.constructor; return typeof F('return process')();",
+    // 逃逸面：context realm 的 Function、宿主桥/console 函数的 constructor、
+    // 桥返回值的 constructor、宿主错误对象的 constructor —— 全部必须拿不到宿主 process。
+    const result = await executeTool("run_code", {
+      code: `
+        const results = [];
+        const probe = async (make) => {
+          try {
+            const p = await make();
+            return p && typeof p === "object" && typeof p.version === "string"
+              ? "ESCAPED:" + p.version
+              : "no-process";
+          } catch {
+            return "blocked";
+          }
+        };
+        results.push(await probe(async () =>
+          (function () { return this; }).call(null).constructor.constructor("return process")()));
+        results.push(await probe(async () => meow.read.constructor("return process")()));
+        results.push(await probe(async () => console.log.constructor("return process")()));
+        results.push(await probe(async () =>
+          (await meow.readMany(["missing.txt"])).constructor.constructor("return process")()));
+        results.push(await probe(async () => {
+          try { await meow.read("missing.txt"); } catch (e) {
+            return e.constructor.constructor("return process")();
+          }
+          return null;
+        }));
+        return results.join(",");
+      `,
     }, root);
-    expect(evil.ok).toBe(true);
-    // 关键威胁模型：即使经 this.constructor.constructor 拿到 vm realm 的 Function，
-    // 全新 V8 context 里也没有 process / require —— 宿主全局不可达
-    expect(evil.output).toContain("undefined");
+    expect(result.ok).toBe(true);
+    expect(result.output).not.toContain("ESCAPED");
+    expect(result.output).toContain("blocked,blocked,blocked,blocked,blocked");
   });
 
   it("reports runtime errors with the sandbox console tail", async () => {
@@ -157,6 +183,21 @@ describe("run_code sandbox", () => {
     const log = await readFile(path.join(root, match![1].split("/").join(path.sep)), "utf8");
     expect(log).toContain("marker-log-line");
     expect(log).toContain("read(a.txt)");
+  });
+
+  it("sweeps expired logs from the shared tool-output directory", async () => {
+    const root = await tempWorkspace();
+    const dir = path.join(root, ".meowcode", "tool-output");
+    await mkdir(dir, { recursive: true });
+    const stale = path.join(dir, "run_code-stale.log");
+    await writeFile(stale, "old");
+    const old = new Date(Date.now() - 8 * 24 * 60 * 60 * 1000);
+    await utimes(stale, old, old);
+
+    await executeTool("run_code", { code: `console.log("x"); return 1;` }, root);
+
+    // 沙箱日志与其它工具输出共用 7 天保留策略
+    await expect(readFile(stale, "utf8")).rejects.toThrow();
   });
 
   it("rejects reads outside the workspace through the bridge", async () => {

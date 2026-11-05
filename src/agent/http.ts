@@ -1,7 +1,50 @@
 import { ProviderTimeoutError } from "./provider-error.js";
+import { applyProxy } from "./proxy.js";
 
 const RETRYABLE_STATUS = new Set([408, 429, 500, 502, 503, 504, 529]);
 const DEFAULT_RESPONSE_TIMEOUT_MS = 45_000;
+
+/**
+ * 鉴权头风格。缺省（undefined）按协议传统：Anthropic 系用 x-api-key，
+ * OpenAI 系用 Authorization: Bearer。少数服务商不认这两样：
+ *  - "api-key"：Azure OpenAI（`api-key` 头）
+ *  - "bedrock-api-key"：Amazon Bedrock 的 API key（`Authorization: Bedrock-API-Key <key>`）
+ *  - "none"：本地推理框架（vLLM/Ollama）或鉴权完全由 extraHeaders 提供的场景
+ */
+export type AuthStyle = "bearer" | "api-key" | "bedrock-api-key" | "none";
+
+/**
+ * 按 authStyle 生成鉴权头。authStyle 缺省时用 fallback 决定默认形态。
+ * apiKey 为空返回 {}（服务商原生鉴权，如 DSH 的约定）。
+ */
+export function buildAuthHeaders(
+  apiKey: string | undefined,
+  authStyle: AuthStyle | undefined,
+  fallback: "x-api-key" | "bearer",
+): Record<string, string> {
+  if (!apiKey) return {};
+  switch (authStyle) {
+    case "none":
+      return {};
+    case "api-key":
+      return { "api-key": apiKey };
+    case "bedrock-api-key":
+      return { authorization: `Bedrock-API-Key ${apiKey}` };
+    case "bearer":
+      return { authorization: `Bearer ${apiKey}` };
+    default:
+      return fallback === "x-api-key" ? { "x-api-key": apiKey } : { authorization: `Bearer ${apiKey}` };
+  }
+}
+
+/** extraHeaders 覆盖在基础头之后（同名以用户配置为准）。 */
+export function mergeExtraHeaders(
+  base: Record<string, string>,
+  extra: Record<string, string> | undefined,
+): Record<string, string> {
+  if (!extra || Object.keys(extra).length === 0) return base;
+  return { ...base, ...extra };
+}
 
 export function isRetryableStatus(status: number): boolean {
   return RETRYABLE_STATUS.has(status);
@@ -79,7 +122,8 @@ export async function fetchWithRetry(
       ? AbortSignal.any([userSignal, timeoutController.signal])
       : timeoutController.signal;
     try {
-      response = await fetch(input, { ...init, signal });
+      // 代理按当前设置决定（直连时原样返回 init，无额外开销）
+      response = await fetch(input, applyProxy({ ...init, signal }, String(input)));
     } catch (error) {
       if (userSignal?.aborted) throw abortError();
       if (timedOut) {

@@ -1,0 +1,232 @@
+{
+  "rail": {
+    "home": "Inicio",
+    "architecture": "Arquitectura del agente",
+    "git": "Git",
+    "plugins": "Tienda de plugins",
+    "settings": "Ajustes"
+  },
+  "update": {
+    "downloadingPercent": "Descargando la nueva versión automáticamente {{percent}}%",
+    "downloading": "Descargando la nueva versión automáticamente",
+    "dismiss": "Cerrar aviso",
+    "restart": "Reiniciar e instalar la actualización",
+    "failedAria": "Falló la descarga automática, haz clic para descargar manualmente",
+    "failedTitle": "Falló la descarga automática, haz clic para descargar manualmente"
+  },
+  "window": {
+    "minimize": "Minimizar",
+    "restore": "Restaurar",
+    "maximize": "Maximizar",
+    "close": "Cerrar"
+  },
+  "approval": {
+    "title": "Se requiere autorización",
+    "requestSubagent": "El subagente «{{name}}» quiere usar {{tool}}.",
+    "requestApp": "MeowCode quiere usar {{tool}}.",
+    "stale": "El archivo cambió durante la aprobación. La vista previa de abajo se regeneró, confirma de nuevo.",
+    "risk": "Comando de riesgo",
+    "diff": "Vista previa de cambios",
+    "deny": "Denegar",
+    "approve": "Permitir",
+    "hookTitle": "Un hook quiere ejecutar un comando",
+    "hookRequest": "Evento: {{event}}",
+    "hookFromAgent": "Solicitado por el subagente «{{name}}»",
+    "hookMatcher": "Matcher: {{matcher}}",
+    "hookSource": "Configuración: {{source}}",
+    "hookNote": "Este comando se ejecuta con tus permisos de usuario. La aprobación se recuerda solo en esta sesión.",
+    "hookRun": "Ejecutar",
+    "hookSkip": "Omitir",
+    "hookReasonTitle": "El hook requiere confirmación",
+    "sandboxTitle": "La sandbox bloqueó esta escritura",
+    "sandboxDesc": "El comando intentó escribir fuera del espacio de trabajo y lo detuvo la sandbox de escritura del sistema.",
+    "sandboxCommand": "Comando bloqueado",
+    "sandboxEvidence": "Evidencia del bloqueo",
+    "sandboxNote": "Reintentar fuera de la sandbox ejecuta este comando con tus privilegios de usuario. Solo se permite un intento; la sandbox no se desactiva.",
+    "sandboxDeny": "Mantener la sandbox",
+    "sandboxRetry": "Reintentar fuera de la sandbox"
+  },
+  "plan": {
+    "aria": "Plan de tareas",
+    "expand": "Expandir el plan de tareas",
+    "collapse": "Contraer el plan de tareas",
+    "allDone": "Todas las tareas completadas",
+    "endedHeadline": "El plan ha terminado",
+    "ended": "Terminado",
+    "status": {
+      "pending": "Pendiente",
+      "inProgress": "En curso",
+      "completed": "Completada",
+      "cancelled": "Cancelada"
+    },
+    "confirmedWithPath": "Plan confirmado. Empieza la implementación desde {{path}}.",
+    "confirmed": "Plan confirmado. Empieza la implementación.",
+    "stepsProgress": "Pasos {{done}} / {{total}}",
+    "filesChanged": "{{n}} archivo(s) modificado(s)"
+  },
+  "status": {
+    "preparingSubagents_one": "Preparando {{count}} subagente…",
+    "preparingSubagents_few": "Preparando {{count}} subagentes…",
+    "preparingSubagents_many": "Preparando {{count}} subagentes…",
+    "preparingSubagents_other": "Preparando {{count}} subagentes…",
+    "preparingWrites": "Escribiendo el archivo…",
+    "preparingEdits": "Editando el archivo…",
+    "preparingTools_one": "Preparando {{count}} llamada a herramienta…",
+    "preparingTools_few": "Preparando {{count}} llamadas a herramientas…",
+    "preparingTools_many": "Preparando {{count}} llamadas a herramientas…",
+    "preparingTools_other": "Preparando {{count}} llamadas a herramientas…"
+  },
+  "notice": {
+    "interrupted": "La generación anterior se interrumpió al cerrarse la aplicación. El contenido generado se ha conservado, puedes seguir la conversación.",
+    "updateAvailable": "Nueva versión {{version}} disponible",
+    "updateNow": "Actualizar ahora",
+    "subagentInterrupted": "El turno de este subagente se interrumpió. El contenido generado se ha conservado.",
+    "cacheEvicted": "Es posible que el servidor haya desalojado la caché (inactividad mayor que el TTL declarado), así que este turno se factura como fallo de caché.",
+    "cacheUnsupported": "Esta pasarela no devolvió ningún acierto de caché con el prefijo sin cambios y puede que no admita caché de prefijos; el coste se calcula sobre toda la entrada.",
+    "providerSwitched": "Proveedor cambiado temporalmente: {{from}} → {{to}} ({{reason}}). Puedes ajustar el orden en Ajustes → Modelos.",
+    "undoableRewind": "Se revirtieron {{count}} archivos; esta reversión se puede deshacer (la sesión original se conserva).",
+    "undoRewind": "Deshacer reversión",
+    "dismiss": "Cerrar"
+  },
+  "subagent": {
+    "label": "Subagente",
+    "loadFailed": "No se pudo cargar la transcripción del subagente",
+    "steerAborted": "Mensaje no entregado: el subagente se detuvo",
+    "steerFinished": "Mensaje no entregado: el subagente ya terminó",
+    "status": {
+      "completed": "Completado",
+      "failed": "Fallido",
+      "aborted": "Detenido",
+      "interrupted": "Interrumpido"
+    },
+    "notice": "Subagente «{{name}}»: {{status}}",
+    "noticeWithReport": "Subagente «{{name}}»: {{status}} — {{report}}"
+  },
+  "error": {
+    "reason": {
+      "timeout": "la solicitud agotó el tiempo de espera",
+      "rateLimit": "se alcanzó el límite de peticiones",
+      "server": "error del servidor"
+    },
+    "worktreeLoad": "La sesión de worktree no se pudo cargar tras crearse. Inténtalo de nuevo.",
+    "notGitRepo": "El espacio de trabajo actual no es un repositorio git, así que el aislamiento por worktree no está disponible."
+  },
+  "toast": {
+    "worktreeDirty": "El espacio de trabajo principal tiene cambios sin confirmar: los worktrees parten de HEAD, así que esos cambios no se trasladan"
+  },
+  "architecture": {
+    "customName": "Agente personalizado"
+  },
+  "model": {
+    "unconfigured": "Sin modelo configurado"
+  },
+  "resize": {
+    "list": "Ajustar el ancho de la lista izquierda",
+    "inspector": "Ajustar el ancho del panel derecho"
+  },
+  "theme": {
+    "providerMissing": "useTheme debe usarse dentro de un ThemeProvider"
+  },
+  "updateModal": {
+    "currentVersion": "Versión actual {{version}}",
+    "noAsset": "Esta versión no incluye un instalador para tu plataforma, por lo que no se puede descargar en línea.",
+    "noNotes": "Esta versión no incluye notas de la versión.",
+    "downloadDone": "Descarga completada",
+    "downloading": "Descargando {{percent}} %",
+    "downloadSize": " ({{received}} / {{total}})",
+    "later": "Más tarde",
+    "restart": "Reiniciar y actualizar",
+    "cancel": "Cancelar",
+    "downloadingShort": "Descargando…",
+    "download": "Descargar actualización"
+  },
+  "modelPopover": {
+    "aria": "Modelo e intensidad de razonamiento",
+    "selectModel": "Seleccionar modelo",
+    "empty": "No hay modelos activados. Añade uno en Ajustes → Modelos.",
+    "manage": "Gestionar modelos",
+    "back": "Volver a la lista de modelos",
+    "effort": "Intensidad de razonamiento"
+  },
+  "taskRow": {
+    "status": {
+      "running": "En ejecución",
+      "completed": "Completado",
+      "failed": "Fallido",
+      "aborted": "Detenido",
+      "interrupted": "Interrumpido"
+    },
+    "background": "Segundo plano",
+    "open": "Abrir subagente: {{name}}",
+    "durationUnderSecond": "<1 s",
+    "durationSeconds": "{{value}} s",
+    "durationMinutes": "{{minutes}} min {{seconds}} s"
+  },
+  "closeDialog": {
+    "title": "¿Qué debe hacer MeowCode al cerrar la ventana?",
+    "desc": "MeowCode seguirá ejecutándose en segundo plano. Puedes volver a abrirlo desde la bandeja del sistema.",
+    "remember": "Recordar mi elección (se puede cambiar en Ajustes → General)",
+    "cancel": "Cancelar",
+    "tray": "Minimizar a la bandeja",
+    "quit": "Cerrar completamente"
+  },
+  "contextWarning": {
+    "usage": "Contexto usado al <b>{{percent}} %</b> ({{used}} / {{window}}).",
+    "hintStreaming": " Puedes compactar manualmente después de este turno para evitar la compactación automática cuando la próxima solicitud desborde.",
+    "hint": " Se recomienda compactar manualmente para evitar la compactación automática cuando la próxima solicitud desborde.",
+    "compacting": "Compactando…",
+    "compactAfterTurn": "Compactar después de este turno",
+    "compactNow": "Compactar ahora",
+    "dismissAria": "Ocultar aviso de compactación",
+    "dismissTitle": "No volver a mostrar"
+  },
+  "compaction": {
+    "compacting": "Compactando el historial de conversación…",
+    "interrupted": "La última compactación se interrumpió al salir de la aplicación",
+    "failed": "La última compactación falló; el historial no se compactó",
+    "done": "Historial de conversación compactado; los mensajes anteriores se conservan como resumen"
+  },
+  "messageNav": {
+    "aria": "Navegación de la conversación",
+    "noText": "(Sin texto)",
+    "itemTitle": "Mensaje {{index}}: {{preview}}",
+    "images_one": "{{count, number}} imagen",
+    "images_few": "{{count, number}} imágenes",
+    "images_many": "{{count, number}} imágenes",
+    "images_other": "{{count, number}} imágenes"
+  },
+  "agentProfile": {
+    "aria": "Perfil del Agent principal",
+    "customDesc": "Arquitectura personalizada · Usa las capacidades del perfil actual",
+    "dispatchable_one": "{{tagline}} · puede enviar {{count, number}} subagente",
+    "dispatchable_few": "{{tagline}} · puede enviar {{count, number}} subagentes",
+    "dispatchable_many": "{{tagline}} · puede enviar {{count, number}} subagentes",
+    "dispatchable_other": "{{tagline}} · puede enviar {{count, number}} subagentes"
+  },
+  "contextMeter": {
+    "usage": "Contexto {{used}} / {{window}} ({{percent}} %)",
+    "noWindow": "No se ha definido una ventana de contexto",
+    "aria": "Uso del contexto"
+  },
+  "bootSplash": {
+    "aria": "Iniciando MeowCode"
+  },
+  "island": {
+    "connecting": "Conectando…",
+    "running": "{{n}} sesión(es) en curso",
+    "waitingApproval": "Esperando aprobación",
+    "idle": "Inactivo",
+    "approvalHint": "Esperando aprobación",
+    "thinking": "Pensando…",
+    "working": "Trabajando…",
+    "hadError": "Algo salió mal",
+    "untitled": "Sesión sin título",
+    "empty": "Aún no hay mensajes",
+    "stop": "Detener",
+    "send": "Enviar",
+    "openMain": "Abrir ventana principal",
+    "inputPlaceholder": "Escribe un mensaje, Enter para enviar",
+    "inputIdle": "Esta sesión no está en ejecución. Continúa en la ventana principal.",
+    "dropHint": "Suelta para adjuntar"
+  }
+}

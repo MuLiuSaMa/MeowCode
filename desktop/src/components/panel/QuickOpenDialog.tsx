@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { LuFileText, LuSearch } from "react-icons/lu";
 import { api } from "../../api";
 import { Dialog } from "../ui/Dialog";
@@ -30,6 +31,7 @@ export function QuickOpenDialog({
   onClose: () => void;
   onPick: (path: string) => void;
 }) {
+  const { t } = useTranslation("panel");
   const [files, setFiles] = useState<string[] | null>(null);
   const [failed, setFailed] = useState(false);
   const [query, setQuery] = useState("");
@@ -94,7 +96,7 @@ export function QuickOpenDialog({
   return (
     <Dialog open={open} onClose={onClose} labelledBy="mc-quickopen-title" className="mc-quickopen">
       <span className="mc-dialog__title" id="mc-quickopen-title">
-        快速打开
+        {t("quickOpen.title")}
       </span>
 
       <div className="mc-quickopen__search">
@@ -102,7 +104,7 @@ export function QuickOpenDialog({
         <input
           autoFocus
           value={query}
-          placeholder="输入文件名或路径"
+          placeholder={t("quickOpen.placeholder")}
           onChange={(event) => setQuery(event.target.value)}
           onKeyDown={(event) => {
             if (event.key === "ArrowDown") {
@@ -121,11 +123,13 @@ export function QuickOpenDialog({
       </div>
 
       {failed ? (
-        <p className="mc-quickopen__empty">文件列表读取失败，请重试</p>
+        <p className="mc-quickopen__empty">{t("quickOpen.failed")}</p>
       ) : files === null ? (
-        <p className="mc-quickopen__empty">加载中…</p>
+        <p className="mc-quickopen__empty">{t("quickOpen.loading")}</p>
       ) : results.length === 0 ? (
-        <p className="mc-quickopen__empty">{query.trim() ? "没有匹配的文件" : "工作区里没有文件"}</p>
+        <p className="mc-quickopen__empty">
+          {query.trim() ? t("quickOpen.noMatch") : t("quickOpen.empty")}
+        </p>
       ) : (
         <ul className="mc-quickopen__list" ref={listRef}>
           {results.map((file, itemIndex) => (

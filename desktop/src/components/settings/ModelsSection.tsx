@@ -1,14 +1,17 @@
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { LuPencil, LuPlus, LuTrash2 } from "react-icons/lu";
 import { findTemplate } from "../../data/providerCatalog";
 import { Badge } from "../ui/Badge";
 import { Button } from "../ui/Button";
+import { Dialog } from "../ui/Dialog";
 import { IconButton } from "../ui/IconButton";
 import { ProviderIcon } from "../ui/ProviderIcon";
-import { FieldRow, Section } from "../ui/Section";
+import { Section } from "../ui/Section";
 import { Table, Td, Th } from "../ui/Table";
 import { Toggle } from "../ui/Toggle";
 import { ModelFormDialog } from "./ModelFormDialog";
+import { providerLabel } from "./modelForm";
 import { ProviderPickerDialog } from "./ProviderPickerDialog";
 import type { ProviderSettings } from "../../api";
 import "./ModelsSection.css";
@@ -16,60 +19,103 @@ import "./ModelsSection.css";
 export function ModelsSection({
   providers,
   activeProviderId,
-  effort,
+  effort: _effort,
+  turnRunning,
   onChange,
-  onChangeEffort,
+  onChangeEffort: _onChangeEffort,
 }: {
   providers: ProviderSettings[];
   activeProviderId: string;
   effort: string;
+  /** 任意会话有回合在跑：保存模型会重启 agent 服务并中断它，需要先确认 */
+  turnRunning: boolean;
   onChange: (providers: ProviderSettings[], activeId?: string) => void;
   onChangeEffort: (providerId: string, value: string) => void;
 }) {
+  const { t } = useTranslation("settings");
   const [pickerOpen, setPickerOpen] = useState(false);
   const [editing, setEditing] = useState<ProviderSettings | null>(null);
   const [pendingDelete, setPendingDelete] = useState<string | null>(null);
+  /** 回合进行中被拦下的改动：确认后再真正提交 */
+  const [pendingCommit, setPendingCommit] = useState<{
+    next: ProviderSettings[];
+    activeId?: string;
+  } | null>(null);
 
-  const commit = (next: ProviderSettings[], activeId?: string) => onChange(next, activeId);
+  const commit = (next: ProviderSettings[], activeId?: string) => {
+    if (turnRunning) {
+      setPendingCommit({ next, ...(activeId ? { activeId } : {}) });
+      return;
+    }
+    onChange(next, activeId);
+  };
 
-  const handleSave = (draft: ProviderSettings) => {
-    const exists = providers.some((item) => item.id === draft.id);
-    const next = exists ? providers.map((item) => (item.id === draft.id ? draft : item)) : [...providers, draft];
-    // 新增的第一条自动成为当前模型
-    const activeId = providers.length === 0 && !activeProviderId ? draft.id : activeProviderId;
+  /** 同一服务商 = 同名 + 同端点（引擎层仍是一条记录一个模型，界面上按组编辑）。 */
+  const groupKeyOf = (item: ProviderSettings) =>
+    `${item.templateId ?? "custom"}\u0000${item.name.trim().toLowerCase()}\u0000${item.baseUrl.trim().toLowerCase()}`;
+  const editingGroup = editing
+    ? providers.filter((item) => groupKeyOf(item) === groupKeyOf(editing))
+    : [];
+  const groupIds = new Set(editingGroup.map((item) => item.id));
+
+  const handleSave = (entries: ProviderSettings[]) => {
+    if (!editing) return;
+    let next: ProviderSettings[];
+    if (editingGroup.length) {
+      const index = providers.findIndex((item) => item.id === editing.id);
+      const rest = providers.filter((item) => !groupIds.has(item.id));
+      const before = providers
+        .slice(0, index)
+        .filter((item) => !groupIds.has(item.id)).length;
+      next = [...rest.slice(0, before), ...entries, ...rest.slice(before)];
+    } else {
+      next = [...providers, ...entries];
+    }
+    // 激活模型必须仍然启用：停用/删除后回退到第一个可用的
+    const fallbackId = next.find((item) => item.enabled !== false)?.id ?? next[0]?.id;
+    const activeId = next.some(
+      (item) => item.id === activeProviderId && item.enabled !== false,
+    )
+      ? activeProviderId
+      : fallbackId;
     commit(next, activeId);
     setEditing(null);
   };
 
   const handleDelete = (id: string) => {
     const next = providers.filter((item) => item.id !== id);
-    const activeId = activeProviderId === id ? next[0]?.id : activeProviderId;
+    const activeId =
+      activeProviderId === id
+        ? (next.find((item) => item.enabled !== false)?.id ?? next[0]?.id)
+        : activeProviderId;
     commit(next, activeId);
     setPendingDelete(null);
   };
 
+  const deleteTarget = pendingDelete ? providers.find((item) => item.id === pendingDelete) : null;
+
   return (
     <div className="mc-settings__inner">
-      <Section title="模型" description="在这里添加模型服务商，并填写你要使用的模型名称。">
+      <Section title={t("models.section")} description={t("models.desc")}>
         <div className="mc-models">
           <div className="mc-models__toolbar">
             <span className="mc-models__count">
-              已配置 <strong>{providers.length}</strong> 个模型
+              <strong>{t("models.count", { count: providers.length })}</strong>
             </span>
             <Button variant="primary" size="sm" icon={<LuPlus size={14} />} onClick={() => setPickerOpen(true)}>
-              添加模型
+              {t("models.add")}
             </Button>
           </div>
 
           {providers.length === 0 ? (
-            <p className="mc-models__empty">还没有配置任何模型。点击「添加模型」开始。</p>
+            <p className="mc-models__empty">{t("models.empty")}</p>
           ) : (
-            <Table>
+            <Table className="mc-models__table">
               <thead>
                 <tr>
-                  <Th style={{ width: "42%" }}>模型</Th>
-                  <Th style={{ width: "26%" }}>服务商</Th>
-                  <Th style={{ width: "32%", textAlign: "right" }}>操作</Th>
+                  <Th style={{ width: "42%" }}>{t("models.colModel")}</Th>
+                  <Th style={{ width: "26%" }}>{t("models.colProvider")}</Th>
+                  <Th style={{ width: "32%", textAlign: "right" }}>{t("models.colActions")}</Th>
                 </tr>
               </thead>
               <tbody>
@@ -81,7 +127,7 @@ export function ModelsSection({
                       <Td>
                         <span className="mc-models__name">
                           <span className="mc-truncate">{provider.displayName || provider.model}</span>
-                          {isActive ? <Badge tone="running">当前</Badge> : null}
+                          {isActive ? <Badge tone="running">{t("models.active")}</Badge> : null}
                         </span>
                       </Td>
                       <Td>
@@ -94,32 +140,21 @@ export function ModelsSection({
                         <span className="mc-table__actions">
                           <Toggle
                             checked={provider.enabled !== false}
-                            label={`启用 ${provider.displayName || provider.model}`}
+                            label={t("models.enableAria", { name: provider.displayName || provider.model })}
                             onChange={(checked) =>
                               commit(providers.map((item) => (item.id === provider.id ? { ...item, enabled: checked } : item)))
                             }
                           />
-                          <IconButton label="编辑" size="sm" onClick={() => setEditing(provider)}>
+                          <IconButton label={t("actions.edit")} size="sm" onClick={() => setEditing(provider)}>
                             <LuPencil size={14} />
                           </IconButton>
-                          {pendingDelete === provider.id ? (
-                            <>
-                              <Button variant="danger" size="sm" onClick={() => handleDelete(provider.id)}>
-                                确认删除
-                              </Button>
-                              <Button variant="ghost" size="sm" onClick={() => setPendingDelete(null)}>
-                                取消
-                              </Button>
-                            </>
-                          ) : (
-                            <IconButton
-                              label="删除"
-                              size="sm"
-                              onClick={() => setPendingDelete(provider.id)}
-                            >
-                              <LuTrash2 size={14} />
-                            </IconButton>
-                          )}
+                          <IconButton
+                            label={t("actions.delete")}
+                            size="sm"
+                            onClick={() => setPendingDelete(provider.id)}
+                          >
+                            <LuTrash2 size={14} />
+                          </IconButton>
                         </span>
                       </Td>
                     </tr>
@@ -130,6 +165,37 @@ export function ModelsSection({
           )}
         </div>
       </Section>
+
+      <Dialog open={deleteTarget !== null} onClose={() => setPendingDelete(null)}>
+        <h2 className="mc-dialog__title">{t("models.deleteTitle")}</h2>
+        <p className="mc-dialog__desc">
+          {t("models.deleteMessage", { name: deleteTarget?.displayName || deleteTarget?.model || "" })}
+        </p>
+        <div className="mc-dialog__footer">
+          <Button onClick={() => setPendingDelete(null)}>{t("actions.cancel")}</Button>
+          <Button variant="danger" onClick={() => deleteTarget && handleDelete(deleteTarget.id)}>
+            {t("actions.confirmDelete")}
+          </Button>
+        </div>
+      </Dialog>
+
+      <Dialog open={pendingCommit !== null} onClose={() => setPendingCommit(null)}>
+        <h2 className="mc-dialog__title">{t("models.restartTitle")}</h2>
+        <p className="mc-dialog__desc">{t("models.restartMessage")}</p>
+        <div className="mc-dialog__footer">
+          <Button onClick={() => setPendingCommit(null)}>{t("actions.cancel")}</Button>
+          <Button
+            variant="danger"
+            onClick={() => {
+              if (!pendingCommit) return;
+              onChange(pendingCommit.next, pendingCommit.activeId);
+              setPendingCommit(null);
+            }}
+          >
+            {t("models.restartConfirm")}
+          </Button>
+        </div>
+      </Dialog>
 
       {pickerOpen ? (
         <ProviderPickerDialog
@@ -153,7 +219,10 @@ export function ModelsSection({
       {editing ? (
         <ModelFormDialog
           draft={editing}
-          existingIds={providers.filter((item) => item.id !== editing.id).map((item) => item.model)}
+          entries={editingGroup}
+          existingLabels={providers
+            .filter((item) => !groupIds.has(item.id))
+            .map(providerLabel)}
           onClose={() => setEditing(null)}
           onSave={handleSave}
         />

@@ -13,15 +13,18 @@ import {
   gitResolve,
   gitShowCommit,
   gitStage,
+  gitStageAll,
   gitStatus,
   gitSwitchBranch,
   gitUnstage,
+  gitUnstageAll,
   type GitBranch,
   type GitCommit,
   type GitDiffResult,
   type GitFileEntry,
   type GitStatus,
 } from "../api";
+import i18n from "i18next";
 
 /** 当前选中的条目：某个文件（区分暂存/工作区侧）或某次提交 */
 export type GitSelection =
@@ -74,7 +77,10 @@ export type GitView = {
   clearSelection: () => void;
 
   stage: (paths: string[]) => Promise<void>;
+  /** 全部暂存（列表可能被截断，走服务端整仓 add） */
+  stageAll: () => Promise<void>;
   unstage: (paths: string[]) => Promise<void>;
+  unstageAll: () => Promise<void>;
   discard: (paths: string[]) => Promise<void>;
   commit: () => Promise<boolean>;
   resolve: (path: string, side: "ours" | "theirs" | "mark") => Promise<void>;
@@ -302,12 +308,20 @@ export function useGitView(options: { workspace?: string; active: boolean }): Gi
     [run],
   );
 
+  const stageAll = useCallback(async () => {
+    await run("stage", () => gitStageAll());
+  }, [run]);
+
   const unstage = useCallback(
     async (paths: string[]) => {
       await run("unstage", () => gitUnstage(paths));
     },
     [run],
   );
+
+  const unstageAll = useCallback(async () => {
+    await run("unstage", () => gitUnstageAll());
+  }, [run]);
 
   const discard = useCallback(
     async (paths: string[]) => {
@@ -326,7 +340,8 @@ export function useGitView(options: { workspace?: string; active: boolean }): Gi
   const commit = useCallback(async (): Promise<boolean> => {
     const text = message.trim();
     if (!text) {
-      setError("提交信息不能为空");
+      // 这里不是组件，取不到 useTranslation 的 t：调用时现查，切语言后新错误才跟着变
+      setError(i18n.t("git:commit.emptyMessage"));
       return false;
     }
     const ok = await run("commit", () => gitCommit(text));
@@ -391,7 +406,7 @@ export function useGitView(options: { workspace?: string; active: boolean }): Gi
       setMessage(result.message);
     } catch (aiError) {
       const text = errorMessage(aiError);
-      setError(`AI 生成失败：${text}`);
+      setError(i18n.t("git:commit.aiFailed", { message: text }));
     } finally {
       setAiLoading(false);
     }
@@ -438,7 +453,9 @@ export function useGitView(options: { workspace?: string; active: boolean }): Gi
     selectCommit,
     clearSelection,
     stage,
+    stageAll,
     unstage,
+    unstageAll,
     discard,
     commit,
     resolve,

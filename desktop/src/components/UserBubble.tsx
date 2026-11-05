@@ -1,12 +1,36 @@
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import type { TimelineImage } from "../api";
 import { loadMarketplaceCatalog } from "../data/marketplaceCatalog";
-import { LuFileText, LuPuzzle, LuSparkles } from "react-icons/lu";
+import { LuFileText, LuPuzzle, LuSparkles, LuUndo2 } from "react-icons/lu";
 import { parseUserMessage } from "../user-references";
 import "./UserBubble.css";
 
 /** 引用的附件/技能/插件各占首部一行，可连续多行；空行之后才是用户正文 */
-export function UserBubble({ content, images }: { content: string; images?: TimelineImage[] }) {
+export function UserBubble({
+  content,
+  images,
+  navKey,
+  messageIndex,
+  checkpointId,
+  checkpointHasSnapshot,
+  onRewind,
+}: {
+  content: string;
+  images?: TimelineImage[];
+  /** 对话浏览条跳转锚点（时间线 key），渲染成 data-nl-key */
+  navKey?: string;
+  /** 历史回放时的消息下标；会话全文检索跳转锚点（data-message-index）用 */
+  messageIndex?: number;
+  /**
+   * 挂在这条用户消息上的自动检查点（回合开始打点）：hover 显示「回滚到此处」。
+   * 没有文件快照时直接按「仅对话」回滚，否则先开预览（both）。
+   */
+  checkpointId?: string;
+  checkpointHasSnapshot?: boolean;
+  onRewind?: (checkpointId: string) => void;
+}) {
+  const { t } = useTranslation("chat");
   const parsed = parseUserMessage(content);
   const [icons, setIcons] = useState<Record<string, string>>({});
 
@@ -31,7 +55,11 @@ export function UserBubble({ content, images }: { content: string; images?: Time
   const hasChips = Boolean(parsed.command) || parsed.attachments.length > 0 || parsed.chips.length > 0;
 
   return (
-    <div className="mc-userrow">
+    <div
+      className="mc-userrow"
+      data-nl-key={navKey}
+      {...(messageIndex !== undefined ? { "data-message-index": String(messageIndex) } : {})}
+    >
       <div className="mc-userbubble">
         {images?.length ? (
           <div className="mc-userbubble__images">
@@ -40,7 +68,7 @@ export function UserBubble({ content, images }: { content: string; images?: Time
                 key={`${image.name ?? "img"}-${index}`}
                 className="mc-userbubble__image"
                 src={image.src ?? image.dataUrl}
-                alt={image.name ?? "图片"}
+                alt={image.name ?? t("user.imageAlt")}
               />
             ))}
           </div>
@@ -91,6 +119,21 @@ export function UserBubble({ content, images }: { content: string; images?: Time
         ) : null}
         {parsed.body ? parsed.body : null}
       </div>
+      {checkpointId && onRewind ? (
+        <button
+          type="button"
+          className="mc-userbubble__rewind"
+          aria-label={t("checkpoint.rewind")}
+          title={
+            checkpointHasSnapshot
+              ? t("checkpoint.rewindToHere")
+              : t("checkpoint.rewindConversationOnly")
+          }
+          onClick={() => onRewind(checkpointId)}
+        >
+          <LuUndo2 size={13} aria-hidden="true" />
+        </button>
+      ) : null}
     </div>
   );
 }

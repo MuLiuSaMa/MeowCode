@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Button } from "./ui/Button";
 import { Dialog } from "./ui/Dialog";
 
@@ -15,6 +16,7 @@ export function CloseConfirmDialog({
   onDecide: (choice: "tray" | "quit" | "cancel", remember: boolean) => void;
 }) {
   const [remember, setRemember] = useState(false);
+  const { t } = useTranslation("shell");
 
   // 每次弹出都从「不记住」开始（与旧的系统对话框行为一致）
   useEffect(() => {
@@ -24,24 +26,24 @@ export function CloseConfirmDialog({
   return (
     <Dialog open={open} onClose={() => onDecide("cancel", false)} labelledBy="mc-close-title">
       <span className="mc-dialog__title" id="mc-close-title">
-        关闭窗口时，希望 MeowCode 如何表现？
+        {t("closeDialog.title")}
       </span>
-      <p className="mc-dialog__desc">MeowCode 会继续在后台运行，你可以从系统托盘重新打开。</p>
+      <p className="mc-dialog__desc">{t("closeDialog.desc")}</p>
 
       <label className="mc-dialog__remember">
         <input type="checkbox" checked={remember} onChange={(event) => setRemember(event.target.checked)} />
-        记住我的选择（可在 设置 → 通用 中修改）
+        {t("closeDialog.remember")}
       </label>
 
       <div className="mc-dialog__footer">
         <Button variant="ghost" onClick={() => onDecide("cancel", false)}>
-          取消
+          {t("closeDialog.cancel")}
         </Button>
         <Button variant="outline" onClick={() => onDecide("tray", remember)}>
-          缩小到托盘
+          {t("closeDialog.tray")}
         </Button>
         <Button variant="primary" onClick={() => onDecide("quit", remember)}>
-          直接关闭
+          {t("closeDialog.quit")}
         </Button>
       </div>
     </Dialog>

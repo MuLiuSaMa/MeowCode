@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-10-18T05:15:57.403Z",
+  "generatedAt": "2026-10-31T08:03:47.041Z",
   "items": [
     {
       "id": "algorithmic-art",
@@ -57,6 +57,21 @@
       "icon": "icons/control-browser.svg"
     },
     {
+      "id": "excalidraw",
+      "type": "skill",
+      "name": "Excalidraw 画图",
+      "description": "生成与编辑 Excalidraw 架构图、流程图、关系图，在 ZCode 侧栏与用户共同修改画布。",
+      "category": "界面设计",
+      "source": "zcode",
+      "tags": [
+        "excalidraw"
+      ],
+      "version": "0.3.4",
+      "entry": "skills/excalidraw",
+      "entryKind": "dir",
+      "icon": "icons/excalidraw.svg"
+    },
+    {
       "id": "figma",
       "type": "skill",
       "name": "Figma 设计",
@@ -111,6 +126,51 @@
       "icon": "icons/gc-minimal-zine-poster-v0-1.svg"
     },
     {
+      "id": "hyper3d-rodin",
+      "type": "skill",
+      "name": "Hyper3D 建模",
+      "description": "Generate Hyper3D Rodin Gen-2.5 models from text or images, split completed models with BANG, track progress, and retrieve result pages or requested model files.",
+      "category": "界面设计",
+      "source": "zcode",
+      "tags": [
+        "hyper3d-rodin"
+      ],
+      "version": "0.1.1",
+      "entry": "skills/hyper3d-rodin",
+      "entryKind": "dir",
+      "icon": "icons/hyper3d-rodin.svg"
+    },
+    {
+      "id": "photo-card",
+      "type": "skill",
+      "name": "照片变 3D 卡片",
+      "description": "Turn a photo the user already has into a 3D holographic card — cut the subject into the four card layers with rembg, optionally erase a watermark from the original, build the card with the ruic-card pipeline, render a 10-second animation a…",
+      "category": "界面设计",
+      "source": "zcode",
+      "tags": [
+        "ruic-card"
+      ],
+      "version": "1.1.1",
+      "entry": "skills/photo-card",
+      "entryKind": "dir",
+      "icon": "icons/photo-card.svg"
+    },
+    {
+      "id": "ruic-card",
+      "type": "skill",
+      "name": "3D 收藏卡片",
+      "description": "Generate interactive 3D holographic collectible-card websites from a user description or reference image, using layered artwork, Blender and Three.js. Includes project-local Blender installation, reusable parallax materials and browser ver…",
+      "category": "界面设计",
+      "source": "zcode",
+      "tags": [
+        "ruic-card"
+      ],
+      "version": "1.1.1",
+      "entry": "skills/ruic-card",
+      "entryKind": "dir",
+      "icon": "icons/ruic-card.svg"
+    },
+    {
       "id": "shadcn",
       "type": "skill",
       "name": "shadcn/ui 组件",
@@ -150,6 +210,21 @@
       "entry": "skills/trae-generate-mini-app",
       "entryKind": "dir",
       "icon": "icons/trae-generate-mini-app.svg"
+    },
+    {
+      "id": "tripo-3d",
+      "type": "skill",
+      "name": "Tripo 3D 生成",
+      "description": "Generate a 3D model from a text prompt, a reference image, or an existing mesh, and deliver it as GLB, FBX, OBJ, STL, USDZ or 3MF. Use when the user asks for a 3D asset, model, mesh, prop, character or texture for a game, renderer, viewer,…",
+      "category": "界面设计",
+      "source": "zcode",
+      "tags": [
+        "tripo-3d"
+      ],
+      "version": "0.1.4",
+      "entry": "skills/tripo-3d",
+      "entryKind": "dir",
+      "icon": "icons/tripo-3d.svg"
     },
     {
       "id": "uicraft",
@@ -208,7 +283,7 @@
       "tags": [
         "visualize"
       ],
-      "version": "0.1.0",
+      "version": "0.1.1",
       "entry": "skills/visualize",
       "entryKind": "dir",
       "icon": "icons/visualize.svg"
@@ -242,6 +317,24 @@
       "icon": "icons/web-gui-tester.svg"
     },
     {
+      "id": "whiteboard-design",
+      "type": "skill",
+      "name": "whiteboard-design",
+      "description": "Plan, create, edit, validate, and export editable visual whiteboards as self-contained Whiteboard HTML by default, with .excalidraw retained as the editable source. Use for information architecture, visual hierarchy, relationship maps, edi…",
+      "category": "界面设计",
+      "source": "trae",
+      "tags": [
+        "whiteboard",
+        "excalidraw",
+        "diagram",
+        "mind-map"
+      ],
+      "version": "0.2.0",
+      "entry": "skills/whiteboard-design",
+      "entryKind": "dir",
+      "icon": "icons/whiteboard-design.svg"
+    },
+    {
       "id": "agent-browser",
       "type": "skill",
       "name": "Agent Browser",
@@ -258,6 +351,7 @@
       "id": "alipay-payment-integration",
       "type": "skill",
       "name": "支付宝 AI 付接入技能",
+      "description": "",
       "category": "开发工具",
       "source": "trae",
       "tags": [],
@@ -265,6 +359,36 @@
       "entry": "skills/alipay-payment-integration",
       "entryKind": "dir",
       "icon": "icons/alipay-payment-integration.svg"
+    },
+    {
+      "id": "anet",
+      "type": "skill",
+      "name": "AgentNetwork 协作",
+      "description": "Work with other AI agents through AgentNetwork (anet): find an agent, send it a task over A2A, wait for the result, pay for a priced skill within the operator's limits, and answer tasks other agents sent to this node. Use when the user men…",
+      "category": "开发工具",
+      "source": "zcode",
+      "tags": [
+        "anet"
+      ],
+      "version": "0.1.3",
+      "entry": "skills/anet",
+      "entryKind": "dir",
+      "icon": "icons/anet.svg"
+    },
+    {
+      "id": "anet-setup",
+      "type": "skill",
+      "name": "anet 环境配置",
+      "description": "Check, install or update the anet command line, start the local anet node, join a hub and verify the setup, so that the anet MCP tools of this plugin can start. Use when the anet tools are missing, when the user asks to install, set up, up…",
+      "category": "开发工具",
+      "source": "zcode",
+      "tags": [
+        "anet"
+      ],
+      "version": "0.1.3",
+      "entry": "skills/anet-setup",
+      "entryKind": "dir",
+      "icon": "icons/anet-setup.svg"
     },
     {
       "id": "byted-bp-cdn-pagesdeploy",
@@ -280,9 +404,70 @@
       "icon": "icons/byted-bp-cdn-pagesdeploy.svg"
     },
     {
+      "id": "cli",
+      "type": "skill",
+      "name": "阿里云 CLI 操作",
+      "description": "Use the Alibaba Cloud CLI (aliyun) for cloud resource queries and operations after setup; choose product plugins from live help, preserve profile and region context, and gate remote writes.",
+      "category": "开发工具",
+      "source": "zcode",
+      "tags": [
+        "alibaba-cloud-cli"
+      ],
+      "version": "0.1.2",
+      "entry": "skills/cli",
+      "entryKind": "dir",
+      "icon": "icons/cli.svg"
+    },
+    {
+      "id": "cloudbase",
+      "type": "skill",
+      "name": "腾讯云开发",
+      "description": "Use this skill when you develop, design, build, deploy, debug, migrate, or troubleshoot CloudBase (腾讯云开发, 云开发, TCB, 微信云开发) projects. Covers Web apps (React, Vue, Vite, Next, Nuxt, dashboards, 管理后台), 微信小程序, 小程序, uni-app, native/mobile (iOS,…",
+      "category": "开发工具",
+      "source": "zcode",
+      "tags": [
+        "cloudbase-skills"
+      ],
+      "version": "0.1.0",
+      "entry": "skills/cloudbase",
+      "entryKind": "dir",
+      "icon": "icons/cloudbase.svg"
+    },
+    {
+      "id": "codespace",
+      "type": "skill",
+      "name": "Codespaces 管理",
+      "description": "Create, list, connect to, stop, or delete GitHub Codespaces. Use when the user explicitly wants to manage a remote Codespaces development environment, not for cloning a repository locally.",
+      "category": "开发工具",
+      "source": "zcode",
+      "tags": [
+        "github"
+      ],
+      "version": "0.1.4",
+      "entry": "skills/codespace",
+      "entryKind": "dir",
+      "icon": "icons/codespace.svg"
+    },
+    {
+      "id": "commit",
+      "type": "skill",
+      "name": "Git 提交",
+      "description": "Create a local Git commit from staged changes using a conventional commit message. Use when the user wants to record already prepared changes locally, not when they want to create, review, or merge a pull request.",
+      "category": "开发工具",
+      "source": "zcode",
+      "tags": [
+        "github"
+      ],
+      "version": "0.1.4",
+      "entry": "skills/commit",
+      "entryKind": "dir",
+      "icon": "icons/commit.svg"
+    },
+    {
       "id": "composition-patterns",
       "type": "skill",
       "name": "React 组件组合模式",
+      "description": "",
       "category": "开发工具",
       "source": "trae",
       "tags": [],
@@ -290,6 +475,36 @@
       "entry": "skills/composition-patterns",
       "entryKind": "dir",
       "icon": "icons/composition-patterns.svg"
+    },
+    {
+      "id": "create-toolset",
+      "type": "skill",
+      "name": "UE 工具集开发",
+      "description": "Use this skill when authoring or extending an Unreal Engine toolset, a class of static, AI-callable functions registered with `ToolsetRegistry` and exposed through the unreal-mcp server. Trigger when the user wants to add, expose, or regis…",
+      "category": "开发工具",
+      "source": "zcode",
+      "tags": [
+        "unreal-engine"
+      ],
+      "version": "0.1.3",
+      "entry": "skills/create-toolset",
+      "entryKind": "dir",
+      "icon": "icons/create-toolset.svg"
+    },
+    {
+      "id": "developing-mcp-apps",
+      "type": "skill",
+      "name": "MCP 应用开发",
+      "description": "Develop, migrate, build, and test MCP Apps for ZCode using the official MCP Apps SDK. Covers ZCode plugin manifests, persistent panel entries, host capabilities, and standalone distribution.",
+      "category": "开发工具",
+      "source": "zcode",
+      "tags": [
+        "zcode-mcp-app-dev"
+      ],
+      "version": "0.1.1",
+      "entry": "skills/developing-mcp-apps",
+      "entryKind": "dir",
+      "icon": "icons/developing-mcp-apps.svg"
     },
     {
       "id": "diagnosing-commands",
@@ -383,6 +598,7 @@
       "id": "douyinpay-payment-integration",
       "type": "skill",
       "name": "抖音支付接入",
+      "description": "",
       "category": "开发工具",
       "source": "trae",
       "tags": [],
@@ -403,6 +619,21 @@
       "entry": "skills/electron",
       "entryKind": "dir",
       "icon": "icons/electron.svg"
+    },
+    {
+      "id": "env-setup",
+      "type": "skill",
+      "name": "视频环境配置",
+      "description": "Checking and provisioning the machine's environment for the video-agent-kit plugin — probing for ffmpeg/ffprobe that actually carry the encoders and filters we render with (libx264/aac/libmp3lame, libass, libfreetype), python packages (mcp…",
+      "category": "开发工具",
+      "source": "zcode",
+      "tags": [
+        "video-agent-kit"
+      ],
+      "version": "0.4.3",
+      "entry": "skills/env-setup",
+      "entryKind": "dir",
+      "icon": "icons/env-setup.svg"
     },
     {
       "id": "finishing-a-development-branch",
@@ -469,6 +700,21 @@
       "icon": "icons/gh-fix-ci.svg"
     },
     {
+      "id": "gist",
+      "type": "skill",
+      "name": "Gist 管理",
+      "description": "Create, view, edit, or delete GitHub gists for code and text sharing. Use when the user specifically asks to work with a gist, including public or secret gist visibility, not for files stored in a repository.",
+      "category": "开发工具",
+      "source": "zcode",
+      "tags": [
+        "github"
+      ],
+      "version": "0.1.4",
+      "entry": "skills/gist",
+      "entryKind": "dir",
+      "icon": "icons/gist.svg"
+    },
+    {
       "id": "git-commit",
       "type": "skill",
       "name": "Git 提交",
@@ -498,6 +744,36 @@
       "entry": "skills/github",
       "entryKind": "dir",
       "icon": "icons/github.svg"
+    },
+    {
+      "id": "glab",
+      "type": "skill",
+      "name": "GitLab 命令行",
+      "description": ">",
+      "category": "开发工具",
+      "source": "zcode",
+      "tags": [
+        "gitlab"
+      ],
+      "version": "0.1.3",
+      "entry": "skills/glab",
+      "entryKind": "dir",
+      "icon": "icons/glab.svg"
+    },
+    {
+      "id": "glab-stack",
+      "type": "skill",
+      "name": "GitLab 堆叠 MR",
+      "description": "Manage stacked diffs and merge requests with the GitLab CLI. Use when the user wants to create, save, amend, sync, navigate, or reorder a stack of dependent merge requests. Triggers on tasks involving stacked diffs, stacked MRs, dependent …",
+      "category": "开发工具",
+      "source": "zcode",
+      "tags": [
+        "gitlab"
+      ],
+      "version": "0.1.3",
+      "entry": "skills/glab-stack",
+      "entryKind": "dir",
+      "icon": "icons/glab-stack.svg"
     },
     {
       "id": "hyperframes",
@@ -552,6 +828,36 @@
       "icon": "icons/iga-pages.svg"
     },
     {
+      "id": "issue",
+      "type": "skill",
+      "name": "Issue 管理",
+      "description": "Create, view, list, or close GitHub issues and manage the labels and milestones that organize issues and pull requests. Use when the user wants to track or organize repository work, not when they are referring to a pull request itself.",
+      "category": "开发工具",
+      "source": "zcode",
+      "tags": [
+        "github"
+      ],
+      "version": "0.1.4",
+      "entry": "skills/issue",
+      "entryKind": "dir",
+      "icon": "icons/issue.svg"
+    },
+    {
+      "id": "kicad-board",
+      "type": "skill",
+      "name": "KiCad 画板",
+      "description": "Design a 2-layer PCB with the KiCad plugin — circuit spec, real KiCad library lookups, auto-route, DRC, 3D render, Gerber/BOM/CPL export — show it in the KiCad side panel, and hand it to the real KiCad GUI when the user wants to keep editi…",
+      "category": "开发工具",
+      "source": "zcode",
+      "tags": [
+        "kicad"
+      ],
+      "version": "0.6.1",
+      "entry": "skills/kicad-board",
+      "entryKind": "dir",
+      "icon": "icons/kicad-board.svg"
+    },
+    {
       "id": "mcp-builder",
       "type": "skill",
       "name": "MCP 服务构建",
@@ -580,6 +886,21 @@
       "icon": "icons/plugin-creator.svg"
     },
     {
+      "id": "pr",
+      "type": "skill",
+      "name": "PR 处理",
+      "description": "Create, list, check out, review, or merge GitHub pull requests using GitHub CLI. Use when the user wants any pull-request workflow, not when they want to manage issues, releases, or local-only commits.",
+      "category": "开发工具",
+      "source": "zcode",
+      "tags": [
+        "github"
+      ],
+      "version": "0.1.4",
+      "entry": "skills/pr",
+      "entryKind": "dir",
+      "icon": "icons/pr.svg"
+    },
+    {
       "id": "react-best-practices",
       "type": "skill",
       "name": "React 最佳实践",
@@ -596,6 +917,7 @@
       "id": "react-native-skills",
       "type": "skill",
       "name": "React Native 开发",
+      "description": "",
       "category": "开发工具",
       "source": "trae",
       "tags": [],
@@ -633,6 +955,36 @@
       "icon": "icons/redis-development.svg"
     },
     {
+      "id": "release",
+      "type": "skill",
+      "name": "Release 发布",
+      "description": "Create a GitHub release and prepare changelog notes for a version tag. Use when the user wants to publish or draft a repository release, not merely create a Git commit, tag, or pull request.",
+      "category": "开发工具",
+      "source": "zcode",
+      "tags": [
+        "github"
+      ],
+      "version": "0.1.4",
+      "entry": "skills/release",
+      "entryKind": "dir",
+      "icon": "icons/release.svg"
+    },
+    {
+      "id": "repo",
+      "type": "skill",
+      "name": "仓库克隆与管理",
+      "description": "Clone or fork a GitHub repository with optional local setup, or open repository resources such as files, branches, issues, and settings in the browser. Use when the user wants a new local checkout or the web UI, not a Codespace or an exist…",
+      "category": "开发工具",
+      "source": "zcode",
+      "tags": [
+        "github"
+      ],
+      "version": "0.1.4",
+      "entry": "skills/repo",
+      "entryKind": "dir",
+      "icon": "icons/repo.svg"
+    },
+    {
       "id": "requesting-code-review",
       "type": "skill",
       "name": "请求代码审查",
@@ -663,6 +1015,21 @@
       "icon": "icons/review-agent.svg"
     },
     {
+      "id": "secret",
+      "type": "skill",
+      "name": "Actions 密钥管理",
+      "description": "List, set, delete, or synchronize GitHub Actions repository secrets without exposing secret values. Use when the user explicitly wants to manage GitHub secret storage, not ordinary environment files or repository variables.",
+      "category": "开发工具",
+      "source": "zcode",
+      "tags": [
+        "github"
+      ],
+      "version": "0.1.4",
+      "entry": "skills/secret",
+      "entryKind": "dir",
+      "icon": "icons/secret.svg"
+    },
+    {
       "id": "security-best-practices",
       "type": "skill",
       "name": "安全最佳实践",
@@ -674,6 +1041,36 @@
       "entry": "skills/security-best-practices",
       "entryKind": "dir",
       "icon": "icons/security-best-practices.svg"
+    },
+    {
+      "id": "setup",
+      "type": "skill",
+      "name": "环境配置",
+      "description": "Verify GitHub CLI installation and guide authentication for the intended GitHub host and account. Use when gh is missing, authentication is invalid, the user wants to switch accounts or hosts, or another GitHub skill cannot pass preflight.",
+      "category": "开发工具",
+      "source": "zcode",
+      "tags": [
+        "github"
+      ],
+      "version": "0.1.4",
+      "entry": "skills/setup",
+      "entryKind": "dir",
+      "icon": "icons/setup.svg"
+    },
+    {
+      "id": "site-deploy",
+      "type": "skill",
+      "name": "网站部署",
+      "description": "Put a new or throwaway web project (a demo, prototype or page built here) online with ZCode Sites for a preview or share link, and manage those sites. Not for the user's own project that has its own deploy or release process.",
+      "category": "开发工具",
+      "source": "zcode",
+      "tags": [
+        "zcode-site"
+      ],
+      "version": "0.4.2",
+      "entry": "skills/site-deploy",
+      "entryKind": "dir",
+      "icon": "icons/site-deploy.svg"
     },
     {
       "id": "skill-creator",
@@ -766,6 +1163,141 @@
       "icon": "icons/trae-security-review.svg"
     },
     {
+      "id": "tripo-game-asset",
+      "type": "skill",
+      "name": "Tripo 游戏资产",
+      "description": "Recipes for producing game-ready 3D assets with Tripo and wiring them into a game project - low-poly props on a face budget, PBR hero assets, LOD chains, and rigged characters with locomotion clips for Unity, Unreal, Godot or Three.js. Use…",
+      "category": "开发工具",
+      "source": "zcode",
+      "tags": [
+        "tripo-3d"
+      ],
+      "version": "0.1.4",
+      "entry": "skills/tripo-game-asset",
+      "entryKind": "dir",
+      "icon": "icons/tripo-game-asset.svg"
+    },
+    {
+      "id": "unity-cli",
+      "type": "skill",
+      "name": "Unity 编辑器控制",
+      "description": "Controls the Unity Editor and projects from the command line, driving a running Editor to edit scenes and assets or run C#. Use when asked to install or manage Editors, licenses, or projects, set up version control, build, test, configure …",
+      "category": "开发工具",
+      "source": "zcode",
+      "tags": [
+        "unity"
+      ],
+      "version": "0.1.5",
+      "entry": "skills/unity-cli",
+      "entryKind": "dir",
+      "icon": "icons/unity-cli.svg"
+    },
+    {
+      "id": "unity-setup",
+      "type": "skill",
+      "name": "Unity 环境安装",
+      "description": "Install Unity CLI and the matching Unity Editor, check the local environment, and resolve first-run setup or licensing blockers in ZCode. Use before Unity CLI workflows to check version compatibility, or when installation, licensing, or Ed…",
+      "category": "开发工具",
+      "source": "zcode",
+      "tags": [
+        "unity"
+      ],
+      "version": "0.1.5",
+      "entry": "skills/unity-setup",
+      "entryKind": "dir",
+      "icon": "icons/unity-setup.svg"
+    },
+    {
+      "id": "unreal-mcp",
+      "type": "skill",
+      "name": "Unreal 远程操控",
+      "description": "Use this skill to perform actions inside an Unreal Engine project via a live-editor MCP connection. Trigger when the user wants to change, query, or run something in their Unreal Engine project, not for conceptual or docs questions. Concre…",
+      "category": "开发工具",
+      "source": "zcode",
+      "tags": [
+        "unreal-engine"
+      ],
+      "version": "0.1.3",
+      "entry": "skills/unreal-mcp",
+      "entryKind": "dir",
+      "icon": "icons/unreal-mcp.svg"
+    },
+    {
+      "id": "unreal-skill",
+      "type": "skill",
+      "name": "Unreal 开发指南",
+      "description": "Use this skill when creating, editing, or reviewing an Unreal Engine Agent Skill, a named bundle of instructions registered with the unreal-mcp server (distinct from Claude Code's harness skills under `.claude/skills/`). Trigger when the u…",
+      "category": "开发工具",
+      "source": "zcode",
+      "tags": [
+        "unreal-engine"
+      ],
+      "version": "0.1.3",
+      "entry": "skills/unreal-skill",
+      "entryKind": "dir",
+      "icon": "icons/unreal-skill.svg"
+    },
+    {
+      "id": "url2video",
+      "type": "skill",
+      "name": "录屏复刻网页",
+      "description": "Record a live website with ZCode's built-in Browser Use WebView (native WebM), then transcode it to MP4 with ffmpeg. Use when a task starts from a URL and asks to record, capture, replicate, clone, 录制, 录屏, 复刻, 复现, or 还原 the site. Produces …",
+      "category": "开发工具",
+      "source": "zcode",
+      "tags": [
+        "video2code"
+      ],
+      "version": "0.6.1",
+      "entry": "skills/url2video",
+      "entryKind": "dir",
+      "icon": "icons/url2video.svg"
+    },
+    {
+      "id": "video2code",
+      "type": "skill",
+      "name": "录屏转代码",
+      "description": "Replicating a webpage shown in a screen-recording video — layout, visual style, interactions, and animations. Use whenever the task provides a recording (mp4, webm, mov, etc.) of a website and asks to recreate / reproduce / replicate / clo…",
+      "category": "开发工具",
+      "source": "zcode",
+      "tags": [
+        "video2code"
+      ],
+      "version": "0.6.1",
+      "entry": "skills/video2code",
+      "entryKind": "dir",
+      "icon": "icons/video2code.svg"
+    },
+    {
+      "id": "video2code-3d",
+      "type": "skill",
+      "name": "录屏转 3D 场景",
+      "description": "3D/WebGL extension for the video2code workflow. Load this ADDITIONALLY (a third Skill call, alongside video2code + web-replicate) whenever the reference page is a WebGL/three.js scene — true 3D perspective/depth, particle fields, volumetri…",
+      "category": "开发工具",
+      "source": "zcode",
+      "tags": [
+        "video2code"
+      ],
+      "version": "0.6.1",
+      "entry": "skills/video2code-3d",
+      "entryKind": "dir",
+      "icon": "icons/video2code-3d.svg"
+    },
+    {
+      "id": "video2fullstack",
+      "type": "skill",
+      "name": "操作录屏全栈复刻",
+      "description": "Replicating a website shown in an operation-recording video as a FULL-STACK project — frontend (layout, style, interactions, animations) AND a real backend (HTTP API + persistent storage) that reproduces the server-side behavior the video …",
+      "category": "开发工具",
+      "source": "zcode",
+      "tags": [
+        "video2code"
+      ],
+      "version": "0.6.1",
+      "entry": "skills/video2fullstack",
+      "entryKind": "dir",
+      "icon": "icons/video2fullstack.svg"
+    },
+    {
       "id": "web-artifacts-builder",
       "type": "skill",
       "name": "Web Artifacts 构建",
@@ -779,6 +1311,21 @@
       "icon": "icons/web-artifacts-builder.svg"
     },
     {
+      "id": "web-replicate",
+      "type": "skill",
+      "name": "现代网页复刻",
+      "description": "Tools for building modern React webapps with TypeScript, Tailwind CSS and shadcn/ui. Best suited for applications with complex UI components and state management. Used by the video2code replication workflow to scaffold the project.",
+      "category": "开发工具",
+      "source": "zcode",
+      "tags": [
+        "video2code"
+      ],
+      "version": "0.6.1",
+      "entry": "skills/web-replicate",
+      "entryKind": "dir",
+      "icon": "icons/web-replicate.svg"
+    },
+    {
       "id": "webapp-testing",
       "type": "skill",
       "name": "Web 应用探索测试",
@@ -790,6 +1337,21 @@
       "entry": "skills/webapp-testing",
       "entryKind": "dir",
       "icon": "icons/webapp-testing.svg"
+    },
+    {
+      "id": "workflow-run",
+      "type": "skill",
+      "name": "Actions 工作流",
+      "description": "List, inspect, trigger, watch, or rerun GitHub Actions workflows and runs. Use when the user wants to operate or inspect CI workflows, not when they only want to merge a PR or browse the Actions page.",
+      "category": "开发工具",
+      "source": "zcode",
+      "tags": [
+        "github"
+      ],
+      "version": "0.1.4",
+      "entry": "skills/workflow-run",
+      "entryKind": "dir",
+      "icon": "icons/workflow-run.svg"
     },
     {
       "id": "yeet",
@@ -866,6 +1428,21 @@
       "entry": "skills/docx",
       "entryKind": "dir",
       "icon": "icons/docx.svg"
+    },
+    {
+      "id": "docx-viewer",
+      "type": "skill",
+      "name": "Word 文档查看",
+      "description": "View and discuss Word (.docx) files with the user in the Documents side panel. Use when the user wants to open, read, review or ask about a Word document in the workspace, refers to something they selected or referenced in the Documents vi…",
+      "category": "内容创作",
+      "source": "zcode",
+      "tags": [
+        "documents"
+      ],
+      "version": "0.2.1",
+      "entry": "skills/docx-viewer",
+      "entryKind": "dir",
+      "icon": "icons/docx-viewer.svg"
     },
     {
       "id": "douyin-interact-creation",
@@ -1076,6 +1653,21 @@
       "icon": "icons/pdf.svg"
     },
     {
+      "id": "pdf-viewer",
+      "type": "skill",
+      "name": "PDF 查看",
+      "description": "View and discuss PDF files with the user in the PDF side panel. Use when the user wants to open, read, review or ask about a PDF in the workspace, refers to something they selected or referenced in the PDF viewer, or should check a PDF you…",
+      "category": "内容创作",
+      "source": "zcode",
+      "tags": [
+        "pdf"
+      ],
+      "version": "0.2.2",
+      "entry": "skills/pdf-viewer",
+      "entryKind": "dir",
+      "icon": "icons/pdf-viewer.svg"
+    },
+    {
       "id": "pptx",
       "type": "skill",
       "name": "PPT 演示",
@@ -1091,6 +1683,36 @@
       "entry": "skills/pptx",
       "entryKind": "dir",
       "icon": "icons/pptx.svg"
+    },
+    {
+      "id": "pptx-author",
+      "type": "skill",
+      "name": "PPT 生成",
+      "description": "Produce a professional .pptx deck on disk with python-pptx — slide conventions, template handling, and delivery contract for research decks and pitch materials.",
+      "category": "内容创作",
+      "source": "zcode",
+      "tags": [
+        "write-research"
+      ],
+      "version": "0.1.1",
+      "entry": "skills/pptx-author",
+      "entryKind": "dir",
+      "icon": "icons/pptx-author.svg"
+    },
+    {
+      "id": "pptx-viewer",
+      "type": "skill",
+      "name": "PPT 查看",
+      "description": "View and discuss PowerPoint (.pptx) decks with the user in the Presentations side panel. Use when the user wants to open, review or ask about a deck in the workspace together, refers to a slide or shape they selected or referenced in the P…",
+      "category": "内容创作",
+      "source": "zcode",
+      "tags": [
+        "presentations"
+      ],
+      "version": "0.2.1",
+      "entry": "skills/pptx-viewer",
+      "entryKind": "dir",
+      "icon": "icons/pptx-viewer.svg"
     },
     {
       "id": "prd-authoring",
@@ -1123,6 +1745,21 @@
       "icon": "icons/report-page.svg"
     },
     {
+      "id": "report-render",
+      "type": "skill",
+      "name": "报告分页渲染",
+      "description": "Build paginated research deliverables (PDF, or DOCX where the reader edits the file) with correct CJK rendering, density-sized charts, clickable [n] citations, and a mandatory render-and-inspect gate. Use when a report, industry primer, ea…",
+      "category": "内容创作",
+      "source": "zcode",
+      "tags": [
+        "accounting-and-reporting"
+      ],
+      "version": "0.1.1",
+      "entry": "skills/report-render",
+      "entryKind": "dir",
+      "icon": "icons/report-render.svg"
+    },
+    {
       "id": "test-driven-development",
       "type": "skill",
       "name": "测试驱动开发",
@@ -1136,6 +1773,81 @@
       "entry": "skills/test-driven-development",
       "entryKind": "dir",
       "icon": "icons/test-driven-development.svg"
+    },
+    {
+      "id": "typst",
+      "type": "skill",
+      "name": "Typst 排版",
+      "description": "Write and fix Typst documents (.typ) with a live preview in the Typst side panel — compile with the user's own Typst, read errors with file:line and hints, look at rendered pages as images, point at places in the preview, and export PDFs. …",
+      "category": "内容创作",
+      "source": "zcode",
+      "tags": [
+        "typst-workbench"
+      ],
+      "version": "0.2.0",
+      "entry": "skills/typst",
+      "entryKind": "dir",
+      "icon": "icons/typst.svg"
+    },
+    {
+      "id": "video-edit-agent",
+      "type": "skill",
+      "name": "视频剪辑总控",
+      "description": "Global controller for video editing tasks. Use as the default entrypoint for any video edit request; it discovers materials, classifies the task, routes to specialized video-edit skills when available, and enforces the common file contract…",
+      "category": "内容创作",
+      "source": "zcode",
+      "tags": [
+        "video-agent-kit"
+      ],
+      "version": "0.4.3",
+      "entry": "skills/video-edit-agent",
+      "entryKind": "dir",
+      "icon": "icons/video-edit-agent.svg"
+    },
+    {
+      "id": "video-edit-assembly",
+      "type": "skill",
+      "name": "多素材混剪",
+      "description": "Specialized workflow for multi-material video assembly. Use after video-edit-agent classifies a task as combining, selecting, ordering, de-duplicating, or shaping multiple user-provided videos/audio/images into one coherent finished video,…",
+      "category": "内容创作",
+      "source": "zcode",
+      "tags": [
+        "video-agent-kit"
+      ],
+      "version": "0.4.3",
+      "entry": "skills/video-edit-assembly",
+      "entryKind": "dir",
+      "icon": "icons/video-edit-assembly.svg"
+    },
+    {
+      "id": "video-recap-workflows",
+      "type": "skill",
+      "name": "影视解说工作流",
+      "description": "Consolidated narrated recap workflows for movie commentary, football/soccer match recaps, League of Legends esports recaps, and basketball/NBA/CBA full-game recaps. Use when video-edit-agent routes a full film, match, game replay, or broad…",
+      "category": "内容创作",
+      "source": "zcode",
+      "tags": [
+        "video-agent-kit"
+      ],
+      "version": "0.4.3",
+      "entry": "skills/video-recap-workflows",
+      "entryKind": "dir",
+      "icon": "icons/video-recap-workflows.svg"
+    },
+    {
+      "id": "video-speech-workflows",
+      "type": "skill",
+      "name": "口播视频工作流",
+      "description": "Consolidated single-source voiced-video workflows for speech condensing, talking-head subtitles, and end-to-end caption/edit orchestration. Use when video-edit-agent routes a single voiced video to mode=speech-condense, mode=talking-head-s…",
+      "category": "内容创作",
+      "source": "zcode",
+      "tags": [
+        "video-agent-kit"
+      ],
+      "version": "0.4.3",
+      "entry": "skills/video-speech-workflows",
+      "entryKind": "dir",
+      "icon": "icons/video-speech-workflows.svg"
     },
     {
       "id": "writing-plans",
@@ -1166,6 +1878,201 @@
       "icon": "icons/writing-skills.svg"
     },
     {
+      "id": "xlsx-author",
+      "type": "skill",
+      "name": "表格生成",
+      "description": "Produce a professional .xlsx workbook on disk with openpyxl — formula construction rules, colour conventions, and the mandatory recalc/error-check step before delivery. Use for any tabular deliverable that belongs in a file — valuation mod…",
+      "category": "内容创作",
+      "source": "zcode",
+      "tags": [
+        "accounting-and-reporting"
+      ],
+      "version": "0.1.1",
+      "entry": "skills/xlsx-author",
+      "entryKind": "dir",
+      "icon": "icons/xlsx-author.svg"
+    },
+    {
+      "id": "zotero",
+      "type": "skill",
+      "name": "Zotero 文献库",
+      "description": "Work with the user's Zotero library in the Zotero side panel — search papers, read their PDFs page by page and the user's own highlights, point at evidence with highlights in the PDF, cite (BibTeX / CSL styles) and keep a .bib file in the …",
+      "category": "内容创作",
+      "source": "zcode",
+      "tags": [
+        "zotero"
+      ],
+      "version": "0.2.1",
+      "entry": "skills/zotero",
+      "entryKind": "dir",
+      "icon": "icons/zotero.svg"
+    },
+    {
+      "id": "3-statement-model",
+      "type": "skill",
+      "name": "三表联动模型",
+      "description": "Build or complete integrated 3-statement financial models (Income Statement, Balance Sheet, Cash Flow Statement) with proper linkages. Two entry points, both covered - populating an existing template (fill in, complete, or populate a parti…",
+      "category": "数据分析",
+      "source": "zcode",
+      "tags": [
+        "write-research"
+      ],
+      "version": "0.1.1",
+      "entry": "skills/3-statement-model",
+      "entryKind": "dir",
+      "icon": "icons/3-statement-model.svg"
+    },
+    {
+      "id": "account-mapping",
+      "type": "skill",
+      "name": "科目映射表",
+      "description": "A mapping between two charts of accounts — multi-book consolidation, a system migration, or a presentation change — with balance conservation proved rather than assumed, one-to-many and many-to-one relations surfaced for confirmation inste…",
+      "category": "数据分析",
+      "source": "zcode",
+      "tags": [
+        "accounting-and-reporting"
+      ],
+      "version": "0.1.1",
+      "entry": "skills/account-mapping",
+      "entryKind": "dir",
+      "icon": "icons/account-mapping.svg"
+    },
+    {
+      "id": "accretion-dilution",
+      "type": "skill",
+      "name": "增厚摊薄测算",
+      "description": "Build an accretion/dilution (merger consequences) model in Excel for a specific acquisition — standalone earnings for acquirer and target, consideration mix of cash/stock/debt, exchange ratio, financing cost, phased synergies, pro-forma EP…",
+      "category": "数据分析",
+      "source": "zcode",
+      "tags": [
+        "model-deals"
+      ],
+      "version": "0.1.1",
+      "entry": "skills/accretion-dilution",
+      "entryKind": "dir",
+      "icon": "icons/accretion-dilution.svg"
+    },
+    {
+      "id": "asset-allocation",
+      "type": "skill",
+      "name": "大类资产配置",
+      "description": "Cross-asset view assembled from what the data actually supports — equity via index valuation percentiles, rates, credit, commodities and FX via 同花顺 EDB series, macro state via the macro dashboard — derived from one macro thesis through nam…",
+      "category": "数据分析",
+      "source": "zcode",
+      "tags": [
+        "read-macro"
+      ],
+      "version": "0.1.1",
+      "entry": "skills/asset-allocation",
+      "entryKind": "dir",
+      "icon": "icons/asset-allocation.svg"
+    },
+    {
+      "id": "audit-xls",
+      "type": "skill",
+      "name": "表格审计",
+      "description": "Audit a spreadsheet for formula accuracy, errors, and common mistakes. Scopes to a selected range, a single sheet, or the entire model (including financial-model integrity checks like BS balance, cash tie-out, and logic sanity). Triggers o…",
+      "category": "数据分析",
+      "source": "zcode",
+      "tags": [
+        "accounting-and-reporting"
+      ],
+      "version": "0.1.1",
+      "entry": "skills/audit-xls",
+      "entryKind": "dir",
+      "icon": "icons/audit-xls.svg"
+    },
+    {
+      "id": "autoresearch",
+      "type": "skill",
+      "name": "自主研究循环",
+      "description": "Run an autonomous experiment loop in ZCode. Set a goal and a mechanical metric, then iterate: modify code, run the benchmark, keep improvements, revert regressions, repeat. Use when the user wants the agent to autonomously optimize somethi…",
+      "category": "数据分析",
+      "source": "zcode",
+      "tags": [
+        "autoresearch"
+      ],
+      "version": "0.1.0",
+      "entry": "skills/autoresearch",
+      "entryKind": "dir",
+      "icon": "icons/autoresearch.svg"
+    },
+    {
+      "id": "autoresearch-hooks",
+      "type": "skill",
+      "name": "研究迭代钩子",
+      "description": "Teach how to write iteration hooks (before/after scripts) for the autoresearch plugin: contract, scenario selection, mock testing, and guidelines. Use when the user wants to add a custom hook, extend the loop with external logic (lookups, …",
+      "category": "数据分析",
+      "source": "zcode",
+      "tags": [
+        "autoresearch"
+      ],
+      "version": "0.1.0",
+      "entry": "skills/autoresearch-hooks",
+      "entryKind": "dir",
+      "icon": "icons/autoresearch-hooks.svg"
+    },
+    {
+      "id": "bond-profile",
+      "type": "skill",
+      "name": "单券深度画像",
+      "description": "Single-bond profile end to end — issuance terms and 兑付安排, live 估价/溢价, 久期/修正久期/凸性/利差, and the issuer's identity and background. Triggers on \"这只债\", \"债券详情\", \"债券估值\", \"久期多少\", \"凸性\", \"利差多少\", \"票面利率\", \"bond profile\", \"看一下 XXX 债\".",
+      "category": "数据分析",
+      "source": "zcode",
+      "tags": [
+        "assess-credit"
+      ],
+      "version": "0.1.2",
+      "entry": "skills/bond-profile",
+      "entryKind": "dir",
+      "icon": "icons/bond-profile.svg"
+    },
+    {
+      "id": "budget-variance",
+      "type": "skill",
+      "name": "预算差异归因",
+      "description": "Actual against budget with attribution rather than description — price / volume / mix / FX on revenue, rate / usage on cost, every material variance classified 时间性 or 永久性, and graded by decision impact. Triggers on \"预算执行\", \"预实差异\", \"预算对比分析\"…",
+      "category": "数据分析",
+      "source": "zcode",
+      "tags": [
+        "run-fpa"
+      ],
+      "version": "0.1.1",
+      "entry": "skills/budget-variance",
+      "entryKind": "dir",
+      "icon": "icons/budget-variance.svg"
+    },
+    {
+      "id": "capital-raise",
+      "type": "skill",
+      "name": "定增募资测算",
+      "description": "Model a primary issuance in Excel — 定增 (private placement), 配股 (rights issue), IPO, or 可转债 (convertible bond). Sizes the raise, sets out the pricing basis and discount against a stated reference price, allocates use of proceeds, and models…",
+      "category": "数据分析",
+      "source": "zcode",
+      "tags": [
+        "model-deals"
+      ],
+      "version": "0.1.1",
+      "entry": "skills/capital-raise",
+      "entryKind": "dir",
+      "icon": "icons/capital-raise.svg"
+    },
+    {
+      "id": "cash-forecast",
+      "type": "skill",
+      "name": "13 周现金流预测",
+      "description": "A 13-week rolling direct cash forecast — opening cash, AR-ageing-driven receipts, disbursements (payroll, AP, tax, debt service, capex), closing cash, and headroom against a covenant or minimum balance, with an explicit collection curve an…",
+      "category": "数据分析",
+      "source": "zcode",
+      "tags": [
+        "run-fpa"
+      ],
+      "version": "0.1.1",
+      "entry": "skills/cash-forecast",
+      "entryKind": "dir",
+      "icon": "icons/cash-forecast.svg"
+    },
+    {
       "id": "chart-visualization",
       "type": "skill",
       "name": "图表可视化",
@@ -1177,6 +2084,501 @@
       "entry": "skills/chart-visualization",
       "entryKind": "dir",
       "icon": "icons/chart-visualization.svg"
+    },
+    {
+      "id": "client-portrait",
+      "type": "skill",
+      "name": "客户画像速写",
+      "description": "Assemble one company for a coverage conversation — registry basics, supply-chain and equity relationships, recent opportunity signals and news — ending with what to ask the client and a hand-off to vet-companies for anything credit-bound. …",
+      "category": "数据分析",
+      "source": "zcode",
+      "tags": [
+        "find-clients"
+      ],
+      "version": "0.1.2",
+      "entry": "skills/client-portrait",
+      "entryKind": "dir",
+      "icon": "icons/client-portrait.svg"
+    },
+    {
+      "id": "close-recap",
+      "type": "skill",
+      "name": "收盘复盘",
+      "description": "After-close (or after any session) recap of a watchlist — per-name moves, market/sector context, move attribution against disclosed events, and a decision-first summary. Triggers on \"盘后复盘\", \"今天怎么样\", \"recap\", \"收盘总结\", \"为什么涨/跌\", \"move attribu…",
+      "category": "数据分析",
+      "source": "zcode",
+      "tags": [
+        "watch-positions"
+      ],
+      "version": "0.1.1",
+      "entry": "skills/close-recap",
+      "entryKind": "dir",
+      "icon": "icons/close-recap.svg"
+    },
+    {
+      "id": "competitive-analysis",
+      "type": "skill",
+      "name": "竞争格局分析",
+      "description": "Framework for building competitive landscape decks — market positioning, competitor deep-dives, comparative analysis, strategic synthesis. Use when the user asks for a competitive landscape, competitor analysis, peer comparison, market pos…",
+      "category": "数据分析",
+      "source": "zcode",
+      "tags": [
+        "write-research"
+      ],
+      "version": "0.1.1",
+      "entry": "skills/competitive-analysis",
+      "entryKind": "dir",
+      "icon": "icons/competitive-analysis.svg"
+    },
+    {
+      "id": "comps-analysis",
+      "type": "skill",
+      "name": "可比公司分析",
+      "description": "",
+      "category": "数据分析",
+      "source": "zcode",
+      "tags": [
+        "write-research"
+      ],
+      "version": "0.1.1",
+      "entry": "skills/comps-analysis",
+      "entryKind": "dir",
+      "icon": "icons/comps-analysis.svg"
+    },
+    {
+      "id": "cost-profitability",
+      "type": "skill",
+      "name": "分部盈利拆解",
+      "description": "Segment profitability after shared-cost allocation — which product line, customer, channel, or region actually makes money once fixed and common costs are distributed by a stated driver, with the allocation arithmetic shown and every segme…",
+      "category": "数据分析",
+      "source": "zcode",
+      "tags": [
+        "run-fpa"
+      ],
+      "version": "0.1.1",
+      "entry": "skills/cost-profitability",
+      "entryKind": "dir",
+      "icon": "icons/cost-profitability.svg"
+    },
+    {
+      "id": "credit-watch",
+      "type": "skill",
+      "name": "信用跟踪监测",
+      "description": "Credit monitoring over a window for one issuer or a name list — 到期墙, negative announcements and adverse media, valuation deterioration (估值收益率跳升、利差走阔), and 担保圈 contagion — ranked by severity. Triggers on \"信用风险排查\", \"到期压力\", \"到期墙\", \"估值异动\", \"利差…",
+      "category": "数据分析",
+      "source": "zcode",
+      "tags": [
+        "assess-credit"
+      ],
+      "version": "0.1.2",
+      "entry": "skills/credit-watch",
+      "entryKind": "dir",
+      "icon": "icons/credit-watch.svg"
+    },
+    {
+      "id": "curve-spread",
+      "type": "skill",
+      "name": "期限利差图谱",
+      "description": "Yield-curve and credit-spread picture across a set of bonds — levels and spreads segmented by 评级 / 期限 / 行业 / 属性(城投 vs 产业), benchmarked against the government curve and policy rates. Triggers on \"信用利差\", \"收益率曲线\", \"利差走势\", \"城投利差\", \"期限利差\", \"等级利…",
+      "category": "数据分析",
+      "source": "zcode",
+      "tags": [
+        "assess-credit"
+      ],
+      "version": "0.1.2",
+      "entry": "skills/curve-spread",
+      "entryKind": "dir",
+      "icon": "icons/curve-spread.svg"
+    },
+    {
+      "id": "dcf-model",
+      "type": "skill",
+      "name": "DCF 估值建模",
+      "description": "Real DCF (Discounted Cash Flow) model creation for equity valuation. Retrieves financial data from SEC filings and analyst reports, builds comprehensive cash flow projections with proper WACC calculations, performs sensitivity analysis, an…",
+      "category": "数据分析",
+      "source": "zcode",
+      "tags": [
+        "write-research"
+      ],
+      "version": "0.1.1",
+      "entry": "skills/dcf-model",
+      "entryKind": "dir",
+      "icon": "icons/dcf-model.svg"
+    },
+    {
+      "id": "dd-report",
+      "type": "skill",
+      "name": "尽调报告撰写",
+      "description": "Assemble a full company due-diligence report — entity resolution, registry profile, ownership and related parties, business and industry-chain position, risk records, adverse media, and (for issuers) financial red flags. Triggers on \"尽调\", …",
+      "category": "数据分析",
+      "source": "zcode",
+      "tags": [
+        "vet-companies"
+      ],
+      "version": "0.1.2",
+      "entry": "skills/dd-report",
+      "entryKind": "dir",
+      "icon": "icons/dd-report.svg"
+    },
+    {
+      "id": "deal-comps",
+      "type": "skill",
+      "name": "可比交易整理",
+      "description": "Assemble a precedent-transaction set by hand for a specific deal — identify candidate transactions from stock events and announcement search, extract the announced terms from the announcements themselves, and compute transaction multiples …",
+      "category": "数据分析",
+      "source": "zcode",
+      "tags": [
+        "model-deals"
+      ],
+      "version": "0.1.1",
+      "entry": "skills/deal-comps",
+      "entryKind": "dir",
+      "icon": "icons/deal-comps.svg"
+    },
+    {
+      "id": "earnings-analysis",
+      "type": "skill",
+      "name": "业绩点评报告",
+      "description": "Create professional equity research earnings update reports (8-12 pages, 3,000-5,000 words) analyzing quarterly results for companies already under coverage. Fast-turnaround format focusing on beat/miss analysis, key metrics, updated estim…",
+      "category": "数据分析",
+      "source": "zcode",
+      "tags": [
+        "write-research"
+      ],
+      "version": "0.1.1",
+      "entry": "skills/earnings-analysis",
+      "entryKind": "dir",
+      "icon": "icons/earnings-analysis.svg"
+    },
+    {
+      "id": "earnings-flash",
+      "type": "skill",
+      "name": "业绩快报速评",
+      "description": "Short-form earnings reactions for A-shares — the 业绩预告 → 业绩快报 → 正式报告 three-stage sequence, and the \"first take\" quick note in the first hour or two after any result. Distinct from the full 8–12 page earnings-analysis update. Triggers on \"业绩…",
+      "category": "数据分析",
+      "source": "zcode",
+      "tags": [
+        "write-research"
+      ],
+      "version": "0.1.1",
+      "entry": "skills/earnings-flash",
+      "entryKind": "dir",
+      "icon": "icons/earnings-flash.svg"
+    },
+    {
+      "id": "earnings-preview",
+      "type": "skill",
+      "name": "财报前瞻分析",
+      "description": "Build pre-earnings analysis with estimate models, scenario frameworks, and key metrics to watch. Use before a company reports quarterly earnings to prepare positioning notes, set up bull/bear scenarios, and identify what will move the stoc…",
+      "category": "数据分析",
+      "source": "zcode",
+      "tags": [
+        "write-research"
+      ],
+      "version": "0.1.1",
+      "entry": "skills/earnings-preview",
+      "entryKind": "dir",
+      "icon": "icons/earnings-preview.svg"
+    },
+    {
+      "id": "event-monitor",
+      "type": "skill",
+      "name": "事件监控扫描",
+      "description": "Scan watchlist/portfolio names for position-relevant events over a window — announcements, earnings pre-announcements, share pledges, lockup expiries, holder changes, litigation, regulatory actions — and rank them by severity. Triggers on …",
+      "category": "数据分析",
+      "source": "zcode",
+      "tags": [
+        "watch-positions"
+      ],
+      "version": "0.1.1",
+      "entry": "skills/event-monitor",
+      "entryKind": "dir",
+      "icon": "icons/event-monitor.svg"
+    },
+    {
+      "id": "finance-bp-decision-support",
+      "type": "skill",
+      "name": "业务提案测算",
+      "description": "Incremental profit-and-cash analysis of a business proposal against a modelled 「不做」 base — option comparison on one basis, peak funding requirement and payback, the condition under which the recommendation flips, and an open-items list sco…",
+      "category": "数据分析",
+      "source": "zcode",
+      "tags": [
+        "run-fpa"
+      ],
+      "version": "0.1.1",
+      "entry": "skills/finance-bp-decision-support",
+      "entryKind": "dir",
+      "icon": "icons/finance-bp-decision-support.svg"
+    },
+    {
+      "id": "financial-reporting",
+      "type": "skill",
+      "name": "法定报表编制",
+      "description": "Statutory-basis financial statements and note working papers built from a trial balance — accounts mapped to the caption format the stated basis prescribes, the three statements with every tie shown as a live formula, note schedules tracea…",
+      "category": "数据分析",
+      "source": "zcode",
+      "tags": [
+        "accounting-and-reporting"
+      ],
+      "version": "0.1.1",
+      "entry": "skills/financial-reporting",
+      "entryKind": "dir",
+      "icon": "icons/financial-reporting.svg"
+    },
+    {
+      "id": "fund-profile",
+      "type": "skill",
+      "name": "基金深度画像",
+      "description": "Deep-dive profile of a single fund — performance vs benchmark and peers, risk, drawdowns, size and flows, fees, holdings snapshot, manager tenure. Triggers on \"基金画像\", \"分析这只基金\", \"XX基金怎么样\", \"fund profile\", \"<基金代码> 深度分析\".",
+      "category": "数据分析",
+      "source": "zcode",
+      "tags": [
+        "pick-funds"
+      ],
+      "version": "0.1.1",
+      "entry": "skills/fund-profile",
+      "entryKind": "dir",
+      "icon": "icons/fund-profile.svg"
+    },
+    {
+      "id": "fund-screen",
+      "type": "skill",
+      "name": "基金多维筛选",
+      "description": "Multi-criteria fund screening across mutual funds, ETFs, and LOFs — by type, performance, risk, size, fees, holdings, manager. Triggers on \"筛选基金\", \"找基金\", \"fund screen\", \"哪些基金满足\", \"近一年收益前10%的股票基金\", \"重仓XX的基金\".",
+      "category": "数据分析",
+      "source": "zcode",
+      "tags": [
+        "pick-funds"
+      ],
+      "version": "0.1.1",
+      "entry": "skills/fund-screen",
+      "entryKind": "dir",
+      "icon": "icons/fund-screen.svg"
+    },
+    {
+      "id": "fund-watch",
+      "type": "skill",
+      "name": "持仓基金跟踪",
+      "description": "Ongoing monitoring of held or shortlisted funds over a window — manager changes, size and flow shocks, 仓位 shifts, style drift, and performance/rank deviation — graded by what a holder must act on. Triggers on \"基金跟踪\", \"持仓基金有没有问题\", \"基金预警\", \"…",
+      "category": "数据分析",
+      "source": "zcode",
+      "tags": [
+        "pick-funds"
+      ],
+      "version": "0.1.1",
+      "entry": "skills/fund-watch",
+      "entryKind": "dir",
+      "icon": "icons/fund-watch.svg"
+    },
+    {
+      "id": "holdings-style",
+      "type": "skill",
+      "name": "持仓风格透视",
+      "description": "Analyze what funds actually hold — holdings vs label, style drift over report dates, concentration, and cross-fund overlap for shortlists. Triggers on \"持仓分析\", \"风格漂移\", \"重仓股\", \"两只基金重合度\", \"holdings overlap\", \"名不副实\".",
+      "category": "数据分析",
+      "source": "zcode",
+      "tags": [
+        "pick-funds"
+      ],
+      "version": "0.1.1",
+      "entry": "skills/holdings-style",
+      "entryKind": "dir",
+      "icon": "icons/holdings-style.svg"
+    },
+    {
+      "id": "idea-generation",
+      "type": "skill",
+      "name": "投资灵感筛选",
+      "description": "Systematic stock screening and investment idea sourcing. Combines quantitative screens, thematic research, and pattern recognition to surface new long and short ideas. Use when looking for new ideas, running screens, or conducting thematic…",
+      "category": "数据分析",
+      "source": "zcode",
+      "tags": [
+        "write-research"
+      ],
+      "version": "0.1.1",
+      "entry": "skills/idea-generation",
+      "entryKind": "dir",
+      "icon": "icons/idea-generation.svg"
+    },
+    {
+      "id": "index-valuation",
+      "type": "skill",
+      "name": "指数估值分位",
+      "description": "Where an index's valuation sits inside its own history — PE/PB/PS with stated-window historical percentiles, weighted 成份股 earnings, and a 盈利 vs 估值 decomposition of a period's return. Triggers on \"估值分位\", \"指数贵不贵\", \"沪深300 PE\", \"指数估值历史位置\", \"盈利…",
+      "category": "数据分析",
+      "source": "zcode",
+      "tags": [
+        "read-macro"
+      ],
+      "version": "0.1.1",
+      "entry": "skills/index-valuation",
+      "entryKind": "dir",
+      "icon": "icons/index-valuation.svg"
+    },
+    {
+      "id": "intraday-watch",
+      "type": "skill",
+      "name": "盘中快照",
+      "description": "Intraday snapshot of a watchlist while the session is open — live quotes, move-vs-benchmark, and which names are moving beyond their own normal range. Triggers on \"盘中\", \"现在怎么样\", \"实时\", \"盘中异动\", \"现在涨跌\", \"intraday\", \"live quotes\", \"盘中监控\".",
+      "category": "数据分析",
+      "source": "zcode",
+      "tags": [
+        "watch-positions"
+      ],
+      "version": "0.1.1",
+      "entry": "skills/intraday-watch",
+      "entryKind": "dir",
+      "icon": "icons/intraday-watch.svg"
+    },
+    {
+      "id": "issuer-credit",
+      "type": "skill",
+      "name": "发行人信用评估",
+      "description": "Credit assessment of a bond issuer rather than a bond — leverage, profitability, interest coverage, short-term liquidity, ownership and background, the 担保圈 and 关联占款, plus covenant and default disclosures. Triggers on \"主体资质\", \"发行人怎么样\", \"偿债能…",
+      "category": "数据分析",
+      "source": "zcode",
+      "tags": [
+        "assess-credit"
+      ],
+      "version": "0.1.2",
+      "entry": "skills/issuer-credit",
+      "entryKind": "dir",
+      "icon": "icons/issuer-credit.svg"
+    },
+    {
+      "id": "jupyter-notebook",
+      "type": "skill",
+      "name": "Jupyter 笔记本",
+      "description": "Work with Jupyter notebooks (.ipynb) in the Jupyter Notebook side panel — create, read, edit and run cells on a Jupyter Server, together with the user. Use when the user wants a notebook, asks to analyse data or prototype in Jupyter, menti…",
+      "category": "数据分析",
+      "source": "zcode",
+      "tags": [
+        "jupyter-notebook"
+      ],
+      "version": "0.2.0",
+      "entry": "skills/jupyter-notebook",
+      "entryKind": "dir",
+      "icon": "icons/jupyter-notebook.svg"
+    },
+    {
+      "id": "lbo-model",
+      "type": "skill",
+      "name": "LBO 建模",
+      "description": "Build or complete LBO (Leveraged Buyout) models in Excel for private equity transactions, deal materials, or investment committee presentations. Works from a user-provided template when one exists, or builds the standard structure (Sources…",
+      "category": "数据分析",
+      "source": "zcode",
+      "tags": [
+        "write-research"
+      ],
+      "version": "0.1.1",
+      "entry": "skills/lbo-model",
+      "entryKind": "dir",
+      "icon": "icons/lbo-model.svg"
+    },
+    {
+      "id": "ledger-reconciliation",
+      "type": "skill",
+      "name": "账账核对",
+      "description": "Reconciliation carried to root cause — general ledger against subledger, book against operational log, or one report against another, with the totals difference decomposed by matching transactions rather than described, each difference cla…",
+      "category": "数据分析",
+      "source": "zcode",
+      "tags": [
+        "accounting-and-reporting"
+      ],
+      "version": "0.1.1",
+      "entry": "skills/ledger-reconciliation",
+      "entryKind": "dir",
+      "icon": "icons/ledger-reconciliation.svg"
+    },
+    {
+      "id": "macro-dashboard",
+      "type": "skill",
+      "name": "宏观五板块速览",
+      "description": "Five-block read of the macro state — 增长 / 通胀 / 货币与流动性 / 信用 / 外部 — built from 同花顺 EDB series (`wind-economic`), each with its 口径, release lag, and next release date. Triggers on \"宏观怎么看\", \"经济现在什么状态\", \"流动性松不松\", \"社融怎么样\", \"宏观仪表盘\", \"macro dashbo…",
+      "category": "数据分析",
+      "source": "zcode",
+      "tags": [
+        "read-macro"
+      ],
+      "version": "0.1.1",
+      "entry": "skills/macro-dashboard",
+      "entryKind": "dir",
+      "icon": "icons/macro-dashboard.svg"
+    },
+    {
+      "id": "management-report",
+      "type": "skill",
+      "name": "管理口径报表",
+      "description": "The 管理口径 management report off a closed period — a multi-dimensional report by organisation, business, product, or region built on a stated metric dictionary, then the narrative that reads it — P&L walk against prior period and budget, the…",
+      "category": "数据分析",
+      "source": "zcode",
+      "tags": [
+        "run-fpa"
+      ],
+      "version": "0.1.1",
+      "entry": "skills/management-report",
+      "entryKind": "dir",
+      "icon": "icons/management-report.svg"
+    },
+    {
+      "id": "manager-profile",
+      "type": "skill",
+      "name": "基金经理画像",
+      "description": "Profile a fund manager across all managed products and full career — track record by tenure, style, capacity, turnover of mandates. Triggers on \"基金经理\", \"manager profile\", \"XX的管理业绩\", \"这个经理靠谱吗\", \"经理画像\", \"筛选基金经理\".",
+      "category": "数据分析",
+      "source": "zcode",
+      "tags": [
+        "pick-funds"
+      ],
+      "version": "0.1.1",
+      "entry": "skills/manager-profile",
+      "entryKind": "dir",
+      "icon": "icons/manager-profile.svg"
+    },
+    {
+      "id": "model-update",
+      "type": "skill",
+      "name": "模型数据更新",
+      "description": "Update financial models with new data — quarterly earnings, management guidance, macro changes, or revised assumptions. Adjusts estimates, recalculates valuation, and flags material changes. Use after earnings, guidance updates, or when as…",
+      "category": "数据分析",
+      "source": "zcode",
+      "tags": [
+        "write-research"
+      ],
+      "version": "0.1.1",
+      "entry": "skills/model-update",
+      "entryKind": "dir",
+      "icon": "icons/model-update.svg"
+    },
+    {
+      "id": "month-end-close-review",
+      "type": "skill",
+      "name": "月结前检视",
+      "description": "A pre-close sweep over the trial balance and the close checklist — blockers separated from warnings, abnormal balances by direction and by ageing, accruals that should exist and do not, cut-off exposure around the period end, and draft ent…",
+      "category": "数据分析",
+      "source": "zcode",
+      "tags": [
+        "accounting-and-reporting"
+      ],
+      "version": "0.1.1",
+      "entry": "skills/month-end-close-review",
+      "entryKind": "dir",
+      "icon": "icons/month-end-close-review.svg"
+    },
+    {
+      "id": "morning-note",
+      "type": "skill",
+      "name": "晨报速写",
+      "description": "Draft concise morning meeting notes summarizing overnight developments, trade ideas, and key events for coverage stocks. Designed for the 7am morning meeting format — tight, opinionated, actionable. Triggers on \"morning note\", \"morning mee…",
+      "category": "数据分析",
+      "source": "zcode",
+      "tags": [
+        "write-research"
+      ],
+      "version": "0.1.1",
+      "entry": "skills/morning-note",
+      "entryKind": "dir",
+      "icon": "icons/morning-note.svg"
     },
     {
       "id": "office-recalculate",
@@ -1192,6 +2594,216 @@
       "entry": "skills/office-recalculate",
       "entryKind": "dir",
       "icon": "icons/office-recalculate.svg"
+    },
+    {
+      "id": "opportunity-scan",
+      "type": "skill",
+      "name": "商机信号扫描",
+      "description": "Scan business-opportunity signals over an explicit window — financing rounds, expansion and capex, listing moves, tenders and awards, qualification wins, registration changes — for one company, a target list, or a region, graded by how act…",
+      "category": "数据分析",
+      "source": "zcode",
+      "tags": [
+        "find-clients"
+      ],
+      "version": "0.1.2",
+      "entry": "skills/opportunity-scan",
+      "entryKind": "dir",
+      "icon": "icons/opportunity-scan.svg"
+    },
+    {
+      "id": "park-cluster-map",
+      "type": "skill",
+      "name": "园区企业图谱",
+      "description": "Map the enterprise population of a territory rather than a company — an administrative region (and, loosely, a 园区 or 产业集群), with counts, 划型 distribution, 资质 density, and listed or bond-issuing presence, for a branch planning coverage or a …",
+      "category": "数据分析",
+      "source": "zcode",
+      "tags": [
+        "find-clients"
+      ],
+      "version": "0.1.2",
+      "entry": "skills/park-cluster-map",
+      "entryKind": "dir",
+      "icon": "icons/park-cluster-map.svg"
+    },
+    {
+      "id": "peer-benchmark",
+      "type": "skill",
+      "name": "同业对标",
+      "description": "The company's own metrics against listed comparables — peer set built with search_stocks and confirmed with get_stock_info, metrics from get_stock_financials, aggregated to a median or weighted average with get_stock_financials, and every …",
+      "category": "数据分析",
+      "source": "zcode",
+      "tags": [
+        "run-fpa"
+      ],
+      "version": "0.1.1",
+      "entry": "skills/peer-benchmark",
+      "entryKind": "dir",
+      "icon": "icons/peer-benchmark.svg"
+    },
+    {
+      "id": "policy-tracker",
+      "type": "skill",
+      "name": "政策产业跟踪",
+      "description": "Tracks policy and industrial plans — 十五五规划、产业体系、地区产业口号、重点概念 — maps a named plan onto the industry-chain nodes it touches, and gathers implementation signals, separating a published plan target from our read of what it implies. Triggers on …",
+      "category": "数据分析",
+      "source": "zcode",
+      "tags": [
+        "read-macro"
+      ],
+      "version": "0.1.1",
+      "entry": "skills/policy-tracker",
+      "entryKind": "dir",
+      "icon": "icons/policy-tracker.svg"
+    },
+    {
+      "id": "prospect-screen",
+      "type": "skill",
+      "name": "客户名单筛查",
+      "description": "Turn a corporate-banking coverage mandate into an executed, reproducible prospect screen — by region, industry, 资质标签, 上榜榜单, or listed status — and return a ranked shortlist with the reason each name is on it. Triggers on \"筛选目标客户\", \"找新客\", \"…",
+      "category": "数据分析",
+      "source": "zcode",
+      "tags": [
+        "find-clients"
+      ],
+      "version": "0.1.2",
+      "entry": "skills/prospect-screen",
+      "entryKind": "dir",
+      "icon": "icons/prospect-screen.svg"
+    },
+    {
+      "id": "related-party-map",
+      "type": "skill",
+      "name": "关联方图谱",
+      "description": "Map a company's related parties — shareholders, outbound investments, brother companies, supply-chain counterparties (suppliers/customers), and funding-chain links — into a structured relationship map. Triggers on \"关联方\", \"股权穿透\", \"关联企业\", \"s…",
+      "category": "数据分析",
+      "source": "zcode",
+      "tags": [
+        "vet-companies"
+      ],
+      "version": "0.1.2",
+      "entry": "skills/related-party-map",
+      "entryKind": "dir",
+      "icon": "icons/related-party-map.svg"
+    },
+    {
+      "id": "research-report",
+      "type": "skill",
+      "name": "个股深度报告",
+      "description": "Company-level initiation or deep-dive research report — the integrated deliverable that combines industry context, company and financial analysis, comps and DCF into one narrative with a single target price and a draft rating. Use when the…",
+      "category": "数据分析",
+      "source": "zcode",
+      "tags": [
+        "write-research"
+      ],
+      "version": "0.1.1",
+      "entry": "skills/research-report",
+      "entryKind": "dir",
+      "icon": "icons/research-report.svg"
+    },
+    {
+      "id": "risk-scan",
+      "type": "skill",
+      "name": "风险记录扫描",
+      "description": "Fast risk-record screen for one company or a batch — 失信被执行, 终本案件, 限制高消费, 司法涉诉, 行政处罚, 股权质押与冻结, 对外担保, 破产重整与司法拍卖, plus adverse media — with severity ranking. Triggers on \"风险排查\", \"有没有失信\", \"涉诉情况\", \"被限高了吗\", \"有没有破产重整\", \"黑名单筛查\", \"risk screen\", \"批量…",
+      "category": "数据分析",
+      "source": "zcode",
+      "tags": [
+        "vet-companies"
+      ],
+      "version": "0.1.2",
+      "entry": "skills/risk-scan",
+      "entryKind": "dir",
+      "icon": "icons/risk-scan.svg"
+    },
+    {
+      "id": "rolling-forecast",
+      "type": "skill",
+      "name": "滚动预测",
+      "description": "A rolling P&L reforecast off the company's own ledger — actuals-to-date plus a driver-based forecast for the remaining periods, reconciled to the approved budget and walked against the prior version. Triggers on \"滚动预测\", \"全年预测\", \"重新预测\", \"re…",
+      "category": "数据分析",
+      "source": "zcode",
+      "tags": [
+        "run-fpa"
+      ],
+      "version": "0.1.1",
+      "entry": "skills/rolling-forecast",
+      "entryKind": "dir",
+      "icon": "icons/rolling-forecast.svg"
+    },
+    {
+      "id": "scenario-analysis",
+      "type": "skill",
+      "name": "情景压力测试",
+      "description": "What-if analysis off a named base case — 基准/乐观/压力 scenarios defined by parameter values rather than adjectives, single-variable sensitivity ranked by impact, a two-way table on the pair that dominates, and solved break-even points with the…",
+      "category": "数据分析",
+      "source": "zcode",
+      "tags": [
+        "run-fpa"
+      ],
+      "version": "0.1.1",
+      "entry": "skills/scenario-analysis",
+      "entryKind": "dir",
+      "icon": "icons/scenario-analysis.svg"
+    },
+    {
+      "id": "sector-overview",
+      "type": "skill",
+      "name": "行业全景报告",
+      "description": "Create comprehensive industry and sector landscape reports covering market dynamics, competitive positioning, key players, and thematic trends. Use for client requests, sector initiations, thematic research pieces, or internal knowledge bu…",
+      "category": "数据分析",
+      "source": "zcode",
+      "tags": [
+        "write-research"
+      ],
+      "version": "0.1.1",
+      "entry": "skills/sector-overview",
+      "entryKind": "dir",
+      "icon": "icons/sector-overview.svg"
+    },
+    {
+      "id": "sources-uses",
+      "type": "skill",
+      "name": "资金来源与用途",
+      "description": "Build a sources and uses schedule with the pro-forma capital structure in Excel for a specific transaction — purchase-price build, the equity-value to enterprise-value bridge, refinanced debt, fees and expenses, funding from cash on hand, …",
+      "category": "数据分析",
+      "source": "zcode",
+      "tags": [
+        "model-deals"
+      ],
+      "version": "0.1.1",
+      "entry": "skills/sources-uses",
+      "entryKind": "dir",
+      "icon": "icons/sources-uses.svg"
+    },
+    {
+      "id": "statement-consistency-check",
+      "type": "skill",
+      "name": "报表勾稽检查",
+      "description": "Review of a statement set someone else prepared — the balance sheet balances, the income statement carries to equity, the cash flow reconciles to the movement in cash, the equity statement ties, notes agree with the face, and opening figur…",
+      "category": "数据分析",
+      "source": "zcode",
+      "tags": [
+        "accounting-and-reporting"
+      ],
+      "version": "0.1.1",
+      "entry": "skills/statement-consistency-check",
+      "entryKind": "dir",
+      "icon": "icons/statement-consistency-check.svg"
+    },
+    {
+      "id": "watchlist",
+      "type": "skill",
+      "name": "自选列表管理",
+      "description": "Create, update, inspect, and validate persistent watchlists stored as JSON files. Triggers on \"自选股\", \"watchlist\", \"监控清单\", \"add to my list\", \"把XX加入监控\", \"建一个组合清单\".",
+      "category": "数据分析",
+      "source": "zcode",
+      "tags": [
+        "watch-positions"
+      ],
+      "version": "0.1.1",
+      "entry": "skills/watchlist",
+      "entryKind": "dir",
+      "icon": "icons/watchlist.svg"
     },
     {
       "id": "xlsx",
@@ -1211,6 +2823,54 @@
       "icon": "icons/xlsx.svg"
     },
     {
+      "id": "xlsx-viewer",
+      "type": "skill",
+      "name": "表格查看",
+      "description": "View and discuss Excel (.xlsx) workbooks with the user in the Spreadsheets side panel. Use when the user wants to open, look through or ask about a workbook in the workspace together, refers to cells they selected or referenced in the Spre…",
+      "category": "数据分析",
+      "source": "zcode",
+      "tags": [
+        "spreadsheets"
+      ],
+      "version": "0.2.1",
+      "entry": "skills/xlsx-viewer",
+      "entryKind": "dir",
+      "icon": "icons/xlsx-viewer.svg"
+    },
+    {
+      "id": "defuddle",
+      "type": "skill",
+      "name": "网页正文提取",
+      "description": "Extract clean markdown content from web pages using Defuddle CLI, removing clutter and navigation to save tokens. Use instead of WebFetch when the user provides a URL to read or analyze, for online documentation, articles, blog posts, or a…",
+      "category": "效率提升",
+      "source": "zcode",
+      "tags": [
+        "obsidian"
+      ],
+      "version": "0.1.2",
+      "entry": "skills/defuddle",
+      "entryKind": "dir",
+      "icon": "icons/defuddle.svg"
+    },
+    {
+      "id": "deployment",
+      "type": "skill",
+      "name": "deployment",
+      "description": "Deploy and manage supported applications in Trae. Use when the user asks to deploy, publish, redeploy, inspect, pause, resume, delete, cancel, retry, or roll back an application.",
+      "category": "效率提升",
+      "source": "trae",
+      "tags": [
+        "deployment",
+        "static-web",
+        "function-web",
+        "hosting"
+      ],
+      "version": "0.0.22",
+      "entry": "skills/deployment",
+      "entryKind": "dir",
+      "icon": "icons/deployment.svg"
+    },
+    {
       "id": "dispatching-parallel-agents",
       "type": "skill",
       "name": "并行子代理调度",
@@ -1224,6 +2884,66 @@
       "entry": "skills/dispatching-parallel-agents",
       "entryKind": "dir",
       "icon": "icons/dispatching-parallel-agents.svg"
+    },
+    {
+      "id": "excalidraw-diagram",
+      "type": "skill",
+      "name": "Obsidian 画图",
+      "description": "Generate Excalidraw diagrams from text content. Supports three output modes - Obsidian (.md), Standard (.excalidraw), and Animated (.excalidraw with animation order). Triggers on \"Excalidraw\", \"画图\", \"流程图\", \"思维导图\", \"可视化\", \"diagram\", \"标准Exca…",
+      "category": "效率提升",
+      "source": "zcode",
+      "tags": [
+        "obsidian"
+      ],
+      "version": "0.1.2",
+      "entry": "skills/excalidraw-diagram",
+      "entryKind": "dir",
+      "icon": "icons/excalidraw-diagram.svg"
+    },
+    {
+      "id": "jev-judgment",
+      "type": "skill",
+      "name": "JEV 判断规范",
+      "description": "Conventions for the Jev judgment tools (jev_verify, jev_screen, jev_noul, jev_find, jev_rerank, jev_classify, jev_decide, jev_compare, jev_extract, jev_review, jev_gate). Use when screening fetched or pasted content before it enters contex…",
+      "category": "效率提升",
+      "source": "zcode",
+      "tags": [
+        "jev-decisions"
+      ],
+      "version": "0.1.0",
+      "entry": "skills/jev-judgment",
+      "entryKind": "dir",
+      "icon": "icons/jev-judgment.svg"
+    },
+    {
+      "id": "json-canvas",
+      "type": "skill",
+      "name": "JSON Canvas 画布",
+      "description": "Create and edit JSON Canvas files (.canvas) with nodes, edges, groups, and connections. Use when working with .canvas files, creating visual canvases, mind maps, flowcharts, or when the user mentions Canvas files in Obsidian. Also generate…",
+      "category": "效率提升",
+      "source": "zcode",
+      "tags": [
+        "obsidian"
+      ],
+      "version": "0.1.2",
+      "entry": "skills/json-canvas",
+      "entryKind": "dir",
+      "icon": "icons/json-canvas.svg"
+    },
+    {
+      "id": "knap",
+      "type": "skill",
+      "name": "Knap 模板渲染",
+      "description": "Render Markdown from templates and structured data using Knap CLI. Use when the user asks to apply a Knap template, turn JSON or CSV data into notes, batch-generate Markdown files, or format Defuddle output into a note.",
+      "category": "效率提升",
+      "source": "zcode",
+      "tags": [
+        "obsidian"
+      ],
+      "version": "0.1.2",
+      "entry": "skills/knap",
+      "entryKind": "dir",
+      "icon": "icons/knap.svg"
     },
     {
       "id": "lark-approval",
@@ -1712,6 +3432,99 @@
       "icon": "icons/lark-workflow-standup-report.svg"
     },
     {
+      "id": "libtv-cli",
+      "type": "skill",
+      "name": "Libtv 命令行",
+      "description": "",
+      "category": "效率提升",
+      "source": "zcode",
+      "tags": [
+        "libtv-cli"
+      ],
+      "version": "0.2.0",
+      "entry": "skills/libtv-cli",
+      "entryKind": "dir",
+      "icon": "icons/libtv-cli.svg"
+    },
+    {
+      "id": "mermaid-visualizer",
+      "type": "skill",
+      "name": "Mermaid 图表",
+      "description": "Transform text content into professional Mermaid diagrams for presentations and documentation. Use when users ask to visualize concepts, create flowcharts, or make diagrams from text. Supports process flows, system architectures, compariso…",
+      "category": "效率提升",
+      "source": "zcode",
+      "tags": [
+        "obsidian"
+      ],
+      "version": "0.1.2",
+      "entry": "skills/mermaid-visualizer",
+      "entryKind": "dir",
+      "icon": "icons/mermaid-visualizer.svg"
+    },
+    {
+      "id": "my-coffee",
+      "type": "skill",
+      "name": "瑞幸咖啡（luckin coffee）",
+      "description": "Use when users ask to order Luckin Coffee, search Luckin stores/products, query pickup code/order status, cancel a Luckin order, or mention 瑞幸、luckin、咖啡、拿铁、美式、生椰拿铁、橙C美式、果茶、轻乳茶、果蔬茶、柠檬茶、点单、下单、点一杯、喝一杯、买一杯、门店、取餐码.",
+      "category": "效率提升",
+      "source": "builtin",
+      "tags": [
+        "skill",
+        "luckin",
+        "coffee",
+        "order"
+      ],
+      "version": "0.8.4",
+      "entry": "skills/my-coffee",
+      "entryKind": "dir",
+      "icon": "icons/my-coffee.svg"
+    },
+    {
+      "id": "obsidian-bases",
+      "type": "skill",
+      "name": "Obsidian Bases",
+      "description": "Create and edit Obsidian Bases (.base files) with views, filters, formulas, and summaries. Use when working with .base files, creating database-like views of notes, or when the user mentions Bases, table views, card views, filters, or form…",
+      "category": "效率提升",
+      "source": "zcode",
+      "tags": [
+        "obsidian"
+      ],
+      "version": "0.1.2",
+      "entry": "skills/obsidian-bases",
+      "entryKind": "dir",
+      "icon": "icons/obsidian-bases.svg"
+    },
+    {
+      "id": "obsidian-cli",
+      "type": "skill",
+      "name": "Obsidian CLI",
+      "description": "Interact with Obsidian vaults using the Obsidian CLI to read, create, search, and manage notes, tasks, properties, and more. Also supports plugin and theme development with commands to reload plugins, run JavaScript, capture errors, take s…",
+      "category": "效率提升",
+      "source": "zcode",
+      "tags": [
+        "obsidian"
+      ],
+      "version": "0.1.2",
+      "entry": "skills/obsidian-cli",
+      "entryKind": "dir",
+      "icon": "icons/obsidian-cli.svg"
+    },
+    {
+      "id": "obsidian-markdown",
+      "type": "skill",
+      "name": "Obsidian 笔记",
+      "description": "Create and edit Obsidian Flavored Markdown with wikilinks, embeds, callouts, properties, and other Obsidian-specific syntax. Use when working with .md files in Obsidian, or when the user mentions wikilinks, callouts, frontmatter, tags, emb…",
+      "category": "效率提升",
+      "source": "zcode",
+      "tags": [
+        "obsidian"
+      ],
+      "version": "0.1.2",
+      "entry": "skills/obsidian-markdown",
+      "entryKind": "dir",
+      "icon": "icons/obsidian-markdown.svg"
+    },
+    {
       "id": "research-guide",
       "type": "skill",
       "name": "深度研究指南",
@@ -1759,6 +3572,22 @@
       "icon": "icons/verification-before-completion.svg"
     },
     {
+      "id": "anthropic-frontend-design",
+      "type": "plugin",
+      "name": "Anthropic 前端界面设计",
+      "description": "Create distinctive, production-grade frontend interfaces with high design quality. Use this skill when the user asks to build web components, pages, or applications. Generates creative, polished code that avoids generic AI aesthetics.",
+      "category": "界面设计",
+      "source": "metis",
+      "tags": [
+        "plugin"
+      ],
+      "version": "1.0.0",
+      "entry": "plugins/anthropic-frontend-design.ts",
+      "entryKind": "file",
+      "icon": "icons/anthropic-frontend-design.svg",
+      "usage": "包含技能：`frontend-design` —— 生成有辨识度的生产级前端界面，避开通用 AI 审美。\n\n安装后对话中输入 `/frontend-design <需求>`，插件会把技能全文随需求一起发给模型：先确定设计方向（用途 / 调性 / 约束 / 记忆点），再输出可运行代码。"
+    },
+    {
       "id": "auto-commit",
       "type": "plugin",
       "name": "自动提交",
@@ -1789,22 +3618,6 @@
       "entryKind": "file",
       "icon": "icons/git-checkpoint.svg",
       "usage": "**默认关闭**。`/checkpoint on` 开启后，每回合结束用 `git stash create` + `stash store` 生成检查点提交——**不改动工作区文件**。\n\n`/checkpoint-now` 立即打点；回滚用 `git stash list` 找 `meowcode-checkpoint` 条目后 `git stash apply stash@{N}`。"
-    },
-    {
-      "id": "guard",
-      "type": "plugin",
-      "name": "安全守卫",
-      "description": "tool_call 拦截危险命令 + prompt_submit 过滤注入模式（内置示例）。",
-      "category": "开发工具",
-      "source": "metis",
-      "tags": [
-        "plugin"
-      ],
-      "version": "1.0.0",
-      "entry": "plugins/guard.ts",
-      "entryKind": "file",
-      "icon": "icons/guard.svg",
-      "usage": "双重守卫：\n- `tool_call`：拦截 `rm -rf` / `del /s` / `format` 等破坏性命令\n- `prompt_submit`：拦截「忽略之前所有指令」类注入模式\n\n也是插件 API 的最小参考实现。"
     },
     {
       "id": "permission-gate",
@@ -1839,38 +3652,6 @@
       "usage": "安装后 `write_file` / `edit_file` / `multi_edit` 触碰以下路径片段会被拦截：`.env`、`.git/`、`node_modules/`、`.meowcode/`、`id_rsa`。\n\n`/protect` 查看规则，`/protect add <片段>` 追加，`/protect remove <片段>` 解除。"
     },
     {
-      "id": "notify",
-      "type": "plugin",
-      "name": "回合通知",
-      "description": "回合结束时弹 Windows Toast 通知（适配自 metis notify 扩展）。",
-      "category": "效率提升",
-      "source": "metis",
-      "tags": [
-        "plugin"
-      ],
-      "version": "1.0.0",
-      "entry": "plugins/notify.ts",
-      "entryKind": "file",
-      "icon": "icons/notify.svg",
-      "usage": "安装即生效。每个回合结束时弹出系统通知：\n- 回合正常完成 → 「回合已完成，等待你的输入」\n- 回合异常结束 → 提示结束状态\n\n仅 Windows 生效；通知失败静默忽略，不影响回合。"
-    },
-    {
-      "id": "session-log",
-      "type": "plugin",
-      "name": "会话日志",
-      "description": "记录最近打开的会话（cwd + 时间），/sessions-log 查看。",
-      "category": "效率提升",
-      "source": "metis",
-      "tags": [
-        "plugin"
-      ],
-      "version": "1.0.0",
-      "entry": "plugins/session-log.ts",
-      "entryKind": "file",
-      "icon": "icons/session-log.svg",
-      "usage": "每次打开/切换会话自动记录（最多 100 条），`/sessions-log` 查看最近 20 条。适合回顾「最近在哪些项目里干了什么」。"
-    },
-    {
       "id": "summarize",
       "type": "plugin",
       "name": "会话总结",
@@ -1903,20 +3684,44 @@
       "usage": "注册 `todo` 工具（list / add / toggle / clear）供模型管理多步任务，状态持久化到 `~/.meowcode/plugin-data/todo.json`。\n\n`/todos` 随时查看当前清单。"
     },
     {
-      "id": "anthropic-frontend-design",
-      "type": "plugin",
-      "name": "Anthropic 前端界面设计",
-      "description": "Create distinctive, production-grade frontend interfaces with high design quality. Use this skill when the user asks to build web components, pages, or applications. Generates creative, polished code that avoids generic AI aesthetics.",
-      "category": "界面设计",
+      "id": "figma-context",
+      "type": "mcp",
+      "name": "Figma 设计稿上下文",
+      "description": "Framelink Figma Context MCP：抓取 Figma 设计稿并简化为模型友好的布局与样式信息，设计稿转代码首选（npx 启动，需 Figma 个人访问令牌）。",
+      "category": "开发工具",
       "source": "builtin",
       "tags": [
-        "plugin"
+        "mcp",
+        "figma",
+        "design",
+        "design-to-code"
       ],
-      "version": "1.0.0",
-      "entry": "plugins/anthropic-frontend-design.ts",
+      "version": "1.5.0",
+      "entry": "mcp/figma-context.json",
       "entryKind": "file",
-      "icon": "icons/anthropic-frontend-design.svg",
-      "usage": "包含技能：`frontend-design` —— 生成有辨识度的生产级前端界面，避开通用 AI 审美。\n\n安装后对话中输入 `/frontend-design <需求>`，插件会把技能全文随需求一起发给模型：先确定设计方向（用途 / 调性 / 约束 / 记忆点），再输出可运行代码。"
+      "icon": "icons/mcp-figma-context.svg",
+      "requiresEnv": [
+        "MEOWCODE_FIGMA_TOKEN"
+      ]
+    },
+    {
+      "id": "firecrawl",
+      "type": "mcp",
+      "name": "Firecrawl 网页抓取",
+      "description": "官方免 key 托管 MCP：网页抓取转 Markdown（scrape）、联网搜索（search）、文档解析（parse），零配置安装即用（托管端点限速）。",
+      "category": "开发工具",
+      "source": "builtin",
+      "tags": [
+        "mcp",
+        "firecrawl",
+        "scrape",
+        "search",
+        "web"
+      ],
+      "version": "3.34.1",
+      "entry": "mcp/firecrawl.json",
+      "entryKind": "file",
+      "icon": "icons/mcp-firecrawl.svg"
     },
     {
       "id": "gitcode",
@@ -1943,7 +3748,7 @@
     {
       "id": "gitee",
       "type": "mcp",
-      "name": "Gitee",
+      "name": "gitee",
       "description": "Gitee platform integration. Manage repositories, issues, pull requests, and notifications through Gitee's official Remote MCP Server.",
       "category": "开发工具",
       "source": "trae",
@@ -1964,7 +3769,7 @@
     {
       "id": "github",
       "type": "mcp",
-      "name": "GitHub",
+      "name": "github",
       "description": "Inspect repositories, triage pull requests and issues, debug CI, and publish changes through a hybrid GitHub connector and CLI workflow.",
       "category": "开发工具",
       "source": "trae",
@@ -1980,6 +3785,65 @@
       "icon": "icons/mcp-github.svg",
       "requiresEnv": [
         "MEOWCODE_GITHUB_TOKEN"
+      ]
+    },
+    {
+      "id": "js-reverse",
+      "type": "mcp",
+      "name": "JS 逆向调试",
+      "description": "JS 逆向调试：Chrome 断点/单步/调用栈、脚本源码搜索与保存、XHR/WebSocket 抓包与调用链定位、页面脚本执行（npx 启动，需本地 Chrome）。",
+      "category": "开发工具",
+      "source": "builtin",
+      "tags": [
+        "mcp",
+        "js-reverse",
+        "reverse-engineering",
+        "debugger",
+        "devtools"
+      ],
+      "version": "4.0.5",
+      "entry": "mcp/js-reverse.json",
+      "entryKind": "file",
+      "icon": "icons/mcp-js-reverse.svg"
+    },
+    {
+      "id": "mobile-mcp",
+      "type": "mcp",
+      "name": "移动设备自动化",
+      "description": "mobile-mcp：Android 模拟器/真机与 iOS 设备自动化——截图、点击滑动、屏幕元素识别、应用管理、日志与崩溃采集（Windows 下为 Android；iOS 需 macOS）。",
+      "category": "开发工具",
+      "source": "builtin",
+      "tags": [
+        "mcp",
+        "mobile",
+        "android",
+        "ios",
+        "automation"
+      ],
+      "version": "1.0.12",
+      "entry": "mcp/mobile-mcp.json",
+      "entryKind": "file",
+      "icon": "icons/mcp-mobile-mcp.png"
+    },
+    {
+      "id": "my-coffee",
+      "type": "mcp",
+      "name": "瑞幸咖啡（luckin coffee）",
+      "description": "瑞幸咖啡官方点单 MCP：门店查询、商品搜索、自提下单、支付二维码、订单状态与取餐码查询、取消订单。Token 在 open.lkcoffee.com/mcp 登录后创建。",
+      "category": "效率提升",
+      "source": "builtin",
+      "tags": [
+        "mcp",
+        "luckin",
+        "coffee",
+        "order"
+      ],
+      "version": "1.0.0",
+      "entry": "mcp/my-coffee.json",
+      "entryKind": "file",
+      "icon": "icons/mcp-luckin-coffee.png",
+      "requiresEnv": [
+        "LUCKIN_MCP_TOKEN"
       ]
     }
   ]

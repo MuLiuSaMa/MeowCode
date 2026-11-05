@@ -1,5 +1,5 @@
 import { safeParse } from "./context.js";
-import { fetchWithRetry } from "./http.js";
+import { buildAuthHeaders, fetchWithRetry, mergeExtraHeaders, type AuthStyle } from "./http.js";
 import { parseJson, readSseFrames } from "./sse.js";
 import { ProviderRequestError } from "./provider-error.js";
 import { isToolCallComplete, summarizeToolCalls, type ToolCallProgress } from "./tool-progress.js";
@@ -29,6 +29,27 @@ import type {
  */
 
 export const ANTHROPIC_VERSION = "2023-06-01";
+
+/**
+ * 降级记忆（进程生命周期，按 provider id 记）：
+ *  - 网关不认 cache_control：400 一次就永久跳过断点，省掉每轮一个 400 往返；
+ *  - 端点不认 thinking 参数：参数与历史思考块一并跳过；
+ *  - 端点认 thinking 但拒绝回放的历史签名块（跨模型签名不可移植）：只剥历史、保留后续思考。
+ * 降级是保守方向：记错的代价是少用缓存/思考，重试的代价是每个请求多一趟 400。
+ */
+const cacheControlUnsupportedProviders = new Set<string>();
+const thinkingUnsupportedProviders = new Set<string>();
+const historyThinkingRejectedProviders = new Set<string>();
+
+/**
+ * 测试专用：清空降级记忆。模块级 Set 跨用例存活，测试文件里多个用例共用同一个
+ * url/ providerId 时，降级用例会把后续用例一起污染（400 记忆是生产语义，测试要归零）。
+ */
+export function resetProviderDegradeMemoryForTests(): void {
+  cacheControlUnsupportedProviders.clear();
+  thinkingUnsupportedProviders.clear();
+  historyThinkingRejectedProviders.clear();
+}
 
 /** 原生 Anthropic 与 Anthropic 兼容网关（GLM/Kimi/MiniMax 等）的字段集不同。 */
 function isNativeAnthropicEndpoint(url: string): boolean {
@@ -93,34 +114,73 @@ export type AnthropicSystemBlock = {
 export function anthropicTools(
   tools: ToolDefinition[],
   plan: CachePlan = NATIVE_PLAN,
+  /** 断点锚点：会话快照末尾；追加工具后旧断点位置不变，旧工具段仍可命中 */
+  cacheAnchorIndex?: number,
 ): Array<Record<string, unknown>> {
   const tag = hasBreakpoint(plan, "tools") ? cacheTag(plan) : undefined;
+  const anchor =
+    tools.length === 0
+      ? -1
+      : Math.min(
+          Math.max(cacheAnchorIndex ?? tools.length - 1, 0),
+          tools.length - 1,
+        );
   return tools.map((tool, index) => ({
     name: tool.function.name,
     description: tool.function.description,
     input_schema: tool.function.parameters,
-    // 最后一个工具后打缓存断点：稳定工具目录整体可复用。
+    // 快照末尾后打缓存断点：稳定工具目录整体可复用。
     // Qwen 等不认 tools 断点的画像在这里拿不到 tag，自然不打。
-    ...(index === tools.length - 1 && tag ? tag : {}),
+    ...(index === anchor && tag ? tag : {}),
   }));
 }
 
-/** 把对话历史的最后一条消息打上缓存断点：下次请求可复用整段前缀。 */
-function markLastMessageCacheable(out: Array<Record<string, unknown>>, plan: CachePlan): void {
-  if (!hasBreakpoint(plan, "tail")) return;
-  const control = cacheControlFor(plan);
-  if (!control) return;
-  const last = out.at(-1);
-  if (!last) return;
-  const content = last.content;
+type CacheControl = NonNullable<ReturnType<typeof cacheControlFor>>;
+
+/** 给消息的最后一个内容块打 cache_control；空消息返回 false。 */
+function tagLastContentBlock(
+  message: Record<string, unknown> | undefined,
+  control: CacheControl,
+): boolean {
+  if (!message) return false;
+  const content = message.content;
   if (typeof content === "string") {
-    if (!content) return;
-    last.content = [{ type: "text", text: content, cache_control: control }];
-    return;
+    if (!content) return false;
+    message.content = [{ type: "text", text: content, cache_control: control }];
+    return true;
   }
   if (Array.isArray(content) && content.length) {
     const tail = content.at(-1) as Record<string, unknown> | undefined;
-    if (tail && typeof tail === "object") tail.cache_control = control;
+    if (!tail || typeof tail !== "object") return false;
+    tail.cache_control = control;
+    return true;
+  }
+  return false;
+}
+
+/** 只含 tool_result 块的 user 消息（并行工具结果合并的载体）。 */
+function isToolResultOnly(message: Record<string, unknown> | undefined): boolean {
+  if (!message || message.role !== "user" || !Array.isArray(message.content)) return false;
+  if (!message.content.length) return false;
+  return message.content.every(
+    (block) => (block as Record<string, unknown> | undefined)?.type === "tool_result",
+  );
+}
+
+/** 最后一条**非空**消息打尾断点：空 tool 结果不会再让这一跳静默失去缓存写入。 */
+function markLastMessageCacheable(
+  out: Array<Record<string, unknown>>,
+  plan: CachePlan,
+  skipWrite = false,
+): void {
+  if (!hasBreakpoint(plan, "tail")) return;
+  const control = cacheControlFor(plan);
+  if (!control) return;
+  // skipWrite：本次请求末尾挂着一段合成指令（压缩提示），那条消息不会被任何后续请求
+  // 读回。写入点前移一条，否则整段历史按 1.25x（5m）/ 2x（1h）重写，指令部分纯亏。
+  const start = skipWrite ? out.length - 2 : out.length - 1;
+  for (let index = start; index >= 0; index -= 1) {
+    if (tagLastContentBlock(out[index], control)) return;
   }
 }
 
@@ -142,6 +202,7 @@ function stripCacheControl<T>(value: T): T {
 export function toAnthropicMessages(
   messages: ChatMessage[],
   plan: CachePlan = NATIVE_PLAN,
+  options: { skipTailCacheWrite?: boolean } = {},
 ): {
   system: AnthropicSystemBlock[];
   messages: Array<Record<string, unknown>>;
@@ -152,26 +213,39 @@ export function toAnthropicMessages(
         message.role === "system" && Boolean(message.content),
     )
     .map((message) => ({ type: "text", text: message.content }));
-  // 断点打在 system[0]（基础指令）和 system[1]（AGENTS.md，最长稳定段）：
-  // systemMessages() 的排列是 [base, instructions?, mode?] —— 旧逻辑把断点给末条
-  // mode 消息（几百 token），AGENTS.md（可达 4k+ token）整段全价，是缓存的最大漏点。
-  // mode 切换频率高、体积小，让它留在断点之外全价发送更划算。
-  // 断点总数由 cache-profile 统一裁剪：官方 4 个 / Qwen 2 个 / 未知网关 0 个。
+  // 稳定段断点优先给 system[1]（AGENTS.md 等 instructions，最长稳定段）；
+  // 没有 instructions 时回退 system[0]。mode 提示排在 system 末尾、切换频繁且体积小，
+  // 刻意留在断点之外。断点总数由 cache-profile 统一裁剪：
+  // 官方 4 个 / Qwen 2 个 / 未知网关 0 个。
   const systemTag = cacheTag(plan);
   if (systemTag) {
     if (hasBreakpoint(plan, "system0") && system.length) Object.assign(system[0], systemTag);
-    if (hasBreakpoint(plan, "system1") && system.length > 1) Object.assign(system[1], systemTag);
+    if (hasBreakpoint(plan, "system1")) {
+      const target = system.length > 1 ? system[1] : system[0];
+      if (target) Object.assign(target, systemTag);
+    }
   }
   const rest = messages.filter((message) => message.role !== "system");
 
   const out: Array<Record<string, unknown>> = [];
+  // 最后一个真实 user 消息在序列化结果里的位置。tool 结果也会变成 role=user，
+  // 所以必须按原始 role 记录，否则 anchor 会退化成 tail。
+  let anchorIndex = -1;
+  /** 上一条真实 user 的位置：末条是合成指令时（压缩复用前缀）anchor 要回退到它。 */
+  let previousAnchorIndex = -1;
   for (const message of rest) {
     // 原生压缩点（目前只由 OpenAI Responses 产出）：Anthropic 无法重放加密 item，
     // 降级为一条 user 说明，保证模型知道更早历史已被压缩。
     if (message.role === "native_compaction") {
       out.push({
         role: "user",
-        content: `[Earlier conversation history was compacted by the provider. Treat the following as context, not as a new request.]\n${message.content}`,
+        // 固定用内容块数组：断点来回移动时不能改变消息的序列化形状
+        content: [
+          {
+            type: "text",
+            text: `[Earlier conversation history was compacted by the provider. Treat the following as context, not as a new request.]\n${message.content}`,
+          },
+        ],
       });
       continue;
     }
@@ -197,9 +271,20 @@ export function toAnthropicMessages(
             })),
           ],
         });
+        previousAnchorIndex = anchorIndex;
+        anchorIndex = out.length - 1;
         continue;
       }
-      out.push({ role: "user", content: message.content ?? "" });
+      // 始终用内容块数组承载文本：cache_control 的加/移不能改变消息形状，
+      // 否则断点从这条消息移走的下一跳，整段前缀会因 JSON 结构变化而失效。
+      out.push({
+        role: "user",
+        content: message.content ? [{ type: "text", text: message.content }] : "",
+      });
+      if (message.content) {
+        previousAnchorIndex = anchorIndex;
+        anchorIndex = out.length - 1;
+      }
       continue;
     }
     if (message.role === "assistant") {
@@ -240,9 +325,10 @@ export function toAnthropicMessages(
       const block = { type: "tool_result", tool_use_id: message.tool_call_id, content };
       // 并行批次的所有 tool_result 必须放在紧随 tool_use 的同一条 user 消息里，
       // 否则 Anthropic 报 "tool_use ids were found without tool_result blocks immediately after"。
+      // 只合并到「纯 tool_result」消息：真实 user 文本已经是内容块数组，不能被误并。
       const previous = out.at(-1);
-      if (previous?.role === "user" && Array.isArray(previous.content)) {
-        (previous.content as Array<Record<string, unknown>>).push(block);
+      if (isToolResultOnly(previous)) {
+        (previous!.content as Array<Record<string, unknown>>).push(block);
       } else {
         out.push({ role: "user", content: [block] });
       }
@@ -260,7 +346,18 @@ export function toAnthropicMessages(
       }
     }
   }
-  markLastMessageCacheable(out, plan);
+  // anchor 固定在最后一个真实 user 消息：工具循环期间它会一直留在原位，
+  // 尾块因任何原因失效时仍有一段可回退的缓存前缀。
+  // 末条是合成指令时（压缩复用前缀），它本身不会被后续请求读回：
+  // anchor 回退到上一条真实 user，跟 tail 一起让出这一跳的写入成本。
+  const syntheticTail = options.skipTailCacheWrite === true;
+  const effectiveAnchor =
+    syntheticTail && anchorIndex === out.length - 1 ? previousAnchorIndex : anchorIndex;
+  if (hasBreakpoint(plan, "anchor") && effectiveAnchor >= 0) {
+    const control = cacheControlFor(plan);
+    if (control) tagLastContentBlock(out[effectiveAnchor], control);
+  }
+  markLastMessageCacheable(out, plan, syntheticTail);
   return { system, messages: out };
 }
 
@@ -291,7 +388,15 @@ type AnthropicChunk = {
 };
 
 export async function streamAnthropicMessages(options: {  url: string;
+  /** 降级记忆的键；缺省用 url。来自 provider.id，跨会话稳定 */
+  providerId?: string;
   apiKey?: string;
+  /** 鉴权头风格；缺省用 Anthropic 原生 x-api-key */
+  authStyle?: AuthStyle;
+  /** 额外请求头（同名覆盖内置） */
+  extraHeaders?: Record<string, string>;
+  /** 额外请求体字段（展开合并进顶层） */
+  extraBody?: Record<string, unknown>;
   model: string;
   maxTokens?: number;
   reasoningEffort?: string;
@@ -305,6 +410,8 @@ export async function streamAnthropicMessages(options: {  url: string;
   signal?: AbortSignal;
   onDelta: (delta: string) => void;
   onThinking?: (delta: string) => void;
+  /** 流中实时用量：message_start 就带输入/缓存，不必等流结束 */
+  onUsage?: (usage: TokenUsage) => void;
   onToolCall?: (progress: ToolCallProgress) => void;
   /** 流式中某个工具调用参数完整闭合时立即回调（实验：流中提前执行只读工具） */
   onToolCallComplete?: (call: ToolCall) => void;
@@ -313,12 +420,16 @@ export async function streamAnthropicMessages(options: {  url: string;
   usage?: TokenUsage;
   finishReason?: string;
 }> {
-  const headers: Record<string, string> = {
-    "content-type": "application/json",
-    "anthropic-version": ANTHROPIC_VERSION,
-  };
-  // 空 apiKey = 用服务商原生鉴权（DSH 的约定），此时不带鉴权头
-  if (options.apiKey) headers["x-api-key"] = options.apiKey;
+  const headers = mergeExtraHeaders(
+    {
+      "content-type": "application/json",
+      "anthropic-version": ANTHROPIC_VERSION,
+      // 空 apiKey = 用服务商原生鉴权（DSH 的约定），此时不带鉴权头；
+      // authStyle 显式设置时按风格产出（Azure / Bedrock 网关代理 anthropic 协议时用）
+      ...buildAuthHeaders(options.apiKey, options.authStyle, "x-api-key"),
+    },
+    options.extraHeaders,
+  );
 
   const native = isNativeAnthropicEndpoint(options.url);
   const deepseek = isDeepSeekEndpoint(options.url);
@@ -331,10 +442,13 @@ export async function streamAnthropicMessages(options: {  url: string;
     maxTokens: options.maxTokens,
   });
   const thinkingBudget = native ? nativeBudget : undefined;
-  let useThinking = native
-    ? thinkingBudget !== undefined
-    : deepseek && Boolean(options.reasoningEffort);
-  let useCacheControl = true;
+  // 降级记忆先查：曾 400 过的 provider 直接按降级态起步，不再每轮试错
+  const providerKey = options.providerId ?? options.url;
+  const historyThinkingStripped = historyThinkingRejectedProviders.has(providerKey);
+  let useThinking =
+    (native ? thinkingBudget !== undefined : deepseek && Boolean(options.reasoningEffort)) &&
+    !thinkingUnsupportedProviders.has(providerKey);
+  let useCacheControl = !cacheControlUnsupportedProviders.has(providerKey);
 
   const buildBody = (withCache: boolean, withThinking: boolean) => ({
     model: options.model,
@@ -346,7 +460,8 @@ export async function streamAnthropicMessages(options: {  url: string;
       : undefined,
     messages: stripThinkingBlocks(
       withCache ? options.messages : stripCacheControl(options.messages),
-      withThinking,
+      // 历史思考块被该端点拒绝过（跨模型签名）：剥历史但保留 thinking 参数，新回合照常思考
+      withThinking && !historyThinkingStripped,
     ),
     tools: options.tools.length
       ? options.tools.map((tool) =>
@@ -371,6 +486,8 @@ export async function streamAnthropicMessages(options: {  url: string;
     ...(withThinking && thinkingBudget !== undefined
       ? { thinking: { type: "enabled", budget_tokens: thinkingBudget } }
       : {}),
+    // 用户自定义字段最后展开：同名覆盖内置，用于网关特有的开关
+    ...options.extraBody,
   });
   const send = (withCache: boolean, withThinking: boolean) =>
     fetchWithRetry(options.url, {
@@ -384,23 +501,30 @@ export async function streamAnthropicMessages(options: {  url: string;
   let failureText = "";
   if (!response.ok) {
     failureText = await response.text().catch(() => "");
-    // 部分 Anthropic 兼容网关不认识 cache_control：仅在明确是缓存字段问题时降级重试一次。
+    // 部分 Anthropic 兼容网关不认识 cache_control：仅在明确是缓存字段问题时降级重试一次并记住。
     if (
       (response.status === 400 || response.status === 422) &&
       /cache_control|prompt.?cach|unknown.*cache|invalid.*cache/i.test(failureText)
     ) {
       useCacheControl = false;
+      cacheControlUnsupportedProviders.add(providerKey);
       response = await send(useCacheControl, useThinking);
       failureText = response.ok ? "" : await response.text().catch(() => "");
     }
     // 模型或网关不支持扩展思考：去掉 thinking 与历史 thinking 块再试一次。
+    // 签名类报错（跨模型签名不可移植）只剥历史、下次保留参数；其余视为端点整体不支持并记住。
     if (
       !response.ok &&
       useThinking &&
       (response.status === 400 || response.status === 422) &&
       /thinking|budget_tokens/i.test(failureText)
     ) {
-      useThinking = false;
+      if (/signature|redacted_thinking|thinking.*block|block.*thinking/i.test(failureText)) {
+        historyThinkingRejectedProviders.add(providerKey);
+      } else {
+        thinkingUnsupportedProviders.add(providerKey);
+        useThinking = false;
+      }
       response = await send(useCacheControl, false);
       failureText = response.ok ? "" : await response.text().catch(() => "");
     }
@@ -447,6 +571,43 @@ export async function streamAnthropicMessages(options: {  url: string;
     }
   };
 
+  /** 对外统一的用量形状：Anthropic 的 input_tokens 不含缓存部分，总输入 = 普通输入 + 缓存读取 + 缓存写入。 */
+  const buildUsage = (): TokenUsage | undefined => {
+    const hasUsage =
+      inputTokens !== undefined ||
+      cachedInputTokens !== undefined ||
+      cacheCreationInputTokens !== undefined;
+    if (!hasUsage) return undefined;
+    return {
+      inputTokens: (inputTokens ?? 0) + (cachedInputTokens ?? 0) + (cacheCreationInputTokens ?? 0),
+      outputTokens,
+      ...(cachedInputTokens !== undefined ? { cacheReadTokens: cachedInputTokens } : {}),
+      ...(cacheCreationInputTokens !== undefined
+        ? { cacheWriteTokens: cacheCreationInputTokens }
+        : {}),
+    };
+  };
+
+  let reportedUsage: TokenUsage | undefined;
+  let lastUsageAt = 0;
+  /** 输入/缓存一到就发；纯输出增长按 32 token + 250ms 节流，别让每个 chunk 都冒一条事件。 */
+  const emitUsage = (force = false) => {
+    const next = buildUsage();
+    if (!next) return;
+    const now = Date.now();
+    const metadataChanged =
+      reportedUsage === undefined ||
+      reportedUsage.inputTokens !== next.inputTokens ||
+      reportedUsage.cacheReadTokens !== next.cacheReadTokens ||
+      reportedUsage.cacheWriteTokens !== next.cacheWriteTokens;
+    const outputGrew = (next.outputTokens ?? 0) - (reportedUsage?.outputTokens ?? 0);
+    if (!force && !metadataChanged && !(outputGrew >= 32 && now - lastUsageAt >= 250)) return;
+    if (force && !metadataChanged && outputGrew <= 0) return;
+    reportedUsage = next;
+    lastUsageAt = now;
+    options.onUsage?.(next);
+  };
+
   await readSseFrames(
     response.body,
     (data) => {
@@ -461,6 +622,7 @@ export async function streamAnthropicMessages(options: {  url: string;
 
       applyUsage(chunk.message?.usage);
       applyUsage(chunk.usage);
+      emitUsage();
 
       if (chunk.type === "message_delta" && chunk.delta?.stop_reason) {
         finishReason =
@@ -560,12 +722,9 @@ export async function streamAnthropicMessages(options: {  url: string;
         ? [{ type: "thinking", thinking: thinkingText, signature: block.signature }]
         : [];
     });
-  // Anthropic 的 input_tokens 不含缓存部分：对外统一成总输入 = 普通输入 + 缓存读取 + 缓存写入
-  const hasUsage =
-    inputTokens !== undefined || cachedInputTokens !== undefined || cacheCreationInputTokens !== undefined;
-  const totalInputTokens = hasUsage
-    ? (inputTokens ?? 0) + (cachedInputTokens ?? 0) + (cacheCreationInputTokens ?? 0)
-    : undefined;
+  // 流结束前强冲一次，保证实时样本与最终返回值同值
+  emitUsage(true);
+  const usageSample = buildUsage();
   return {
     message: calls.length
       ? {
@@ -581,14 +740,7 @@ export async function streamAnthropicMessages(options: {  url: string;
           ...(reasoningText ? { reasoning: reasoningText } : {}),
           ...(thinking.length ? { anthropic_thinking: thinking } : {}),
         },
-    usage: {
-      ...(totalInputTokens !== undefined ? { inputTokens: totalInputTokens } : {}),
-      outputTokens,
-      ...(cachedInputTokens !== undefined ? { cacheReadTokens: cachedInputTokens } : {}),
-      ...(cacheCreationInputTokens !== undefined
-        ? { cacheWriteTokens: cacheCreationInputTokens }
-        : {}),
-    },
+    usage: usageSample ?? { outputTokens },
     ...(finishReason ? { finishReason } : {}),
   };
 }

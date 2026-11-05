@@ -1,17 +1,19 @@
 import type { RefObject } from "react";
+import { useTranslation } from "react-i18next";
 import type { ContextUsage } from "../api";
+import { formatNumber } from "../i18n/format";
 import "./ContextMeter.css";
 
 const RADIUS = 7;
 const CIRCUMFERENCE = 2 * Math.PI * RADIUS;
 
-/** 12345 → "12.3k"；用于悬浮提示与弹层明细。 */
+/** 12345 → "12.3k"；用于悬浮提示与弹层明细。数字分组交给当前语种。 */
 export function formatTokenCount(value: number): string {
   if (value >= 1000) {
     const k = value / 1000;
-    return `${k >= 100 ? Math.round(k) : Math.round(k * 10) / 10}k`;
+    return `${formatNumber(k, { maximumFractionDigits: k >= 100 ? 0 : 1 })}k`;
   }
-  return String(value);
+  return formatNumber(value);
 }
 
 /**
@@ -27,13 +29,18 @@ export function ContextMeter({
   buttonRef?: RefObject<HTMLButtonElement | null>;
   onClick?: () => void;
 }) {
+  const { t } = useTranslation("shell");
   const ratio = usage?.contextWindow
     ? Math.min(1, Math.max(0, usage.usedTokens / usage.contextWindow))
     : 0;
   const level = ratio > 0.9 ? "danger" : ratio > 0.7 ? "warn" : "idle";
   const title = usage?.contextWindow
-    ? `上下文 ${formatTokenCount(usage.usedTokens)} / ${formatTokenCount(usage.contextWindow)}（${Math.round(ratio * 100)}%）`
-    : "未设置上下文窗口";
+    ? t("contextMeter.usage", {
+        used: formatTokenCount(usage.usedTokens),
+        window: formatTokenCount(usage.contextWindow),
+        percent: formatNumber(Math.round(ratio * 100)),
+      })
+    : t("contextMeter.noWindow");
 
   return (
     <button
@@ -42,7 +49,7 @@ export function ContextMeter({
       className="mc-ctxmeter"
       data-level={level}
       title={title}
-      aria-label="上下文占用"
+      aria-label={t("contextMeter.aria")}
       onClick={onClick}
     >
       <svg viewBox="0 0 18 18" width={16} height={16} aria-hidden>

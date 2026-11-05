@@ -12,9 +12,7 @@ import {
   estimateMessagesTokens,
   estimateRequestInputTokens,
   estimateToolDefinitionsTokens,
-  PRUNE_TRIGGER_RATIO,
   repairToolPairs,
-  shrinkToolOutputs,
   trimMessages,
   type ContextUsageAnchor,
 } from "./context.js";
@@ -33,7 +31,9 @@ export const READ_ONLY_PARALLEL_TOOLS = new Set([
   "glob",
   "grep",
   "context_status",
+  "diagnostics",
   "run_code",
+  "memory_read",
 ]);
 
 /** 回合计时快照，循环结束时交宿主落盘 metrics。 */
@@ -57,12 +57,33 @@ export interface AgentLoopHooks {
   afterToolCall?(call: ToolCall, message: ToolResultMessage): Promise<void>;
   prepareNextTurn?(messages: ChatMessage[]): Promise<ChatMessage[] | void>;
   shouldStopAfterTurn?(): Promise<boolean>;
+  /**
+   * 运行中插话（子 Agent steer）：模型没有工具调用、准备收尾时，宿主可返回一条
+   * user 消息让循环继续。与 beforeTurnEnd 分开，避免占用 stop hook 的拦截次数。
+   */
+  takeSteer?(): Promise<string | void>;
+  /**
+   * 回合收尾闸（Claude Code Stop hook 语义）：模型没有工具调用、准备结束回合时调用。
+   * block=true → 宿主把 reason 作为新的 user 消息注入、循环继续。
+   * stopHookActive 表示本回合已被拦截过（对应 CC 的 stop_hook_active），
+   * 脚本可自行避让；循环侧另有 MAX_TURN_STOP_BLOCKS 硬上限防死循环。
+   */
+  beforeTurnEnd?(input: {
+    result: StreamCompletionResult;
+    messages: ChatMessage[];
+    stopHookActive: boolean;
+  }): Promise<{ block: boolean; reason?: string } | void>;
 }
+
+/** turn_stop 连续拦截上限：超过则强制收尾，防止 hook 脚本无限续跑。 */
+export const MAX_TURN_STOP_BLOCKS = 3;
 
 export type AgentStreamOptions = {
   provider: ProviderConfig;
   messages: ChatMessage[];
   tools: ToolDefinition[];
+  /** Anthropic tools 断点锚点（会话目录快照末尾） */
+  toolCacheAnchor?: number;
   signal?: AbortSignal;
   onDelta: (delta: string) => void;
   onThinking?: (delta: string) => void;
@@ -81,6 +102,8 @@ export interface AgentLoopHost {
   provider(): ProviderConfig;
   /** 工具表：随每轮请求发送，schema 计入裁剪预算 */
   tools(): ToolDefinition[];
+  /** 工具断点锚点下标（目录快照末尾）；未实现时退化为数组末尾 */
+  toolCacheAnchor?(): number;
   /** 真实用量锚点（输入预算的估算基准） */
   usageAnchor(): ContextUsageAnchor | null;
   /** 回合是否已被用户中止 */
@@ -132,6 +155,8 @@ export interface AgentLoopHost {
   pushToolMessage(messages: ChatMessage[], message: ToolResultMessage): Promise<void>;
   /** 流中已提前启动的只读执行（按 callId 幂等） */
   earlyRun(callId: string): Promise<ToolResultMessage> | undefined;
+  /** user 消息落盘并追加进工作上下文（turn_stop 拦截后续跑用） */
+  pushUserMessage(messages: ChatMessage[], content: string): Promise<void>;
   /** 工具被门禁拦截时的 UI 事件（tool_started/output/finished ok=false） */
   onToolBlocked?(call: ToolCall, message: ToolResultMessage): void;
 
@@ -152,7 +177,9 @@ export async function runAgentLoop(host: AgentLoopHost): Promise<void> {
   let messages: ChatMessage[] = host.initialMessages();
   // 溢出降级档位：0 未处理 → 1 已确定性收缩 → 2 已摘要工具输出 → 3 已全量压缩
   let escalation = 0;
-  const { enabled: incrementalOn, signature: incrementalSig } = host.incremental();
+  // 本回合 turn_stop 拦截计数（硬上限 MAX_TURN_STOP_BLOCKS 防 hook 死循环）
+  let turnStopBlocks = 0;
+  const { enabled: incrementalOn } = host.incremental();
   const hooks = host.hooks;
 
   while (true) {
@@ -163,16 +190,15 @@ export async function runAgentLoop(host: AgentLoopHost): Promise<void> {
     messages = repairToolPairs(messages);
     // 工具 schema 每轮都会随请求发送：裁剪预算必须把它一起扣掉，
     // 否则 MCP/浏览器工具多时会出现「裁剪后仍然溢出」的全上下文重试。
-    const toolTokens = estimateToolDefinitionsTokens(host.tools());
+    // 同一轮内只取一次：估算与请求必须看到同一份快照。
+    const roundTools = host.tools();
+    const toolTokens = estimateToolDefinitionsTokens(roundTools);
     // 溢出误判护栏的输入基准：裁剪前的全量估算（裁剪/收缩之后看起来很小，
     // 不代表真实输入小——真实溢出恰恰常发生在「裁剪救不动」的会话里）。
     const overflowBaseline = estimateMessagesTokens(messages) + toolTokens;
-    // 免费剪枝档（P0-2）：估算占用过窗口 80% 就先收缩旧工具输出（零模型调用），
-    // 让"溢出才卡住"变成"过 80% 就悄悄瘦身"。
-    if (provider.contextWindow && overflowBaseline > provider.contextWindow * PRUNE_TRIGGER_RATIO) {
-      const shrunk = shrinkToolOutputs(messages);
-      if (shrunk.changed) messages = shrunk.messages;
-    }
+    // 预算内不改写历史：旧的逐轮剪枝会让上一次请求的缓存前缀失效，
+    // 省下的输出 token 远小于整段后缀重新计费的成本。真超窗口由 trimMessages
+    // 兜底，过阈值由压缩链处理。
     // 输出预算先按裁剪前的输入收紧一次；裁剪后再按实际输入放宽/收紧，
     // 保证 input + output + 余量始终落在窗口内（参考 ZCode/OpenCode 的 clamp）。
     // 输入优先用服务商真实用量锚点 + 尾部估算，锚点失效才整段字符估算。
@@ -199,7 +225,8 @@ export async function runAgentLoop(host: AgentLoopHost): Promise<void> {
       result = await host.stream({
         provider: requestProvider,
         messages,
-        tools: host.tools(),
+        tools: roundTools,
+        toolCacheAnchor: host.toolCacheAnchor?.(),
         signal: host.abortSignal(),
         onToolCallComplete: (call) => host.onToolCallComplete(call, messages),
         onDelta: (delta) => {
@@ -281,6 +308,32 @@ export async function runAgentLoop(host: AgentLoopHost): Promise<void> {
     const toolCalls = result.message.tool_calls ?? [];
     const truncated = result.finishReason === "length";
     if (!toolCalls.length) {
+      // 运行中插话优先于收尾：注入后继续下一轮，不占用 stop hook 次数
+      const steer = await hooks?.takeSteer?.();
+      if (steer) {
+        await host.pushUserMessage(messages, steer);
+        continue;
+      }
+      // 回合收尾闸（Stop hook）：拦截则 reason 作为 user 消息续跑，不落 metrics
+      const stop = await hooks?.beforeTurnEnd?.({
+        result,
+        messages,
+        stopHookActive: turnStopBlocks > 0,
+      });
+      if (stop?.block) {
+        turnStopBlocks += 1;
+        if (turnStopBlocks > MAX_TURN_STOP_BLOCKS) {
+          host.onError("Stop hook kept blocking; ending the turn anyway.");
+          await host.persistMetrics({ startedAt: turnStartedAt, firstDeltaAt, lastSpeed });
+          return;
+        }
+        await host.pushUserMessage(
+          messages,
+          stop.reason || "Continue: the stop hook blocked the turn from ending.",
+        );
+        continue;
+      }
+      turnStopBlocks = 0;
       host.onMessageComplete(result);
       if (truncated) {
         host.onError(

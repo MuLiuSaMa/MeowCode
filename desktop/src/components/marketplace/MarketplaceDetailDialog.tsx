@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { LuMessageSquare } from "react-icons/lu";
 import { Dialog } from "../ui/Dialog";
-import { fetchMarketplaceDetail, renderMarkdown, type MarketplaceDetail, type MarketplaceEntry } from "../../api";
-import { MarketIcon } from "./MarketplaceCard";
+import { fetchMarketplaceDetail, renderMarkdown, type MarketplaceDetail, type MarketplaceEntryLike } from "../../api";
+import { MarketIcon, CommunityBadge } from "./MarketplaceCard";
+import { categoryLabelKey } from "./marketplace-categories";
 import "./marketplace.css";
 
 /**
@@ -16,14 +18,15 @@ export function MarketplaceDetailDialog({
   onClose,
   onUse,
 }: {
-  entry: MarketplaceEntry | null;
+  entry: MarketplaceEntryLike | null;
   iconUrl?: string;
   busy: boolean;
   onClose: () => void;
-  onUse: (entry: MarketplaceEntry) => void;
+  onUse: (entry: MarketplaceEntryLike) => void;
 }) {
   const [detail, setDetail] = useState<MarketplaceDetail | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const { t } = useTranslation("marketplace");
 
   useEffect(() => {
     if (!entry) {
@@ -34,7 +37,7 @@ export function MarketplaceDetailDialog({
     let cancelled = false;
     setDetail(null);
     setLoadError(null);
-    fetchMarketplaceDetail(entry.id, entry.type)
+    fetchMarketplaceDetail(entry.id, entry.type, entry.channel)
       .then((result) => {
         if (!cancelled) setDetail(result);
       })
@@ -50,7 +53,12 @@ export function MarketplaceDetailDialog({
     <Dialog open={entry !== null} onClose={onClose} className="mc-mkt__dialog">
       {entry ? (
         <div className="mc-mkt__dwrap">
-          <button type="button" className="mc-mkt__dclose" aria-label="关闭" onClick={onClose}>
+          <button
+            type="button"
+            className="mc-mkt__dclose"
+            aria-label={t("actions.close")}
+            onClick={onClose}
+          >
             ×
           </button>
           <header className="mc-mkt__dhead">
@@ -58,10 +66,19 @@ export function MarketplaceDetailDialog({
             <div>
               <h2 className="mc-mkt__dtitle" id="mc-mkt-detail-title">
                 {entry.name}
+                <CommunityBadge entry={entry} />
               </h2>
               <p className="mc-mkt__dmeta">
-                {entry.category}
+                {(() => {
+                  // 分类是索引里的规范值：已知分类查词条，社区自定义分类原样显示
+                  const key = categoryLabelKey(entry.category);
+                  return key ? t(key) : entry.category;
+                })()}
                 {entry.version !== "0.0.0" ? ` · v${entry.version}` : ""}
+                {entry.channel === "community" && entry.author ? ` · @${entry.author}` : ""}
+                {entry.channel === "community" && entry.homepage
+                  ? ` · ${t("detail.communityListed")}`
+                  : ""}
               </p>
             </div>
           </header>
@@ -77,7 +94,7 @@ export function MarketplaceDetailDialog({
               dangerouslySetInnerHTML={{ __html: renderMarkdown(detail.detail) }}
             />
           ) : !loadError && detail === null ? (
-            <p className="mc-mkt__empty">加载详情中…</p>
+            <p className="mc-mkt__empty">{t("detail.loading")}</p>
           ) : null}
 
           <footer className="mc-mkt__dfoot">
@@ -87,7 +104,7 @@ export function MarketplaceDetailDialog({
               disabled={busy}
               onClick={() => onUse(entry)}
             >
-              {busy ? "准备中…" : <><LuMessageSquare size={13} /> 使用</>}
+              {busy ? t("actions.preparing") : <><LuMessageSquare size={13} /> {t("actions.use")}</>}
             </button>
           </footer>
         </div>

@@ -1,0 +1,186 @@
+{
+  "nav": {
+    "heading": "Agent 아키텍처",
+    "agentListAria": "Agent 목록",
+    "mainAgentGroup": "메인 에이전트",
+    "subagentGroup": "서브 에이전트 · {{name}}",
+    "subagentCount_one": "서브 에이전트 {{count}}개 · {{tagline}}",
+    "subagentCount_other": "서브 에이전트 {{count}}개 · {{tagline}}",
+    "subagentCount_few": "서브 에이전트 {{count}}개 · {{tagline}}",
+    "subagentCount_many": "서브 에이전트 {{count}}개 · {{tagline}}",
+    "addArchitecture": "사용자 정의 Agent 아키텍처 만들기",
+    "renameHint": "이름을 두 번 클릭하면 변경할 수 있습니다",
+    "deleteAria": "“{{name}}” 삭제",
+    "currentBadge": "현재",
+    "profileDisabledBadge": "이 프로파일에서 비활성화",
+    "readOnlyBadge": "읽기 전용",
+    "customTagline": "사용자 정의 아키텍처",
+    "loading": "Agent 불러오는 중…",
+    "emptySubagents": "이 Agent에는 서브 에이전트가 없습니다"
+  },
+  "roles": {
+    "general": "범용",
+    "explore": "탐색",
+    "planner": "계획",
+    "scoper": "범위 설정",
+    "depthProber": "심층 조사",
+    "implementer": "구현",
+    "reviewer": "리뷰",
+    "verifier": "검증",
+    "freshVerifier": "독립 재검증",
+    "juror": "최종 심사",
+    "sweeper": "수렴 정리",
+    "goalChecker": "목표 대조",
+    "custom": "사용자 정의"
+  },
+  "types": {
+    "agent": "Agent",
+    "tier": "계층",
+    "gate": "게이트",
+    "role": "서브 에이전트"
+  },
+  "nodeCard": {
+    "agent": "메인 에이전트",
+    "role": "서브 에이전트",
+    "gate": "게이트",
+    "tier": "계층",
+    "tierPassThrough": "계층 · 통과",
+    "agentTip": "메인 에이전트는 루트 runtime이며 task로 서브 에이전트를 디스패치합니다",
+    "roleTip": "서브 에이전트는 task 디스패치 시점에 생성됩니다",
+    "gateTip": "게이트는 점검 지점이며 gate→role 연결이 종료 담당 서브 에이전트를 지정합니다",
+    "tierTip": "작업 계층으로, admit 이후 어떤 게이트를 거칠지 결정합니다",
+    "terminalTierTip": "이 계층에는 게이트가 없어 admit 직후 바로 완료됩니다"
+  },
+  "edge": {
+    "closeOut": "종료"
+  },
+  "select": {
+    "placeholder": "선택하세요"
+  },
+  "defaults": {
+    "standardAgent": "표준 Agent",
+    "mainAgent": "메인 에이전트",
+    "newTier": "새 계층",
+    "newGate": "새 게이트",
+    "customRoleDescription": "사용자 정의 서브 에이전트: 도구 허용 목록과 시스템 프롬프트는 이 노드의 속성 패널에서 재정의합니다"
+  },
+  "status": {
+    "loading": "불러오는 중…",
+    "saving": "저장하는 중…",
+    "saved": "저장했습니다 — 거버넌스 run은 다음 admit 전에 새 그림을 로드합니다",
+    "reset": "내장 아키텍처로 초기화했습니다 — 저장하면 적용됩니다",
+    "connectTarget": "연결 모드: 대상 노드를 클릭하세요",
+    "connectPickNode": "노드를 먼저 선택한 뒤 “연결”을 클릭하세요",
+    "dirty": "저장되지 않은 변경 사항"
+  },
+  "toolbar": {
+    "addTier": "계층",
+    "addGate": "게이트",
+    "addRole": "서브 에이전트",
+    "connect": "연결",
+    "cancelConnect": "연결 취소",
+    "connectTip": "시작 노드를 클릭한 뒤 끝 노드를 클릭하여 연결합니다",
+    "delete": "삭제",
+    "deleteTip": "선택한 노드 또는 연결을 삭제합니다(노드 삭제 시 연결된 가장자리도 함께 삭제됩니다)",
+    "fit": "캔버스에 맞추기",
+    "fitTip": "아키텍처 그림 전체가 보이도록 중앙 정렬 및 확대/축소합니다",
+    "reset": "내장값으로 초기화",
+    "save": "작업 공간에 저장"
+  },
+  "canvas": {
+    "loading": "아키텍처 그림 불러오는 중…",
+    "legend": "노드 드래그 · 빈 곳에서 팬 · 휠로 확대/축소 | 메인 에이전트→서브 에이전트 = task 디스패치, 메인 에이전트→계층 = admit | tier→gate 번호 = 게이트 순서, gate→role = 종료"
+  },
+  "inspector": {
+    "ariaLabel": "노드 속성",
+    "close": "속성 패널 닫기",
+    "edge": "연결",
+    "agentSubtitle": "메인 에이전트 · {{id}}",
+    "tierSubtitle": "작업 계층 · {{id}}",
+    "gateSubtitle": "품질 게이트 · {{id}}",
+    "roleSubtitle": "서브 에이전트 · {{role}}",
+    "roleSubtitleNumbered": "서브 에이전트 · {{role}} #{{ordinal}}",
+    "edgeSubtitle": "연결 · {{type}}",
+    "deleteNode": "노드 삭제",
+    "deleteEdge": "연결 삭제"
+  },
+  "fields": {
+    "nodeName": "노드 이름",
+    "nodeId": "노드 ID",
+    "description": "책임",
+    "availableTools": "사용 가능한 도구",
+    "selectAll": "모두 선택",
+    "clearAll": "모두 해제",
+    "restoreDefault": "기본값 복원",
+    "restoreBuiltin": "내장값 복원",
+    "systemPrompt": "시스템 프롬프트",
+    "agentPromptPlaceholder": "비워 두면 현재 프로파일의 기본 프롬프트를 사용합니다",
+    "dispatch": "디스패치 대상",
+    "dispatchHint": "연결에서 변경",
+    "roleType": "서브 에이전트 식별자",
+    "displayName": "표시 이름",
+    "roleDescription": "서브 에이전트 책임 요약",
+    "gateBindings": "게이트 할당",
+    "gateBindingsHint": "클릭하여 재할당",
+    "rolePromptPlaceholder": "비워 두면 내장 프롬프트를 사용합니다",
+    "gateName": "품질 게이트 이름",
+    "invariant": "판정 불변 조건 / 인수 기준",
+    "onFail": "실패 시 전략",
+    "closer": "종료 담당 서브 에이전트",
+    "tierName": "계층 이름",
+    "tierId": "계층 ID(admit은 T0 / T1 / T2만 인식합니다)",
+    "tierDescription": "계층 설명",
+    "tierPrompt": "계층 프롬프트(admit 시 주입, 선택 사항)",
+    "tierPromptPlaceholder": "비워 두면 주입하지 않습니다. 입력하면 admit 보고서와 함께 메인 에이전트에 한 번 전송됩니다",
+    "gateSequence": "게이트 순서",
+    "gateSequenceHint": "클릭하여 추가/제거",
+    "edgePath": "경로",
+    "edgeType": "유형",
+    "order": "order(같은 계층 내에서 오름차순 실행)"
+  },
+  "tools": {
+    "none": "도구 없음",
+    "allIncludingDynamic": "모든 도구, MCP / 브라우저 동적 도구 포함",
+    "selectedCount_one": "{{count}}개 선택됨",
+    "selectedCount_other": "{{count}}개 선택됨",
+    "selectedCount_few": "{{count}}개 선택됨",
+    "selectedCount_many": "{{count}}개 선택됨",
+    "selectedFull": "모든 도구 선택됨",
+    "followProfile": "현재 프로파일 따름",
+    "inheritedNote": "재정의하지 않으면 추가 제한 없이 프로파일이 결정합니다",
+    "orchestrationNote": "task / admit은 오케스트레이션 채널로 항상 사용 가능합니다",
+    "explicitWhitelistNote": "명시적 허용 목록에는 실행 시 주입되는 MCP / 브라우저 도구가 포함되지 않습니다"
+  },
+  "registry": {
+    "unavailable": "레지스트리를 사용할 수 없습니다",
+    "loading": "레지스트리를 읽는 중…",
+    "unavailableRetry": "레지스트리를 사용할 수 없습니다 — 앱을 다시 시작하거나 위의 재시도를 누르세요",
+    "loadFailed": "서브 에이전트 레지스트리를 불러오지 못했습니다",
+    "loadFailedHint": "데스크톱 앱이 이전 서버 빌드로 실행 중일 수 있습니다. 앱을 다시 시작한 뒤 시도하세요.",
+    "retry": "재시도"
+  },
+  "onFail": {
+    "rework": "재작업(첫 번째 게이트로 되돌아갑니다)",
+    "loopTo": "loop-to:{{id}}({{id}}(으)로 되돌아갑니다)",
+    "block": "block(lane을 즉시 차단합니다)"
+  },
+  "closer": {
+    "unbound": "미할당(admit이 거부합니다)"
+  },
+  "empty": {
+    "dispatchEdges": "아직 디스패치 연결이 없습니다",
+    "gateNodes": "그림에 아직 게이트 노드가 없습니다"
+  },
+  "tier": {
+    "executionOrder": "실행 순서: {{gates}}. 순서는 연결의 order에서 변경하세요.",
+    "passThrough": "게이트 없음 · 통과(admit 직후 완료)"
+  },
+  "notes": {
+    "agentPrompt": "입력칸에는 현재 프로파일의 기본 프롬프트가 미리 채워져 있으며, 수정 후 저장하면 적용됩니다. 사용자 정의 내용은 프로파일 프롬프트를 <strong>전체로 교체</strong>하므로 도구 사용법과 경로 규칙 등 기본 약속은 남겨 두세요.",
+    "agentRoot": "메인 에이전트는 상주하는 루트 runtime이며 게이트에 관여하지 않습니다. 종료 담당 서브 에이전트는 tier→gate→role 경로를 통해 종료합니다. 서브 에이전트는 더 이상 디스패치할 수 없습니다.",
+    "rolePrompt": "비워 두면 내장 프롬프트로 대체됩니다. 읽기 전용 서브 에이전트의 승인 모드는 여전히 레지스트리가 강제합니다. 종료 담당 서브 에이전트는 JSON 결과 계약을 유지해야 하며, 그렇지 않으면 ChildResult 검증이 실패합니다.",
+    "gateBinding": "하나의 게이트에는 종료 담당 서브 에이전트가 하나만 필요합니다. 이미 할당된 것을 클릭하면 할당이 해제됩니다.",
+    "gateEvidence": "증거는 호스트가 직접 측정합니다. implementer는 파일 변경, reviewer는 critical findings, verifier는 명령 종료 코드를 확인합니다. 다른 서브 에이전트에 할당하면 completed + valid만 검증합니다. 게이트는 모델의 자기 진술을 신뢰하지 않습니다.",
+    "edgeSemantics": "tier→gate 가장자리는 게이트 순서를, gate→role 가장자리는 종료 담당 서브 에이전트를 결정합니다.나머지 연결은 설명 용도입니다."
+  }
+}

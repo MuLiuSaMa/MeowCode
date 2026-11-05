@@ -76,7 +76,7 @@ function diffLines(before: string, after: string): DiffLine[] {
   const rows = beforeMiddle.length + 1;
   const columns = afterMiddle.length + 1;
   const table: number[][] = Array.from({ length: rows }, () =>
-    new Array<number>(columns).fill(0),
+    Array.from({ length: columns }, () => 0),
   );
   for (let row = rows - 2; row >= 0; row -= 1) {
     for (let column = columns - 2; column >= 0; column -= 1) {

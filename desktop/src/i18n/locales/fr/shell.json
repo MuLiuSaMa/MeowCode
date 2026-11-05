@@ -1,0 +1,232 @@
+{
+  "rail": {
+    "home": "Accueil",
+    "architecture": "Architecture de l’agent",
+    "git": "Git",
+    "plugins": "Place de marché",
+    "settings": "Paramètres"
+  },
+  "update": {
+    "downloadingPercent": "Téléchargement automatique de la nouvelle version {{percent}} %",
+    "downloading": "Téléchargement automatique de la nouvelle version",
+    "dismiss": "Fermer l’info",
+    "restart": "Redémarrer et installer la mise à jour",
+    "failedAria": "Le téléchargement automatique a échoué, cliquez pour télécharger manuellement",
+    "failedTitle": "Le téléchargement automatique a échoué, cliquez pour télécharger manuellement"
+  },
+  "window": {
+    "minimize": "Réduire",
+    "restore": "Restaurer",
+    "maximize": "Agrandir",
+    "close": "Fermer"
+  },
+  "approval": {
+    "title": "Autorisation requise",
+    "requestSubagent": "Le sous-agent « {{name}} » souhaite utiliser {{tool}}.",
+    "requestApp": "MeowCode souhaite utiliser {{tool}}.",
+    "stale": "Le fichier a été modifié pendant la validation. L’aperçu ci-dessous a été régénéré, veuillez confirmer à nouveau.",
+    "risk": "Commande à risque",
+    "diff": "Aperçu des modifications",
+    "deny": "Refuser",
+    "approve": "Autoriser",
+    "hookTitle": "Un hook demande d’exécuter une commande",
+    "hookRequest": "Événement : {{event}}",
+    "hookFromAgent": "Demandé par le sous-agent « {{name}} »",
+    "hookMatcher": "Matcher : {{matcher}}",
+    "hookSource": "Configuration : {{source}}",
+    "hookNote": "Cette commande s’exécute avec vos droits utilisateur. L’approbation n’est mémorisée que pour cette session.",
+    "hookRun": "Exécuter",
+    "hookSkip": "Ignorer",
+    "hookReasonTitle": "Le hook demande une confirmation",
+    "sandboxTitle": "La sandbox a bloqué cette écriture",
+    "sandboxDesc": "La commande a tenté d'écrire en dehors de l'espace de travail et a été arrêtée par la sandbox d'écriture au niveau du système.",
+    "sandboxCommand": "Commande bloquée",
+    "sandboxEvidence": "Preuve du blocage",
+    "sandboxNote": "Réessayer hors de la sandbox exécute cette commande avec vos privilèges utilisateur. Une seule tentative est autorisée ; la sandbox reste active.",
+    "sandboxDeny": "Garder la sandbox",
+    "sandboxRetry": "Réessayer hors sandbox"
+  },
+  "plan": {
+    "aria": "Plan des tâches",
+    "expand": "Déplier le plan des tâches",
+    "collapse": "Replier le plan des tâches",
+    "allDone": "Toutes les tâches sont terminées",
+    "endedHeadline": "Le plan est terminé",
+    "ended": "Terminé",
+    "status": {
+      "pending": "En attente",
+      "inProgress": "En cours",
+      "completed": "Terminé",
+      "cancelled": "Annulé"
+    },
+    "confirmedWithPath": "Le plan est confirmé. Commencez l’implémentation à partir de {{path}}.",
+    "confirmed": "Le plan est confirmé. Commencez l’implémentation.",
+    "stepsProgress": "Étapes {{done}} / {{total}}",
+    "filesChanged": "{{n}} fichier(s) modifié(s)"
+  },
+  "status": {
+    "preparingSubagents_one": "Préparation de {{count}} sous-agent…",
+    "preparingSubagents_few": "Préparation de {{count}} sous-agents…",
+    "preparingSubagents_many": "Préparation de {{count}} sous-agents…",
+    "preparingSubagents_other": "Préparation de {{count}} sous-agents…",
+    "preparingWrites": "Écriture du fichier…",
+    "preparingEdits": "Modification du fichier…",
+    "preparingTools_one": "Préparation de {{count}} appel d’outil…",
+    "preparingTools_few": "Préparation de {{count}} appels d’outils…",
+    "preparingTools_many": "Préparation de {{count}} appels d’outils…",
+    "preparingTools_other": "Préparation de {{count}} appels d’outils…"
+  },
+  "notice": {
+    "interrupted": "La génération précédente a été interrompue par la fermeture de l’application. Le contenu généré a été conservé, vous pouvez poursuivre la conversation.",
+    "updateAvailable": "Nouvelle version {{version}} disponible",
+    "updateNow": "Mettre à jour",
+    "subagentInterrupted": "Le tour de ce sous-agent a été interrompu. Le contenu généré a été conservé.",
+    "cacheEvicted": "Le cache a probablement été évincé côté serveur (inactivité au-delà du TTL annoncé) ; ce tour est facturé comme un défaut de cache.",
+    "cacheUnsupported": "Cette passerelle n’a renvoyé aucun succès de cache alors que le préfixe est inchangé et ne prend peut-être pas en charge le cache de préfixe ; le coût est calculé sur toute l’entrée.",
+    "providerSwitched": "Fournisseur changé temporairement : {{from}} → {{to}} ({{reason}}). Vous pouvez ajuster l’ordre dans Paramètres → Modèles.",
+    "undoableRewind": "{{count}} fichiers restaurés ; cette restauration peut être annulée (la session d'origine est conservée).",
+    "undoRewind": "Annuler la restauration",
+    "dismiss": "Fermer"
+  },
+  "subagent": {
+    "label": "Sous-agent",
+    "loadFailed": "Impossible de charger la transcription du sous-agent",
+    "steerAborted": "Message non délivré : le sous-agent s’est arrêté",
+    "steerFinished": "Message non délivré : le sous-agent est déjà terminé",
+    "status": {
+      "completed": "Terminé",
+      "failed": "Échec",
+      "aborted": "Arrêté",
+      "interrupted": "Interrompu"
+    },
+    "notice": "Sous-agent « {{name}} » : {{status}}",
+    "noticeWithReport": "Sous-agent « {{name}} » : {{status}} — {{report}}"
+  },
+  "error": {
+    "reason": {
+      "timeout": "délai de la requête dépassé",
+      "rateLimit": "limite de débit atteinte",
+      "server": "erreur du serveur"
+    },
+    "worktreeLoad": "La session worktree n’a pas pu être chargée après sa création. Veuillez réessayer.",
+    "notGitRepo": "L’espace de travail actuel n’est pas un dépôt Git, l’isolation par worktree est donc indisponible."
+  },
+  "toast": {
+    "worktreeDirty": "L’espace de travail principal contient des modifications non validées : les worktrees partent de HEAD, elles ne sont pas reprises"
+  },
+  "architecture": {
+    "customName": "Agent personnalisé"
+  },
+  "model": {
+    "unconfigured": "Aucun modèle configuré"
+  },
+  "resize": {
+    "list": "Redimensionner la liste de gauche",
+    "inspector": "Redimensionner le panneau de droite"
+  },
+  "theme": {
+    "providerMissing": "useTheme doit être utilisé dans un ThemeProvider"
+  },
+  "updateModal": {
+    "currentVersion": "Version actuelle {{version}}",
+    "noAsset": "Cette version ne contient pas d'installateur pour votre plateforme ; le téléchargement en ligne est impossible.",
+    "noNotes": "Cette version ne contient pas de notes de version.",
+    "downloadDone": "Téléchargement terminé",
+    "downloading": "Téléchargement {{percent}} %",
+    "downloadSize": " ({{received}} / {{total}})",
+    "later": "Plus tard",
+    "restart": "Redémarrer et mettre à jour",
+    "cancel": "Annuler",
+    "downloadingShort": "Téléchargement…",
+    "download": "Télécharger la mise à jour"
+  },
+  "modelPopover": {
+    "aria": "Modèle et intensité de réflexion",
+    "selectModel": "Choisir un modèle",
+    "empty": "Aucun modèle activé. Ajoutez-en un dans Paramètres → Modèles.",
+    "manage": "Gérer les modèles",
+    "back": "Retour à la liste des modèles",
+    "effort": "Intensité de réflexion"
+  },
+  "taskRow": {
+    "status": {
+      "running": "En cours",
+      "completed": "Terminé",
+      "failed": "Échec",
+      "aborted": "Arrêté",
+      "interrupted": "Interrompu"
+    },
+    "background": "Arrière-plan",
+    "open": "Ouvrir le sous-agent : {{name}}",
+    "durationUnderSecond": "<1 s",
+    "durationSeconds": "{{value}} s",
+    "durationMinutes": "{{minutes}} min {{seconds}} s"
+  },
+  "closeDialog": {
+    "title": "Que doit faire MeowCode lorsque vous fermez la fenêtre ?",
+    "desc": "MeowCode continuera de fonctionner en arrière-plan. Vous pourrez le rouvrir depuis la zone de notification.",
+    "remember": "Mémoriser mon choix (modifiable dans Paramètres → Général)",
+    "cancel": "Annuler",
+    "tray": "Réduire dans la zone de notification",
+    "quit": "Fermer complètement"
+  },
+  "contextWarning": {
+    "usage": "Contexte utilisé à <b>{{percent}} %</b> ({{used}} / {{window}}).",
+    "hintStreaming": " Vous pourrez compacter manuellement après ce tour pour éviter le compactage automatique lorsque la prochaine requête débordera.",
+    "hint": " Il est recommandé de compacter manuellement pour éviter le compactage automatique lorsque la prochaine requête débordera.",
+    "compacting": "Compactage…",
+    "compactAfterTurn": "Compacter après ce tour",
+    "compactNow": "Compacter maintenant",
+    "dismissAria": "Masquer l'indication de compactage",
+    "dismissTitle": "Ne plus afficher"
+  },
+  "compaction": {
+    "compacting": "Compactage de l'historique…",
+    "interrupted": "Le dernier compactage a été interrompu par la fermeture de l'application",
+    "failed": "Le dernier compactage a échoué ; l'historique n'a pas été compacté",
+    "done": "Historique compacté ; les messages précédents sont conservés sous forme de résumé"
+  },
+  "messageNav": {
+    "aria": "Navigation dans la conversation",
+    "noText": "(Aucun texte)",
+    "itemTitle": "Message {{index}} : {{preview}}",
+    "images_one": "{{count, number}} image",
+    "images_few": "{{count, number}} images",
+    "images_many": "{{count, number}} images",
+    "images_other": "{{count, number}} images"
+  },
+  "agentProfile": {
+    "aria": "Profil de l'Agent principal",
+    "customDesc": "Architecture personnalisée · Utilise les capacités du profil actuel",
+    "dispatchable_one": "{{tagline}} · peut envoyer {{count, number}} sous-agent",
+    "dispatchable_few": "{{tagline}} · peut envoyer {{count, number}} sous-agents",
+    "dispatchable_many": "{{tagline}} · peut envoyer {{count, number}} sous-agents",
+    "dispatchable_other": "{{tagline}} · peut envoyer {{count, number}} sous-agents"
+  },
+  "contextMeter": {
+    "usage": "Contexte {{used}} / {{window}} ({{percent}} %)",
+    "noWindow": "Aucune fenêtre de contexte définie",
+    "aria": "Utilisation du contexte"
+  },
+  "bootSplash": {
+    "aria": "Démarrage de MeowCode"
+  },
+  "island": {
+    "connecting": "Connexion…",
+    "running": "{{n}} session(s) en cours",
+    "waitingApproval": "En attente d'approbation",
+    "idle": "Inactif",
+    "approvalHint": "En attente d'approbation",
+    "thinking": "Réflexion…",
+    "working": "Traitement…",
+    "hadError": "Une erreur est survenue",
+    "untitled": "Session sans titre",
+    "empty": "Aucun message pour l'instant",
+    "stop": "Arrêter",
+    "send": "Envoyer",
+    "openMain": "Ouvrir la fenêtre principale",
+    "inputPlaceholder": "Tapez un message, Entrée pour envoyer",
+    "inputIdle": "Cette session n'est pas en cours d'exécution. Continuez dans la fenêtre principale.",
+    "dropHint": "Déposez pour joindre"
+  }
+}

@@ -12,10 +12,13 @@
   },
   "dependencies": {
     "dompurify": "^3.3.0",
+    "highlight.js": "^11.12.0",
+    "i18next": "^26.5.11",
     "marked": "^16.4.1",
     "node-pty": "^1.1.0",
     "react": "^19.2.1",
     "react-dom": "^19.2.1",
+    "react-i18next": "^17.1.9",
     "react-icons": "^5.7.0"
   },
   "devDependencies": {
@@ -40,9 +43,15 @@
     },
     "files": [
       "main.cjs",
+      "main-i18n.cjs",
+      "tray-sessions.cjs",
+      "notifications.cjs",
       "preload.cjs",
+      "update-check.cjs",
+      "update-download.cjs",
       "github-oauth.cjs",
       "browser-host.cjs",
+      "computer-host.cjs",
       "terminals.cjs",
       "renderer/**/*",
       "package.json"

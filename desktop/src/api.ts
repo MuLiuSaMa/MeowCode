@@ -58,6 +58,11 @@ export type MeowEvent = {
   description?: string;
   agentType?: SubagentType;
   background?: boolean;
+  /** compaction_quality：压缩质量观测结算结果 */
+  compactionId?: string;
+  baselineCount?: number;
+  rereadPaths?: string[];
+  windowTurns?: number;
   report?: string;
   prompt?: string;
   startedAt?: string;
@@ -70,12 +75,16 @@ export type MeowEvent = {
   count?: number;
   names?: string[];
   chars?: number;
+  /** 子 Agent 插话事件：本次插话的 id */
+  steerId?: string;
   sessionId?: string;
   callId?: string;
   tool?: string;
   input?: unknown;
   output?: string;
   truncated?: boolean;
+  /** 完整内容已落盘的相对路径 */
+  spilled?: string;
   ok?: boolean;
   delta?: string;
   text?: string;
@@ -91,20 +100,48 @@ export type MeowEvent = {
   explanation?: string;
   /** ask_user 事件：模型提出的澄清问题（可批量多题）与每题候选选项 */
   questions?: Array<{ question: string; options: string[] }>;
+  /** usage 事件：本轮模型调用的稳定 id（实时样本与最终真值共用，前端按 id 替换） */
+  roundId?: string;
+  /** usage 事件：true = 该轮最终真值 */
+  final?: boolean;
+  /** usage 事件：该轮被放弃（重试/中止），前端应撤回该样本 */
+  retracted?: boolean;
   /** usage 事件：缓存读取的输入 token；未报告时不带 */
   cacheReadTokens?: number;
   /** usage 事件：写入缓存的输入 token（Anthropic 类协议）；未报告时不带 */
   cacheWriteTokens?: number;
+  /** usage 事件：实际应答的模型名（cache-bust 检测按模型分基线） */
+  model?: string;
+  /** usage 事件：前缀缓存诊断状态 */
+  cacheState?: "warm" | "cold" | "evicted" | "unsupported" | "unknown";
+  /** usage 事件：状态变化原因；未变化时不带 */
+  cacheReason?: string;
   /** message_start 事件：由排队消息启动的回合对应的排队项 id */
   queuedId?: string;
   /** approval_required 事件：写文件/改文件的预览差异 */
   diff?: string;
   /** approval_required 事件：明显危险的命令特征（仅提示） */
-  risk?: { level: "high"; reasons: string[] };
+  risk?: { level: "medium" | "high"; categories?: string[]; reasons: string[] };
   /** approval_required 事件：审批期间文件被改动，diff 已重新生成 */
   stale?: boolean;
+  /** approval_required / approval_resolved 事件：审批种类与 hook 命令详情 */
+  kind?: "tool" | "hook";
+  command?: string;
+  hookEvent?: string;
+  matcher?: string;
+  source?: string;
+  hookReason?: string;
+  /** approval_required 事件：沙箱拒绝后的「沙箱外重试」审批 */
+  sandboxEscape?: { command: string; detail: string };
+  /** approval_resolved 事件：最终决定与来源 */
+  approved?: boolean;
+  by?: "user" | "hook" | "abort";
   /** file_changed 事件：Agent 改动的文件（工作区相对路径）与操作 */
   path?: string;
+  /** checkpoint_created 事件：回合开始打的可回滚点（流式用户气泡据此挂回退入口） */
+  checkpointId?: string;
+  /** checkpoint_created 事件：该点是否有文件快照 */
+  hasSnapshot?: boolean;
   operation?: "write_file" | "edit_file";
   /** provider_switched 事件：切换前后的服务商 id 与原因（timeout/rate_limit/server） */
   from?: string;
@@ -161,9 +198,20 @@ export type ApprovalRequest = {
   tool: string;
   input: unknown;
   diff?: string;
-  risk?: { level: "high"; reasons: string[] };
+  risk?: { level: "medium" | "high"; categories?: string[]; reasons: string[] };
   /** 审批期间文件被改动，diff 已重新生成 */
   stale?: boolean;
+  /** tool = 工具审批；hook = 每次询问模式下 hook 命令运行审批 */
+  kind?: "tool" | "hook";
+  /** hook 命令审批的展示字段 */
+  command?: string;
+  hookEvent?: string;
+  matcher?: string;
+  source?: string;
+  /** PreToolUse hook 要求人工确认的原因 */
+  hookReason?: string;
+  /** 沙箱拒绝后的「沙箱外重试」审批 */
+  sandboxEscape?: { command: string; detail: string };
 };
 
 /** 全局待审批：后台会话也在等，所以带 sessionId 供切回时恢复 */
@@ -200,6 +248,44 @@ export type CompactionPoint = {
   status: "completed" | "interrupted" | "failed";
 };
 
+/**
+ * 压缩质量观测（GET /session/messages 的 compactionQuality）：
+ * 压缩后窗口期内重复读了哪些「压缩前已读过」的文件 —— 摘要漏上下文的信号。
+ */
+export type CompactionQuality = {
+  compactionId: string;
+  baselineCount: number;
+  rereadPaths: string[];
+  windowTurns: number;
+};
+
+/** 会话检查点（GET /session/messages 的 checkpoints 与 GET /session/checkpoints 共用） */
+export type SessionCheckpoint = {
+  id: string;
+  timestamp: string;
+  label?: string;
+  auto: boolean;
+  turnId?: string;
+  fileChanges: string[];
+  /** 检查点之前有多少条对话消息（时间线定位） */
+  messageIndex: number;
+  /** 文件快照引用；旧会话缺省 = 该点没有代码可回滚 */
+  snapshot?: CheckpointSnapshotRef;
+  /** = Boolean(snapshot)，前端免嵌套取值 */
+  hasSnapshot: boolean;
+  /** = snapshot?.count */
+  fileCount: number;
+};
+
+/** 检查点文件快照引用（服务端只回 id/位置等展示信息，内容按需读） */
+export type CheckpointSnapshotRef = {
+  ownerId: string;
+  file: string;
+  count: number;
+  bytes: number;
+  cwd: string;
+};
+
 export type TurnStatus = "completed" | "aborted" | "error" | "interrupted";
 
 /** 窗口/页签/面板/草稿等界面状态（主进程 ui-state.json） */
@@ -216,10 +302,13 @@ export type UiState = {
       | "terminal"
       | "plan"
       | "subagent"
-      | "subagents";
+      | "subagents"
+      | "plugin";
     title: string;
     url?: string;
     path?: string;
+    /** 插件页签：插件 id（iframe 走 /plugin-ui/<id>/...） */
+    pluginId?: string;
     /** 子 Agent 页签：按父会话分组恢复 */
     agentId?: string;
     parentSessionId?: string;
@@ -250,14 +339,36 @@ export type TurnMetrics = {
   cacheHitRate: number | null;
 };
 
-/** 上下文占用的分类明细（token 数），三项之和 == usedTokens */
+/**
+ * 前缀缓存诊断（usage 最终事件聚合）：ContextPopover 缓存行与 HomeTab 失配计数消费。
+ * 对标 Claude Code /usage 的 miss 归因：把「自己造成的重建」与「外部造成的失配」分开看。
+ */
+export type CacheDiagnostics = {
+  /** 最近一轮最终用量（弹层「本轮」行）；还没有最终样本时为 null */
+  lastRound: { read: number | null; write: number | null } | null;
+  /** 最近一次缓存状态与原因（服务端 classifyCache） */
+  lastState: "warm" | "cold" | "evicted" | "unsupported" | "unknown" | null;
+  lastReason: string | null;
+  /** 疑似缓存失配次数：同模型相邻两轮命中读数显著跌落（isCacheBust） */
+  busts: number;
+  /** 最近一次失配的跌落量（token）；用于悬浮提示 */
+  lastBustDrop: number | null;
+  /** 缓存重建计数：最终轮状态非 warm 时按原因累加（first_request / idle_exceeded_ttl / …） */
+  rebuilds: Record<string, number>;
+};
+
+/** 上下文占用的分类明细（token 数），五项之和 == usedTokens */
 export type ContextBreakdown = {
   /** 系统提示词（稳定前缀） */
   system: number;
   /** 工具定义 */
   tools: number;
+  /** 技能索引 */
+  skills: number;
   /** 对话消息 */
   messages: number;
+  /** 项目规则 / 记忆等其余注入 */
+  other: number;
 };
 
 /** 与服务端一致：达到窗口 85% 时提示手动压缩。 */
@@ -281,6 +392,19 @@ export type ContextUsage = {
   source: "usage" | "estimate";
   /** 分类明细：真实用量下按估算比例摊分，加总恒等于 usedTokens */
   breakdown: ContextBreakdown;
+  /** 发现的技能数量（「Skill（N个）」标签用）；老版本服务端可能不返回 */
+  skillCount?: number;
+  /** 对话消息的细分归因（纯估算）；老版本服务端可能不返回 */
+  messageDetail?: {
+    system: number;
+    toolResults: Array<{ name: string; tokens: number }>;
+    userText: number;
+    assistantText: number;
+    injected: number;
+    media: number;
+    other: number;
+    total: number;
+  } | null;
   /** 已到窗口 85%，建议用户手动压缩（自动压缩只在真实溢出时触发） */
   recommendedCompaction: boolean;
 };
@@ -299,9 +423,20 @@ export type ChatMessage = {
   imageRefs?: Array<{ file: string; mimeType: string }>;
 };
 
+export type SessionWorktree = {
+  sourceCwd: string;
+  repoRoot: string;
+  path: string;
+  branch: string;
+  baseSha: string;
+  createdAt: string;
+};
+
 export type CurrentSession = {
   id: string;
   cwd: string;
+  /** 独立 worktree 元数据；普通会话为 null/缺省 */
+  worktree?: SessionWorktree | null;
   title?: string | null;
   plan?: PlanState | null;
   /** 最近一次上下文压缩摘要；没有压缩过则为 null */
@@ -330,7 +465,68 @@ export type SessionSummary = {
   title: string | null;
   /** 会话里的消息条数；0 = 还没发过消息（新建未使用的会话，列表里不显示） */
   messageCount: number;
+  /** 独立 worktree 元数据；侧栏归组与分支标识用 */
+  worktree?: SessionWorktree | null;
 };
+
+/** 当前会话已修改文件（GET /session/changes?summary=1）：不含 diff，供输入框悬浮胶囊统计 */
+export type SessionChangeSummary = {
+  path: string;
+  operation: "write_file" | "edit_file";
+  changeCount: number;
+  added: number;
+  removed: number;
+  timestamp: string;
+};
+
+export async function getSessionChangesSummary(): Promise<{
+  changes: SessionChangeSummary[];
+}> {
+  return api<{ changes: SessionChangeSummary[] }>("/session/changes?summary=1");
+}
+
+/** 会话全文检索单个命中片段；ranges 是相对 text 的命中偏移（前端切段高亮） */
+export type SessionSearchSnippet = {
+  text: string;
+  ranges: Array<{ start: number; end: number }>;
+  prefix: boolean;
+  suffix: boolean;
+  /** 命中消息在 messagesForClient 数组里的下标，跳转锚点用 */
+  messageIndex: number;
+  role: "user" | "assistant";
+};
+
+/** GET /sessions/search 的单会话命中 */
+export type SessionSearchHit = {
+  sessionId: string;
+  filePath: string;
+  title: string | null;
+  cwd: string;
+  createdAt: string;
+  titleMatch: boolean;
+  totalMatches: number;
+  snippets: SessionSearchSnippet[];
+};
+
+export type SessionSearchResult = {
+  query: string;
+  hits: SessionSearchHit[];
+  scanned: number;
+  reindexed: number;
+  /** 有会话正文超过索引上限被截断；命中可能不全 */
+  truncated: boolean;
+};
+
+/** 会话全文检索（Ctrl+K）：纯本地子串匹配，不消耗模型 token */
+export async function searchSessions(
+  query: string,
+  options: { limit?: number; workspace?: string | null } = {},
+): Promise<SessionSearchResult> {
+  const params = new URLSearchParams({ q: query });
+  if (options.limit && options.limit > 0) params.set("limit", String(Math.floor(options.limit)));
+  if (options.workspace) params.set("workspace", options.workspace);
+  return api<SessionSearchResult>(`/sessions/search?${params.toString()}`);
+}
 
 /** 服务商 API 协议。三种都在后端有对应实现（见 src/agent/）。 */
 export type ApiFormat = "anthropic-messages" | "openai-chat-completions" | "openai-responses";
@@ -339,14 +535,32 @@ export type InputModality = "text" | "image" | "pdf";
 
 export type ThemePreference = "system" | "light" | "dark";
 export type CloseAction = "ask" | "tray" | "quit";
-/** 界面语言：跟随系统 / 简体中文（目前仅 zh-CN 有词条）。 */
-export type LanguagePreference = "system" | "zh-CN";
+/** 用户可见回复的语色：普通（默认）/ 永雏塔菲 / 大嘴。 */
+export type SpeechStyle = "normal" | "tafei" | "dazui";
+/** 界面语言：跟随系统 + 11 个语种（词条见 desktop/src/i18n/locales）。 */
+export type LanguagePreference =
+  | "system"
+  | "zh-CN"
+  | "zh-TW"
+  | "en"
+  | "ja"
+  | "ko"
+  | "ru"
+  | "de"
+  | "fr"
+  | "es"
+  | "hi"
+  | "pt";
 
-/** 不重启 agent server 的轻量偏好（外观 / 关闭方式 / 归档列表 / 侧栏项目）。 */
+/** 不重启 agent server 的轻量偏好（外观 / 关闭方式 / 语言 / 工作区 / 归档列表 / 侧栏项目）。 */
 export type Preferences = {
   theme: ThemePreference;
   closeAction: CloseAction;
   language?: LanguagePreference;
+  /** 用户可见回复的语色：默认 normal；切换走轻量通道，不重启 server */
+  speechStyle?: SpeechStyle;
+  /** 下次新建会话的默认工作区；切换走轻量通道，不重启 server */
+  workspace?: string;
   /** 首次启动引导是否已完成 */
   onboardingCompleted?: boolean;
   archivedSessions?: string[];
@@ -356,7 +570,41 @@ export type Preferences = {
   pinnedProjects?: string[];
   /** 已移除（侧栏隐藏）的项目 cwd 列表 */
   removedProjects?: string[];
+  /** 检查到新版本时后台静默下载（默认开；完成后导航栏左下角出现重启按钮） */
+  silentUpdate?: boolean;
+  /** 系统通知：回合结束 / 需要审批 / 被中断且窗口不在前台时提示（默认开） */
+  notifications?: boolean;
+  /** AI 悬浮岛：屏幕顶部胶囊显示所有运行中会话状态（默认关） */
+  floatingIsland?: boolean;
+  /** Worktrees：创建前先 fetch 上游更新（默认关） */
+  worktreeFetchUpstream?: boolean;
+  /** Worktrees：自动清理旧 worktree（默认开） */
+  worktreeAutoCleanup?: boolean;
+  /** Worktrees：自动清理的数量上限（默认 15） */
+  worktreeMaxKeep?: number;
+  /** 会话回滚：文件快照开关（默认开；改后重启应用生效） */
+  rewindSnapshots?: boolean;
+  /** 会话回滚：每会话保留的快照索引数滑窗（默认 120） */
+  rewindKeepCheckpoints?: number;
+  /** 会话回滚：单个快照目录总容量上限 MB（默认 512） */
+  rewindMaxTotalMb?: number;
+  /** 将 AGENTS.md 包含在上下文中（默认开） */
+  includeAgentsMd?: boolean;
+  /** 将 CLAUDE.md / CLAUDE.local.md 包含在上下文中（默认开） */
+  includeClaudeMd?: boolean;
+  /** 界面字体：空串或缺省 = 默认 MiSans */
+  fontFamily?: string;
+  /** 代码字体（等宽表面）：空串或缺省 = 默认等宽栈 */
+  codeFontFamily?: string;
+  /** 网络代理模式：direct = 直连（默认） */
+  proxyMode?: ProxyMode;
+  /** manual 模式下的代理地址，如 http://127.0.0.1:7890 */
+  proxyUrl?: string;
 };
+
+export type ProxyMode = "direct" | "system" | "manual";
+
+export type ProxyConfig = { mode: ProxyMode; url: string };
 
 export type AppInfo = {
   name: string;
@@ -366,6 +614,70 @@ export type AppInfo = {
   node: string;
   platform: string;
 };
+
+/** 更新包（release 资产） */
+export type UpdateAsset = {
+  name: string;
+  /** 下载地址（已把不可达的 test.gitcode.net 换成主站） */
+  url: string;
+  size: number;
+};
+
+/** GitCode release 信息（更新检查用） */
+export type UpdateInfo = {
+  version: string;
+  name: string;
+  /** 发布页地址（由仓库 + tag 拼出） */
+  url: string;
+  publishedAt: string;
+  notes: string;
+  /** 这次发布的全部附件 */
+  assets?: UpdateAsset[];
+  /** 当前平台可用的安装包（没有说明这次发布没带安装包） */
+  asset?: UpdateAsset | null;
+};
+
+export type UpdateCheckResult =
+  | { ok: true; current: string; latest: UpdateInfo; hasUpdate: boolean }
+  | { ok: false; current: string; error: string };
+
+/**
+ * 检查更新：走主进程拉 GitCode releases。
+ * 渲染进程直连 api.gitcode.com 会被 CORS 拦（file:// 源），所以必须绕 IPC。
+ */
+export async function checkForUpdates(): Promise<UpdateCheckResult> {
+  return window.meow.checkUpdate();
+}
+
+/** 已导入的自定义字体（外观设置用） */
+export async function listCustomFonts(): Promise<Array<{ family: string; url: string }>> {
+  return window.meow.listCustomFonts();
+}
+
+/** 弹系统对话框选一个字体文件导入；取消时返回 { ok:false, canceled:true } */
+export async function importFontFile(): Promise<{ ok: boolean; canceled?: boolean; family?: string }> {
+  return window.meow.importFont();
+}
+
+/** 下载更新包：主进程流式下载，进度通过 onUpdateProgress 回调 */
+export async function downloadUpdate(payload: {
+  url: string;
+  fileName: string;
+}): Promise<{ path: string; size: number }> {
+  return window.meow.downloadUpdate(payload);
+}
+
+/** 打开已下载的安装包：Windows 会顺带退出应用（安装包要覆盖运行中的文件） */
+export async function openInstaller(filePath: string): Promise<{ launched: boolean; quit: boolean }> {
+  return window.meow.openInstaller(filePath);
+}
+
+export type UpdateProgress = { received: number; total: number; percent: number };
+
+/** 订阅下载进度，返回取消订阅函数 */
+export function onUpdateProgress(listener: (progress: UpdateProgress) => void): () => void {
+  return window.meow.onUpdateProgress(listener);
+}
 
 export type ProviderSettings = {
   id: string;
@@ -381,6 +693,8 @@ export type ProviderSettings = {
   templateId?: string;
   apiKey?: string;
   hasApiKey?: boolean;
+  /** 仅保存时使用：新加的模型条目从该服务商已有条目继承密钥，主进程写完即丢弃 */
+  apiKeySourceId?: string;
   /** 上下文窗口（token 数） */
   contextWindow?: number;
   /** 单次最大输出 token 数 */
@@ -390,8 +704,21 @@ export type ProviderSettings = {
   reasoningEffort?: string;
   /** 显式思考预算（thinking.budget_tokens）；留空则按思考强度档位推导 */
   thinkingBudget?: number;
-  /** 前缀缓存 TTL：5m（默认）/ 1h（Anthropic 显式长 TTL） */
-  cacheTtl?: "5m" | "1h";
+  /**
+   * 前缀缓存 TTL：5m（默认，不发字段）/ 1h（Anthropic 显式长 TTL）/
+   * auto（按会话节奏：人驱动 1h、子代理与批量 5m，且只在实测支持 1h 的端点上真的发）
+   */
+  cacheTtl?: "5m" | "1h" | "auto";
+  /**
+   * 鉴权头风格。缺省按协议传统（Anthropic 系 x-api-key / OpenAI 系 Bearer）。
+   * Azure OpenAI 选 "api-key"；Bedrock API key 选 "bedrock-api-key"；
+   * 本地推理框架或鉴权全靠额外请求头时选 "none"。
+   */
+  authStyle?: "bearer" | "api-key" | "bedrock-api-key" | "none";
+  /** 额外请求头，原样合并（同名覆盖内置头） */
+  extraHeaders?: Record<string, string>;
+  /** 额外请求体字段，展开合并进请求体顶层（Qwen enable_thinking / vLLM chat_template_kwargs 等） */
+  extraBody?: Record<string, unknown>;
   /** 思考摘要档位（Responses）；缺省 none = 不下发 */
   reasoningSummary?: "none" | "auto" | "concise" | "detailed";
   /** 故障转移链（provider id，按顺序）；留空 = 自动链（其余 enabled 项，最多 2 跳） */
@@ -431,6 +758,40 @@ export type GithubDevicePollResult =
   | { status: "success"; auth: GithubAuthStatus; warning?: string }
   | { status: "error"; message: string };
 
+export type SandboxSettings = {
+  enabled: boolean;
+  mode: "workspace-write";
+  /** 工作区之外的额外可写根（绝对路径） */
+  writableRoots: string[];
+  allowTemp: boolean;
+  grantTimeoutMs: number;
+  /** 工作区写入模式下，删除命令是否需要人工确认 */
+  confirmDelete: boolean;
+};
+
+export type SandboxStatus = SandboxSettings & {
+  platform: string;
+  supported: boolean;
+  workspace: string;
+  /** PUT 开启时服务器顺带完成的首次授权耗时 */
+  probeDurationMs?: number;
+};
+
+export type SandboxProbeResult = {
+  ok: boolean;
+  backend?: "windows-acl";
+  workspace?: string;
+  durationMs: number;
+  detail?: string;
+};
+
+export type SandboxRevokeResult = {
+  ok: boolean;
+  revoked?: boolean;
+  durationMs: number;
+  detail?: string;
+};
+
 export type Settings = {
   workspace?: string;
   providerId?: string;
@@ -438,6 +799,12 @@ export type Settings = {
   theme?: ThemePreference;
   closeAction?: CloseAction;
   language?: LanguagePreference;
+  /** 用户可见回复的语色：默认 normal */
+  speechStyle?: SpeechStyle;
+  /** 网络代理模式：direct / system / manual */
+  proxyMode?: ProxyMode;
+  /** manual 模式下的代理地址 */
+  proxyUrl?: string;
   /** 首次启动引导是否已完成 */
   onboardingCompleted?: boolean;
   /** 归档的会话文件路径列表（settings.json 持久化，聊天列表里隐藏） */
@@ -450,12 +817,42 @@ export type Settings = {
   removedProjects?: string[];
   /** 插件启停：禁用的插件 id 列表（全局） */
   plugins?: { disabled?: string[] };
+  /** 会话回滚：文件快照开关（默认开；改后重启 agent server 生效） */
+  rewindSnapshots?: boolean;
+  /** 会话回滚：每会话保留的快照索引数滑窗（默认 120） */
+  rewindKeepCheckpoints?: number;
+  /** 会话回滚：单个快照目录总容量上限 MB（默认 512） */
+  rewindMaxTotalMb?: number;
+  /** Claude Code hooks：运行方式与工作区配置范围（写盘后重启 agent server 生效） */
+  hooks?: { runMode?: "auto" | "ask"; includeWorkspace?: boolean };
   /** GitHub MCP 的 OAuth 连接状态（不含 token） */
   githubAuth?: GithubAuthStatus;
   /** 已保存的 Gitee/GitCode MCP Token 对应的 env 名（不含 token） */
   mcpCredentialKeys?: string[];
   /** Gitee/GitCode OAuth 连接状态（不含 token/secret） */
   oauthStatus?: Record<OauthPlatform, OauthPlatformStatus>;
+  /** 检查到新版本时后台静默下载（缺省视为开启） */
+  silentUpdate?: boolean;
+  /** 系统通知：回合结束 / 需要审批 / 被中断且窗口不在前台时提示（缺省视为开启） */
+  notifications?: boolean;
+  /** AI 悬浮岛：屏幕顶部胶囊显示所有运行中会话状态（默认关） */
+  floatingIsland?: boolean;
+  /** Worktrees：创建前先 fetch 上游更新（默认关） */
+  worktreeFetchUpstream?: boolean;
+  /** Worktrees：自动清理旧 worktree（默认开） */
+  worktreeAutoCleanup?: boolean;
+  /** Worktrees：自动清理的数量上限（默认 15） */
+  worktreeMaxKeep?: number;
+  /** 将 AGENTS.md 包含在上下文中（默认开） */
+  includeAgentsMd?: boolean;
+  /** 将 CLAUDE.md / CLAUDE.local.md 包含在上下文中（默认开） */
+  includeClaudeMd?: boolean;
+  /** 界面字体：空串或缺省 = 默认 MiSans */
+  fontFamily?: string;
+  /** 代码字体（等宽表面）：空串或缺省 = 默认等宽栈 */
+  codeFontFamily?: string;
+  /** 命令沙箱：Windows 受限令牌 + ACL 写隔离（默认关闭） */
+  sandbox?: SandboxSettings;
 };
 
 export type SetMcpCredentialsResult = {
@@ -464,7 +861,7 @@ export type SetMcpCredentialsResult = {
   warning?: string;
 };
 
-export type OauthPlatform = "gitee" | "gitcode";
+export type OauthPlatform = "gitee" | "gitcode" | "gitcode-community";
 
 export const MCP_ENV_PLATFORMS: Record<string, OauthPlatform> = {
   MEOWCODE_GITEE_TOKEN: "gitee",
@@ -474,6 +871,7 @@ export const MCP_ENV_PLATFORMS: Record<string, OauthPlatform> = {
 export const MCP_PLATFORM_LABELS: Record<OauthPlatform, string> = {
   gitee: "Gitee",
   gitcode: "GitCode",
+  "gitcode-community": "GitCode 社区", // i18n-allow 平台品牌名，按厂商官方叫法原样展示
 };
 
 export type OauthPlatformStatus = {
@@ -517,7 +915,7 @@ export type OauthConnectPollResult =
 
 // ---- 插件系统（/plugins 路由）----
 
-export type PluginSource = "project" | "user";
+export type PluginSource = "project" | "user" | "builtin";
 
 export type PluginDescriptor = {
   id: string;
@@ -529,12 +927,22 @@ export type PluginDescriptor = {
   toolNames?: string[];
   commandNames?: string[];
   hookEvents?: string[];
+  /** 内置插件显示名（builtin 元数据；其他来源缺省，UI 回落 id） */
+  displayName?: string;
+  /** 内置插件介绍（其他来源缺省，UI 回落市场条目描述） */
+  description?: string;
+  /** 内置插件图标 dataUrl（其他来源缺省，UI 回落市场图标表） */
+  iconUrl?: string;
+  /** 插件自带面板（`<pluginDir>/ui/index.html`）：渲染层用 iframe 加载 */
+  ui?: { panel: { title: string; entry: string } };
 };
 
 export type McpServerState = {
-  status: "connecting" | "ready" | "failed";
+  status: "connecting" | "ready" | "failed" | "unconfigured";
   toolCount: number;
   error?: string;
+  /** unconfigured 时缺的 ${VAR} 名单 */
+  missingEnv?: string[];
 };
 
 export type PluginsOverview = {
@@ -573,9 +981,400 @@ export async function setPluginsState(disabled: string[]): Promise<Settings> {
   return window.meow.setPluginsState({ disabled }) as Promise<Settings>;
 }
 
+// ---- Claude Code hooks（设置页只读摘要）----
+
+export type HooksLayer = "user" | "project" | "local";
+export type HooksRunMode = "auto" | "ask";
+
+export type HooksConfig = {
+  enabled: boolean;
+  error?: string;
+  runMode: HooksRunMode;
+  scope: { user: boolean; workspace: boolean };
+  files: Array<{
+    layer: HooksLayer;
+    path: string;
+    exists: boolean;
+    error?: string;
+    excluded: boolean;
+    commands: number;
+  }>;
+  events: Array<{
+    event: string;
+    commands: Array<{
+      event: string;
+      layer: HooksLayer;
+      source: string;
+      matcher?: string;
+      command: string;
+      timeout: number;
+      excluded: boolean;
+    }>;
+  }>;
+  totalCommands: number;
+  unsupportedEvents: Array<{ event: string; count: number }>;
+};
+
+export async function getHooksConfig(): Promise<HooksConfig> {
+  return api<HooksConfig>("/hooks/config");
+}
+
+export type HooksSettingsInput = {
+  enabled: boolean;
+  runMode: HooksRunMode;
+  includeWorkspace: boolean;
+};
+
+/** 保存 hooks 启停/范围/运行方式：主进程写 settings 后重启 agent server */
+export async function saveHooksSettings(input: HooksSettingsInput): Promise<Settings> {
+  return window.meow.saveHooksSettings(input) as Promise<Settings>;
+}
+
+export type OpenHooksFileResult = {
+  ok: boolean;
+  path?: string;
+  missing?: boolean;
+  error?: string;
+};
+
+/** 打开 ~/.claude 或工作区 .claude 的配置文件（路径由主进程解析） */
+export async function openHooksFile(layer: HooksLayer): Promise<OpenHooksFileResult> {
+  return window.meow.openHooksFile(layer) as Promise<OpenHooksFileResult>;
+}
+
+// ---- 数据导入（/import 路由，设置页「数据导入」）----
+
+export type ImportAppId = "qoder" | "qoderintl" | "workbuddy" | "workbuddyai" | "zcode" | "opencode" | "dsh" | "codex";
+export type ImportGroupId = "mcp" | "memory" | "skills" | "tasks";
+
+export type ImportSource = {
+  appId: ImportAppId;
+  detected: boolean;
+  groups: Array<{ id: ImportGroupId; count: number }>;
+};
+
+export type ImportPlanItem = {
+  group: ImportGroupId;
+  name: string;
+  key?: string;
+};
+
+export type ImportItemResult = { status: "imported" | "skipped" | "failed"; reason?: string };
+
+export async function getImportSources(): Promise<ImportSource[]> {
+  const result = await api<{ sources: ImportSource[] }>("/import/sources");
+  return result.sources;
+}
+
+/** 列出待导入项：已存在（同名/同 key）的不会出现，客户端按返回顺序逐条驱动进度 */
+export async function planDataImport(
+  appId: ImportAppId,
+  groups: ImportGroupId[],
+): Promise<ImportPlanItem[]> {
+  const result = await api<{ items: ImportPlanItem[] }>("/import/plan", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ appId, groups }),
+  });
+  return result.items;
+}
+
+export async function applyImportOne(
+  appId: ImportAppId,
+  item: ImportPlanItem,
+): Promise<ImportItemResult> {
+  return api<ImportItemResult>("/import/apply-one", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ appId, group: item.group, name: item.name, key: item.key }),
+  });
+}
+
+// ---- 记忆（/memory 路由，设置页「记忆」管理）----
+
+export type MemoryScopeId = "user" | "project";
+
+export type MemoryListItem = {
+  name: string;
+  description: string;
+  /** frontmatter 里的创建日期（YYYY-MM-DD）；缺省为 null */
+  created: string | null;
+  /** 文件 mtime（ISO）；文件丢失为 null */
+  mtime: string | null;
+};
+
+export async function listMemories(
+  workspace?: string,
+): Promise<{ user: MemoryListItem[]; project: MemoryListItem[] }> {
+  const query = workspace ? `?cwd=${encodeURIComponent(workspace)}` : "";
+  return api<{ user: MemoryListItem[]; project: MemoryListItem[] }>(`/memory${query}`);
+}
+
+export async function readMemoryFile(
+  scope: MemoryScopeId,
+  name: string,
+  workspace?: string,
+): Promise<{ content: string; created: string | null }> {
+  const params = new URLSearchParams({ scope, name });
+  if (workspace) params.set("cwd", workspace);
+  return api<{ content: string; created: string | null }>(`/memory/file?${params.toString()}`);
+}
+
+/** 写入记忆文件原文（含 frontmatter）；服务端会同步 MEMORY.md 索引 */
+export async function writeMemoryFile(
+  scope: MemoryScopeId,
+  name: string,
+  content: string,
+  workspace?: string,
+): Promise<void> {
+  await api("/memory/file", {
+    method: "PUT",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ scope, name, content, ...(workspace ? { cwd: workspace } : {}) }),
+  });
+}
+
+export async function deleteMemoryFile(
+  scope: MemoryScopeId,
+  name: string,
+  workspace?: string,
+): Promise<void> {
+  const params = new URLSearchParams({ scope, name });
+  if (workspace) params.set("cwd", workspace);
+  await api(`/memory/file?${params.toString()}`, { method: "DELETE" });
+}
+
+/** 回合后记忆蒸馏开关（运行中实时生效；落盘走 saveProviderPrefs） */
+export async function getMemoryExtraction(): Promise<{ enabled: boolean }> {
+  return api<{ enabled: boolean }>("/config/memory-extraction");
+}
+
+export async function setMemoryExtraction(enabled: boolean): Promise<{ enabled: boolean }> {
+  return api<{ enabled: boolean }>("/config/memory-extraction", {
+    method: "PUT",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ enabled }),
+  });
+}
+
+// ---------------------------------------------------------------------------
+// 自我学习
+// ---------------------------------------------------------------------------
+
+export type LearnedSkillItem = {
+  name: string;
+  description: string;
+  status: "tentative" | "active" | "retired";
+  created: string;
+  revision: number;
+  evidence: number;
+  body: string;
+  path: string;
+  scope: "user" | "project";
+};
+
+export type LearnedTraitItem = {
+  dimension: string;
+  statement: string;
+  confidence: number;
+  evidence: string[];
+  lastConfirmed: string;
+  status: "tentative" | "active" | "retired";
+  userStated?: boolean;
+};
+
+export type LearnedGuidelineItem = {
+  id: string;
+  text: string;
+  trigger: Record<string, string>;
+  status: "tentative" | "active" | "retired";
+  confidence: number;
+  created: string;
+};
+
+export type LearningLedgerEntry = {
+  helped: number;
+  hurt: number;
+  applied: number;
+  status: "tentative" | "active" | "retired";
+  revision: number;
+  lastOutcomeAt: string;
+};
+
+export type LearningSnapshot = {
+  enabled: boolean;
+  profile: LearnedTraitItem[];
+  guidelines: LearnedGuidelineItem[];
+  skills: LearnedSkillItem[];
+  ledger: Record<string, LearningLedgerEntry>;
+  journal: Array<{
+    id: string;
+    ts: string;
+    action: string;
+    scope: string;
+    kind: string;
+    name?: string;
+    actor: string;
+    reason?: string;
+  }>;
+  dailyCalls: { date: string; count: number };
+};
+
+export async function getLearning(): Promise<{ enabled: boolean }> {
+  return api<{ enabled: boolean }>("/config/learning");
+}
+
+export async function setLearning(enabled: boolean): Promise<{ enabled: boolean }> {
+  return api<{ enabled: boolean }>("/config/learning", {
+    method: "PUT",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ enabled }),
+  });
+}
+
+/** 网络代理：运行中实时生效（下一次对外请求即走新代理，无需重启） */
+export async function getProxy(): Promise<ProxyConfig> {
+  return api<ProxyConfig>("/config/proxy");
+}
+
+export async function setProxy(config: ProxyConfig): Promise<ProxyConfig> {
+  return api<ProxyConfig>("/config/proxy", {
+    method: "PUT",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(config),
+  });
+}
+
+export async function getLearningSnapshot(): Promise<LearningSnapshot> {
+  return api<LearningSnapshot>("/learning/items");
+}
+
+export async function manageLearnedSkill(
+  action: "delete" | "reactivate" | "rollback",
+  scope: "user" | "project",
+  name: string,
+): Promise<{ ok: boolean }> {
+  return api<{ ok: boolean }>("/learning/skill", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ action, scope, name }),
+  });
+}
+
+export async function consolidateLearning(): Promise<{ applied: string[] }> {
+  return api<{ applied: string[] }>("/learning/consolidate", { method: "POST" });
+}
+
+/** 清除所有学到的（两层学习根全清，不可撤销） */
+export async function clearLearning(): Promise<{ cleared: string[] }> {
+  return api<{ cleared: string[] }>("/learning/clear", { method: "POST" });
+}
+
+export type InstructionSettings = {
+  includeAgentsMd: boolean;
+  includeClaudeMd: boolean;
+};
+
+/** AGENTS.md / CLAUDE.md 导入开关（运行中实时生效；落盘走 savePreferences） */
+export async function getInstructionSettings(): Promise<InstructionSettings> {
+  return api<InstructionSettings>("/config/instructions");
+}
+
+export async function setInstructionSettings(
+  settings: Partial<InstructionSettings>,
+): Promise<InstructionSettings> {
+  return api<InstructionSettings>("/config/instructions", {
+    method: "PUT",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(settings),
+  });
+}
+
+// ---- 项目规则（/rules 路由，设置页「规则」管理）----
+
+export type RuleSummary = {
+  name: string;
+  title: string;
+  size: number;
+  /** 文件 mtime（ISO）；文件丢失为 null */
+  mtime: string | null;
+};
+
+export type RuleRecord = {
+  name: string;
+  content: string;
+  mtime: string | null;
+};
+
+export async function listRules(workspace?: string): Promise<RuleSummary[]> {
+  const query = workspace ? `?cwd=${encodeURIComponent(workspace)}` : "";
+  const result = await api<{ rules: RuleSummary[] }>(`/rules${query}`);
+  return result.rules ?? [];
+}
+
+export async function readRule(workspace: string | undefined, name: string): Promise<RuleRecord> {
+  const params = new URLSearchParams({ name });
+  if (workspace) params.set("cwd", workspace);
+  return api<RuleRecord>(`/rules/file?${params.toString()}`);
+}
+
+export async function writeRule(
+  workspace: string | undefined,
+  name: string,
+  content: string,
+): Promise<void> {
+  await api("/rules/file", {
+    method: "PUT",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ name, content, ...(workspace ? { cwd: workspace } : {}) }),
+  });
+}
+
+export async function deleteRule(workspace: string | undefined, name: string): Promise<void> {
+  const params = new URLSearchParams({ name });
+  if (workspace) params.set("cwd", workspace);
+  await api(`/rules/file?${params.toString()}`, { method: "DELETE" });
+}
+
+/** 语色（运行中实时生效；落盘走 savePreferences） */
+export async function getSpeechStyle(): Promise<{ style: SpeechStyle }> {
+  return api<{ style: SpeechStyle }>("/config/speech-style");
+}
+
+export async function setSpeechStyle(style: SpeechStyle): Promise<{ style: SpeechStyle }> {
+  return api<{ style: SpeechStyle }>("/config/speech-style", {
+    method: "PUT",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ style }),
+  });
+}
+
+/** 命令沙箱：运行中实时切换；落盘走 saveProviderPrefs({ sandbox }) */
+export async function getSandbox(): Promise<SandboxStatus> {
+  return api<SandboxStatus>("/config/sandbox");
+}
+
+export async function setSandbox(patch: Partial<SandboxSettings>): Promise<SandboxStatus> {
+  return api<SandboxStatus>("/config/sandbox", {
+    method: "PUT",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(patch),
+  });
+}
+
+export async function probeSandbox(): Promise<SandboxProbeResult> {
+  return api<SandboxProbeResult>("/config/sandbox/probe", { method: "POST" });
+}
+
+export async function revokeSandbox(): Promise<SandboxRevokeResult> {
+  return api<SandboxRevokeResult>("/config/sandbox/revoke", { method: "POST" });
+}
+
 // ---- 插件市场（/marketplace 路由）----
 
+// i18n-allow-block-start：以下是与后端 / 市场索引一致的规范分类值（数据标识符，不参与翻译）
 export type MarketCategory = "开发工具" | "界面设计" | "内容创作" | "效率提升" | "数据分析";
+// i18n-allow-block-end
 
 export type MarketplaceItem = {
   id: string;
@@ -624,9 +1423,16 @@ export async function listMarketplace(): Promise<MarketplaceListResult> {
 export async function fetchMarketplaceDetail(
   id: string,
   type: MarketplaceEntry["type"],
+  channel?: MarketplaceEntryLike["channel"],
 ): Promise<MarketplaceDetail> {
   const query = new URLSearchParams({ id, type });
-  return api<MarketplaceDetail>(`/marketplace/detail?${query.toString()}`);
+  const base =
+    channel === "community"
+      ? "/marketplace/community/detail"
+      : channel === "thirdparty"
+        ? "/marketplace/thirdparty/detail"
+        : "/marketplace/detail";
+  return api<MarketplaceDetail>(`${base}?${query.toString()}`);
 }
 
 export async function installMarketplaceItem(id: string, type: MarketplaceEntry["type"]): Promise<MarketplaceInstallResult> {
@@ -644,6 +1450,201 @@ export async function uninstallMarketplaceItem(id: string, type: MarketplaceEntr
     body: JSON.stringify({ id, type }),
   });
 }
+
+// ---- 社区市场（GitCode 收录仓库；/marketplace/community 路由）----
+
+/** 社区条目：官方条目超集 + 社区专属字段 */
+export type CommunityMarketplaceEntry = MarketplaceEntry & {
+  author?: string;
+  homepage?: string;
+  channel: "community";
+  /** 安装标记版本 ≠ 远端版本（按钮变「更新」= 重装覆盖） */
+  updateAvailable?: boolean;
+};
+
+/** 卡片/行组件共用的宽松条目类型：官方条目天然满足，社区/第三方条目多出的字段可选 */
+export type MarketplaceEntryLike = MarketplaceEntry & {
+  author?: string;
+  homepage?: string;
+  channel?: "community" | "thirdparty";
+  updateAvailable?: boolean;
+  /** 第三方条目的来源（channel = "thirdparty" 时有值） */
+  upstream?: ThirdPartySource;
+};
+
+export type CommunityListResult = {
+  items: CommunityMarketplaceEntry[];
+  icons: Record<string, string>;
+};
+
+export async function listCommunityMarketplace(refresh = false): Promise<CommunityListResult> {
+  return api<CommunityListResult>(`/marketplace/community${refresh ? "?refresh=1" : ""}`);
+}
+
+export async function fetchCommunityDetail(
+  id: string,
+  type: CommunityMarketplaceEntry["type"],
+): Promise<MarketplaceDetail> {
+  const query = new URLSearchParams({ id, type });
+  return api<MarketplaceDetail>(`/marketplace/community/detail?${query.toString()}`);
+}
+
+export async function installCommunityMarketplaceItem(
+  id: string,
+  type: CommunityMarketplaceEntry["type"],
+): Promise<MarketplaceInstallResult> {
+  return api<MarketplaceInstallResult>("/marketplace/community/install", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ id, type }),
+  });
+}
+
+// ---- 第三方市场（ClawHub + SkillHub 聚合；/marketplace/thirdparty 路由，仅 skill）----
+
+export type ThirdPartySource = "clawhub" | "skillhub";
+
+export type ThirdPartySkillEntry = MarketplaceEntry & {
+  upstream: ThirdPartySource;
+  channel: "thirdparty";
+  slug: string;
+  downloads?: number;
+  updatedAt?: number;
+};
+
+export type ThirdPartyListResult = {
+  items: ThirdPartySkillEntry[];
+  /** 单源失败不拖垮列表：失败源标记为 failed */
+  sources: Record<ThirdPartySource, "ok" | "failed">;
+  /** 图标 dataUrl 表，key = "skill:<id>" */
+  icons: Record<string, string>;
+  /** 各源下一页游标；没有更多就是空对象 */
+  nextCursors: Partial<Record<ThirdPartySource, string>>;
+};
+
+export async function listThirdPartySkills(
+  opts: {
+    query?: string;
+    source?: ThirdPartySource;
+    refresh?: boolean;
+    cursors?: Partial<Record<ThirdPartySource, string>>;
+  } = {},
+): Promise<ThirdPartyListResult> {
+  const params = new URLSearchParams();
+  if (opts.query) params.set("query", opts.query);
+  if (opts.source) params.set("source", opts.source);
+  if (opts.refresh) params.set("refresh", "1");
+  if (opts.cursors && Object.keys(opts.cursors).length) params.set("cursors", JSON.stringify(opts.cursors));
+  const suffix = params.toString() ? `?${params.toString()}` : "";
+  return api<ThirdPartyListResult>(`/marketplace/thirdparty${suffix}`);
+}
+
+export async function fetchThirdPartyDetail(id: string): Promise<MarketplaceDetail> {
+  return api<MarketplaceDetail>(`/marketplace/thirdparty/detail?${new URLSearchParams({ id }).toString()}`);
+}
+
+export async function installThirdPartySkill(id: string): Promise<MarketplaceInstallResult> {
+  return api<MarketplaceInstallResult>("/marketplace/thirdparty/install", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ id }),
+  });
+}
+
+// ---- 「我的」（/marketplace/mine 路由）：手动添加的 skill / plugin / MCP ----
+
+export type MineSkillEntry = {
+  type: "skill";
+  id: string;
+  addedAt: string;
+  status: "ok" | "missing";
+  name: string;
+  description: string;
+};
+
+export type MinePluginEntry = {
+  type: "plugin";
+  id: string;
+  addedAt: string;
+  status: "ok" | "missing";
+  /** 路由层 join descriptors 后补齐的运行时字段 */
+  displayName?: string;
+  description?: string;
+  enabled: boolean;
+  error?: string;
+};
+
+export type MineMcpEntry = {
+  type: "mcp";
+  id: string;
+  addedAt: string;
+  status: "ok" | "missing";
+  enabled: boolean;
+  mcpStatus?: McpServerState["status"];
+  toolCount?: number;
+  error?: string;
+  /** mcpStatus 为 unconfigured 时缺的 ${VAR} 名单 */
+  missingEnv?: string[];
+};
+
+export type MineListResult = {
+  skills: MineSkillEntry[];
+  plugins: MinePluginEntry[];
+  mcp: MineMcpEntry[];
+};
+
+export async function listMine(): Promise<MineListResult> {
+  return api<MineListResult>("/marketplace/mine");
+}
+
+/** 手动导入本地内容：skill 传含 SKILL.md 的目录（或 SKILL.md 本身），plugin 传单文件或目录 */
+export async function importManualItem(
+  type: "skill" | "plugin",
+  sourcePath: string,
+): Promise<{ id: string; type: "skill" | "plugin" }> {
+  return api<{ id: string; type: "skill" | "plugin" }>("/marketplace/manual/import", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ type, path: sourcePath }),
+  });
+}
+
+export async function saveManualMcp(
+  id: string,
+  server: Record<string, unknown>,
+): Promise<{ id: string; overwritten: boolean }> {
+  return api<{ id: string; overwritten: boolean }>("/marketplace/manual/mcp", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ id, server }),
+  });
+}
+
+export async function toggleManualMcp(id: string, enabled: boolean): Promise<{ id: string; enabled: boolean }> {
+  return api<{ id: string; enabled: boolean }>("/marketplace/manual/mcp-toggle", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ id, enabled }),
+  });
+}
+
+/** 应用内一键提交的载荷：item.json 元数据 + 条目文件（text 内联或 path 本地路径，主进程读取） */
+export type CommunitySubmitPayload = {
+  type: "skill" | "plugin" | "mcp";
+  item: {
+    id: string;
+    name: string;
+    description: string;
+    category: string;
+    tags: string[];
+    version: string;
+    homepage?: string;
+    requiresEnv?: string[];
+    /** mcp 专用：server 配置（command/url/args/env） */
+    server?: Record<string, unknown>;
+  };
+  files: Array<{ name: string; path?: string; text?: string }>;
+};
 
 type ApiResult<T> = {
   ok: boolean;
@@ -693,6 +1694,8 @@ export type HarnessNodeData = {
   role?: string;
   /** 覆盖系统提示词：role 节点缺省 = 注册表；agent 节点缺省 = 档位提示词 */
   systemPrompt?: string;
+  /** tier 节点：层级提示词（admit 时随准入报告一次性注入；缺省/空 = 不注入） */
+  instructions?: string;
   /** 覆盖工具白名单：role 节点缺省 = 注册表；agent 节点缺省 = 跟随档位 */
   tools?: string[];
 };
@@ -889,6 +1892,16 @@ type TimelineMessage = {
   streaming?: boolean;
   /** 用户消息附带的图片（仅本进程内存，重载会话后不再保留） */
   images?: TimelineImage[];
+  /** 历史回放时该消息在 messagesForClient 里的下标；全文检索跳转锚点用（流式消息无此值） */
+  messageIndex?: number;
+  /**
+   * 挂在该条用户消息上的自动检查点（每个用户回合开始一条）：
+   * hover 气泡显示「回滚到此处」；手动检查点仍走独立分隔线（TimelineCheckpoint）。
+   */
+  checkpointId?: string;
+  /** 该自动检查点是否带文件快照（false = 只能回滚对话） */
+  checkpointHasSnapshot?: boolean;
+  checkpointLabel?: string;
 };
 
 /** 时间线里展示用的图片（dataUrl 或 assetUrl 直接喂 <img>） */
@@ -908,6 +1921,8 @@ type TimelineTool = {
   input: unknown;
   output?: string;
   truncated?: boolean;
+  /** 完整内容已落盘的相对路径（回放不保留） */
+  spilled?: string;
   ok?: boolean;
   /** 历史回放重建的条目：没有实时的 ok/output，按已完成展示 */
   replayed?: true;
@@ -925,6 +1940,8 @@ type TimelineNotice = {
   kind: "notice";
   key: string;
   message: string;
+  /** 可选动作按钮（例如"发现新版本 → 立即更新"） */
+  action?: { label: string; run: () => void };
 };
 
 /** 上下文压缩分隔线：留在会话时间线的原始位置，后续消息排在它下面 */
@@ -941,12 +1958,65 @@ type TimelineCompaction = {
   summary?: string | null;
 };
 
+/** 会话检查点分隔线：留在时间线原位，「恢复」从该点截断分支出新会话 */
+export type TimelineCheckpoint = {
+  kind: "checkpoint";
+  key: string;
+  id: string;
+  label?: string;
+  /** 自动（每个用户回合开始）或手动 */
+  auto: boolean;
+  timestamp: string;
+  /** 检查点时改动的文件列表（自动检查点才有） */
+  fileChanges: string[];
+  /** 是否带文件快照（决定能否回滚代码） */
+  hasSnapshot?: boolean;
+  fileCount?: number;
+};
+
+/** 回滚计划（POST /session/rewind dryRun 返回） */
+export type RewindFileAction = {
+  path: string;
+  action: "restore" | "delete" | "unchanged";
+  added?: number;
+  removed?: number;
+  bytes?: number;
+  conflict?: "modified_on_disk";
+  skipped?: "too_large" | "outside_workspace" | "unreadable";
+};
+
+export type RewindPlan = {
+  planId: string;
+  mode: "both" | "conversation" | "code";
+  checkpoint: { id: string; label?: string; timestamp: string; messageIndex: number };
+  cwd: string;
+  files: RewindFileAction[];
+  skipped: Array<{ path: string; reason: string }>;
+  conversation: { dropMessages: number; totalMessages: number };
+  warnings: string[];
+  requiresForce: boolean;
+};
+
+/** 最近一次可撤销的回滚（GET /session/rewind/undoable） */
+export type UndoableRewind = {
+  rewindId: string;
+  checkpointId: string;
+  mode: "both" | "conversation" | "code";
+  createdAt: string;
+  fileCount: number;
+  sourceSessionId: string;
+  sourceFilePath: string;
+};
+
+export type RewindMode = "both" | "conversation" | "code";
+
 type TimelineItem =
   | TimelineMessage
   | TimelineTool
   | TimelineError
   | TimelineNotice
-  | TimelineCompaction;
+  | TimelineCompaction
+  | TimelineCheckpoint;
 
 /** 子 Agent 在渲染层累积的只读运行状态 */
 export type SubagentRun = SubagentSummary & {
@@ -959,6 +2029,10 @@ export type SubagentRun = SubagentSummary & {
   prompt?: string;
   /** 模型正在准备工具调用时的进度文案 */
   preparing?: string;
+  /** 已发送但尚未在下一步送达子 Agent 的插话 */
+  pendingSteers?: Array<{ id: string; text: string }>;
+  /** 插话未能送达（子 Agent 刚好结束/被停止） */
+  steerError?: string;
   /** child_result 事件：契约角色（implementer/reviewer/verifier）的宿主校验结论 */
   childResult?: {
     status: string;
@@ -1002,7 +2076,7 @@ export type {
   TimelineTool,
 };
 
-// ---- Git 源码管理 ----
+// ---- Git 管理 ----
 
 export type GitFileStatus =
   | "modified"
@@ -1048,6 +2122,13 @@ export type GitStatus = {
   staged: GitFileEntry[];
   unstaged: GitFileEntry[];
   conflicted: GitFileEntry[];
+  /** 分组截断前的总数；缺省时按数组长度处理（列表最多 1000 条） */
+  stagedCount?: number;
+  unstagedCount?: number;
+  conflictedCount?: number;
+  /** 去重后的总增删行数（全量；untracked 没有 numstat，按 0 计） */
+  addedTotal?: number;
+  removedTotal?: number;
 };
 
 export type GitBranch = {
@@ -1101,8 +2182,17 @@ export async function gitStage(paths: string[]): Promise<void> {
   await api<unknown>("/git/stage", jsonPost({ paths }));
 }
 
+/** 全部暂存：列表被截断时用它，别把几万个路径塞进请求体 */
+export async function gitStageAll(): Promise<void> {
+  await api<unknown>("/git/stage", jsonPost({ all: true }));
+}
+
 export async function gitUnstage(paths: string[]): Promise<void> {
   await api<unknown>("/git/unstage", jsonPost({ paths }));
+}
+
+export async function gitUnstageAll(): Promise<void> {
+  await api<unknown>("/git/unstage", jsonPost({ all: true }));
 }
 
 export async function gitDiscard(paths: string[]): Promise<{ discarded: number }> {
@@ -1179,4 +2269,15 @@ export async function gitResolve(input: {
 
 export async function gitCommitMessage(hint?: string): Promise<{ message: string }> {
   return api<{ message: string }>("/git/commit-message", jsonPost(hint ? { hint } : {}));
+}
+
+/** AI 美化提示词：text 是当前输入框快照；side 让侧边聊使用自己的模型。 */
+export async function polishPrompt(
+  text: string,
+  options: { side?: boolean } = {},
+): Promise<{ text: string }> {
+  return api<{ text: string }>(
+    "/prompt/polish",
+    jsonPost({ text, ...(options.side ? { side: true } : {}) }),
+  );
 }

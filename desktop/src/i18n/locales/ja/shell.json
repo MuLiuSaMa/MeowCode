@@ -1,0 +1,232 @@
+{
+  "rail": {
+    "home": "ホーム",
+    "architecture": "Agent アーキテクチャ",
+    "git": "Git 管理",
+    "plugins": "マーケットプレイス",
+    "settings": "設定"
+  },
+  "update": {
+    "downloadingPercent": "新しいバージョンを自動ダウンロード中 {{percent}}%",
+    "downloading": "新しいバージョンを自動ダウンロード中",
+    "dismiss": "通知を閉じる",
+    "restart": "再起動して更新をインストール",
+    "failedAria": "更新の自動ダウンロードに失敗しました。クリックで手動ダウンロード",
+    "failedTitle": "自動ダウンロードに失敗しました。クリックで手動ダウンロード"
+  },
+  "window": {
+    "minimize": "最小化",
+    "restore": "元に戻す",
+    "maximize": "最大化",
+    "close": "閉じる"
+  },
+  "approval": {
+    "title": "承認が必要です",
+    "requestSubagent": "サブエージェント「{{name}}」が {{tool}} を使おうとしています。",
+    "requestApp": "MeowCode が {{tool}} を使おうとしています。",
+    "stale": "承認中にファイルが変更されました。下のプレビューは再生成済みです。もう一度確認してください。",
+    "risk": "危険なコマンド",
+    "diff": "変更プレビュー",
+    "deny": "拒否",
+    "approve": "許可",
+    "hookTitle": "Hook がコマンドの実行を要求しています",
+    "hookRequest": "イベント：{{event}}",
+    "hookFromAgent": "サブエージェント「{{name}}」からの要求",
+    "hookMatcher": "マッチャー：{{matcher}}",
+    "hookSource": "設定：{{source}}",
+    "hookNote": "このコマンドはユーザー権限で実行されます。承認はこのセッション内でのみ記憶されます。",
+    "hookRun": "実行",
+    "hookSkip": "スキップ",
+    "hookReasonTitle": "Hook が確認を要求しています",
+    "sandboxTitle": "サンドボックスが書き込みをブロックしました",
+    "sandboxDesc": "コマンドがワークスペース外へ書き込もうとしたため、OS レベルの書き込みサンドボックスが阻止しました。",
+    "sandboxCommand": "ブロックされたコマンド",
+    "sandboxEvidence": "ブロックの証拠",
+    "sandboxNote": "サンドボックス外で再試行すると、現在のユーザー権限でこのコマンドが実行されます。許可されるのは今回の 1 回だけで、サンドボックスは無効になりません。",
+    "sandboxDeny": "サンドボックスを維持",
+    "sandboxRetry": "サンドボックス外で再試行"
+  },
+  "plan": {
+    "aria": "タスク計画",
+    "expand": "タスク計画を展開",
+    "collapse": "タスク計画を折りたたむ",
+    "allDone": "すべてのタスクが完了しました",
+    "endedHeadline": "計画は終了しました",
+    "ended": "終了",
+    "status": {
+      "pending": "未着手",
+      "inProgress": "進行中",
+      "completed": "完了",
+      "cancelled": "キャンセル済み"
+    },
+    "confirmedWithPath": "計画を確認しました。{{path}} に沿って実装を開始してください。",
+    "confirmed": "計画を確認しました。実装を開始してください。",
+    "stepsProgress": "ステップ {{done}} / {{total}}",
+    "filesChanged": "{{n}} 個のファイルを変更"
+  },
+  "status": {
+    "preparingSubagents_one": "サブエージェント {{count}} 件を準備中…",
+    "preparingSubagents_few": "サブエージェント {{count}} 件を準備中…",
+    "preparingSubagents_many": "サブエージェント {{count}} 件を準備中…",
+    "preparingSubagents_other": "サブエージェント {{count}} 件を準備中…",
+    "preparingWrites": "ファイルを書き込み中…",
+    "preparingEdits": "ファイルを編集中…",
+    "preparingTools_one": "ツール呼び出し {{count}} 件を準備中…",
+    "preparingTools_few": "ツール呼び出し {{count}} 件を準備中…",
+    "preparingTools_many": "ツール呼び出し {{count}} 件を準備中…",
+    "preparingTools_other": "ツール呼び出し {{count}} 件を準備中…"
+  },
+  "notice": {
+    "interrupted": "前回の生成はアプリの終了で中断されました。生成済みの内容は保持されているので、会話を続けられます。",
+    "updateAvailable": "新しいバージョン {{version}} があります",
+    "updateNow": "今すぐ更新",
+    "subagentInterrupted": "このサブエージェントのターンは中断されました。生成済みの内容は保持されています。",
+    "cacheEvicted": "キャッシュがサーバー側で破棄された可能性があります（宣言された TTL を超えてアイドル）。このターンはキャッシュミスとして課金されます。",
+    "cacheUnsupported": "このゲートウェイはプレフィックスが変わらないのにキャッシュヒットを返しませんでした。プレフィックスキャッシュに未対応の可能性があり、コストは入力全体で計算されます。",
+    "providerSwitched": "プロバイダーを一時的に切り替えました：{{from}} → {{to}}（{{reason}}）。設定 → モデルで順序を変更できます。",
+    "undoableRewind": "{{count}} 件のファイルを巻き戻しました。この巻き戻しは取り消せます（元セッションは保持）。",
+    "undoRewind": "巻き戻しを取り消す",
+    "dismiss": "閉じる"
+  },
+  "subagent": {
+    "label": "サブエージェント",
+    "loadFailed": "サブエージェントの記録を読み込めません",
+    "steerAborted": "メッセージを送信できませんでした：サブエージェントは停止しました",
+    "steerFinished": "メッセージを送信できませんでした：サブエージェントは終了しました",
+    "status": {
+      "completed": "完了",
+      "failed": "失敗",
+      "aborted": "停止",
+      "interrupted": "中断"
+    },
+    "notice": "サブエージェント「{{name}}」{{status}}",
+    "noticeWithReport": "サブエージェント「{{name}}」{{status}}：{{report}}"
+  },
+  "error": {
+    "reason": {
+      "timeout": "リクエストがタイムアウトしました",
+      "rateLimit": "レート制限に達しました",
+      "server": "サーバーエラー"
+    },
+    "worktreeLoad": "worktree セッションの作成後に読み込みに失敗しました。もう一度お試しください。",
+    "notGitRepo": "現在のワークスペースは git リポジトリではないため、worktree による分離は使えません。"
+  },
+  "toast": {
+    "worktreeDirty": "メインのワークスペースに未コミットの変更があります。worktree は HEAD を基準にするため、未コミットの内容は引き継がれません"
+  },
+  "architecture": {
+    "customName": "カスタム Agent"
+  },
+  "model": {
+    "unconfigured": "モデル未設定"
+  },
+  "resize": {
+    "list": "左側の一覧の幅を調整",
+    "inspector": "右側パネルの幅を調整"
+  },
+  "theme": {
+    "providerMissing": "useTheme は ThemeProvider 内で使用してください"
+  },
+  "updateModal": {
+    "currentVersion": "現在 {{version}}",
+    "noAsset": "このリリースには現在のプラットフォーム用のインストーラーが含まれていないため、オンラインでダウンロードできません。",
+    "noNotes": "このリリースには更新情報がありません。",
+    "downloadDone": "ダウンロード完了",
+    "downloading": "ダウンロード中 {{percent}}%",
+    "downloadSize": "（{{received}} / {{total}}）",
+    "later": "あとで",
+    "restart": "再起動して更新",
+    "cancel": "キャンセル",
+    "downloadingShort": "ダウンロード中…",
+    "download": "アップデートをダウンロード"
+  },
+  "modelPopover": {
+    "aria": "モデルと思考の強さ",
+    "selectModel": "モデルを選択",
+    "empty": "有効なモデルがありません。設定 → モデル から追加してください。",
+    "manage": "モデルを管理",
+    "back": "モデル一覧に戻る",
+    "effort": "思考の強さ"
+  },
+  "taskRow": {
+    "status": {
+      "running": "実行中",
+      "completed": "完了",
+      "failed": "失敗",
+      "aborted": "停止済み",
+      "interrupted": "中断済み"
+    },
+    "background": "バックグラウンド",
+    "open": "サブエージェントを開く：{{name}}",
+    "durationUnderSecond": "1 秒未満",
+    "durationSeconds": "{{value}} 秒",
+    "durationMinutes": "{{minutes}} 分 {{seconds}} 秒"
+  },
+  "closeDialog": {
+    "title": "ウィンドウを閉じるとき、MeowCode をどうしますか？",
+    "desc": "MeowCode はバックグラウンドで動作を続けます。システムトレイから再度開けます。",
+    "remember": "選択を記憶する（設定 → 一般 で変更できます）",
+    "cancel": "キャンセル",
+    "tray": "トレイに最小化",
+    "quit": "完全に終了"
+  },
+  "contextWarning": {
+    "usage": "コンテキスト使用率 <b>{{percent}}%</b>（{{used}} / {{window}}）。",
+    "hintStreaming": "このターンの終了後に手動で圧縮できます。次回のリクエストがあふれて自動圧縮されるのを防げます。",
+    "hint": "手動での圧縮をおすすめします。次回のリクエストがあふれて自動圧縮されるのを防げます。",
+    "compacting": "圧縮中…",
+    "compactAfterTurn": "このターン終了後に圧縮",
+    "compactNow": "今すぐ圧縮",
+    "dismissAria": "圧縮のヒントを閉じる",
+    "dismissTitle": "今回は表示しない"
+  },
+  "compaction": {
+    "compacting": "会話履歴を圧縮中…",
+    "interrupted": "前回の圧縮はアプリの終了により中断されました",
+    "failed": "前回の圧縮に失敗しました。履歴は圧縮されていません",
+    "done": "会話履歴を圧縮しました。以前のメッセージは要約として保持されます"
+  },
+  "messageNav": {
+    "aria": "会話ナビゲーション",
+    "noText": "（テキストなし）",
+    "itemTitle": "{{index}} 件目：{{preview}}",
+    "images_one": "{{count, number}} 枚の画像",
+    "images_few": "{{count, number}} 枚の画像",
+    "images_many": "{{count, number}} 枚の画像",
+    "images_other": "{{count, number}} 枚の画像"
+  },
+  "agentProfile": {
+    "aria": "メイン Agent のプロファイル",
+    "customDesc": "カスタムアーキテクチャ · 現在のプロファイルの機能を引き継ぎます",
+    "dispatchable_one": "{{tagline}} · {{count, number}} 個のサブエージェントを派遣できます",
+    "dispatchable_few": "{{tagline}} · {{count, number}} 個のサブエージェントを派遣できます",
+    "dispatchable_many": "{{tagline}} · {{count, number}} 個のサブエージェントを派遣できます",
+    "dispatchable_other": "{{tagline}} · {{count, number}} 個のサブエージェントを派遣できます"
+  },
+  "contextMeter": {
+    "usage": "コンテキスト {{used}} / {{window}}（{{percent}}%）",
+    "noWindow": "コンテキストウィンドウが未設定",
+    "aria": "コンテキスト使用量"
+  },
+  "bootSplash": {
+    "aria": "MeowCode を起動中"
+  },
+  "island": {
+    "connecting": "接続中…",
+    "running": "{{n}} 件のセッションが実行中",
+    "waitingApproval": "承認待ち",
+    "idle": "アイドル",
+    "approvalHint": "承認待ち",
+    "thinking": "思考中…",
+    "working": "処理中…",
+    "hadError": "エラーが発生しました",
+    "untitled": "無題のセッション",
+    "empty": "メッセージはまだありません",
+    "stop": "停止",
+    "send": "送信",
+    "openMain": "メインウィンドウを開く",
+    "inputPlaceholder": "メッセージを入力、Enter で送信",
+    "inputIdle": "このセッションは実行中ではありません。メインウィンドウで続行してください。",
+    "dropHint": "ドロップで添付"
+  }
+}

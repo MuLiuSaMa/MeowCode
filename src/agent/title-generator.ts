@@ -35,8 +35,14 @@ Title rules:
 - Return exactly one valid JSON object with no surrounding text: {"title":"..."}`;
 
 const MAX_TITLE_INPUT_CHARS = 1_200;
-/** 标题输出很短；64 tokens 足够容纳 JSON 包裹与截断兜底。 */
-export const TITLE_MAX_TOKENS = 64;
+/**
+ * 标题输出很短（一个 JSON 对象），但**思考型模型**会把预算先花在 reasoning 上：
+ * 64 token 几乎必然只够思考、正文为空 —— 标题生成会静默失败（用户只看到兜底标题）。
+ * 给到 200 让常规模型从容输出；仍为空时再用 TITLE_RETRY_MAX_TOKENS 重试一次。
+ */
+export const TITLE_MAX_TOKENS = 200;
+/** 标题重试预算：思考型模型想清楚 + 给出正文 */
+export const TITLE_RETRY_MAX_TOKENS = 1_200;
 /** 标题最大显示宽度：CJK 记 2、其余记 1（约 18 个汉字或 36 个拉丁字符） */
 const MAX_TITLE_WIDTH = 36;
 
@@ -154,21 +160,35 @@ export async function generateSessionTitle(options: {
   signal?: AbortSignal;
   onUsage?: (usage: TokenUsage) => void;
 }): Promise<string> {
-  const messages: ChatMessage[] = [
+  const baseMessages: ChatMessage[] = [
     { role: "system", content: TITLE_SYSTEM_PROMPT },
     { role: "user", content: normalizeTitleInput(options.userMessage) },
   ];
-  // 不给工具、不回流 delta —— 标题请求与主对话完全隔离，只取最终文本。
-  // 标题只需要几个词：固定小输出预算并关闭推理，避免为一句标题付几千 thinking。
-  const result = await streamChatCompletion({
-    provider: utilityProvider(options.provider, TITLE_MAX_TOKENS, "title"),
-    messages,
-    tools: [],
-    signal: options.signal,
-    onDelta: () => undefined,
-  });
-  if (result.usage) options.onUsage?.(result.usage);
-  const title = cleanGeneratedTitle(result.message.content ?? "");
-  if (!title) throw new Error("Title generation returned empty output.");
-  return title;
+  const attempts: Array<{ maxTokens: number; extraSystem?: string }> = [
+    { maxTokens: TITLE_MAX_TOKENS },
+    {
+      maxTokens: TITLE_RETRY_MAX_TOKENS,
+      extraSystem:
+        "IMPORTANT: reply with the JSON object only. Do not think out loud, do not explain.",
+    },
+  ];
+  for (const attempt of attempts) {
+    const messages: ChatMessage[] = attempt.extraSystem
+      ? [...baseMessages, { role: "system", content: attempt.extraSystem }]
+      : baseMessages;
+    // 不给工具、不回流 delta —— 标题请求与主对话完全隔离，只取最终文本。
+    // 关闭推理（utilityProvider 剥掉 effort/budget），但思考型模型可能仍默认思考：
+    // 正文为空时用更大预算重试一次，避免标题静默失败。
+    const result = await streamChatCompletion({
+      provider: utilityProvider(options.provider, attempt.maxTokens, "title"),
+      messages,
+      tools: [],
+      signal: options.signal,
+      onDelta: () => undefined,
+    });
+    if (result.usage) options.onUsage?.(result.usage);
+    const title = cleanGeneratedTitle(result.message.content ?? "");
+    if (title) return title;
+  }
+  throw new Error("Title generation returned empty output.");
 }

@@ -32,9 +32,13 @@
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  flex-wrap: wrap; /* 确认删除出现两个按钮时不撑破列宽 */
+  /* 确认删除会出现两个按钮：不许换行，按钮也不许被挤压，宁可让前面的文字列截断 */
+  flex-wrap: nowrap;
+  white-space: nowrap;
   gap: 4px;
-  row-gap: 4px;
+}
+.mc-table__actions > * {
+  flex: none;
 }
 .mc-table__num {
   text-align: right;

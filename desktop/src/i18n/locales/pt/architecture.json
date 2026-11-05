@@ -1,0 +1,186 @@
+{
+  "nav": {
+    "heading": "Arquitetura de agentes",
+    "agentListAria": "Lista de agentes",
+    "mainAgentGroup": "Agente principal",
+    "subagentGroup": "Subagentes · {{name}}",
+    "subagentCount_one": "{{count}} subagente · {{tagline}}",
+    "subagentCount_other": "{{count}} subagentes · {{tagline}}",
+    "subagentCount_few": "{{count}} subagentes · {{tagline}}",
+    "subagentCount_many": "{{count}} subagentes · {{tagline}}",
+    "addArchitecture": "Nova arquitetura de agente personalizada",
+    "renameHint": "Clique duas vezes no nome para renomear",
+    "deleteAria": "Excluir “{{name}}”",
+    "currentBadge": "Atual",
+    "profileDisabledBadge": "Desativado neste perfil",
+    "readOnlyBadge": "Somente leitura",
+    "customTagline": "Arquitetura personalizada",
+    "loading": "Carregando agentes…",
+    "emptySubagents": "Este agente não inclui subagentes"
+  },
+  "roles": {
+    "general": "Genérico",
+    "explore": "Exploração",
+    "planner": "Planejamento",
+    "scoper": "Definição de escopo",
+    "depthProber": "Sondagem profunda",
+    "implementer": "Implementação",
+    "reviewer": "Revisão",
+    "verifier": "Verificação",
+    "freshVerifier": "Nova verificação",
+    "juror": "Veredicto",
+    "sweeper": "Limpeza final",
+    "goalChecker": "Conferência do objetivo",
+    "custom": "Personalizado"
+  },
+  "types": {
+    "agent": "Agent",
+    "tier": "Nível",
+    "gate": "Checkpoint",
+    "role": "Subagente"
+  },
+  "nodeCard": {
+    "agent": "Agente principal",
+    "role": "Subagente",
+    "gate": "Checkpoint",
+    "tier": "Nível",
+    "tierPassThrough": "Nível · direto",
+    "agentTip": "O agente principal é a runtime raiz e dispara subagentes por task",
+    "roleTip": "O subagente é instanciado quando a tarefa é disparada por task",
+    "gateTip": "Um checkpoint é um ponto de conferência; a aresta gate→role define o subagente de encerramento",
+    "tierTip": "Nível de tarefa: decide quais checkpoints são percorridos depois do admit",
+    "terminalTierTip": "Este nível não tem checkpoints: conclui logo após o admit"
+  },
+  "edge": {
+    "closeOut": "encerramento"
+  },
+  "select": {
+    "placeholder": "Selecione uma opção"
+  },
+  "defaults": {
+    "standardAgent": "Agente padrão",
+    "mainAgent": "Agente principal",
+    "newTier": "Novo nível",
+    "newGate": "Novo checkpoint",
+    "customRoleDescription": "Subagente personalizado: a lista de ferramentas permitidas e o prompt do sistema são sobrescritos no painel de propriedades deste nó"
+  },
+  "status": {
+    "loading": "Carregando…",
+    "saving": "Salvando…",
+    "saved": "Salvo — o run de governança carrega o novo grafo antes do próximo admit",
+    "reset": "Redefinido para a arquitetura integrada — vale depois de salvar",
+    "connectTarget": "Modo de conexão: clique no nó de destino",
+    "connectPickNode": "Primeiro selecione um nó e depois clique em “Conectar”",
+    "dirty": "Há alterações não salvas"
+  },
+  "toolbar": {
+    "addTier": "Nível",
+    "addGate": "Checkpoint",
+    "addRole": "Subagente",
+    "connect": "Conectar",
+    "cancelConnect": "Cancelar conexão",
+    "connectTip": "Clique no nó de origem e depois no de destino para conectá-los",
+    "delete": "Excluir",
+    "deleteTip": "Exclui o nó ou a conexão selecionados (excluir um nó também remove suas arestas)",
+    "fit": "Ajustar à tela",
+    "fitTip": "Centraliza e escala para mostrar a arquitetura inteira",
+    "reset": "Restaurar a integrada",
+    "save": "Salvar no espaço de trabalho"
+  },
+  "canvas": {
+    "loading": "Carregando o grafo de arquitetura…",
+    "legend": "Arraste nós · arraste no vazio para deslocar · use a roda para dar zoom | Agente principal→subagente = disparo task, agente principal→nível = admit | número tier→gate = ordem dos checkpoints, gate→role = encerramento"
+  },
+  "inspector": {
+    "ariaLabel": "Propriedades do nó",
+    "close": "Fechar painel de propriedades",
+    "edge": "Conexão",
+    "agentSubtitle": "Agente principal · {{id}}",
+    "tierSubtitle": "Nível de tarefa · {{id}}",
+    "gateSubtitle": "Checkpoint de qualidade · {{id}}",
+    "roleSubtitle": "Subagente · {{role}}",
+    "roleSubtitleNumbered": "Subagente · {{role}} #{{ordinal}}",
+    "edgeSubtitle": "Conexão · {{type}}",
+    "deleteNode": "Excluir nó",
+    "deleteEdge": "Excluir conexão"
+  },
+  "fields": {
+    "nodeName": "Nome do nó",
+    "nodeId": "ID do nó",
+    "description": "Responsabilidade",
+    "availableTools": "Ferramentas disponíveis",
+    "selectAll": "Selecionar tudo",
+    "clearAll": "Limpar seleção",
+    "restoreDefault": "Restaurar o padrão",
+    "restoreBuiltin": "Restaurar as integradas",
+    "systemPrompt": "Prompt do sistema",
+    "agentPromptPlaceholder": "Em branco = usar o prompt padrão do perfil atual",
+    "dispatch": "Disparos",
+    "dispatchHint": "Altera-se na conexão",
+    "roleType": "Identificador do subagente",
+    "displayName": "Nome de exibição",
+    "roleDescription": "Resumo da responsabilidade do subagente",
+    "gateBindings": "Vínculos de checkpoints",
+    "gateBindingsHint": "Clique para trocar o vínculo",
+    "rolePromptPlaceholder": "Em branco = usar o prompt integrado",
+    "gateName": "Nome do checkpoint de qualidade",
+    "invariant": "Invariante / critérios de aceitação",
+    "onFail": "Estratégia em caso de falha",
+    "closer": "Subagente de encerramento",
+    "tierName": "Nome do nível",
+    "tierId": "ID do nível (só T0 / T1 / T2 são reconhecidos pelo admit)",
+    "tierDescription": "Descrição do nível",
+    "tierPrompt": "Prompt do nível (injetado no admit, opcional)",
+    "tierPromptPlaceholder": "Em branco = nada é injetado; o texto vai uma vez ao agente principal junto com o relatório do admit",
+    "gateSequence": "Sequência de checkpoints",
+    "gateSequenceHint": "Clique para adicionar ou remover",
+    "edgePath": "Caminho",
+    "edgeType": "Tipo",
+    "order": "Número order (executa em ordem crescente dentro do nível)"
+  },
+  "tools": {
+    "none": "Sem ferramentas",
+    "allIncludingDynamic": "Todas as ferramentas, além das dinâmicas de MCP / navegador",
+    "selectedCount_one": "{{count}} ferramenta selecionada",
+    "selectedCount_other": "{{count}} ferramentas selecionadas",
+    "selectedCount_few": "{{count}} ferramentas selecionadas",
+    "selectedCount_many": "{{count}} ferramentas selecionadas",
+    "selectedFull": "Todas as ferramentas selecionadas",
+    "followProfile": "Segue o perfil atual",
+    "inheritedNote": "Sem sobrescrita não há limite extra: quem decide é o perfil",
+    "orchestrationNote": "task / admit são canais de orquestração e estão sempre disponíveis",
+    "explicitWhitelistNote": "Uma lista de permitidas explícita deixa fora as ferramentas MCP / navegador injetadas em tempo de execução"
+  },
+  "registry": {
+    "unavailable": "Registro indisponível",
+    "loading": "Lendo o registro…",
+    "unavailableRetry": "Registro indisponível — reinicie o aplicativo ou use “Tentar novamente” acima",
+    "loadFailed": "Falha ao carregar o registro de subagentes",
+    "loadFailedHint": "O aplicativo de desktop pode estar rodando uma compilação antiga do servidor; reinicie-o e tente de novo.",
+    "retry": "Tentar novamente"
+  },
+  "onFail": {
+    "rework": "Refazer (volta ao primeiro checkpoint)",
+    "loopTo": "loop-to:{{id}} (volta para {{id}})",
+    "block": "block (bloqueia a lane imediatamente)"
+  },
+  "closer": {
+    "unbound": "Sem vínculo (o admit vai recusar)"
+  },
+  "empty": {
+    "dispatchEdges": "Ainda não há conexões de disparo",
+    "gateNodes": "O grafo ainda não tem nós de checkpoint"
+  },
+  "tier": {
+    "executionOrder": "Ordem de execução: {{gates}}; a ordem muda no order da conexão.",
+    "passThrough": "Sem checkpoints · direto (conclui logo após o admit)"
+  },
+  "notes": {
+    "agentPrompt": "O campo já vem preenchido com o prompt padrão do perfil atual; salve para aplicar as mudanças. Um conteúdo personalizado <strong>substitui por completo</strong> o prompt do perfil, então mantenha as regras de uso de ferramentas e de caminhos.",
+    "agentRoot": "O agente principal é uma runtime raiz permanente e não participa de checkpoints; os subagentes de encerramento fecham o resultado pela cadeia tier→gate→role. Um subagente não pode disparar novas tarefas.",
+    "rolePrompt": "Deixar em branco volta ao prompt integrado. O modo de aprovação dos subagentes somente leitura continua sendo imposto pelo registro; o subagente de encerramento precisa manter o contrato de resultado JSON, senão a validação do ChildResult falha.",
+    "gateBinding": "Cada checkpoint tem um único subagente de encerramento; clicar no já vinculado remove o vínculo.",
+    "gateEvidence": "As evidências são medidas pelo anfitrião: implementer olha as alterações em arquivos, reviewer os critical findings e verifier os códigos de saída dos comandos; para qualquer outro subagente só se valida completed + valid. Um checkpoint não acredita no que o modelo diz de si mesmo.",
+    "edgeSemantics": "As arestas tier→gate definem a ordem dos checkpoints; as gate→role definem o subagente de encerramento; as demais conexões são apenas informativas."
+  }
+}

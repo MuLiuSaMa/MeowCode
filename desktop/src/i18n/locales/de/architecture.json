@@ -1,0 +1,186 @@
+{
+  "nav": {
+    "heading": "Agent-Architektur",
+    "agentListAria": "Agentenliste",
+    "mainAgentGroup": "Hauptagent",
+    "subagentGroup": "Unteragenten · {{name}}",
+    "subagentCount_one": "{{count}} Unteragent · {{tagline}}",
+    "subagentCount_other": "{{count}} Unteragenten · {{tagline}}",
+    "subagentCount_few": "{{count}} Unteragenten · {{tagline}}",
+    "subagentCount_many": "{{count}} Unteragenten · {{tagline}}",
+    "addArchitecture": "Neue benutzerdefinierte Agent-Architektur anlegen",
+    "renameHint": "Doppelklick auf den Namen zum Umbenennen",
+    "deleteAria": "„{{name}}“ löschen",
+    "currentBadge": "Aktiv",
+    "profileDisabledBadge": "Im Profil deaktiviert",
+    "readOnlyBadge": "Nur lesen",
+    "customTagline": "Benutzerdefinierte Architektur",
+    "loading": "Agenten werden geladen …",
+    "emptySubagents": "Dieser Agent enthält keine Unteragenten"
+  },
+  "roles": {
+    "general": "Allgemein",
+    "explore": "Erkundung",
+    "planner": "Planung",
+    "scoper": "Scoping",
+    "depthProber": "Tiefenanalyse",
+    "implementer": "Implementierung",
+    "reviewer": "Review",
+    "verifier": "Verifikation",
+    "freshVerifier": "Nachprüfung",
+    "juror": "Abschlussurteil",
+    "sweeper": "Aufräumen",
+    "goalChecker": "Zielabgleich",
+    "custom": "Benutzerdefiniert"
+  },
+  "types": {
+    "agent": "Agent",
+    "tier": "Ebene",
+    "gate": "Gate",
+    "role": "Unteragent"
+  },
+  "nodeCard": {
+    "agent": "Hauptagent",
+    "role": "Unteragent",
+    "gate": "Gate",
+    "tier": "Ebene",
+    "tierPassThrough": "Ebene · direkt",
+    "agentTip": "Der Hauptagent ist die Root-Runtime und startet Unteragenten über task",
+    "roleTip": "Unteragenten werden beim Zuspruch über task instanziiert",
+    "gateTip": "Ein Gate ist ein Prüfpunkt; die gate→role-Kante legt den abschließenden Unteragenten fest",
+    "tierTip": "Aufgabenebene: bestimmt, welche Gates nach admit durchlaufen werden",
+    "terminalTierTip": "Diese Ebene hat keine Gates: nach admit ist sie sofort fertig"
+  },
+  "edge": {
+    "closeOut": "Abschluss"
+  },
+  "select": {
+    "placeholder": "Bitte auswählen"
+  },
+  "defaults": {
+    "standardAgent": "Standard-Agent",
+    "mainAgent": "Hauptagent",
+    "newTier": "Neue Ebene",
+    "newGate": "Neues Gate",
+    "customRoleDescription": "Benutzerdefinierter Unteragent: Tool-Allowlist und System-Prompt werden im Eigenschaftenbereich dieses Knotens überschrieben"
+  },
+  "status": {
+    "loading": "Wird geladen …",
+    "saving": "Wird gespeichert …",
+    "saved": "Gespeichert — der Governance-Run lädt den neuen Graphen vor dem nächsten admit",
+    "reset": "Auf die integrierte Architektur zurückgesetzt — wirksam nach dem Speichern",
+    "connectTarget": "Verbindungsmodus: Zielknoten anklicken",
+    "connectPickNode": "Erst einen Knoten auswählen, dann „Verbinden“ anklicken",
+    "dirty": "Es gibt ungespeicherte Änderungen"
+  },
+  "toolbar": {
+    "addTier": "Ebene",
+    "addGate": "Gate",
+    "addRole": "Unteragent",
+    "connect": "Verbinden",
+    "cancelConnect": "Verbindung abbrechen",
+    "connectTip": "Zuerst den Quellknoten, dann den Zielknoten anklicken, um sie zu verbinden",
+    "delete": "Löschen",
+    "deleteTip": "Ausgewählten Knoten oder Verbindung löschen (beim Löschen eines Knotens werden auch seine Kanten entfernt)",
+    "fit": "An Canvas anpassen",
+    "fitTip": "Zentrieren und so skalieren, dass die gesamte Architektur sichtbar ist",
+    "reset": "Integriertes wiederherstellen",
+    "save": "In Arbeitsbereich speichern"
+  },
+  "canvas": {
+    "loading": "Architekturgraph wird geladen …",
+    "legend": "Knoten ziehen · leere Fläche verschiebt · Scrollen skaliert | Hauptagent→Unteragent = task-Zuspruch, Hauptagent→Ebene = admit | tier→gate-Nummer = Gate-Reihenfolge, gate→role = Abschluss"
+  },
+  "inspector": {
+    "ariaLabel": "Knoteneigenschaften",
+    "close": "Eigenschaftenbereich schließen",
+    "edge": "Verbindung",
+    "agentSubtitle": "Hauptagent · {{id}}",
+    "tierSubtitle": "Aufgabenebene · {{id}}",
+    "gateSubtitle": "Quality Gate · {{id}}",
+    "roleSubtitle": "Unteragent · {{role}}",
+    "roleSubtitleNumbered": "Unteragent · {{role}} #{{ordinal}}",
+    "edgeSubtitle": "Verbindung · {{type}}",
+    "deleteNode": "Knoten löschen",
+    "deleteEdge": "Verbindung löschen"
+  },
+  "fields": {
+    "nodeName": "Knotenname",
+    "nodeId": "Knoten-ID",
+    "description": "Verantwortlichkeit",
+    "availableTools": "Verfügbare Tools",
+    "selectAll": "Alle auswählen",
+    "clearAll": "Alle abwählen",
+    "restoreDefault": "Standard wiederherstellen",
+    "restoreBuiltin": "Integriertes wiederherstellen",
+    "systemPrompt": "System-Prompt",
+    "agentPromptPlaceholder": "Leer = Standard-Prompt des aktuellen Profils verwenden",
+    "dispatch": "Zusprüche",
+    "dispatchHint": "Auf der Verbindung ändern",
+    "roleType": "Unteragent-Kennung",
+    "displayName": "Anzeigename",
+    "roleDescription": "Kurzbeschreibung des Unteragenten",
+    "gateBindings": "Gate-Zuordnungen",
+    "gateBindingsHint": "Klicken zum Umbinden",
+    "rolePromptPlaceholder": "Leer lässt den integrierten Prompt gelten",
+    "gateName": "Name des Quality Gates",
+    "invariant": "Invariante / Akzeptanzkriterien",
+    "onFail": "Strategie bei Fehlschlag",
+    "closer": "Abschließender Unteragent",
+    "tierName": "Ebenenname",
+    "tierId": "Ebenen-ID (nur T0 / T1 / T2 werden von admit erkannt)",
+    "tierDescription": "Ebenenbeschreibung",
+    "tierPrompt": "Ebenen-Prompt (bei admit eingefügt, optional)",
+    "tierPromptPlaceholder": "Leer = nichts einfügen; der Text geht einmalig mit dem admit-Bericht an den Hauptagenten",
+    "gateSequence": "Gate-Folge",
+    "gateSequenceHint": "Klicken zum Hinzufügen oder Entfernen",
+    "edgePath": "Pfad",
+    "edgeType": "Typ",
+    "order": "Order-Nummer (innerhalb der Ebene aufsteigend)"
+  },
+  "tools": {
+    "none": "Keine Tools",
+    "allIncludingDynamic": "Alle Tools, zusätzlich dynamische MCP-/Browser-Tools",
+    "selectedCount_one": "{{count}} Tool ausgewählt",
+    "selectedCount_other": "{{count}} Tools ausgewählt",
+    "selectedCount_few": "{{count}} Tools ausgewählt",
+    "selectedCount_many": "{{count}} Tools ausgewählt",
+    "selectedFull": "Alle Tools ausgewählt",
+    "followProfile": "Folgt dem aktuellen Profil",
+    "inheritedNote": "Ohne Überschreibung gibt es keine zusätzliche Grenze — das Profil entscheidet",
+    "orchestrationNote": "task / admit sind Orchestrierungskanäle und immer verfügbar",
+    "explicitWhitelistNote": "Eine explizite Allowlist enthält keine zur Laufzeit eingefügten MCP-/Browser-Tools"
+  },
+  "registry": {
+    "unavailable": "Registry nicht verfügbar",
+    "loading": "Registry wird gelesen …",
+    "unavailableRetry": "Registry nicht verfügbar — App neu starten oder oben auf „Erneut versuchen“ klicken",
+    "loadFailed": "Die Unteragent-Registry konnte nicht geladen werden",
+    "loadFailedHint": "Möglicherweise läuft auf dem Desktop noch ein älterer Server-Build; App neu starten und erneut versuchen.",
+    "retry": "Erneut versuchen"
+  },
+  "onFail": {
+    "rework": "Überarbeiten (zurück zum ersten Gate)",
+    "loopTo": "loop-to:{{id}} (zurück zu {{id}})",
+    "block": "block (blockiert die Lane sofort)"
+  },
+  "closer": {
+    "unbound": "Nicht gebunden (admit wird abgewiesen)"
+  },
+  "empty": {
+    "dispatchEdges": "Noch keine Zuspruch-Verbindungen",
+    "gateNodes": "Der Graph enthält noch keine Gate-Knoten"
+  },
+  "tier": {
+    "executionOrder": "Reihenfolge: {{gates}}; die Reihenfolge wird über order auf der Verbindung geändert.",
+    "passThrough": "Keine Gates · direkt (sofort fertig nach admit)"
+  },
+  "notes": {
+    "agentPrompt": "Das Feld ist mit dem Standard-Prompt des aktuellen Profils vorausgefüllt; nach der Änderung speichern, damit er greift. Ein eigener Inhalt <strong>ersetzt den Profil-Prompt vollständig</strong> — die Grundregeln zu Tool-Nutzung und Pfaden sollten erhalten bleiben.",
+    "agentRoot": "Der Hauptagent ist eine dauerhafte Root-Runtime und nimmt an keinen Gates teil; abschließende Unteragenten schließen über die Kette tier→gate→role ab. Unteragenten können nichts weiter zusprechen.",
+    "rolePrompt": "Leer greift der integrierte Prompt. Der Genehmigungsmodus nur lesender Unteragenten wird weiterhin von der Registry erzwungen; ein abschließender Unteragent muss den JSON-Ergebnisvertrag beibehalten, sonst schlägt die ChildResult-Prüfung fehl.",
+    "gateBinding": "Ein Gate hat genau einen abschließenden Unteragenten; ein Klick auf den bereits gebundenen hebt die Bindung auf.",
+    "gateEvidence": "Die Nachweise erbringt der Host: implementer prüft Dateiänderungen, reviewer prüft critical findings, verifier prüft Exit-Codes von Kommandos; bei anderen Unteragenten werden nur completed und valid geprüft. Gates glauben keiner Selbstauskunft des Modells.",
+    "edgeSemantics": "tier→gate-Kanten bestimmen die Gate-Reihenfolge, gate→role-Kanten den abschließenden Unteragenten; andere Verbindungen sind rein erläuternd."
+  }
+}

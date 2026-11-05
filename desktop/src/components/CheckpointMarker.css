@@ -1,0 +1,49 @@
+/* 时间线里的检查点分隔线：居中内容 + 两侧细线，比压缩分隔线多一个「恢复」动作 */
+.mc-checkpoint {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 4px 0 2px;
+  font-size: var(--fs-xs);
+  color: var(--text-tertiary);
+}
+
+.mc-checkpoint__rule {
+  flex: 1 1 0;
+  height: 1px;
+  background: var(--line-soft);
+}
+
+.mc-checkpoint__icon {
+  flex: none;
+  opacity: 0.8;
+}
+
+.mc-checkpoint__text {
+  flex: none;
+  max-width: 60%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mc-checkpoint__restore {
+  flex: none;
+  border: none;
+  background: transparent;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: var(--fs-xs);
+  color: var(--accent);
+  cursor: pointer;
+}
+
+.mc-checkpoint__restore:hover {
+  background: var(--accent-soft, rgba(120, 160, 255, 0.12));
+}
+
+.mc-checkpoint__restore:disabled {
+  opacity: 0.5;
+  cursor: default;
+}

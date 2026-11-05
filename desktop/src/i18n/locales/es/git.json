@@ -1,0 +1,160 @@
+{
+  "nav": {
+    "heading": "Control de código fuente",
+    "ariaLabel": "Control de código fuente",
+    "viewAria": "Vista del control de código fuente"
+  },
+  "group": {
+    "conflicted": "Conflictos",
+    "staged": "Preparado",
+    "unstaged": "Cambios",
+    "empty": "Ninguno",
+    "unstageAll": "Quitar todo de la preparación",
+    "stageAll": "Preparar todo"
+  },
+  "list": {
+    "truncated": "Mostrando los primeros {{shown}} de {{total}}",
+    "truncatedStaged": " (usa «Quitar todo de la preparación» para el resto)",
+    "truncatedUnstaged": " (usa «Preparar todo» para el resto o añádelos a .gitignore)"
+  },
+  "repo": {
+    "unavailable": "No se encontró git. Instálalo y añádelo al PATH",
+    "notRepo": "El espacio de trabajo actual no es un repositorio Git",
+    "reading": "Leyendo el estado del repositorio…"
+  },
+  "repoHint": {
+    "unavailable": "No se encontró git: instala Git y comprueba que `git --version` funciona en la terminal.",
+    "notRepo": "El espacio de trabajo actual no es un repositorio Git. Ejecuta `git init` en la terminal y actualiza aquí.",
+    "failed": "No se pudo leer el estado del repositorio."
+  },
+  "branch": {
+    "switch": "Cambiar de rama",
+    "search": "Buscar ramas",
+    "listAria": "Lista de ramas",
+    "loading": "Leyendo ramas…",
+    "noMatch": "Ninguna rama coincide",
+    "stash": "Guardar cambios locales antes de cambiar",
+    "force": "Forzar el cambio (descartar cambios sin confirmar)",
+    "newPlaceholder": "Crear una rama desde el HEAD actual, p. ej. feature/login",
+    "create": "Crear y cambiar",
+    "close": "Cerrar"
+  },
+  "conflict": {
+    "ours": "Míos",
+    "oursTitle": "Usar los míos (ours)",
+    "theirs": "Suyos",
+    "theirsTitle": "Usar los suyos (theirs)",
+    "mark": "Resuelto",
+    "markTitle": "Marcar como resuelto (contenido ya tratado a mano)",
+    "resolveTitleOurs": "Usar mi versión",
+    "resolveTitleTheirs": "Usar su versión",
+    "resolveTitleMark": "Marcar como resuelto",
+    "resolveMessageMark": "El archivo en conflicto se marcará como resuelto (se mantiene el contenido actual del disco).",
+    "resolveMessageReplace": "El archivo se reemplazará por la versión del lado elegido; el contenido del otro lado se perderá."
+  },
+  "file": {
+    "stage": "Preparar",
+    "unstage": "Quitar de preparación",
+    "discard": "Descartar cambios"
+  },
+  "discard": {
+    "title": "Descartar cambios",
+    "message": "Los cambios del árbol de trabajo de estos archivos se descartarán de forma permanente (las modificaciones sin preparar se perderán y los archivos sin seguimiento se eliminarán).",
+    "confirm": "Descartar"
+  },
+  "dialog": {
+    "cancel": "Cancelar",
+    "confirm": "Confirmar",
+    "processing": "Procesando…"
+  },
+  "footer": {
+    "changes_one": "{{count, number}} cambio",
+    "changes_other": "{{count, number}} cambios",
+    "changes_few": "{{count, number}} cambios",
+    "changes_many": "{{count, number}} cambios"
+  },
+  "action": {
+    "refresh": "Actualizar",
+    "pull": "Traer",
+    "push": "Enviar",
+    "forcePush": "Forzar envío",
+    "back": "Volver"
+  },
+  "pull": {
+    "title": "Traer (--ff-only)",
+    "noUpstream": "Esta rama no tiene rama remota de seguimiento"
+  },
+  "push": {
+    "detached": "No se puede enviar desde un HEAD desacoplado",
+    "forceTitle": "Envío forzado (--force-with-lease, requiere dos confirmaciones)",
+    "message": "Enviar {{branch}} a {{upstream}}.",
+    "messageNew": "Enviar {{branch}} a origin y establecer la rama remota de seguimiento.",
+    "forceWarning": "El envío forzado sobrescribe con el historial local los commits que pueda haber en el remoto (--force-with-lease solo protege si nadie más ha actualizado el remoto). Suele ser irreversible.",
+    "forceConfirm": "¿Sobrescribir {{upstream}} remoto con el {{branch}} local?",
+    "forceStep1": "Envío forzado (1/2)",
+    "forceStep2": "Envío forzado (2/2)",
+    "continue": "Continuar"
+  },
+  "upstream": {
+    "none": "No hay rama remota de seguimiento",
+    "short": "remoto",
+    "ahead": "{{count, number}} por delante",
+    "behind": "{{count, number}} por detrás"
+  },
+  "tab": {
+    "changes": "Cambios",
+    "history": "Historial"
+  },
+  "detail": {
+    "backTitle": "Volver a la lista",
+    "loading": "Leyendo detalles del commit…",
+    "mergeCommit": "Commit de fusión",
+    "moreFiles_one": "+{{count, number}} archivo no listado",
+    "moreFiles_other": "+{{count, number}} archivos no listados",
+    "moreFiles_few": "+{{count, number}} archivos no listados",
+    "moreFiles_many": "+{{count, number}} archivos no listados"
+  },
+  "diff": {
+    "loading": "Leyendo diff…",
+    "binary": "Archivo binario, contenido no mostrado",
+    "empty": "No hay cambios que mostrar",
+    "emptyCommit": "Este commit no tiene cambios que mostrar",
+    "truncated": "Parche demasiado grande, truncado",
+    "select": "Selecciona un archivo para ver los cambios",
+    "selectFileHint": "Selecciona un archivo a la izquierda para ver los cambios (preparados y sin preparar se muestran por separado)",
+    "preparing": "Preparando diff…"
+  },
+  "commit": {
+    "placeholder": "Mensaje del commit (Ctrl+Enter para confirmar)",
+    "placeholderEmpty": "Prepara archivos primero y luego escribe el mensaje",
+    "conflicts_one": "Hay {{count, number}} conflicto por resolver antes de confirmar",
+    "conflicts_other": "Hay {{count, number}} conflictos por resolver antes de confirmar",
+    "conflicts_few": "Hay {{count, number}} conflictos por resolver antes de confirmar",
+    "conflicts_many": "Hay {{count, number}} conflictos por resolver antes de confirmar",
+    "needsStaged": "Prepara archivos para poder confirmar",
+    "staged_one": "{{count, number}} archivo preparado",
+    "staged_other": "{{count, number}} archivos preparados",
+    "staged_few": "{{count, number}} archivos preparados",
+    "staged_many": "{{count, number}} archivos preparados",
+    "aiTitle": "Generar el mensaje del commit a partir del diff preparado",
+    "aiGenerate": "Generar con IA",
+    "aiGenerating": "Generando…",
+    "submit": "Confirmar",
+    "committing": "Confirmando…",
+    "emptyMessage": "El mensaje del commit no puede estar vacío",
+    "aiFailed": "Error de generación con IA: {{message}}"
+  },
+  "history": {
+    "loading": "Leyendo el historial de commits…",
+    "empty": "Aún no hay commits",
+    "loadMore": "Cargar más",
+    "loadingMore": "Cargando…"
+  },
+  "workspace": {
+    "label": "Espacio de trabajo:",
+    "none": "Sin seleccionar"
+  },
+  "error": {
+    "close": "Cerrar"
+  }
+}

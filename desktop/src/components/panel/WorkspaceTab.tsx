@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 import {
   LuChevronRight,
   LuFile,
@@ -11,6 +12,7 @@ import {
 } from "react-icons/lu";
 import { api } from "../../api";
 import { FilePreview } from "./FilePreview";
+import { formatNumber } from "../../i18n/format";
 import "./WorkspaceTab.css";
 
 type DirEntry = { name: string; path: string; dir: boolean };
@@ -94,6 +96,7 @@ export function WorkspaceTab({
   workspace?: string;
   onSelect: (path: string) => void;
 }) {
+  const { t } = useTranslation("panel");
   /** 目录路径 → 直接子项（"" = 工作区根），逐层缓存 */
   const [childrenByDir, setChildrenByDir] = useState<Record<string, DirEntry[]>>({});
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
@@ -210,14 +213,14 @@ export function WorkspaceTab({
     if (loading.has(dirPath) && !(dirPath in childrenByDir)) {
       return (
         <p className="mc-wstree__hint" style={{ paddingLeft: 8 + depth * 12 }}>
-          加载中…
+          {t("workspace.loading")}
         </p>
       );
     }
     if (failedDirs.has(dirPath)) {
       return (
         <p className="mc-wstree__hint" style={{ paddingLeft: 8 + depth * 12 }}>
-          读取失败
+          {t("workspace.readFailed")}
         </p>
       );
     }
@@ -265,7 +268,10 @@ export function WorkspaceTab({
         )}
         {entries.length > MAX_ENTRIES_PER_DIR ? (
           <p className="mc-wstree__hint" style={{ paddingLeft: 8 + depth * 12 }}>
-            …共 {entries.length} 项，仅显示前 {MAX_ENTRIES_PER_DIR}
+            {t("workspace.truncated", {
+              total: formatNumber(entries.length),
+              shown: formatNumber(MAX_ENTRIES_PER_DIR),
+            })}
           </p>
         ) : null}
       </>
@@ -278,7 +284,7 @@ export function WorkspaceTab({
         {file ? (
           <FilePreview path={file} workspace={workspace} />
         ) : (
-          <p className="mc-wstree__empty">在右侧选择文件预览（文本 / 图片 / 视频 / 音频 / PDF）</p>
+          <p className="mc-wstree__empty">{t("workspace.selectFile")}</p>
         )}
       </div>
 
@@ -286,7 +292,7 @@ export function WorkspaceTab({
       <div
         className="mc-wstree__resize"
         role="separator"
-        aria-label="调整文件列表宽度"
+        aria-label={t("workspace.resizeAria")}
         onPointerDown={startTreeResize}
         onPointerMove={moveTreeResize}
         onPointerUp={endTreeResize}
@@ -297,16 +303,16 @@ export function WorkspaceTab({
           <LuSearch size={13} />
           <input
             value={query}
-            placeholder="筛选文件…"
+            placeholder={t("workspace.filterPlaceholder")}
             onChange={(event) => setQuery(event.target.value)}
           />
         </label>
         <div className="mc-wstree__list">
           {needle ? (
             allFiles === null ? (
-              <p className="mc-wstree__hint">搜索中…</p>
+              <p className="mc-wstree__hint">{t("workspace.searching")}</p>
             ) : filtered.length === 0 ? (
-              <p className="mc-wstree__hint">没有匹配的文件</p>
+              <p className="mc-wstree__hint">{t("workspace.noMatch")}</p>
             ) : (
               filtered.map((item) => (
                 <button

@@ -1,4 +1,6 @@
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
+import type { TFunction } from "i18next";
 import {
   LuCircleAlert,
   LuCircleCheck,
@@ -8,6 +10,7 @@ import {
 } from "react-icons/lu";
 import type { SubagentRun, TimelineTool } from "../api";
 import { SUBAGENT_ROLE_LABELS } from "../agentRoles";
+import { formatNumber } from "../i18n/format";
 import "./TaskToolRow.css";
 
 function asRecord(input: unknown): Record<string, unknown> {
@@ -16,21 +19,20 @@ function asRecord(input: unknown): Record<string, unknown> {
     : {};
 }
 
-function formatDuration(ms: number): string {
-  if (ms < 1_000) return "<1s";
+function formatDuration(ms: number, t: TFunction): string {
+  if (ms < 1_000) return t("taskRow.durationUnderSecond");
   const seconds = ms / 1_000;
-  if (seconds < 60) return `${seconds.toFixed(1)}s`;
+  if (seconds < 60) {
+    return t("taskRow.durationSeconds", {
+      value: formatNumber(seconds, { minimumFractionDigits: 1, maximumFractionDigits: 1 }),
+    });
+  }
   const minutes = Math.floor(seconds / 60);
-  return `${minutes}m ${Math.round(seconds % 60)}s`;
+  return t("taskRow.durationMinutes", {
+    minutes: formatNumber(minutes),
+    seconds: formatNumber(Math.round(seconds % 60)),
+  });
 }
-
-const STATUS_LABELS: Record<SubagentRun["status"], string> = {
-  running: "运行中",
-  completed: "已完成",
-  failed: "失败",
-  aborted: "已停止",
-  interrupted: "已中断",
-};
 
 export function TaskToolRow({
   item,
@@ -42,8 +44,11 @@ export function TaskToolRow({
   onOpen: (agentId: string) => void;
 }) {
   const args = asRecord(item.input);
+  const { t } = useTranslation("shell");
   const description =
-    agent.description || (typeof args.description === "string" ? args.description : "") || "子 Agent";
+    agent.description ||
+    (typeof args.description === "string" ? args.description : "") ||
+    t("subagent.label");
   const role = agent.agentType ?? "general";
   const [now, setNow] = useState(Date.now());
   useEffect(() => {
@@ -62,7 +67,7 @@ export function TaskToolRow({
       type="button"
       className="mc-taskrow"
       data-status={agent.status}
-      title={`打开子 Agent：${description}`}
+      title={t("taskRow.open", { name: description })}
       onClick={() => onOpen(agent.agentId)}
     >
       <span className="mc-taskrow__icon" aria-hidden="true">
@@ -76,17 +81,19 @@ export function TaskToolRow({
           <LuCircleCheck size={16} />
         )}
       </span>
-      <span className="mc-taskrow__label">子 Agent</span>
+      <span className="mc-taskrow__label">{t("subagent.label")}</span>
       <span className="mc-taskrow__type" data-type={role}>
         {SUBAGENT_ROLE_LABELS[role]}
       </span>
-      {agent.background ? <span className="mc-taskrow__type">后台</span> : null}
+      {agent.background ? <span className="mc-taskrow__type">{t("taskRow.background")}</span> : null}
       <span className="mc-taskrow__desc" title={description}>
         {description}
       </span>
       <span className="mc-taskrow__meta">
-        <span className="mc-taskrow__state">{STATUS_LABELS[agent.status]}</span>
-        {durationMs != null ? <span className="mc-taskrow__time">{formatDuration(durationMs)}</span> : null}
+        <span className="mc-taskrow__state">{t(`taskRow.status.${agent.status}`)}</span>
+        {durationMs != null ? (
+          <span className="mc-taskrow__time">{formatDuration(durationMs, t)}</span>
+        ) : null}
       </span>
       <LuPanelRightOpen size={14} className="mc-taskrow__open" aria-hidden="true" />
     </button>

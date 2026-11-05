@@ -1,12 +1,31 @@
 import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { fileURLToPath } from "node:url";
+import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { hasDynamicTool } from "../agent/tools.js";
 import { PluginRegistry } from "./registry.js";
 import { discoverPlugins, loadPlugins } from "./loader.js";
 
 const tempDirs: string[] = [];
+
+/**
+ * 隔离内置插件根：指向一个空的临时目录，避免测试捡到产品自带的
+ * builtin/claude-code-hooks（descriptors 断言只关心 project/user 层）。
+ */
+const originalBuiltinEnv = process.env.MEOWCODE_BUILTIN_PLUGINS_DIR;
+let emptyBuiltinDir = "";
+
+beforeAll(async () => {
+  emptyBuiltinDir = await fs.mkdtemp(path.join(os.tmpdir(), "meow-builtin-"));
+  process.env.MEOWCODE_BUILTIN_PLUGINS_DIR = emptyBuiltinDir;
+});
+
+afterAll(async () => {
+  if (originalBuiltinEnv === undefined) delete process.env.MEOWCODE_BUILTIN_PLUGINS_DIR;
+  else process.env.MEOWCODE_BUILTIN_PLUGINS_DIR = originalBuiltinEnv;
+  await fs.rm(emptyBuiltinDir, { recursive: true, force: true }).catch(() => {});
+});
 
 async function makeTempRoot(): Promise<string> {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), "meow-plugins-"));
@@ -76,6 +95,38 @@ describe("discoverPlugins", () => {
       { dir: "Z:/definitely/missing/.meowcode/plugins", source: "project" },
     ]);
     expect(plugins).toEqual([]);
+  });
+
+  it("内置根目录（无 env 覆盖时）能发现随包的 builtin 插件", async () => {
+    const saved = process.env.MEOWCODE_BUILTIN_PLUGINS_DIR;
+    delete process.env.MEOWCODE_BUILTIN_PLUGINS_DIR;
+    try {
+      const builtinDir = path.join(path.dirname(fileURLToPath(import.meta.url)), "builtin");
+      const { plugins } = await discoverPlugins([{ dir: builtinDir, source: "builtin" }]);
+      expect(plugins.map((item) => item.id)).toContain("claude-code-hooks");
+    } finally {
+      if (saved !== undefined) process.env.MEOWCODE_BUILTIN_PLUGINS_DIR = saved;
+    }
+  });
+
+  it("loadPlugins 给 builtin 描述符填元数据（显示名/介绍/图标 dataUrl）", async () => {
+    const saved = process.env.MEOWCODE_BUILTIN_PLUGINS_DIR;
+    delete process.env.MEOWCODE_BUILTIN_PLUGINS_DIR;
+    try {
+      const workspace = await makeTempRoot();
+      const registry = new PluginRegistry();
+      const { descriptors } = await loadPlugins({ workspace, homeDir: workspace, registry });
+      const builtin = descriptors.find((d) => d.id === "claude-code-hooks");
+      expect(builtin?.source).toBe("builtin");
+      expect(builtin?.enabled).toBe(true);
+      expect(builtin?.displayName).toBe("Claude Code hooks 桥接");
+      expect(builtin?.description).toContain("settings.json");
+      expect(builtin?.iconUrl?.startsWith("data:image/svg+xml;base64,")).toBe(true);
+      // 元数据不依赖加载成功：即使工厂抛错，描述符仍带介绍
+      registry.unregisterAll();
+    } finally {
+      if (saved !== undefined) process.env.MEOWCODE_BUILTIN_PLUGINS_DIR = saved;
+    }
   });
 });
 
@@ -217,5 +268,40 @@ describe("createPluginSystem.reload", () => {
     expect(result.descriptors.map((d) => d.id)).toEqual(["v2"]);
     await system.dispose();
     expect(hasDynamicTool("v2_tool")).toBe(false);
+  });
+});
+
+describe("插件 UI 面板探测", () => {
+  it("目录插件带 ui/index.html 时 descriptor.ui 登记，单文件插件没有", async () => {
+    const root = await makeTempRoot();
+    const pluginsDir = path.join(root, ".meowcode", "plugins");
+    const withUi = path.join(pluginsDir, "with-ui");
+    await fs.mkdir(path.join(withUi, "ui"), { recursive: true });
+    await fs.writeFile(path.join(withUi, "index.ts"), "export default () => {}");
+    await fs.writeFile(path.join(withUi, "ui", "index.html"), "<!doctype html><title>ui</title>");
+    await fs.writeFile(path.join(pluginsDir, "single.ts"), "export default () => {}");
+
+    const registry = new PluginRegistry();
+    const workspace = await makeTempRoot();
+    const { descriptors } = await loadPlugins({ workspace, homeDir: root, registry });
+
+    const uiPlugin = descriptors.find((item) => item.id === "with-ui");
+    expect(uiPlugin?.ui).toEqual({ panel: { title: "with-ui", entry: "index.html" } });
+    const single = descriptors.find((item) => item.id === "single");
+    expect(single?.ui).toBeUndefined();
+  });
+
+  it("ui 文件缺失（只有目录）不算面板", async () => {
+    const root = await makeTempRoot();
+    const pluginsDir = path.join(root, ".meowcode", "plugins");
+    const dirOnly = path.join(pluginsDir, "dir-only");
+    await fs.mkdir(path.join(dirOnly, "ui"), { recursive: true });
+    await fs.writeFile(path.join(dirOnly, "index.ts"), "export default () => {}");
+
+    const registry = new PluginRegistry();
+    const workspace = await makeTempRoot();
+    const { descriptors } = await loadPlugins({ workspace, homeDir: root, registry });
+
+    expect(descriptors.find((item) => item.id === "dir-only")?.ui).toBeUndefined();
   });
 });

@@ -1,0 +1,228 @@
+/* 数据导入设置分节：来源应用列表 + 分组勾选 + 导入结果 */
+
+.mc-dataimport__state {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 18px 20px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  corner-shape: superellipse(1.5);
+  background: var(--surface);
+  color: var(--fg-subtle);
+  font-size: var(--fs-base);
+}
+
+.mc-dataimport__state--error {
+  color: var(--fg);
+  border-color: color-mix(in srgb, var(--danger) 35%, var(--border));
+}
+
+.mc-dataimport__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 16px 4px;
+}
+
+.mc-dataimport__headlabel {
+  font-size: var(--fs-sm);
+  color: var(--fg-subtle);
+}
+
+.mc-dataimport__spin {
+  animation: mc-dataimport-spin 0.9s linear infinite;
+}
+
+@keyframes mc-dataimport-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.mc-dataimport__list {
+  display: flex;
+  flex-direction: column;
+  margin-top: 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  corner-shape: superellipse(1.5);
+  background: var(--surface);
+  overflow: hidden;
+}
+
+.mc-dataimport__app + .mc-dataimport__app {
+  border-top: 1px dashed var(--border);
+}
+
+.mc-dataimport__app[data-detected="false"] {
+  opacity: 0.55;
+}
+
+.mc-dataimport__approw {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+}
+
+.mc-dataimport__badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: var(--radius-md);
+  flex-shrink: 0;
+  overflow: hidden;
+  background: var(--bg-elevated);
+  box-shadow: inset 0 0 0 1px var(--border);
+}
+
+.mc-dataimport__badge img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* 透明底/自带留白的图标放大裁齐，视觉尺寸与其他满幅方图一致 */
+.mc-dataimport__badge--qoder img,
+.mc-dataimport__badge--qoderintl img {
+  transform: scale(0.82);
+}
+
+.mc-dataimport__badge--zcode img {
+  transform: scale(1.22);
+}
+
+.mc-dataimport__appname {
+  font-size: var(--fs-base);
+  color: var(--fg);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mc-dataimport__appmeta {
+  margin-left: auto;
+  font-size: var(--fs-caption);
+  color: var(--fg-subtlest);
+  white-space: nowrap;
+}
+
+.mc-dataimport__chevron {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border: none;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--fg-subtle);
+  cursor: pointer;
+}
+
+.mc-dataimport__chevron:hover:not(:disabled) {
+  background: var(--surface-hover);
+  color: var(--fg);
+}
+
+.mc-dataimport__chevron:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.mc-dataimport__chevron[aria-expanded="true"] {
+  transform: rotate(180deg);
+}
+
+.mc-dataimport__groups {
+  display: flex;
+  flex-direction: column;
+  padding: 4px 16px 12px 54px;
+  gap: 2px;
+}
+
+.mc-dataimport__group {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 6px 8px;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  font-size: var(--fs-sm);
+  color: var(--fg);
+}
+
+.mc-dataimport__group:hover {
+  background: var(--surface-hover);
+}
+
+.mc-dataimport__group input[type="checkbox"] {
+  accent-color: var(--accent, var(--fg));
+  width: 14px;
+  height: 14px;
+}
+
+.mc-dataimport__group input[type="checkbox"]:disabled {
+  cursor: default;
+}
+
+.mc-dataimport__group input[type="checkbox"]:disabled + .mc-dataimport__groupname {
+  color: var(--fg-subtlest);
+}
+
+.mc-dataimport__groupcount {
+  margin-left: auto;
+  font-size: var(--fs-caption);
+  color: var(--fg-subtlest);
+}
+
+.mc-dataimport__result {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 0 16px 12px 54px;
+  font-size: var(--fs-caption);
+  color: var(--fg-subtle);
+}
+
+.mc-dataimport__failed {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.mc-dataimport__failedtoggle {
+  align-self: flex-start;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--warning, #d97706);
+  font-size: var(--fs-caption);
+  cursor: pointer;
+}
+
+.mc-dataimport__faileditem {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  min-width: 0;
+}
+
+.mc-dataimport__faileditem code {
+  font-family: var(--font-mono);
+  color: var(--fg-subtle);
+  flex-shrink: 0;
+}
+
+.mc-dataimport__faileditem span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--fg-subtlest);
+}

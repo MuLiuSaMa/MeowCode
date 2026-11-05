@@ -1,0 +1,125 @@
+/* 社区条目提交弹窗（CommunitySubmitDialog）：复用 mc-oauth__field / mc-dialog__input 体系 */
+
+.mc-community__fieldset {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  max-height: 52vh;
+  overflow-y: auto;
+  min-width: 0;
+}
+.mc-community__fieldset:disabled {
+  opacity: 0.55;
+}
+/* 覆盖共用 .mc-oauth__field 的外部 margin：字段间距交给 fieldset gap，内部 label→控件留 7px */
+.mc-community__fieldset .mc-oauth__field {
+  margin-top: 0;
+  gap: 7px;
+}
+/* mc-dialog__input 自带 margin-top:16px（给非 flex 表单用的）：在字段里由 gap 控距，否则与 CustomSelect 同行错位 */
+.mc-community__fieldset .mc-dialog__input {
+  margin-top: 0;
+}
+/* CustomSelect 触发按钮对齐弹窗输入框的字号与高度（默认 30px/fs-sm 偏小） */
+.mc-community__fieldset .mc-customselect__button {
+  height: auto;
+  padding: 9px 12px;
+  font-size: var(--fs-base);
+}
+
+.mc-community__row {
+  display: flex;
+  gap: 12px;
+}
+.mc-community__row > .mc-oauth__field {
+  flex: 1;
+  min-width: 0;
+}
+
+.mc-community__textarea {
+  font-family: var(--font-mono, monospace);
+  font-size: var(--fs-xs);
+  line-height: 1.5;
+  resize: vertical;
+}
+
+.mc-community__filerow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  min-height: 32px;
+}
+.mc-community__filerow > * {
+  margin: 0;
+}
+/* 上传式选择按钮：虚线边框 + 图标，比 ghost 按钮更显眼 */
+.mc-community__pick {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border: 1px dashed var(--border, rgba(128, 128, 128, 0.45));
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  color: var(--fg);
+  font-family: inherit;
+  font-size: var(--fs-sm);
+  cursor: pointer;
+  transition: border-color var(--dur) var(--ease), background-color var(--dur) var(--ease);
+}
+.mc-community__pick:hover {
+  border-color: var(--fg-subtle);
+  background: var(--surface-hover);
+}
+.mc-community__filerow .mc-oauth__fieldhint {
+  line-height: 1;
+}
+
+.mc-community__loginrow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.mc-community__loginrow .mc-oauth__fieldhint {
+  margin: 0;
+}
+
+.mc-community__done {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 8px 0 0;
+}
+.mc-community__prrow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.mc-community__prurl {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  padding: 8px 10px;
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  border: 1px solid var(--border, rgba(128, 128, 128, 0.3));
+  font-size: var(--fs-xs);
+}
+
+.mc-community__callback {
+  display: block;
+  margin-top: 6px;
+  padding: 4px 8px;
+  border-radius: var(--radius-sm, 6px);
+  background: var(--surface);
+  border: 1px solid var(--border, rgba(128, 128, 128, 0.3));
+  font-family: var(--font-mono, monospace);
+  font-size: var(--fs-xs);
+  user-select: all;
+  overflow-wrap: anywhere;
+}

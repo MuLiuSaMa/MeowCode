@@ -1,0 +1,144 @@
+/* 分支切换弹层：贴在分支胶囊上方，外壳与项目切换菜单保持一致 */
+.mc-branchmenu {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 0;
+  z-index: 60;
+  width: 288px;
+  padding: 4px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  corner-shape: superellipse(1.5);
+  box-shadow: var(--shadow-lg);
+  animation: mc-fade-in var(--dur) var(--ease);
+}
+
+.mc-branchmenu__search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px;
+  color: var(--fg-subtle);
+}
+.mc-branchmenu__search input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: var(--fg);
+  font-family: inherit;
+  font-size: var(--fs-caption);
+  outline: none;
+}
+.mc-branchmenu__search input:focus-visible {
+  outline: none;
+}
+.mc-branchmenu__search input::placeholder {
+  color: var(--fg-subtlest);
+}
+
+.mc-branchmenu__sep {
+  height: 1px;
+  margin: 3px 6px;
+  background: var(--border);
+}
+
+.mc-branchmenu__list {
+  display: flex;
+  flex-direction: column;
+  max-height: 264px;
+  overflow-y: auto;
+}
+
+.mc-branchmenu__item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 5px 8px;
+  border: 0;
+  border-radius: var(--radius-md);
+  corner-shape: superellipse(1.5);
+  background: transparent;
+  color: var(--fg);
+  font-family: inherit;
+  font-size: var(--fs-caption);
+  text-align: left;
+  cursor: pointer;
+  transition: background-color var(--dur) var(--ease);
+}
+.mc-branchmenu__item > svg {
+  flex-shrink: 0;
+  color: var(--fg-subtle);
+}
+.mc-branchmenu__item:hover:not(:disabled),
+.mc-branchmenu__item:focus-visible {
+  background: var(--surface-hover);
+}
+.mc-branchmenu__item:disabled {
+  cursor: default;
+}
+.mc-branchmenu__item[data-busy="true"] {
+  opacity: 0.55;
+}
+.mc-branchmenu__spin {
+  animation: mc-spin 0.9s linear infinite;
+}
+
+.mc-branchmenu__name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.mc-branchmenu__item[data-current="true"] .mc-branchmenu__name {
+  font-weight: var(--fw-semibold);
+}
+.mc-branchmenu__check {
+  color: var(--fg) !important;
+}
+
+.mc-branchmenu__empty {
+  margin: 0;
+  padding: 8px;
+  color: var(--fg-subtlest);
+  font-size: var(--fs-caption);
+}
+
+/* 切换失败（多半是有未提交改动）：错误文案 + 一个「贮藏后切换」的出口 */
+.mc-branchmenu__error {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 4px 2px 2px;
+  padding: 6px 8px;
+  border-radius: var(--radius-md);
+  background: var(--danger-surface);
+  color: var(--danger);
+  font-size: var(--fs-caption);
+}
+.mc-branchmenu__errtext {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  word-break: break-word;
+}
+.mc-branchmenu__fix {
+  align-self: flex-start;
+  padding: 2px 8px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: var(--surface-hover);
+  color: var(--fg);
+  font-family: inherit;
+  font-size: var(--fs-caption);
+  cursor: pointer;
+  transition: background-color var(--dur) var(--ease);
+}
+.mc-branchmenu__fix:hover {
+  background: var(--card-hover);
+}

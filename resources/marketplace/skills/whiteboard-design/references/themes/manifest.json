@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "primitives": "./primitives/brand-default.json",
+  "defaultUiTheme": "warm-gray",
+  "defaultDiagramTheme": "brand-default",
+  "uiThemes": {
+    "warm-gray": "./ui/warm-gray.json"
+  },
+  "diagramThemes": {
+    "brand-default": "./diagram/brand-default.json"
+  },
+  "diagramThemeAliases": {
+    "architecture": "brand-default",
+    "intent-flow": "brand-default",
+    "prompt-structure": "brand-default"
+  }
+}

@@ -1,0 +1,584 @@
+{
+  "language": {
+    "section": "Langue",
+    "title": "Langue de l’interface",
+    "description": "Choisissez la langue de l’interface de MeowCode. Le changement s’applique immédiatement, sans redémarrage.",
+    "system": "Langue du système"
+  },
+  "speech": {
+    "section": "Ton de réponse",
+    "field": "Style de réponse",
+    "desc": {
+      "normal": "Ton par défaut : concis, direct et professionnel — l’essentiel seulement.",
+      "tafei": "Ton Taffy : une persona de fille-chat espiègle qui termine ses phrases par « miao » (喵) et utilise parfois sa phrase fétiche ; le contenu technique reste précis.",
+      "dazui": "Dazui : euh, ceci, ceci… voilà. Le meilleur ton à moins de dix millions."
+    },
+    "options": {
+      "normal": "Normal",
+      "tafei": "永雏塔菲",
+      "dazui": "大嘴"
+    }
+  },
+  "nav": {
+    "heading": "Paramètres",
+    "ariaLabel": "Sections des paramètres",
+    "back": "Retour à la discussion"
+  },
+  "sections": {
+    "general": "Général",
+    "appearance": "Apparence",
+    "shortcuts": "Raccourcis",
+    "models": "Modèles",
+    "memory": "Mémoire",
+    "archive": "Archives",
+    "about": "À propos",
+    "island": "AI 悬浮岛",
+    "hooks": "Hooks",
+    "dataImport": "Import de données",
+    "rules": "Règles",
+    "worktree": "Worktrees",
+    "learning": "Apprentissage autonome",
+    "rewind": "Restauration de session",
+    "sandbox": "Sandbox"
+  },
+  "close": {
+    "section": "Fermeture de la fenêtre",
+    "field": "À la fermeture de la fenêtre",
+    "desc": {
+      "ask": "Demander à chaque fois s’il faut réduire dans la barre d’état ou quitter.",
+      "tray": "La fenêtre se cache dans la barre d’état et MeowCode continue en arrière-plan.",
+      "quit": "Fermer la fenêtre quitte MeowCode immédiatement."
+    },
+    "options": {
+      "ask": "Demander",
+      "tray": "Réduire",
+      "quit": "Quitter"
+    }
+  },
+  "update": {
+    "section": "Mises à jour",
+    "field": "Télécharger les mises à jour en arrière-plan",
+    "desc": {
+      "on": "Au démarrage, la nouvelle version est téléchargée en silence ; un bouton de redémarrage apparaît ensuite en bas à gauche de la barre latérale — cliquez pour installer.",
+      "off": "Vérifier et notifier seulement au démarrage ; le téléchargement et l’installation restent manuels dans « À propos »."
+    }
+  },
+  "appearance": {
+    "themeSection": "Thème",
+    "themeField": "Thème de couleurs",
+    "themeDesc": "« Système » suit en temps réel le réglage clair / sombre de Windows. Le changement s’applique immédiatement, sans redémarrage.",
+    "theme": {
+      "system": "Système",
+      "light": "Clair",
+      "dark": "Sombre"
+    },
+    "fontSection": "Polices",
+    "fontDesc": "La « police de l’interface » s’applique au chat, à la barre latérale et au reste du texte ; la « police du code » s’applique aux blocs de code, aux diff et autres textes à chasse fixe. Choisissez une police système ou importez un fichier local (ttf / otf / woff / woff2). Le changement est immédiat.",
+    "importField": "Importer une police",
+    "importButton": "Importer une police…",
+    "uiFont": "Police de l’interface",
+    "codeFont": "Police du code",
+    "defaultFont": "Par défaut",
+    "fontsLoading": "Lecture des polices système… cliquez pour réessayer",
+    "imported": "{{name}} (importée)"
+  },
+  "shortcuts": {
+    "title": "Raccourcis",
+    "description": "Liste des raccourcis clavier.",
+    "ctrlHint": "Sur macOS, ⌘ remplace Ctrl",
+    "items": {
+      "search": "Recherche plein texte des conversations",
+      "quickOpen": "Ouverture rapide de fichiers",
+      "sideChat": "Chat latéral",
+      "terminal": "Terminal",
+      "send": "Envoyer le message",
+      "commit": "Committer les modifications Git"
+    }
+  },
+  "memory": {
+    "extractionTitle": "Distillation automatique de la mémoire",
+    "extractionDesc": "Après chaque tour, une requête légère en arrière-plan passe en revue la conversation et enregistre en mémoire ce qui mérite de l'être à long terme (préférences, corrections, décisions du projet). Une fois désactivée, seuls les ajouts manuels et les écritures spontanées de l'IA subsistent.",
+    "extractionField": "Distiller la mémoire après chaque tour",
+    "extractionFailed": "Échec de l'enregistrement du réglage",
+    "scope": {
+      "user": "Mémoire personnelle",
+      "project": "Mémoire du projet"
+    },
+    "descUser": "Mémoire de long terme conservée d’un espace de travail à l’autre : vos préférences, vos habitudes, votre expérience. Elle est stockée dans ~/.meowcode/memory/ ; l’index est injecté au début de chaque nouvelle discussion, et l’IA y accède avec les outils de mémoire.",
+    "descProject": "Mémoire réservée à l’espace de travail actuel, stockée dans .meowcode/memory/ du projet (hors git).",
+    "descProjectNamed": "Mémoire réservée à l’espace de travail actuel ({{workspace}}), stockée dans .meowcode/memory/ du projet (hors git).",
+    "count_one": "{{count}} entrée enregistrée",
+    "count_other": "{{count}} entrées enregistrées",
+    "count_few": "{{count}} entrées enregistrées",
+    "count_many": "{{count}} entrées enregistrées",
+    "create": "Nouvelle entrée",
+    "empty": "Aucune mémoire pour l’instant — quand l’IA apprend quelque chose d’utile en discussion, elle l’enregistre ici ; vous pouvez aussi créer des entrées à la main.",
+    "clickToEdit": "Cliquez pour modifier",
+    "noDescription": "(sans description)",
+    "deleteAria": "Supprimer {{name}}",
+    "confirmDeleteAria": "Confirmer la suppression de {{name}}",
+    "editTitle": "{{scope}} — modifier {{name}}",
+    "createTitle": "{{scope}} — nouvelle entrée",
+    "editorDesc": "Modifiez le texte Markdown source. La description du frontmatter rejoint l’index MEMORY.md, effective pour les nouvelles discussions.",
+    "name": "Nom",
+    "namePlaceholder": "kebab-case, par ex. docker-cli",
+    "nameHint": "Enregistré sous <nom>.md",
+    "nameRule": "Le nom est en kebab-case minuscule (lettres, chiffres, tirets), 64 caractères maximum",
+    "saved": "{{scope}} : entrée « {{name}} » enregistrée",
+    "deleted": "{{scope}} : entrée « {{name}} » supprimée",
+    "loadFailed": "Impossible de charger la mémoire",
+    "readFailed": "Impossible de lire l’entrée",
+    "saveFailed": "Impossible d’enregistrer l’entrée",
+    "deleteFailed": "Impossible de supprimer l’entrée"
+  },
+  "archive": {
+    "section": "Archives",
+    "desc": "Les discussions archivées n’apparaissent plus dans la liste et peuvent être restaurées à tout moment. Pour archiver, survolez une discussion de la liste puis cliquez sur l’icône d’archive à droite. Supprimer efface la conversation elle-même, sans retour possible.",
+    "empty": "Aucune discussion archivée",
+    "item": "Discussion · {{when}}",
+    "unknownTime": "date inconnue",
+    "deleteAll": "Tout supprimer",
+    "confirmDeleteAll": "Tout supprimer ?",
+    "deleteAria": "Supprimer définitivement {{name}}",
+    "confirmDeleteAria": "Cliquez à nouveau pour supprimer définitivement {{name}}"
+  },
+  "about": {
+    "loading": "Lecture des informations de version…",
+    "version": "Version",
+    "newVersion": "Nouvelle version disponible",
+    "checking": "Vérification…",
+    "check": "Vérifier la version",
+    "author": "Auteur",
+    "website": "Site web",
+    "repo": "Dépôt",
+    "openInBrowser": "Ouvrir dans le navigateur",
+    "credits": "Remerciements",
+    "sponsor": "Soutenir",
+    "sponsorHint": "Si MeowCode vous est utile, vous pouvez soutenir l’auteur en scannant un QR code.",
+    "qrAlt": "QR code de paiement {{name}}",
+    "sponsors": {
+      "wechat": "WeChat Pay",
+      "alipay": "Alipay"
+    },
+    "upToDate": "Vous avez déjà la dernière version",
+    "checkFailed": "Échec de la vérification : {{error}}"
+  },
+  "actions": {
+    "add": "Ajouter",
+    "cancel": "Annuler",
+    "confirmDelete": "Confirmer la suppression",
+    "delete": "Supprimer",
+    "edit": "Modifier",
+    "restore": "Restaurer",
+    "save": "Enregistrer",
+    "saving": "Enregistrement…"
+  },
+  "models": {
+    "section": "Modèles",
+    "desc": "Ajoutez ici les fournisseurs de modèles, puis indiquez le nom du modèle à utiliser.",
+    "count_one": "{{count}} modèle configuré",
+    "count_other": "{{count}} modèles configurés",
+    "count_few": "{{count}} modèles configurés",
+    "count_many": "{{count}} modèles configurés",
+    "add": "Ajouter un modèle",
+    "empty": "Aucun modèle configuré pour l’instant. Cliquez sur « Ajouter un modèle » pour commencer.",
+    "deleteTitle": "Supprimer le fournisseur",
+    "deleteMessage": "Supprimer « {{name}} » ? Il devra être reconfiguré pour être utilisé.",
+    "restartTitle": "L’enregistrement redémarre le service local",
+    "restartMessage": "Les modifications de modèles redémarrent le service agent local et interrompent le tour en cours. Enregistrer quand même ?",
+    "restartConfirm": "Enregistrer quand même",
+    "colModel": "Modèle",
+    "colProvider": "Fournisseur",
+    "colActions": "Actions",
+    "active": "Actuel",
+    "enableAria": "Activer {{name}}",
+    "levels": "Niveaux de raisonnement",
+    "levelRemoveAria": "Retirer {{level}}",
+    "levelRemoveTitle": "Retirer ce niveau",
+    "levelsAuto": "Laissez vide pour déduire du nom du modèle (actuellement {{levels}})",
+    "levelsManual": "Défini manuellement. Retirez tous les niveaux pour revenir à la déduction par nom de modèle.",
+    "modalityOptions": {
+      "text": "Texte",
+      "image": "Image",
+      "pdf": "PDF"
+    },
+    "ttlOptions": {
+      "fiveMinutes": "5 minutes (par défaut)",
+      "auto": "Automatique (rythme de la discussion)",
+      "oneHour": "1 heure (TTL long Anthropic)"
+    },
+    "summaryOptions": {
+      "none": "Ne pas envoyer (économise des jetons)",
+      "auto": "Automatique",
+      "concise": "Concis",
+      "detailed": "Détaillé"
+    },
+    "compactionOptions": {
+      "auto": "Automatique (points d’accès officiels)",
+      "on": "Toujours activé (passerelles compatibles)",
+      "off": "Désactivé (résumés locaux uniquement)"
+    },
+    "authOptions": {
+      "protocolDefault": "Valeur par défaut du protocole (Anthropic x-api-key / OpenAI Bearer)",
+      "bearer": "Authorization: Bearer",
+      "azureKey": "En-tête api-key (Azure OpenAI)",
+      "bedrockKey": "Bedrock-API-Key (Amazon Bedrock)",
+      "none": "Aucun en-tête d’authentification (inférence locale / porté par les en-têtes)"
+    },
+    "picker": {
+      "title": "Ajouter un fournisseur de modèles",
+      "desc": "Choisissez un fournisseur, puis indiquez le nom du modèle. Le format d’API reste modifiable plus tard. Introuvable ? Utilisez « Fournisseur personnalisé » et renseignez le point d’accès.",
+      "search": "Rechercher",
+      "searchPlaceholder": "Rechercher par nom ou id, par ex. deepseek",
+      "custom": "Fournisseur personnalisé",
+      "customMeta": "Renseigner le point d’accès et la clé",
+      "needEndpoint": "Point d’accès requis",
+      "noMatch": "Aucun fournisseur correspondant — essayez « Fournisseur personnalisé »"
+    },
+    "form": {
+      "addTitle": "Ajouter un modèle · {{name}}",
+      "editTitle": "Modifier le modèle",
+      "desc": "Le fournisseur est choisi — configurez maintenant le modèle lui-même. Les clés d’API restent sur cette machine (chiffrées avec les informations d’identification Windows).",
+      "customProviderName": "Fournisseur personnalisé",
+      "providerName": "Nom du fournisseur",
+      "providerNamePlaceholder": "Par exemple My Provider",
+      "providerNameHint": "Affiché dans la colonne Fournisseur de la liste des modèles",
+      "provider": "Fournisseur",
+      "apiFormat": "Format d’API",
+      "apiFormatAuto": "Déduit de l’URL de la requête ; un choix manuel désactive la détection",
+      "apiFormatDesc": "Détermine le point d’accès appelé et la structure du corps ; déduit de l’URL de la requête",
+      "baseUrl": "URL de la requête",
+      "baseUrlHint": "Indiquez l’URL racine : le format d’API est déduit et le chemin ajouté selon le format",
+      "modelId": "Identifiant du modèle",
+      "modelIdPlaceholder": "Par exemple deepseek-chat",
+      "modelIdHint": "L’identifiant indiqué dans la documentation du fournisseur, obligatoire. Un même identifiant peut être configuré plusieurs fois (URL ou clé différente).",
+      "displayName": "Nom affiché du modèle",
+      "displayNamePlaceholder": "Vide = afficher l’identifiant du modèle",
+      "displayNameHint": "Change seulement l’affichage, et ne doit pas dupliquer un modèle existant",
+      "apiKey": "Clé d’API",
+      "apiKeySaved": "Enregistrée — laissez vide pour ne pas la modifier",
+      "contextWindow": "Fenêtre de contexte",
+      "contextWindowHint": "Déduite du nom du modèle si vide ; la notation 256K / 1M est acceptée",
+      "maxOutput": "Sortie maximale",
+      "maxOutputHint": "Déduite du nom du modèle si vide — le nombre de jetons qu’une réponse peut produire",
+      "modalities": "Modalités d’entrée",
+      "requiredTag": " (obligatoire)",
+      "modalityHint": "La capacité d’image est déduite du nom du modèle ; le PDF ne passe que par les protocoles Anthropic / Responses. Gardez au moins la modalité texte.",
+      "advanced": "Paramètres avancés",
+      "advancedHint": "Effort de raisonnement / TTL du cache / niveaux de raisonnement / authentification et requêtes personnalisées — vide = valeurs par défaut",
+      "reasoningEffort": "Effort de raisonnement",
+      "reasoningEffortPlaceholder": "Vide = valeur par défaut du fournisseur",
+      "reasoningEffortHint": "Envoyé comme reasoning_effort",
+      "thinkingBudget": "Budget de réflexion",
+      "thinkingBudgetPlaceholder": "Vide = suit l’effort de raisonnement",
+      "thinkingBudgetHint": "thinking.budget_tokens ; automatiquement ramené sous max_tokens",
+      "cacheTtl": "TTL du cache",
+      "cacheTtlHint": "L’écriture en 1 h coûte 2× ; « Automatique » et 1 h ne s’appliquent qu’aux points d’accès où le TTL long a été vérifié, le reste retombe à 5 minutes",
+      "reasoningSummary": "Résumé du raisonnement",
+      "reasoningSummaryHint": "Protocole Responses uniquement ; les résumés sont facturés comme sortie",
+      "nativeCompaction": "Compression côté serveur",
+      "nativeCompactionHint": "Laissez le fournisseur compresser l’historique : une requête de résumé complet économisée",
+      "authStyle": "Méthode d’authentification",
+      "authStyleHint": "Gardez la valeur par défaut pour la plupart des fournisseurs ; Azure / Bedrock exigent leur option",
+      "extraHeaders": "En-têtes supplémentaires",
+      "extraHeadersHint": "Un « nom: valeur » par ligne ; les lignes commençant par # sont des commentaires. Par exemple le HTTP-Referer d’OpenRouter",
+      "extraBody": "Corps de requête supplémentaire",
+      "extraBodyHint": "Objet JSON fusionné au sommet du corps de la requête. Par exemple {\"enable_thinking\": false} chez Qwen",
+      "models": "Modèles",
+      "addModel": "Ajouter un ID de modèle",
+      "fetchModels": "Récupérer la liste des modèles",
+      "fetching": "Récupération…",
+      "fetchTitle": "Sélectionner les modèles à ajouter",
+      "fetchHint": "Seuls les modèles cochés sont ajoutés à la liste ci-dessus.",
+      "fetchEmpty": "Aucun modèle renvoyé.",
+      "fetchFailed": "Échec de la récupération des modèles : {{message}}",
+      "fetchAdded": "Déjà ajouté",
+      "fetchAdd": "Ajouter la sélection ({{count}})",
+      "modelSettings": "Paramètres du modèle",
+      "modelSettingsDesc": "S’applique à ce modèle uniquement ; l’URL, la clé et le protocole se règlent plus haut.",
+      "modelsRequired": "Ajoutez au moins un modèle.",
+      "contextDefault": "Valeur par défaut du modèle"
+    },
+    "error": {
+      "providerNameRequired": "Le nom du fournisseur ne peut pas être vide",
+      "modelRequired": "L’identifiant du modèle ne peut pas être vide",
+      "duplicateName": "Le nom affiché « {{name}} » est déjà configuré",
+      "baseUrlRequired": "L’URL de la requête ne peut pas être vide",
+      "contextFormat": "Format de fenêtre de contexte invalide — par exemple 128k ou 1M",
+      "maxOutputFormat": "Format de sortie maximale invalide — par exemple 32k",
+      "extraBodyObject": "Le corps de requête supplémentaire doit être un objet JSON",
+      "extraBodyJson": "Le corps de requête supplémentaire n’est pas un JSON valide : {{message}}",
+      "headerLine": "Ligne d’en-tête invalide : {{line}}"
+    }
+  },
+  "island": {
+    "section": "AI 悬浮岛",
+    "field": "启用悬浮岛",
+    "desc": {
+      "on": "悬浮岛已开启：屏幕顶部居中显示所有运行中会话的状态，鼠标放上去可展开查看对话、直接输入或停止任务。",
+      "off": "开启后在屏幕顶部居中显示一枚胶囊，实时显示所有运行中会话的状态；鼠标放上去可展开成对话小窗。"
+    }
+  },
+  "hooks": {
+    "loading": "Chargement de la configuration des hooks…",
+    "error": "Impossible de charger la configuration des hooks : {{error}}",
+    "retry": "Réessayer",
+    "saving": "Redémarrage du service Agent pour appliquer les hooks…",
+    "import": {
+      "section": "Importer les hooks Claude Code",
+      "description": "Lit ~/.claude/settings.json et les configurations .claude de l’espace de travail. Les configurations de l’espace de travail ne sont pas exécutées par défaut.",
+      "master": "Activer les hooks",
+      "masterHint": {
+        "on": "La configuration des hooks Claude Code est chargée.",
+        "off": "Désactivé : la configuration est affichée en lecture seule et ne sera pas exécutée."
+      },
+      "workspace": "Inclure la configuration .claude de l’espace de travail",
+      "workspaceHint": {
+        "on": "Les hooks de .claude/settings*.json de l’espace de travail seront exécutés.",
+        "off": "Seule la configuration ~/.claude est exécutée ; celle de l’espace de travail est affichée à titre indicatif."
+      },
+      "workspaceWarning": "Les hooks de l’espace de travail proviennent de fichiers du dépôt et peuvent contenir des commandes malveillantes. Ne les activez que si vous faites confiance à ce dépôt.",
+      "disabledNote": "Les hooks sont désactivés. Activez l’interrupteur ci-dessus pour exécuter les commandes."
+    },
+    "configured": {
+      "section": "Hooks configurés",
+      "description": "Résumé en lecture seule. Ouvrez le fichier de configuration pour modifier.",
+      "empty": "Aucun hook Claude Code n’est configuré.",
+      "eventCount": "{{count}} commande(s)",
+      "matcher": "correspond à {{matcher}}",
+      "timeout": "délai {{seconds}} s",
+      "layer": {
+        "user": "Utilisateur",
+        "project": "Espace de travail",
+        "local": "Espace de travail local"
+      },
+      "layerUnknown": "Chemin inconnu",
+      "excluded": "Non exécuté",
+      "open": "Ouvrir pour modifier",
+      "missing": "Fichier introuvable",
+      "fileCount": "{{count}} commande(s)",
+      "missingToast": "Fichier introuvable : {{path}}",
+      "openError": "Impossible d’ouvrir le fichier : {{error}}",
+      "unsupported": "Événements non pontés : {{events}}"
+    },
+    "runMode": {
+      "section": "Mode d’exécution des commandes de hook",
+      "description": {
+        "auto": "Exécuter automatiquement les commandes de hook ; `ask`/`deny` de PreToolUse s’appliquent toujours.",
+        "ask": "Demander avant la première exécution de chaque commande de hook dans une session ; refuser ignore uniquement cette commande."
+      },
+      "field": "Mode d’exécution",
+      "options": {
+        "auto": "Exécuter automatiquement",
+        "autoDesc": "Sans confirmation supplémentaire ; suivre la configuration du hook",
+        "ask": "Demander à chaque fois",
+        "askDesc": "Confirmer chaque commande une fois par session"
+      }
+    },
+    "confirm": {
+      "title": "Redémarrer le service Agent ?",
+      "message": "Un tour est en cours. Enregistrer les paramètres des hooks l’interrompra.",
+      "confirm": "Enregistrer et redémarrer"
+    }
+  },
+  "dataImport": {
+    "title": "Import de données",
+    "desc": "Importer du nouveau contenu depuis d'autres applications ; pas de synchronisation automatique, les données sources ne sont pas modifiées.",
+    "fromApps": "Importer depuis des applications",
+    "redetect": "Redétecter",
+    "loading": "Détection des applications importables…",
+    "error": "Échec de la détection : {{error}}",
+    "retry": "Réessayer",
+    "app": {
+      "qoder": "Qoder CN IDE (Quest)",
+      "qoderintl": "Qoder (International)",
+      "workbuddy": "WorkBuddy",
+      "workbuddyai": "WorkBuddyAI",
+      "zcode": "ZCode",
+      "opencode": "OpenCode",
+      "dsh": "DeepSeek Harness",
+      "codex": "Codex"
+    },
+    "notDetected": "Non détecté",
+    "selected": "{{count}} sélectionnés",
+    "import": "Importer les données",
+    "importing": "Import en cours…",
+    "groups": {
+      "mcp": "Connecteurs MCP",
+      "memory": "Mémoire",
+      "skills": "Skills",
+      "tasks": "Conversations"
+    },
+    "groupEmpty": "Aucun",
+    "result": {
+      "imported": "{{count}} importés",
+      "skipped": "{{count}} déjà présents",
+      "failed": "{{count}} échecs, cliquer pour voir",
+      "mcpReloaded": "Connecteurs MCP mis à jour et reconnectés"
+    },
+    "progress": "Import {{done}}/{{total}}"
+  },
+  "rules": {
+    "importSection": "Importer les paramètres",
+    "agents": {
+      "label": "Inclure AGENTS.md dans le contexte",
+      "hint": "L’agent lit AGENTS.md à la racine de l’espace de travail et l’ajoute au contexte."
+    },
+    "claude": {
+      "label": "Inclure CLAUDE.md dans le contexte",
+      "hint": "L’agent lit CLAUDE.md et CLAUDE.local.md à la racine de l’espace de travail et les ajoute au contexte."
+    },
+    "title": "Règles",
+    "hint": "Créez et gérez les règles que l’agent suit pendant la conversation.",
+    "refresh": "Actualiser les règles",
+    "create": "Créer",
+    "empty": "Aucune règle pour l’instant",
+    "emptyHint": "Cliquez sur Créer pour ajouter votre première règle",
+    "noWorkspace": "Sélectionnez d’abord un espace de travail",
+    "noWorkspaceHint": "Les règles sont stockées dans le répertoire .meowcode/rules du projet.",
+    "clickToEdit": "Cliquez pour modifier cette règle",
+    "deleteAria": "Supprimer la règle « {{name}} »",
+    "confirmDeleteAria": "Cliquez à nouveau pour confirmer la suppression de la règle « {{name}} »",
+    "createTitle": "Nouvelle règle",
+    "editTitle": "Modifier la règle « {{name}} »",
+    "editorDesc": "Les règles sont injectées dans le prompt système avec le projet. Markdown est pris en charge.",
+    "name": "Nom de la règle",
+    "namePlaceholder": "ex. code-style",
+    "nameHint": "Lettres minuscules, chiffres et traits d’union, ex. code-style",
+    "nameRule": "Utilisez des lettres minuscules, des chiffres et des traits d’union ; ne commencez ni ne terminez par un trait d’union.",
+    "content": "Contenu de la règle",
+    "contentPlaceholder": "ex. chaque nouvelle fonction doit avoir un JSDoc ; ne modifiez pas generated/.",
+    "loadFailed": "Impossible de charger les règles",
+    "readFailed": "Impossible de lire la règle",
+    "saveFailed": "Impossible d’enregistrer la règle",
+    "deleteFailed": "Impossible de supprimer la règle",
+    "saved": "Règle « {{name}} » enregistrée",
+    "deleted": "Règle « {{name}} » supprimée"
+  },
+  "worktree": {
+    "section": "Worktrees",
+    "fetch": {
+      "label": "Récupérer l’amont avant la création",
+      "hint": "Récupérer les mises à jour de l’amont avant de créer un worktree."
+    },
+    "cleanup": {
+      "label": "Supprimer automatiquement les anciens worktrees",
+      "hint": "Recommandé pour la plupart des utilisateurs. Désactivez uniquement si vous souhaitez gérer vous-même les anciens worktrees et l’espace disque."
+    },
+    "maxKeep": {
+      "label": "Limite de worktrees",
+      "hint": "Au-delà de la limite, les worktrees les plus anciens sont nettoyés automatiquement. Une sauvegarde Git est créée avant la suppression, donc les worktrees supprimés peuvent toujours être restaurés."
+    }
+  },
+  "learning": {
+    "title": "Apprentissage autonome",
+    "desc": "À la fin de chaque tour, l'agent distille ce qu'il a appris en compétences réutilisables, règles de projet et modèle de votre façon de travailler. Rien n'est adopté d'emblée : les nouveaux éléments passent en observation, doivent prouver leur utilité et se retirent s'ils gênent.",
+    "toggleField": "Apprendre des conversations",
+    "toggleFailed": "Impossible de modifier le réglage",
+    "budgetField": "Appels aujourd'hui",
+    "budgetValue": "{{count}} le {{date}}",
+    "skillsTitle": "Compétences apprises",
+    "skillsDesc": "Procédures que l'agent s'est écrites. On les lit via leur chemin SKILL.md ; elles sont rappelées par nom et description.",
+    "skillsEmpty": "Rien appris pour l'instant. Elles apparaissent quand une procédure réussit et mérite d'être répétée.",
+    "skillCount_one": "{{count}} compétence",
+    "skillCount_other": "{{count}} compétences",
+    "skillCount_few": "{{count}} compétences",
+    "skillCount_many": "{{count}} compétences",
+    "consolidate": "Consolider maintenant",
+    "consolidated": "Consolidé : {{count}} élément(s) mis à jour",
+    "consolidatedEmpty": "Rien à consolider",
+    "consolidateFailed": "La consolidation a échoué",
+    "statsHint": "utile / nuisible — nombre de rappels et si le tour s'est bien passé",
+    "rollbackAria": "Revenir à la version précédente de {{name}}",
+    "reactivateAria": "Remettre {{name}} en observation",
+    "deleteAria": "Supprimer {{name}}",
+    "actionFailed": "L'action n'a pas abouti",
+    "guidelinesTitle": "Règles du projet",
+    "guidelinesDesc": "Règles qui n'apparaissent que si leur déclencheur correspond : commande, erreur, mot-clé ou motif de fichier.",
+    "guidelinesEmpty": "Aucune règle pour l'instant.",
+    "profileTitle": "Ce qu'il sait de vous",
+    "profileDesc": "Style de communication, rigueur attendue, autonomie accordée.",
+    "profileEmpty": "Rien encore. Cela se construit lentement, par observations répétées.",
+    "status": {
+      "tentative": "en observation",
+      "active": "approuvé",
+      "retired": "retiré"
+    },
+    "dimension": {
+      "communication": "communication",
+      "rigor": "rigueur",
+      "autonomy": "autonomie",
+      "coding_style": "style de code",
+      "toolchain": "outillage",
+      "domain": "domaine"
+    },
+    "loadFailed": "Impossible de charger les éléments appris",
+    "clearField": "Effacer tout ce qui a été appris",
+    "clearHint": "Supprime toutes les compétences, règles, traits de profil et l'historique des résultats, dans ce projet et entre projets. Irréversible.",
+    "clearAction": "Tout effacer",
+    "clearConfirm": "Cliquez à nouveau pour confirmer",
+    "cleared": "{{scopes}} dossiers d'apprentissage vidés",
+    "clearedNothing": "Rien à effacer",
+    "clearFailed": "L'effacement a échoué"
+  },
+  "general": {
+    "section": "Général",
+    "desc": "Comportement courant. Les changements s'appliquent aussitôt.",
+    "notify": {
+      "field": "Notifications système",
+      "desc": {
+        "on": "Si la fenêtre est en arrière-plan, afficher une notification système à la fin d'un tour, en cas de confirmation requise ou d'interruption (titre de la conversation et résumé de la réponse).",
+        "off": "Aucune notification système ne sera affichée."
+      }
+    }
+  },
+  "proxy": {
+    "title": "Proxy réseau",
+    "desc": "Changez de mode de connexion si le réseau pose problème. Effet immédiat.",
+    "mode": {
+      "direct": "Connexion directe",
+      "system": "Suivre le système",
+      "manual": "Manuel"
+    },
+    "urlLabel": "Adresse du proxy",
+    "urlHint": "Par exemple http://127.0.0.1:7890 ; laissez vide pour rester en direct.",
+    "urlMissing": "Pas encore d'adresse : les requêtes restent en direct.",
+    "failed": "Le réglage du proxy n'a pas été appliqué"
+  },
+  "rewind": {
+    "section": "Restauration de session",
+    "enabled": {
+      "label": "Instantanés de fichiers",
+      "hint": "Un point de contrôle est pris au début de chaque tour ; les fichiers modifiés peuvent être restaurés avec la conversation. Redémarrez l'application après modification."
+    },
+    "keep": {
+      "label": "Instantanés conservés",
+      "hint": "Conserver les instantanés des N derniers points de contrôle par session ; les plus anciens sont nettoyés."
+    },
+    "maxTotal": {
+      "label": "Limite de taille",
+      "hint": "Limite de taille totale du répertoire d'instantanés d'une session ; les plus anciens sont récupérés en premier."
+    }
+  },
+  "sandbox": {
+    "title": "Sandbox",
+    "modeField": "Mode sandbox",
+    "modeDesc": "Contrôle l’accès de l’Agent au système de fichiers.",
+    "modeFull": "Accès complet",
+    "modeFullDesc": "L’Agent peut lire et écrire des fichiers en dehors de l’espace de travail.",
+    "modeWorkspace": "Écriture dans l’espace de travail",
+    "modeWorkspaceDesc": "Les commandes ne peuvent écrire que dans l’espace de travail et les racines inscriptibles supplémentaires.",
+    "deleteField": "Confirmation de suppression",
+    "deleteDesc": "S’applique uniquement en mode écriture dans l’espace de travail ; l’accès complet ignore la confirmation de suppression par défaut.",
+    "unsupported": "La sandbox de commandes n’est disponible que sous Windows.",
+    "riskTitle": "Passer en écriture dans l’espace de travail ?",
+    "riskDoes": "L’activation écrit une ACL permanente et une étiquette d’intégrité Low dans l’espace de travail, et exécute run_command avec un jeton restreint.",
+    "riskDoesNot": "Il ne limite ni la lecture, ni le réseau, ni les outils d’édition. Une commande bloquée demande séparément si elle doit être réessayée une fois hors sandbox.",
+    "riskUndo": "Revenez à l’accès complet pour arrêter la sandbox ; l’ACL de l’espace de travail reste mais n’est plus utilisée.",
+    "confirmEnable": "Changer",
+    "cancel": "Annuler",
+    "enabled": "Passage en écriture dans l’espace de travail (première autorisation {{ms}} ms)",
+    "saveFailed": "Échec de l’enregistrement des paramètres de sandbox",
+    "loadFailed": "Échec du chargement des paramètres de sandbox"
+  }
+}

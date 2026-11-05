@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { LuArrowLeft, LuArrowRight, LuRotateCw } from "react-icons/lu";
 import { normalizeAddress } from "../../panel/address";
 import "./BrowserTab.css";
@@ -34,6 +35,7 @@ export function BrowserTab({
   agent?: boolean;
   onMeta: (id: string, meta: { title?: string; url?: string }) => void;
 }) {
+  const { t } = useTranslation("panel");
   const ref = useRef<WebviewElement | null>(null);
   const initialUrl = useRef(url).current;
   const [address, setAddress] = useState(url);
@@ -109,19 +111,19 @@ export function BrowserTab({
   return (
     <div className="mc-browser">
       <div className="mc-browser__bar">
-        <button type="button" className="mc-rtp__navbtn" aria-label="后退" onClick={() => withElement((el) => el.goBack())}>
+        <button type="button" className="mc-rtp__navbtn" aria-label={t("browser.back")} onClick={() => withElement((el) => el.goBack())}>
           <LuArrowLeft size={14} />
         </button>
-        <button type="button" className="mc-rtp__navbtn" aria-label="前进" onClick={() => withElement((el) => el.goForward())}>
+        <button type="button" className="mc-rtp__navbtn" aria-label={t("browser.forward")} onClick={() => withElement((el) => el.goForward())}>
           <LuArrowRight size={14} />
         </button>
-        <button type="button" className="mc-rtp__navbtn" aria-label="刷新" onClick={() => withElement((el) => el.reload())}>
+        <button type="button" className="mc-rtp__navbtn" aria-label={t("browser.reload")} onClick={() => withElement((el) => el.reload())}>
           <LuRotateCw size={13} />
         </button>
         <input
           className="mc-rtp__address"
           value={address}
-          placeholder="搜索或输入网址"
+          placeholder={t("browser.addressPlaceholder")}
           onChange={(event) => setAddress(event.target.value)}
           onKeyDown={(event) => {
             if (event.key === "Enter") submit();

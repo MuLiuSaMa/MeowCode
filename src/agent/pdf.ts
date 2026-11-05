@@ -275,7 +275,6 @@ export async function readPdfText(options: {
 }): Promise<PdfTextResult> {
   const { file, name } = options;
   let data = options.data;
-  let size = data?.length ?? 0;
   let sha = "";
   try {
     if (!data) {
@@ -290,7 +289,6 @@ export async function readPdfText(options: {
           scanned: false,
         };
       }
-      size = stat.size;
       const hash = await sha256Of(file);
       sha = hash.sha;
       data = new Uint8Array(await fs.readFile(file));

@@ -20,20 +20,54 @@ function loadPty() {
   }
 }
 
-/** shell 探测：PowerShell 7 → Windows PowerShell → ComSpec → cmd.exe */
-function resolveShell() {
-  const programFiles = process.env.ProgramFiles ?? "C:\\Program Files";
-  const systemRoot = process.env.SystemRoot ?? "C:\\Windows";
+const winJoin = path.win32.join;
+
+/** PATH 可能带引号或空项（空项等于当前目录，扫描时跳过）。 */
+function pathEntries(env) {
+  return (env.PATH ?? "")
+    .split(";")
+    .map((entry) => entry.trim().replace(/^"|"$/g, ""))
+    .filter(Boolean);
+}
+
+/**
+ * 终端 shell 候选：pwsh 7（ProgramFiles / ProgramFiles(x86) / PATH）→ 5.1 → ComSpec → cmd.exe。
+ * PATH 覆盖 Scoop / winget / Microsoft Store 的执行别名。
+ */
+function shellCandidates(env = process.env) {
+  const programFiles = env.ProgramFiles ?? "C:\\Program Files";
+  const programFilesX86 = env["ProgramFiles(x86)"];
+  const systemRoot = env.SystemRoot ?? "C:\\Windows";
   const candidates = [
-    path.join(programFiles, "PowerShell", "7", "pwsh.exe"),
-    path.join(systemRoot, "System32", "WindowsPowerShell", "v1.0", "powershell.exe"),
-    process.env.ComSpec,
-    path.join(systemRoot, "System32", "cmd.exe"),
+    winJoin(programFiles, "PowerShell", "7", "pwsh.exe"),
+    programFilesX86 ? winJoin(programFilesX86, "PowerShell", "7", "pwsh.exe") : "",
+    ...pathEntries(env).map((entry) => winJoin(entry, "pwsh.exe")),
+    winJoin(systemRoot, "System32", "WindowsPowerShell", "v1.0", "powershell.exe"),
+    env.ComSpec,
+    winJoin(systemRoot, "System32", "cmd.exe"),
   ];
-  for (const candidate of candidates) {
-    if (candidate && fs.existsSync(candidate)) return candidate;
+  return candidates.filter(Boolean).filter((candidate, index, all) => all.indexOf(candidate) === index);
+}
+
+/** Store 执行别名在 Node 里可能是符号链接；existsSync 会误判目标缺失的坏别名。 */
+function isSpawnableCandidate(candidate) {
+  try {
+    const stat = fs.lstatSync(candidate);
+    return stat.isFile() || stat.isSymbolicLink();
+  } catch {
+    return false;
   }
-  return process.platform === "win32" ? "cmd.exe" : process.env.SHELL || "bash";
+}
+
+/** PowerShell 家族去掉版权 banner；不动 profile，用户终端应照常加载。 */
+function shellArgs(shell) {
+  const name = path.win32.basename(shell).toLowerCase().replace(/\.exe$/, "");
+  return name === "pwsh" || name === "powershell" ? ["-NoLogo"] : [];
+}
+
+function resolveShell(env = process.env) {
+  if (process.platform !== "win32") return env.SHELL || "bash";
+  return shellCandidates(env).find(isSpawnableCandidate) ?? "cmd.exe";
 }
 
 function registerTerminalIpc(ipcMain, getWindow) {
@@ -58,7 +92,6 @@ function registerTerminalIpc(ipcMain, getWindow) {
 
   ipcMain.handle("meow:term-create", (_event, options) => {
     const pty = loadPty();
-    const shell = resolveShell();
     const requestedCwd = typeof options?.cwd === "string" ? options.cwd : "";
     const cwd =
       requestedCwd && fs.existsSync(requestedCwd)
@@ -67,16 +100,35 @@ function registerTerminalIpc(ipcMain, getWindow) {
     const cols = Math.max(20, Math.floor(Number(options?.cols) || 80));
     const rows = Math.max(5, Math.floor(Number(options?.rows) || 24));
 
-    seq += 1;
-    const id = `term-${seq}-${Date.now().toString(36)}`;
-    const proc = pty.spawn(shell, [], {
+    const spawnOptions = {
       name: "xterm-256color",
       cols,
       rows,
       cwd,
       ...(process.platform === "win32" ? { useConpty: true } : {}),
       env: { ...process.env, TERM: "xterm-256color" },
-    });
+    };
+    // 逐个候选尝试 spawn：Store 坏别名能通过 lstat，却会在 CreateProcess 阶段失败。
+    const candidates =
+      process.platform === "win32" ? shellCandidates().filter(isSpawnableCandidate) : [resolveShell()];
+    let proc;
+    let shell;
+    let lastError;
+    for (const candidate of candidates) {
+      try {
+        proc = pty.spawn(candidate, shellArgs(candidate), spawnOptions);
+        shell = candidate;
+        break;
+      } catch (error) {
+        lastError = error;
+      }
+    }
+    if (!proc) {
+      throw new Error(`终端不可用：找不到可启动的 shell（${lastError?.message ?? "无候选"}）`);
+    }
+
+    seq += 1;
+    const id = `term-${seq}-${Date.now().toString(36)}`;
 
     const entry = { proc, pending: [], timer: null, lastCols: cols, lastRows: rows };
     terminals.set(id, entry);
@@ -147,4 +199,4 @@ function registerTerminalIpc(ipcMain, getWindow) {
   return { disposeAll };
 }
 
-module.exports = { registerTerminalIpc };
+module.exports = { registerTerminalIpc, resolveShell, shellArgs, shellCandidates };

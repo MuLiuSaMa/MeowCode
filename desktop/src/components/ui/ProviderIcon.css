@@ -26,11 +26,3 @@
 .mc-provicon--glyph > svg {
   display: block;
 }
-
-/* 品牌色字母标：无底色，品牌色字母即图标（颜色由组件内联给出） */
-.mc-provicon--letter {
-  align-items: center;
-  justify-content: center;
-  font-weight: var(--fw-medium);
-  line-height: 1;
-}

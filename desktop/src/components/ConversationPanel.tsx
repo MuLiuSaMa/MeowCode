@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import {
   LuArchive,
   LuChevronDown,
   LuEllipsis,
+  LuFileDown,
   LuFolder,
   LuFolderOpen,
   LuGitBranch,
@@ -14,10 +16,27 @@ import {
   LuX,
 } from "react-icons/lu";
 import type { SessionSummary } from "../api";
+import { groupSessionsByProject } from "../conversation-groups";
+import { formatDateTime, formatSessionStamp } from "../i18n/format";
 import { baseName } from "../util";
 import { Button } from "./ui/Button";
 import { Dialog } from "./ui/Dialog";
 import "./ConversationPanel.css";
+
+/** 右键/「…」菜单的近似尺寸（含停止运行约 205）：用于把菜单夹在窗口内，实际高度由内容决定 */
+const SESSION_MENU_WIDTH = 158;
+const SESSION_MENU_ESTIMATED_HEIGHT = 210;
+
+/** 项目「…」菜单的近似尺寸（5 项 + 3 分隔线） */
+const PROJECT_MENU_WIDTH = 196;
+const PROJECT_MENU_ESTIMATED_HEIGHT = 220;
+
+function clampSessionMenuPoint(x: number, y: number): { x: number; y: number } {
+  return {
+    x: Math.max(8, Math.min(x, window.innerWidth - SESSION_MENU_WIDTH - 8)),
+    y: Math.max(8, Math.min(y, window.innerHeight - SESSION_MENU_ESTIMATED_HEIGHT - 8)),
+  };
+}
 
 /** 编辑项目显示名（只改侧栏标签，不动磁盘目录） */
 function RenameProjectDialog({
@@ -32,6 +51,7 @@ function RenameProjectDialog({
   onCancel: () => void;
   onSave: (name: string) => void;
 }) {
+  const { t } = useTranslation("chat");
   const [value, setValue] = useState(initial);
 
   useEffect(() => {
@@ -41,11 +61,9 @@ function RenameProjectDialog({
   return (
     <Dialog open={Boolean(cwd)} onClose={onCancel} labelledBy="mc-rename-title">
       <span className="mc-dialog__title" id="mc-rename-title">
-        编辑工作区名称
+        {t("conversation.renameProject.title")}
       </span>
-      <p className="mc-dialog__desc">
-        只改侧栏显示名称，不会改动磁盘上的文件夹（留空恢复为文件夹名）。
-      </p>
+      <p className="mc-dialog__desc">{t("conversation.renameProject.description")}</p>
       <input
         className="mc-dialog__input"
         value={value}
@@ -57,10 +75,10 @@ function RenameProjectDialog({
       />
       <div className="mc-dialog__footer">
         <Button variant="ghost" onClick={onCancel}>
-          取消
+          {t("dialog.cancel")}
         </Button>
         <Button variant="primary" onClick={() => onSave(value)}>
-          保存
+          {t("dialog.save")}
         </Button>
       </div>
     </Dialog>
@@ -77,6 +95,7 @@ function RenameSessionDialog({
   onCancel: () => void;
   onSave: (title: string) => void;
 }) {
+  const { t } = useTranslation("chat");
   const [value, setValue] = useState(target?.title ?? "");
 
   useEffect(() => {
@@ -86,13 +105,13 @@ function RenameSessionDialog({
   return (
     <Dialog open={Boolean(target)} onClose={onCancel} labelledBy="mc-rename-session-title">
       <span className="mc-dialog__title" id="mc-rename-session-title">
-        重命名对话
+        {t("conversation.renameSession.title")}
       </span>
-      <p className="mc-dialog__desc">只修改会话标题，消息内容不会变化。</p>
+      <p className="mc-dialog__desc">{t("conversation.renameSession.description")}</p>
       <input
         className="mc-dialog__input"
         value={value}
-        placeholder="输入对话标题"
+        placeholder={t("conversation.renameSession.placeholder")}
         onChange={(event) => setValue(event.target.value)}
         onKeyDown={(event) => {
           if (event.key === "Enter" && value.trim()) onSave(value.trim());
@@ -100,23 +119,30 @@ function RenameSessionDialog({
       />
       <div className="mc-dialog__footer">
         <Button variant="ghost" onClick={onCancel}>
-          取消
+          {t("dialog.cancel")}
         </Button>
         <Button variant="primary" disabled={!value.trim()} onClick={() => onSave(value.trim())}>
-          保存
+          {t("dialog.save")}
         </Button>
       </div>
     </Dialog>
   );
 }
 
-/** 会话菜单默认向上；上方空间不足时向下，避免被文件夹行和滚动容器裁切 */
-function sessionMenuDirection(anchor: HTMLElement): "up" | "down" {
-  const rect = anchor.getBoundingClientRect();
-  const scroll = anchor.closest<HTMLElement>(".mc-convpanel__scroll")?.getBoundingClientRect();
-  const top = scroll?.top ?? 0;
-  const bottom = scroll?.bottom ?? window.innerHeight;
-  return rect.top - top >= bottom - rect.bottom ? "up" : "down";
+/** 会话「…」菜单改为 fixed 定位：优先向下，放不下再向上，并夹在视口内。 */
+function sessionMenuAnchorFor(
+  button: HTMLElement,
+  running: boolean,
+): { x: number; y: number; dir: "up" | "down" } {
+  const rect = button.getBoundingClientRect();
+  const height = SESSION_MENU_ESTIMATED_HEIGHT + (running ? 36 : 0);
+  const below = rect.bottom + 4;
+  const openDown = below + height <= window.innerHeight - 8;
+  const point = clampSessionMenuPoint(
+    rect.right - SESSION_MENU_WIDTH - 4,
+    openDown ? below : rect.top - height - 4,
+  );
+  return { ...point, dir: openDown ? "down" : "up" };
 }
 
 export function ConversationPanel({
@@ -137,6 +163,7 @@ export function ConversationPanel({
   onBranchSession,
   onStopSession,
   onArchiveSession,
+  onExportSession,
   onArchiveProject,
   onRenameProject,
   onTogglePinProject,
@@ -168,20 +195,31 @@ export function ConversationPanel({
   /** 停止运行中的会话（含后台并行会话与等待审批的会话） */
   onStopSession: (sessionId: string) => void;
   onArchiveSession: (filePath: string) => void;
+  /** 导出会话为 Markdown / HTML / JSON 文件 */
+  onExportSession: (filePath: string, title: string | null) => void;
   onArchiveProject: (filePaths: string[]) => void;
   onRenameProject: (cwd: string, name: string) => void;
   onTogglePinProject: (cwd: string) => void;
   onRemoveProject: (cwd: string) => void;
   onOpenProject: (cwd: string) => void;
 }) {
+  const { t } = useTranslation("chat");
   /** 折叠的项目 cwd 集合：点了文件夹行收起该组聊天，再点展开 */
   const [collapsedProjects, setCollapsedProjects] = useState<ReadonlySet<string>>(() => new Set());
   /** 菜单展开的项目 cwd */
   const [menuFor, setMenuFor] = useState<string | null>(null);
+  /** 项目菜单锚点：fixed 定位到「…」按钮下方并夹在窗口内，避免被面板滚动区裁切 */
+  const [projectMenuAnchor, setProjectMenuAnchor] = useState<{ x: number; y: number } | null>(
+    null,
+  );
   /** 正在重命名的项目 cwd；null = 对话框关闭 */
   const [editing, setEditing] = useState<string | null>(null);
   /** 展开会话操作菜单的 filePath */
   const [sessionMenuFor, setSessionMenuFor] = useState<string | null>(null);
+  /** 右键菜单坐标：非空时菜单改为 fixed 跟随鼠标；普通「…」菜单为 null */
+  const [sessionMenuAnchor, setSessionMenuAnchor] = useState<{ x: number; y: number } | null>(
+    null,
+  );
   /** 会话菜单展开方向：靠近顶部时向下，避免被文件夹行裁切 */
   const [sessionMenuDir, setSessionMenuDir] = useState<"up" | "down">("up");
   const [renamingSession, setRenamingSession] = useState<SessionSummary | null>(null);
@@ -228,6 +266,47 @@ export function ConversationPanel({
     };
   }, [sessionMenuFor]);
 
+  // 会话菜单用 fixed 定位：列表滚动或窗口缩放后不再跟随行，直接关闭
+  useEffect(() => {
+    if (!sessionMenuFor || !sessionMenuAnchor) return;
+    const onScroll = (event: Event) => {
+      if (sessionMenuRef.current?.contains(event.target as Node)) return;
+      setSessionMenuFor(null);
+    };
+    const onResize = () => setSessionMenuFor(null);
+    window.addEventListener("scroll", onScroll, true);
+    window.addEventListener("resize", onResize);
+    return () => {
+      window.removeEventListener("scroll", onScroll, true);
+      window.removeEventListener("resize", onResize);
+    };
+  }, [sessionMenuFor, sessionMenuAnchor]);
+
+  // 菜单关闭后清掉右键坐标，下次「…」菜单回到行内定位
+  useEffect(() => {
+    if (!sessionMenuFor) setSessionMenuAnchor(null);
+  }, [sessionMenuFor]);
+
+  // 项目菜单改 fixed 定位后：面板滚动或窗口缩放时直接关闭，避免悬空错位
+  useEffect(() => {
+    if (!menuFor || !projectMenuAnchor) return;
+    const onScroll = (event: Event) => {
+      if (menuRef.current?.contains(event.target as Node)) return;
+      setMenuFor(null);
+    };
+    const onResize = () => setMenuFor(null);
+    window.addEventListener("scroll", onScroll, true);
+    window.addEventListener("resize", onResize);
+    return () => {
+      window.removeEventListener("scroll", onScroll, true);
+      window.removeEventListener("resize", onResize);
+    };
+  }, [menuFor, projectMenuAnchor]);
+
+  useEffect(() => {
+    if (!menuFor) setProjectMenuAnchor(null);
+  }, [menuFor]);
+
   const displayName = (cwd: string) => projectNames[cwd]?.trim() || baseName(cwd);
 
   /** 折叠 / 展开某个项目分组 */
@@ -240,55 +319,38 @@ export function ConversationPanel({
     });
 
   // 按工作区（cwd）分组，对应参考图里的「项目」；当前工作区永远在列（可能是「暂无聊天」）。
-  // 空会话（没发过消息）不进列表，发过消息才显示。
-  const groups = useMemo(() => {
-    const map = new Map<string, SessionSummary[]>();
-    if (workspace) map.set(workspace, []);
-    for (const session of sessions) {
-      if (archivedSessions.includes(session.filePath)) continue;
-      if (session.messageCount <= 0) continue;
-      const list = map.get(session.cwd);
-      if (list) list.push(session);
-      else map.set(session.cwd, [session]);
-    }
-    const entries = [...map.entries()]
-      .filter(([cwd]) => !removedProjects.includes(cwd))
-      .map(([cwd, items]) => ({ cwd, items }));
-    // 排序：置顶在前（按置顶顺序）→ 当前工作区 → 其余按最近会话时间倒序
-    return entries.sort((a, b) => {
-      const pinA = pinnedProjects.indexOf(a.cwd);
-      const pinB = pinnedProjects.indexOf(b.cwd);
-      if (pinA !== -1 || pinB !== -1) {
-        if (pinA === -1) return 1;
-        if (pinB === -1) return -1;
-        return pinA - pinB;
-      }
-      if (a.cwd === workspace) return -1;
-      if (b.cwd === workspace) return 1;
-      return (b.items[0]?.createdAt ?? "").localeCompare(a.items[0]?.createdAt ?? "");
-    });
-  }, [sessions, archivedSessions, workspace, removedProjects, pinnedProjects]);
+  // 空会话（没发过消息）不进列表，发过消息才显示。排序规则见 conversation-groups.ts。
+  const groups = useMemo(
+    () =>
+      groupSessionsByProject({
+        sessions,
+        workspace,
+        archivedSessions,
+        removedProjects,
+        pinnedProjects,
+      }),
+    [sessions, archivedSessions, workspace, removedProjects, pinnedProjects],
+  );
 
   return (
     <section className="mc-panel mc-panel--conversations mc-convpanel">
       <div className="mc-convpanel__top">
         <button type="button" className="mc-convpanel__new" onClick={onNewChat}>
           <LuSquarePen size={14} />
-          <span>新聊天</span>
+          <span>{t("conversation.newChat")}</span>
         </button>
       </div>
 
       <div className="mc-convpanel__scroll">
         {groups.length === 0 ? (
-          <p className="mc-convpanel__empty">暂无对话</p>
+          <p className="mc-convpanel__empty">{t("conversation.empty")}</p>
         ) : (
           <>
-            <p className="mc-convpanel__section">项目</p>
+            <p className="mc-convpanel__section">{t("conversation.projects")}</p>
             {groups.map((group) => {
               const collapsedNow = collapsedProjects.has(group.cwd);
               const items = group.items;
               const pinned = pinnedProjects.includes(group.cwd);
-              const sessionMenuOpen = items.some((session) => session.filePath === sessionMenuFor);
               return (
                 <div className="mc-convpanel__group" key={group.cwd}>
                   <div
@@ -307,7 +369,9 @@ export function ConversationPanel({
                       className="mc-convpanel__groupname"
                       data-collapsed={collapsedNow}
                       aria-expanded={!collapsedNow}
-                      title={collapsedNow ? "展开项目" : "折叠项目"}
+                      title={
+                        collapsedNow ? t("conversation.expandProject") : t("conversation.collapseProject")
+                      }
                       onClick={() => toggleCollapsed(group.cwd)}
                     >
                       <LuChevronDown size={13} className="mc-convpanel__chevron" />
@@ -321,17 +385,31 @@ export function ConversationPanel({
                       <button
                         type="button"
                         className="mc-convpanel__groupbtn"
-                        aria-label="项目操作"
-                        title="更多操作"
-                        onClick={() => setMenuFor(menuFor === group.cwd ? null : group.cwd)}
+                        aria-label={t("conversation.projectActions")}
+                        title={t("conversation.moreActions")}
+                        onClick={(event) => {
+                          if (menuFor === group.cwd) {
+                            setMenuFor(null);
+                            return;
+                          }
+                          const rect = event.currentTarget.getBoundingClientRect();
+                          setProjectMenuAnchor({
+                            x: Math.max(8, rect.right - PROJECT_MENU_WIDTH - 4),
+                            y: Math.min(
+                              rect.bottom + 6,
+                              window.innerHeight - PROJECT_MENU_ESTIMATED_HEIGHT - 8,
+                            ),
+                          });
+                          setMenuFor(group.cwd);
+                        }}
                       >
                         <LuEllipsis size={15} />
                       </button>
                       <button
                         type="button"
                         className="mc-convpanel__groupbtn"
-                        aria-label="在此项目中新建对话"
-                        title="在此项目中新建对话"
+                        aria-label={t("conversation.newChatInProject")}
+                        title={t("conversation.newChatInProject")}
                         onClick={() => onNewChatInProject(group.cwd)}
                       >
                         <LuSquarePen size={13} />
@@ -339,7 +417,23 @@ export function ConversationPanel({
                     </span>
 
                     {menuFor === group.cwd ? (
-                      <div className="mc-convpanel__menu" ref={menuRef} role="menu" aria-label="项目操作">
+                      <div
+                        className="mc-convpanel__menu"
+                        data-context={projectMenuAnchor ? "true" : undefined}
+                        ref={menuRef}
+                        role="menu"
+                        aria-label={t("conversation.projectActions")}
+                        style={
+                          projectMenuAnchor
+                            ? {
+                                left: projectMenuAnchor.x,
+                                top: projectMenuAnchor.y,
+                                right: "auto",
+                                bottom: "auto",
+                              }
+                            : undefined
+                        }
+                      >
                         <button
                           type="button"
                           role="menuitem"
@@ -350,7 +444,7 @@ export function ConversationPanel({
                           }}
                         >
                           {pinned ? <LuPinOff size={14} /> : <LuPin size={14} />}
-                          {pinned ? "取消置顶" : "置顶"}
+                          {pinned ? t("conversation.unpin") : t("conversation.pin")}
                         </button>
                         <button
                           type="button"
@@ -362,7 +456,7 @@ export function ConversationPanel({
                           }}
                         >
                           <LuSquarePen size={14} />
-                          编辑
+                          {t("conversation.edit")}
                         </button>
                         <div className="mc-convpanel__menusep" />
                         <button
@@ -375,7 +469,7 @@ export function ConversationPanel({
                           }}
                         >
                           <LuFolderOpen size={14} />
-                          在资源管理器中打开
+                          {t("conversation.revealInExplorer")}
                         </button>
                         <div className="mc-convpanel__menusep" />
                         <button
@@ -389,7 +483,7 @@ export function ConversationPanel({
                           }}
                         >
                           <LuArchive size={14} />
-                          归档聊天
+                          {t("conversation.archiveChats")}
                         </button>
                         <div className="mc-convpanel__menusep" />
                         <button
@@ -402,58 +496,103 @@ export function ConversationPanel({
                           }}
                         >
                           <LuX size={14} />
-                          移除项目
+                          {t("conversation.removeProject")}
                         </button>
                       </div>
                     ) : null}
                   </div>
 
                   {items.length === 0 ? (
-                    <p className="mc-convpanel__nochats">暂无聊天</p>
+                    <p className="mc-convpanel__nochats">{t("conversation.noChats")}</p>
                   ) : (
                     <div className="mc-convpanel__collapse" data-open={!collapsedNow} aria-hidden={collapsedNow} inert={collapsedNow ? true : undefined}>
-                    <div className="mc-convpanel__collapse-inner" data-menu-open={sessionMenuOpen ? "true" : undefined}>
+                    <div className="mc-convpanel__collapse-inner">
                     <ul className="mc-convpanel__items">
                       {items.map((session) => {
                         const waitingApproval = (approvalSessionIds ?? []).includes(session.id);
                         const running = (runningSessionIds ?? []).includes(session.id) || waitingApproval;
                         return (
-                          <li key={session.filePath} className="mc-convpanel__itemrow">
+                          <li
+                            key={session.filePath}
+                            className="mc-convpanel__itemrow"
+                            data-menu-open={sessionMenuFor === session.filePath ? "true" : undefined}
+                          >
                             <button
                               type="button"
                               className="mc-convpanel__item"
                               data-active={session.id === currentSessionId}
                               data-running={running}
-                              title={`${group.cwd} · ${new Date(session.createdAt).toLocaleString()}`}
+                              title={`${group.cwd}${
+                                session.worktree ? ` · ${session.worktree.branch}` : ""
+                              } · ${formatDateTime(new Date(session.createdAt))}`}
                               onClick={() => onSwitchSession(session.filePath)}
+                              onContextMenu={(event) => {
+                                event.preventDefault();
+                                event.stopPropagation();
+                                setMenuFor(null);
+                                setSessionMenuAnchor(
+                                  clampSessionMenuPoint(event.clientX, event.clientY),
+                                );
+                                setSessionMenuFor(session.filePath);
+                              }}
                             >
                               {running ? (
                                 <span
                                   className="mc-convpanel__runningdot"
                                   data-approval={waitingApproval}
                                   role="status"
-                                  aria-label={waitingApproval ? "等待工具审批" : "正在生成回复"}
-                                  title={waitingApproval ? "等待工具审批" : "正在生成回复"}
+                                  aria-label={
+                                    waitingApproval
+                                      ? t("conversation.waitingApproval")
+                                      : t("conversation.generating")
+                                  }
+                                  title={
+                                    waitingApproval
+                                      ? t("conversation.waitingApproval")
+                                      : t("conversation.generating")
+                                  }
                                 />
                               ) : null}
                               <span className="mc-convpanel__itemtitle">
                                 {/* AI 标题优先；还没生成就显示「新对话」，日期放在悬停提示里 */}
-                                {session.title || "新对话"}
+                                {session.title || t("conversation.untitled")}
+                              </span>
+                              {session.worktree ? (
+                                <span
+                                  className="mc-convpanel__branch"
+                                  title={session.worktree.branch}
+                                >
+                                  <LuGitBranch size={11} />
+                                  <span>{session.worktree.branch.replace(/^meowcode\//, "")}</span>
+                                </span>
+                              ) : null}
+                              <span className="mc-convpanel__itemtime">
+                                {formatSessionStamp(new Date(session.createdAt))}
                               </span>
                             </button>
                             <button
                               type="button"
                               className="mc-convpanel__rowbtn"
-                              aria-label="会话操作"
+                              aria-label={t("conversation.sessionActions")}
                               aria-haspopup="menu"
                               aria-expanded={sessionMenuFor === session.filePath}
-                              title="会话操作"
+                              title={t("conversation.sessionActions")}
+                              style={
+                                sessionMenuFor === session.filePath
+                                  ? { opacity: 1, transition: "none" }
+                                  : undefined
+                              }
                               onClick={(event) => {
                                 if (sessionMenuFor === session.filePath) {
                                   setSessionMenuFor(null);
                                   return;
                                 }
-                                setSessionMenuDir(sessionMenuDirection(event.currentTarget));
+                                const anchor = sessionMenuAnchorFor(
+                                  event.currentTarget,
+                                  running,
+                                );
+                                setSessionMenuAnchor({ x: anchor.x, y: anchor.y });
+                                setSessionMenuDir(anchor.dir);
                                 setSessionMenuFor(session.filePath);
                               }}
                             >
@@ -463,9 +602,20 @@ export function ConversationPanel({
                               <div
                                 className="mc-convpanel__menu mc-convpanel__sessionmenu"
                                 data-dir={sessionMenuDir}
+                                data-context={sessionMenuAnchor ? "true" : undefined}
                                 ref={sessionMenuRef}
                                 role="menu"
-                                aria-label="会话操作"
+                                aria-label={t("conversation.sessionActions")}
+                                style={
+                                  sessionMenuAnchor
+                                    ? {
+                                        left: sessionMenuAnchor.x,
+                                        top: sessionMenuAnchor.y,
+                                        right: "auto",
+                                        bottom: "auto",
+                                      }
+                                    : undefined
+                                }
                               >
                                 {running ? (
                                   <>
@@ -479,7 +629,7 @@ export function ConversationPanel({
                                       }}
                                     >
                                       <LuSquare size={14} />
-                                      停止运行
+                                      {t("conversation.stopRunning")}
                                     </button>
                                     <div className="mc-convpanel__menusep" />
                                   </>
@@ -494,7 +644,7 @@ export function ConversationPanel({
                                   }}
                                 >
                                   <LuSquarePen size={14} />
-                                  重命名
+                                  {t("conversation.rename")}
                                 </button>
                                 <button
                                   type="button"
@@ -506,7 +656,7 @@ export function ConversationPanel({
                                   }}
                                 >
                                   <LuGitBranch size={14} />
-                                  创建分支
+                                  {t("conversation.createBranch")}
                                 </button>
                                 <button
                                   type="button"
@@ -518,7 +668,19 @@ export function ConversationPanel({
                                   }}
                                 >
                                   <LuArchive size={14} />
-                                  归档
+                                  {t("conversation.archive")}
+                                </button>
+                                <button
+                                  type="button"
+                                  role="menuitem"
+                                  className="mc-convpanel__menuitem"
+                                  onClick={() => {
+                                    onExportSession(session.filePath, session.title);
+                                    setSessionMenuFor(null);
+                                  }}
+                                >
+                                  <LuFileDown size={14} />
+                                  {t("conversation.export")}
                                 </button>
                                 <div className="mc-convpanel__menusep" />
                                 <button
@@ -526,14 +688,14 @@ export function ConversationPanel({
                                   role="menuitem"
                                   className="mc-convpanel__menuitem mc-convpanel__menuitem--danger"
                                   disabled={running}
-                                  title={running ? "运行中不能删除" : undefined}
+                                  title={running ? t("conversation.deleteBlocked") : undefined}
                                   onClick={() => {
                                     setDeletingSession(session);
                                     setSessionMenuFor(null);
                                   }}
                                 >
                                   <LuTrash2 size={14} />
-                                  删除
+                                  {t("dialog.delete")}
                                 </button>
                               </div>
                             ) : null}
@@ -576,14 +738,16 @@ export function ConversationPanel({
         labelledBy="mc-delete-session-title"
       >
         <span className="mc-dialog__title" id="mc-delete-session-title">
-          删除对话
+          {t("conversation.deleteSession.title")}
         </span>
         <p className="mc-dialog__desc">
-          「{deletingSession?.title || "新对话"}」及其全部消息会从磁盘删除，无法恢复。
+          {t("conversation.deleteSession.description", {
+            name: deletingSession?.title || t("conversation.untitled"),
+          })}
         </p>
         <div className="mc-dialog__footer">
           <Button variant="ghost" onClick={() => setDeletingSession(null)}>
-            取消
+            {t("dialog.cancel")}
           </Button>
           <Button
             variant="danger"
@@ -592,7 +756,7 @@ export function ConversationPanel({
               setDeletingSession(null);
             }}
           >
-            删除
+            {t("dialog.delete")}
           </Button>
         </div>
       </Dialog>

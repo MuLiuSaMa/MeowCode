@@ -1,5 +1,16 @@
-import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
-import { LuCheck, LuChevronDown } from "react-icons/lu";
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  type CSSProperties,
+  type KeyboardEvent,
+  type ReactNode,
+} from "react";
+import { createPortal } from "react-dom";
+import { useTranslation } from "react-i18next";
+import { LuCheck, LuChevronDown, LuX } from "react-icons/lu";
 import "./CustomSelect.css";
 
 export type CustomSelectOption<T extends string> = {
@@ -7,11 +18,14 @@ export type CustomSelectOption<T extends string> = {
   label: string;
   description?: string;
   disabled?: boolean;
+  /** 行内删除（如外观页的已导入字体）：选项右侧出现 ×，点了只删不选 */
+  onDelete?: () => void;
 };
 
 /**
  * 自绘下拉选择器（不使用原生 <select>）。
  * 按钮 + listbox 浮层，支持键盘上下选择、Enter 确认、Esc 关闭。
+ * 菜单通过 portal 挂到 body（fixed 定位）：设置卡片 overflow:hidden 不会把它裁掉。
  */
 export function CustomSelect<T extends string>({
   value,
@@ -21,21 +35,27 @@ export function CustomSelect<T extends string>({
   placement = "bottom",
   className,
   disabled = false,
+  icon,
 }: {
   value: T;
   options: Array<CustomSelectOption<T>>;
   onChange: (value: T) => void;
   ariaLabel?: string;
-  /** 靠近内容底部时用 top，让菜单向上展开 */
+  /** 期望的展开方向；视口空间不够时会自动向上翻 */
   placement?: "bottom" | "top";
   className?: string;
   disabled?: boolean;
+  /** 选中值左侧的图标（沙箱模式等带语义的选择器） */
+  icon?: ReactNode;
 }) {
   const [open, setOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(0);
+  const [menuStyle, setMenuStyle] = useState<CSSProperties | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
   const menuId = useId();
+  const { t } = useTranslation("common");
   const selectedIndex = Math.max(
     0,
     options.findIndex((option) => option.value === value),
@@ -45,15 +65,63 @@ export function CustomSelect<T extends string>({
   useEffect(() => {
     if (!open) return;
     const closeOnOutside = (event: PointerEvent) => {
-      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
+      const target = event.target as Node;
+      if (rootRef.current?.contains(target) || menuRef.current?.contains(target)) return;
+      setOpen(false);
     };
     document.addEventListener("pointerdown", closeOnOutside);
     return () => document.removeEventListener("pointerdown", closeOnOutside);
   }, [open]);
 
+  /** 按按钮当前位置算出菜单坐标：优先向下，空间不够向上翻，maxHeight 压到可用空间 */
+  const placeMenu = useCallback(() => {
+    const rect = buttonRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const below = window.innerHeight - rect.bottom;
+    const upward = placement === "top" || (placement === "bottom" && below < 160 && rect.top > below);
+    setMenuStyle(
+      upward
+        ? {
+            position: "fixed",
+            left: rect.left,
+            bottom: window.innerHeight - rect.top + 6,
+            minWidth: rect.width,
+            maxWidth: Math.max(rect.width, window.innerWidth - rect.left - 12),
+            maxHeight: Math.max(120, rect.top - 18),
+          }
+        : {
+            position: "fixed",
+            left: rect.left,
+            top: rect.bottom + 6,
+            minWidth: rect.width,
+            maxWidth: Math.max(rect.width, window.innerWidth - rect.left - 12),
+            maxHeight: Math.max(120, below - 18),
+          },
+    );
+  }, [placement]);
+
+  // 滚动 / 窗口缩放时菜单要跟着按钮走
+  useEffect(() => {
+    if (!open) return;
+    placeMenu();
+    window.addEventListener("resize", placeMenu);
+    window.addEventListener("scroll", placeMenu, true);
+    return () => {
+      window.removeEventListener("resize", placeMenu);
+      window.removeEventListener("scroll", placeMenu, true);
+    };
+  }, [open, placeMenu]);
+
+  // 键盘上下移动时让激活项滚进可视区（长列表，比如系统字体）
+  useEffect(() => {
+    if (!open) return;
+    menuRef.current?.querySelector('[data-active="true"]')?.scrollIntoView({ block: "nearest" });
+  }, [activeIndex, open]);
+
   const openMenu = () => {
     if (disabled) return;
     setActiveIndex(selectedIndex);
+    placeMenu();
     setOpen(true);
   };
 
@@ -111,42 +179,76 @@ export function CustomSelect<T extends string>({
         onClick={() => (open ? setOpen(false) : openMenu())}
         onKeyDown={handleKeyDown}
       >
-        <span className="mc-customselect__value">{selected?.label ?? ""}</span>
-        <LuChevronDown size={15} className="mc-customselect__chevron" aria-hidden />
+        <span className="mc-customselect__label">
+          {icon ? (
+            <span className="mc-customselect__icon" aria-hidden>
+              {icon}
+            </span>
+          ) : null}
+          <span className="mc-customselect__value">{selected?.label ?? ""}</span>
+        </span>
+        <LuChevronDown size={13} className="mc-customselect__chevron" aria-hidden />
       </button>
 
-      {open ? (
-        <div
-          id={menuId}
-          role="listbox"
-          className="mc-customselect__menu"
-          data-placement={placement}
-          onKeyDown={handleKeyDown}
-        >
-          {options.map((option, index) => (
-            <button
-              key={option.value}
-              type="button"
-              role="option"
-              aria-selected={option.value === value}
-              className="mc-customselect__option"
-              data-active={index === activeIndex}
-              data-disabled={option.disabled}
-              disabled={option.disabled}
-              onMouseEnter={() => setActiveIndex(index)}
-              onClick={() => selectAt(index)}
+      {open
+        ? createPortal(
+            <div
+              ref={menuRef}
+              id={menuId}
+              role="listbox"
+              style={menuStyle ?? undefined}
+              className="mc-customselect__menu"
+              onKeyDown={handleKeyDown}
             >
-              <span className="mc-customselect__optiontext">
-                <span className="mc-customselect__optionlabel">{option.label}</span>
-                {option.description ? (
-                  <span className="mc-customselect__optiondesc">{option.description}</span>
-                ) : null}
-              </span>
-              {option.value === value ? <LuCheck size={14} aria-hidden /> : null}
-            </button>
-          ))}
-        </div>
-      ) : null}
+              {options.map((option, index) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  role="option"
+                  aria-selected={option.value === value}
+                  className="mc-customselect__option"
+                  data-active={index === activeIndex}
+                  data-disabled={option.disabled}
+                  disabled={option.disabled}
+                  onMouseEnter={() => setActiveIndex(index)}
+                  onClick={() => selectAt(index)}
+                >
+                  <span className="mc-customselect__optiontext">
+                    <span className="mc-customselect__optionlabel">{option.label}</span>
+                    {option.description ? (
+                      <span className="mc-customselect__optiondesc">{option.description}</span>
+                    ) : null}
+                  </span>
+                  {option.onDelete || option.value === value ? (
+                    <span className="mc-customselect__optionactions">
+                      {option.onDelete ? (
+                        <span
+                          role="button"
+                          tabIndex={0}
+                          className="mc-customselect__optiondelete"
+                          aria-label={t("deleteAria", { name: option.label })}
+                          title={t("delete")}
+                          onClick={(event) => {
+                            // 只删不选：别让点击冒泡成「选中这一项」
+                            event.stopPropagation();
+                            event.preventDefault();
+                            option.onDelete?.();
+                          }}
+                        >
+                          <LuX size={12} />
+                        </span>
+                      ) : null}
+                      {option.value === value ? <LuCheck size={14} aria-hidden /> : null}
+                    </span>
+                  ) : null}
+                </button>
+              ))}
+            </div>,
+            // 原生 <dialog> 打开时处于 top layer，portal 到 body 的菜单会被整个压在弹窗底下：
+            // 检测到组件位于 dialog 内时改挂到该 dialog 元素上，让菜单跟随进入 top layer。
+            (rootRef.current?.closest("dialog") as HTMLElement | null) ?? document.body,
+          )
+        : null}
     </div>
   );
 }

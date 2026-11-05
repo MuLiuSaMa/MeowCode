@@ -9,23 +9,41 @@ import {
 } from "react";
 import {
   api,
+  checkForUpdates,
   createHarnessArchitecture,
   deleteHarnessArchitecture,
+  downloadUpdate,
   fetchHarnessArchitectures,
+  getSessionChangesSummary,
+  gitStatus,
+  importFontFile,
+  listCustomFonts,
+  openInstaller,
+  onUpdateProgress,
   renameHarnessArchitecture,
+  setSpeechStyle,
   type AppInfo,
   type ChatMessage,
   type CompactionPoint,
+  type CacheDiagnostics,
   type ContextUsage,
   type HarnessArchitectureSummary,
+  type GitStatus,
   type MeowEvent,
   type PendingApproval,
   type PlanState,
   type Preferences,
   type ProviderSettings,
   type QueuedPrompt,
+  type RewindMode,
+  type RewindPlan,
+  type SessionCheckpoint,
+  type SessionChangeSummary,
   type SessionSummary,
   type SessionMode,
+  type SessionWorktree,
+  type SessionSearchHit,
+  type SessionSearchSnippet,
   type AgentProfileId,
   type Settings,
   type SubagentRun,
@@ -36,6 +54,7 @@ import {
   type TimelineTool,
   type TurnMetrics,
   type UiState,
+  type UpdateInfo,
   type UsageSummary,
   type WorkflowRoadmap,
   shouldRecommendCompaction,
@@ -46,18 +65,23 @@ import { GlobalTooltip } from "./components/ui/GlobalTooltip";
 import { ApprovalDialog } from "./components/ApprovalDialog";
 import { BootSplash } from "./components/BootSplash";
 import { ChatHeader } from "./components/ChatHeader";
+import { WorkspaceOverview } from "./components/WorkspaceOverview";
 import { CloseConfirmDialog } from "./components/CloseConfirmDialog";
 import { ContextWarningBanner } from "./components/ContextWarningBanner";
 import { Composer, type ComposerChip, type ComposerImage } from "./components/Composer";
 import { ConversationPanel } from "./components/ConversationPanel";
 import { RightPanel } from "./components/RightPanel";
 import { QuickOpenDialog } from "./components/panel/QuickOpenDialog";
+import { SessionSearchDialog } from "./components/SessionSearchDialog";
 import { MessageList } from "./components/MessageList";
+import { RewindDialog } from "./components/RewindDialog";
 import { Rail } from "./components/Rail";
 import { GitBody } from "./components/git/GitBody";
 import { GitNav } from "./components/git/GitNav";
 import { BranchDialog } from "./components/git/BranchDialog";
 import { useGitView } from "./git/useGitView";
+import { useWorkspaceGit } from "./git/useWorkspaceGit";
+import { filterUncommittedSessionChanges } from "./git/change-filter";
 import { SettingsBody, SettingsNav, type SettingsSectionId } from "./components/settings/SettingsPage";
 import {
   ArchitectureBody,
@@ -68,6 +92,9 @@ import { MarketplaceNav, type MarketTab } from "./components/marketplace/Marketp
 import { MarketplaceBody } from "./components/marketplace/MarketplaceBody";
 import { Onboarding } from "./components/onboarding/Onboarding";
 import { TitleBar } from "./components/TitleBar";
+import { Toast } from "./components/Toast";
+import "./components/UndoBar.css";
+import { UpdateModal } from "./components/UpdateModal";
 import { ThemeProvider } from "./theme/theme";
 import { useSideTabs, type SideTab, type SideTabOpen } from "./panel/useSideTabs";
 import {
@@ -78,13 +105,34 @@ import {
 } from "./timeline";
 import { applyTimelineEvent, finalizeStreamingAssistants } from "./timeline-events";
 import { baseName } from "./util";
+import { applyLanguage, getStoredPreference, syncLanguageFromSettings } from "./i18n";
+import {
+  applySample,
+  EMPTY_SAMPLE,
+  hitRate,
+  isCacheBust,
+  mergeSample,
+  retractSample,
+  totalsFromServer,
+  type UsageSample,
+} from "./usage-meter";
+import i18n from "./i18n";
+import { useTranslation } from "react-i18next";
+import type { TFunction } from "i18next";
 
 type View = "chat" | "settings" | "plugins" | "architecture" | "git";
 /**
- * 工具审批模式：read-only = 只读；ask = 每次询问；auto = 工作区内自动（可写根内写/改不弹窗）；
+ * 工具审批模式：read-only = 只读；ask = 每次询问；auto = 工作区内自动（可写根内写/改与常规命令不弹窗，高危命令仍弹）；
  * full = 完全访问（整机路径放行）。会话级，切会话重置。
  */
 export type PermissionMode = "read-only" | "ask" | "auto" | "full";
+
+/** 静默下载更新在导航栏左下角呈现的状态 */
+type SilentUpdateState =
+  | { status: "hidden" }
+  | { status: "downloading"; percent: number }
+  | { status: "done"; path: string }
+  | { status: "error" };
 
 const DEFAULT_PROVIDER: ProviderSettings = {
   id: "provider-local",
@@ -100,22 +148,22 @@ function nextKey(prefix: string): string {
 }
 
 /** 模型流式生成工具参数时的进度文案（主对话与子 Agent 共用）。 */
-function toolPreparingLabel(count?: number, names?: string[]): string | null {
+function toolPreparingLabel(t: TFunction, count?: number, names?: string[]): string | null {
   const total = Math.max(count ?? 0, names?.length ?? 0);
   if (!total) return null;
   const allTask = Boolean(names?.length) && names!.every((name) => name === "task");
-  if (allTask) return `正在准备 ${total} 个子 Agent…`;
+  if (allTask) return t("status.preparingSubagents", { count: total });
   // 正在准备的只有一个写/改文件的调用：直接说「写入中 / 修改中」，
   // 不用笼统的“工具调用”（参数还在流式生成，此时拿不到文件名）
   if (names?.length === total) {
     const unique = new Set(names);
     if (unique.size === 1) {
       const only = names[0];
-      if (only === "write_file") return "正在写入文件…";
-      if (only === "edit_file" || only === "multi_edit") return "正在修改文件…";
+      if (only === "write_file") return t("status.preparingWrites");
+      if (only === "edit_file" || only === "multi_edit") return t("status.preparingEdits");
     }
   }
-  return `正在准备 ${total} 个工具调用…`;
+  return t("status.preparingTools", { count: total });
 }
 
 /**
@@ -173,15 +221,52 @@ const EMPTY_TURN_METRICS: TurnMetrics = {
   cacheHitRate: null,
 };
 
-/** 右侧面板宽度约束：下限 240；上限留出正文至少 320px，其余随窗口放宽（不再有 720 封顶） */
-function clampInspectorWidth(value: number): number {
-  const upper = Math.max(240, window.innerWidth - 320);
-  return Math.min(Math.max(240, value), upper);
+const EMPTY_CACHE_DIAGNOSTICS: CacheDiagnostics = {
+  lastRound: null,
+  lastState: null,
+  lastReason: null,
+  busts: 0,
+  lastBustDrop: null,
+  rebuilds: {},
+};
+
+/** 主聊天区最小宽度：左右栏拖拽再大也不能把它压没 */
+const CHAT_MIN_WIDTH = 360;
+/** 侧栏之外的固定占位：rail 64 + 右侧留白 8 + 列间距/拖拽条约 16 */
+const LAYOUT_CHROME_WIDTH = 88;
+const INSPECTOR_MIN_WIDTH = 240;
+const LIST_MIN_WIDTH = 220;
+const LIST_MAX_WIDTH = 560;
+/** 推给托盘菜单的会话上限：主进程只列「最近 3 条 + 更多」，多推没意义 */
+const TRAY_SYNC_LIMIT = 30;
+
+/** 扣除固定占位和聊天区最小宽度后，实际可分给左右面板的像素 */
+function panelWidthBudget(): number {
+  return Math.max(0, window.innerWidth - LAYOUT_CHROME_WIDTH - CHAT_MIN_WIDTH);
 }
 
-/** 左栏宽度约束：220–560（再宽会挤压正文，再窄列表放不下两行文案） */
-function clampListWidth(value: number): number {
-  return Math.min(Math.max(220, Math.round(value)), 560);
+/** 右侧面板宽度：先扣掉左栏和聊天区最小宽度，空间不足时允许缩到 0（聊天区优先） */
+function clampInspectorWidth(value: number, listWidth: number): number {
+  // 窗口隐藏 / 最小化时 innerWidth 可能是 0：不要据此把面板压成 0
+  if (window.innerWidth <= 0) return value;
+  const upper = Math.max(0, panelWidthBudget() - listWidth);
+  const lower = Math.min(INSPECTOR_MIN_WIDTH, upper);
+  return Math.min(Math.max(lower, value), upper);
+}
+
+/** 左栏宽度：220–560，同时必须给右侧面板和聊天区留出空间 */
+function clampListWidth(
+  value: number,
+  inspectorWidth: number,
+  inspectorVisible: boolean,
+): number {
+  if (window.innerWidth <= 0) return value;
+  const upper = Math.min(
+    LIST_MAX_WIDTH,
+    Math.max(0, panelWidthBudget() - (inspectorVisible ? inspectorWidth : 0)),
+  );
+  const lower = Math.min(LIST_MIN_WIDTH, upper);
+  return Math.min(Math.max(lower, value), upper);
 }
 
 /**
@@ -197,6 +282,7 @@ function trackResizeCursor(event: ReactPointerEvent<HTMLDivElement>) {
 }
 
 export default function App() {
+  const { t } = useTranslation("shell");
   const [ready, setReady] = useState(false);
   /** 启动画面至少展示约 1 秒，避免数据秒回时 Logo 一闪而过 */
   const [splashDone, setSplashDone] = useState(false);
@@ -208,6 +294,7 @@ export default function App() {
     cwd: string;
     filePath: string;
     createdAt: string;
+    worktree?: SessionWorktree | null;
   } | null>(null);
   /** 当前工作区目录是否可用：null = 正在校验，false = 已被删除/不存在 */
   const [workspaceAvailable, setWorkspaceAvailable] = useState<boolean | null>(null);
@@ -216,25 +303,86 @@ export default function App() {
   const [sessionLoading, setSessionLoading] = useState(false);
   /** 正在切换/新建会话：先收起上一个会话的审批弹窗，等目标会话加载完再按需恢复 */
   const [sessionSwitching, setSessionSwitching] = useState(false);
+  /** 新对话的 worktree 意图：首次发送时才真正创建，避免空 worktree 残留 */
+  const [worktreeIntent, setWorktreeIntent] = useState(false);
+  /** 打开 worktree 开关前的 git 预检中 */
+  const [worktreeBusy, setWorktreeBusy] = useState(false);
+  /** 当前会话 cwd 的 git 分支：null = 不是仓库 / 还没查到，不显示分支胶囊 */
+  const [gitBranch, setGitBranch] = useState<{ name: string; detached: boolean } | null>(null);
+  /** git 动作计数（暂存/提交/切分支）：变了就重新拉一次分支名 */
+  const [gitRevision, setGitRevision] = useState(0);
   /** 当前会话标题：AI 生成（session_title 事件）或手动设置；null = 还没生成 */
   const [sessionTitle, setSessionTitle] = useState<string | null>(null);
   const [plan, setPlan] = useState<PlanState | null>(null);
+  /** 输入框悬浮胶囊：本会话已修改文件（只取统计，不含 diff；渲染前按 git status 过滤已提交） */
+  const [sessionChanges, setSessionChanges] = useState<SessionChangeSummary[]>([]);
+  /** 右上角工作区概览：默认收起，子 Agent 启动时自动展开 */
+  const [workspaceOverviewOpen, setWorkspaceOverviewOpen] = useState(false);
+  const sessionIdRef = useRef<string | null>(null);
+  const changesRefreshTimer = useRef<number | null>(null);
+  const changesRequestSeq = useRef(0);
+
+  const refreshSessionChanges = useCallback(async () => {
+    const seq = ++changesRequestSeq.current;
+    try {
+      const result = await getSessionChangesSummary();
+      // 切会话/连续 file_changed 时只接受最后一次请求，避免旧响应覆盖新会话
+      if (seq === changesRequestSeq.current) setSessionChanges(result.changes);
+    } catch {
+      // 保留上一次统计，避免本地服务瞬时失败让胶囊闪烁
+    }
+  }, []);
+
+  const scheduleSessionChangesRefresh = useCallback(() => {
+    if (changesRefreshTimer.current !== null) window.clearTimeout(changesRefreshTimer.current);
+    changesRefreshTimer.current = window.setTimeout(() => {
+      changesRefreshTimer.current = null;
+      void refreshSessionChanges();
+    }, 250);
+  }, [refreshSessionChanges]);
+
+  const toggleWorkspaceOverview = useCallback(
+    () => setWorkspaceOverviewOpen((value) => !value),
+    [],
+  );
+  const closeWorkspaceOverview = useCallback(() => setWorkspaceOverviewOpen(false), []);
+
+  useEffect(() => {
+    sessionIdRef.current = session?.id ?? null;
+  }, [session?.id]);
+
+  useEffect(() => {
+    setSessionChanges([]);
+    if (!session?.id) return;
+    void refreshSessionChanges();
+  }, [session?.id, refreshSessionChanges]);
+
+  useEffect(
+    () => () => {
+      if (changesRefreshTimer.current !== null) window.clearTimeout(changesRefreshTimer.current);
+    },
+    [],
+  );
   /** 最近一次 AI 回合的响应统计（右侧会话信息）：token / 速度 / 耗时 */
   const [turnMetrics, setTurnMetrics] = useState<TurnMetrics | null>(null);
+  /** 前缀缓存诊断：最终 usage 事件聚合（弹层缓存行 + 首页失配计数） */
+  const [cacheDiagnostics, setCacheDiagnostics] = useState<CacheDiagnostics>(EMPTY_CACHE_DIAGNOSTICS);
+  /** cache-bust 检测基线：按模型记上一条最终样本的命中读数（换模型自动换基线） */
+  const lastCacheReadRef = useRef<{ model: string; read: number } | null>(null);
+  /** 最近一次压缩质量观测（窗口结算后才有值） */
   /** 回合计时（performance.now）：开始、首字、当轮首字；usage 到达即结算一轮速度 */
   const turnStartAtRef = useRef<number | null>(null);
   const turnFirstTokenAtRef = useRef<number | null>(null);
   const roundFirstTokenAtRef = useRef<number | null>(null);
-  const turnOutputTokensRef = useRef(0);
-  /** 会话累计用量：切会话时从会话文件恢复，跨回合保留 */
-  const sessionInputTokensRef = useRef(0);
-  /** 缓存命中率分母：只累计报告了缓存读取的调用 */
-  const sessionCacheInputTokensRef = useRef(0);
-  const sessionCacheReadTokensRef = useRef(0);
-  /** 会话累计写入缓存的输入 token（Anthropic 类协议才报告） */
-  const sessionCacheWriteTokensRef = useRef(0);
-  const sessionOutputTokensRef = useRef(0);
-  const sessionCacheReportedRef = useRef(false);
+  /** 会话累计用量：按 roundId 保存最近样本再派生，流中实时值与最终真值不会双计 */
+  const usageSamplesRef = useRef<Map<string, UsageSample>>(new Map());
+  const usageTotalsRef = useRef<UsageSample>({ ...EMPTY_SAMPLE });
+  /** 旧服务端不发 roundId：给每条事件发一个唯一 id，退回「逐条累加」语义 */
+  const legacyUsageRoundRef = useRef(0);
+  /** 子 Agent 页签的用量样本（key = agentId:roundId），同样替换式累加 */
+  const subagentUsageSamplesRef = useRef<Map<string, UsageSample>>(new Map());
+  /** 已提示过的缓存诊断状态（sessionId:state），避免每轮重复 */
+  const cacheNoticeRef = useRef<string | null>(null);
   /** 上下文压缩进行中的会话（compaction_started → completed/failed）：切换对话后仍保留 */
   const [compactingSessionIds, setCompactingSessionIds] = useState<string[]>([]);
   const compactingSessionIdsRef = useRef<Set<string>>(new Set());
@@ -299,7 +447,7 @@ export default function App() {
   );
   /** 上次进程退出时未交付的排队消息（服务端恢复，只展示不自动执行） */
   const [recoveredPrompts, setRecoveredPrompts] = useState<QueuedPrompt[]>([]);
-  const [lastTurn, setLastTurn] = useState<{
+  const [, setLastTurn] = useState<{
     status: "completed" | "aborted" | "error" | "interrupted";
     error?: string;
   } | null>(null);
@@ -308,6 +456,14 @@ export default function App() {
   /** 所有正在生成的主会话 id（服务端每个会话独立 runtime，切走也会继续跑） */
   const [runningSessionIds, setRunningSessionIds] = useState<string[]>([]);
   const runningSessionIdsRef = useRef<Set<string>>(new Set());
+  /** 回滚预览对话框（dryRun 产出的 plan；确认后重新预览并执行） */
+  const [rewindDialog, setRewindDialog] = useState<{ plan: RewindPlan; busy: boolean } | null>(null);
+  const rewindDialogRef = useRef<{ plan: RewindPlan; busy: boolean } | null>(null);
+  rewindDialogRef.current = rewindDialog;
+  /** 当前会话最近一次可撤销的回滚（横幅入口；切换/回滚后刷新） */
+  const [undoableRewind, setUndoableRewind] = useState<
+    { rewindId: string; mode: RewindMode; fileCount: number } | null
+  >(null);
   const setRunningSessions = useCallback((ids: string[]) => {
     const unique = [...new Set(ids)];
     runningSessionIdsRef.current = new Set(unique);
@@ -388,6 +544,13 @@ export default function App() {
     chatModeRef.current = chatMode;
   }, [chatMode]);
   const [showInspector, setShowInspector] = useState(true);
+  /** 右侧检查器实际占位：设置/插件/架构页不渲染它，不应为它预留宽度 */
+  const inspectorOccupied = view === "chat" && showInspector;
+  /** 会话全文检索弹窗（Ctrl+K / 聊天头搜索按钮） */
+  const [searchOpen, setSearchOpen] = useState(false);
+  /** 检索跳转意图：滚到这条消息并短暂描边；token 每次递增以重播同一命中 */
+  const [messageFocus, setMessageFocus] = useState<{ messageIndex: number; token: number } | null>(null);
+  const searchFocusSeqRef = useRef(0);
   /** 右侧检查器展开/收起；手动切换过才启用动画，避免启动/进设置页重播 */
   const [inspectorAnimated, setInspectorAnimated] = useState(false);
   const toggleInspector = useCallback(() => {
@@ -447,11 +610,24 @@ export default function App() {
     return window.meow.onModelProfiles(apply);
   }, []);
 
-  /** 右侧面板宽度：可拖拽调节，localStorage 记忆（下限 240，上限随窗口放宽） */
+  /** 左栏宽度：与右侧检查器同一套拖拽交互，localStorage 记忆 */
+  const [listWidth, setListWidth] = useState(() => {
+    try {
+      const saved = Number(window.localStorage.getItem("meowcode:listWidth"));
+      if (Number.isFinite(saved) && saved > 0) {
+        return clampListWidth(saved, INSPECTOR_MIN_WIDTH, true);
+      }
+    } catch {
+      // 存储不可用
+    }
+    return 300;
+  });
+
+  /** 右侧面板宽度：可拖拽调节，localStorage 记忆（下限 240，上限随窗口与左栏收窄） */
   const [inspectorWidth, setInspectorWidth] = useState(() => {
     try {
       const saved = Number(window.localStorage.getItem("meowcode:inspectorWidth"));
-      if (Number.isFinite(saved) && saved > 0) return clampInspectorWidth(saved);
+      if (Number.isFinite(saved) && saved > 0) return clampInspectorWidth(saved, listWidth);
     } catch {
       // 存储不可用
     }
@@ -473,8 +649,10 @@ export default function App() {
     trackResizeCursor(event);
     const drag = resizeDragRef.current;
     if (!drag) return;
-    setInspectorWidth(clampInspectorWidth(drag.startWidth - (event.clientX - drag.startX)));
-  }, []);
+    setInspectorWidth(
+      clampInspectorWidth(drag.startWidth - (event.clientX - drag.startX), listWidth),
+    );
+  }, [listWidth]);
   const endResize = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
     if (!resizeDragRef.current) return;
     resizeDragRef.current = null;
@@ -493,16 +671,6 @@ export default function App() {
     });
   }, []);
 
-  /** 左栏宽度：与右侧检查器同一套拖拽交互，localStorage 记忆 */
-  const [listWidth, setListWidth] = useState(() => {
-    try {
-      const saved = Number(window.localStorage.getItem("meowcode:listWidth"));
-      if (Number.isFinite(saved) && saved > 0) return clampListWidth(saved);
-    } catch {
-      // 存储不可用
-    }
-    return 300;
-  });
   const [listDragging, setListDragging] = useState(false);
   const listDragRef = useRef<{ startX: number; startWidth: number } | null>(null);
   const startListResize = useCallback(
@@ -522,8 +690,14 @@ export default function App() {
     const drag = listDragRef.current;
     if (!drag) return;
     // 左栏在左侧：向右拖 = 变宽
-    setListWidth(clampListWidth(drag.startWidth + (event.clientX - drag.startX)));
-  }, []);
+    setListWidth(
+      clampListWidth(
+        drag.startWidth + (event.clientX - drag.startX),
+        inspectorWidth,
+        inspectorOccupied,
+      ),
+    );
+  }, [inspectorWidth, inspectorOccupied]);
   const endListResize = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
     if (!listDragRef.current) return;
     listDragRef.current = null;
@@ -542,6 +716,18 @@ export default function App() {
       return current;
     });
   }, []);
+  // 窗口缩放 / 侧栏开关后重新分配宽度：聊天区始终保留 CHAT_MIN_WIDTH。
+  // 先按当前右栏压左栏，再按新左栏压右栏；每轮只会向预算内收敛，不会来回震荡。
+  useEffect(() => {
+    const enforceChatWidth = () => {
+      setListWidth((current) => clampListWidth(current, inspectorWidth, inspectorOccupied));
+      setInspectorWidth((current) => clampInspectorWidth(current, listWidth));
+    };
+    enforceChatWidth();
+    window.addEventListener("resize", enforceChatWidth);
+    return () => window.removeEventListener("resize", enforceChatWidth);
+  }, [listWidth, inspectorWidth, inspectorOccupied]);
+
   const openSideTab = useCallback(
     (request: SideTabOpen) => {
       sideTabs.open(request);
@@ -562,6 +748,12 @@ export default function App() {
         event.preventDefault();
         setShowInspector(true);
         sideTabs.setPaletteOpen(true);
+        return;
+      }
+      if (event.key.toLowerCase() === "k" && !event.altKey && !event.shiftKey) {
+        // Ctrl+K 会话全文检索
+        event.preventDefault();
+        setSearchOpen(true);
         return;
       }
       if (event.altKey && event.key.toLowerCase() === "s") {
@@ -616,6 +808,10 @@ export default function App() {
           ...(tab.callId ? { callId: tab.callId } : {}),
           ...(tab.description ? { description: tab.description } : {}),
         });
+        continue;
+      }
+      if (tab.kind === "plugin") {
+        tabs.push({ id: tab.id, kind: "plugin", title: tab.title, pluginId: tab.pluginId });
         continue;
       }
       tabs.push({ id: tab.id, kind: tab.kind, title: tab.title });
@@ -706,7 +902,13 @@ export default function App() {
     setApprovals(next);
   }, []);
   const approval = session
-    ? (Object.values(approvals).find((item) => item.sessionId === session.id) ?? null)
+    ? (() => {
+        const pending = Object.values(approvals).filter(
+          (item) => item.sessionId === session.id,
+        );
+        // hook 命令审批优先：否则工具弹窗会挡住「运行 hook 命令」的确认，两边互相等待。
+        return pending.find((item) => item.kind === "hook") ?? pending[0] ?? null;
+      })()
     : null;
 
   /** 子 Agent 运行状态：按 agentId 累积，跨父会话保留，页签按 parentSessionId 过滤。 */
@@ -725,6 +927,19 @@ export default function App() {
       });
     },
     [],
+  );
+  /** 当前主会话的子智能体：右上角概览只列本会话（subagentRuns 跨会话累积） */
+  const currentSessionSubagents = useMemo(
+    () =>
+      Object.values(subagentRuns)
+        .filter((run) => run.parentSessionId === session?.id)
+        .sort((left, right) => {
+          const leftRunning = left.status === "running" ? 0 : 1;
+          const rightRunning = right.status === "running" ? 0 : 1;
+          if (leftRunning !== rightRunning) return leftRunning - rightRunning;
+          return (right.startedAt ?? "").localeCompare(left.startedAt ?? "");
+        }),
+    [subagentRuns, session?.id],
   );
   /** 快速切换时丢弃旧 loadCurrentSession 的迟到结果 */
   const sessionLoadIdRef = useRef(0);
@@ -750,6 +965,16 @@ export default function App() {
   const providers = useMemo(() => settings?.providers ?? [], [settings]);
   /** 当前生效的工作区：优先跟随会话 cwd，没有会话时用设置里的工作区 */
   const activeWorkspace = session?.cwd ?? settings?.workspace;
+  /** 当前项目目录：worktree 会话归回原项目，避免侧栏把它当成新项目 */
+  const projectCwd = session?.worktree?.sourceCwd ?? session?.cwd ?? settings?.workspace;
+  /** 标题栏第二行：worktree 会话显示「项目 · 分支」，悬停给完整 worktree 路径 */
+  const headerWorkspace = session?.worktree
+    ? `${
+        settings?.projectNames?.[session.worktree.sourceCwd]?.trim() ||
+        baseName(session.worktree.sourceCwd)
+      } · ${session.worktree.branch}`
+    : session?.cwd;
+  const headerWorkspaceTitle = session?.worktree?.path ?? session?.cwd;
   /** 工作区目录被用户在系统里删掉后，输入框上方要回退成「选择工作区」 */
   useEffect(() => {
     let cancelled = false;
@@ -772,13 +997,41 @@ export default function App() {
       window.removeEventListener("focus", check);
     };
   }, [activeWorkspace]);
-  const activeProvider = useMemo(
-    () =>
-      providers.find((item) => item.id === settings?.providerId) ??
-      providers.find((item) => item.enabled !== false) ??
-      providers[0],
-    [providers, settings?.providerId],
-  );
+  // worktree 意图只属于当前这次新对话：切会话/换项目/新建后自动失效
+  useEffect(() => {
+    setWorktreeIntent(false);
+  }, [session?.id]);
+  // 分支胶囊：跟着当前会话的 cwd 走（worktree 会话显示 worktree 自己的分支），非 git 仓库不显示
+  useEffect(() => {
+    let cancelled = false;
+    if (!activeWorkspace) {
+      setGitBranch(null);
+      return;
+    }
+    void (async () => {
+      try {
+        const status = await gitStatus();
+        if (cancelled) return;
+        const name = status.isRepo ? (status.branch ?? "").trim() : "";
+        if (!status.isRepo || (!name && !status.detached)) {
+          setGitBranch(null);
+          return;
+        }
+        setGitBranch({ name, detached: Boolean(status.detached) || !name });
+      } catch {
+        if (!cancelled) setGitBranch(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [activeWorkspace, session?.id, gitRevision]);
+  const activeProvider = useMemo(() => {
+    // 停用的模型不在选择器里，也不能继续当激活模型（旧设置可能残留这种状态）
+    const configured = providers.find((item) => item.id === settings?.providerId);
+    if (configured && configured.enabled !== false) return configured;
+    return providers.find((item) => item.enabled !== false) ?? providers[0];
+  }, [providers, settings?.providerId]);
   const activeProviderId = activeProvider?.id ?? "";
   /** 子 Agent 页签只属于发起它的父会话；其他父会话的页签保留但隐藏。 */
   const visibleSideTabs = useMemo(
@@ -803,8 +1056,35 @@ export default function App() {
     () => ({
       theme: settings?.theme ?? "system",
       closeAction: settings?.closeAction ?? "ask",
+      language: settings?.language ?? "system",
+      speechStyle: settings?.speechStyle ?? "normal",
+      silentUpdate: settings?.silentUpdate ?? true,
+      notifications: settings?.notifications ?? true,
+      floatingIsland: settings?.floatingIsland ?? false,
+      worktreeFetchUpstream: settings?.worktreeFetchUpstream ?? false,
+      worktreeAutoCleanup: settings?.worktreeAutoCleanup ?? true,
+      worktreeMaxKeep: settings?.worktreeMaxKeep ?? 15,
+      includeAgentsMd: settings?.includeAgentsMd ?? true,
+      includeClaudeMd: settings?.includeClaudeMd ?? true,
+      fontFamily: settings?.fontFamily ?? "",
+      codeFontFamily: settings?.codeFontFamily ?? "",
     }),
-    [settings?.theme, settings?.closeAction],
+    [
+      settings?.theme,
+      settings?.closeAction,
+      settings?.language,
+      settings?.speechStyle,
+      settings?.silentUpdate,
+      settings?.notifications,
+      settings?.floatingIsland,
+      settings?.worktreeFetchUpstream,
+      settings?.worktreeAutoCleanup,
+      settings?.worktreeMaxKeep,
+      settings?.includeAgentsMd,
+      settings?.includeClaudeMd,
+      settings?.fontFamily,
+      settings?.codeFontFamily,
+    ],
   );
 
   const reloadSessions = useCallback(async () => {
@@ -849,25 +1129,46 @@ export default function App() {
   );
 
   /** 切会话 / 新回合开始时清空响应统计（历史回合的 usage 没有持久化，无法回放） */
-  /** 当前会话累计缓存命中率（实时口径，参考 DSH 的 composer pill）。 */
-  const currentCacheHitRate = useCallback((): number | null => {
-    if (!sessionCacheReportedRef.current || sessionCacheInputTokensRef.current <= 0) return null;
-    return Math.min(sessionCacheReadTokensRef.current / sessionCacheInputTokensRef.current, 1);
-  }, []);
-
   const resetTurnMetrics = useCallback(() => {
     turnStartAtRef.current = null;
     turnFirstTokenAtRef.current = null;
     roundFirstTokenAtRef.current = null;
-    turnOutputTokensRef.current = 0;
-    sessionInputTokensRef.current = 0;
-    sessionCacheInputTokensRef.current = 0;
-    sessionCacheReadTokensRef.current = 0;
-    sessionCacheWriteTokensRef.current = 0;
-    sessionOutputTokensRef.current = 0;
-    sessionCacheReportedRef.current = false;
     setTurnMetrics(null);
   }, []);
+
+  /** 切会话/重载：丢掉旧会话的样本，统计以会话文件里的汇总为基座。 */
+  const resetSessionUsage = useCallback(() => {
+    usageSamplesRef.current = new Map();
+    subagentUsageSamplesRef.current = new Map();
+    usageTotalsRef.current = { ...EMPTY_SAMPLE };
+    lastCacheReadRef.current = null;
+  }, []);
+
+  /** 写入一条 usage 事件并按 roundId 替换样本，返回新的累计总量。 */
+  const updateUsageSample = useCallback(
+    (event: {
+      roundId?: string;
+      final?: boolean;
+      retracted?: boolean;
+      inputTokens?: number;
+      outputTokens?: number;
+      cacheReadTokens?: number;
+      cacheWriteTokens?: number;
+    }): UsageSample => {
+      const roundId = event.roundId ?? `legacy-${(legacyUsageRoundRef.current += 1)}`;
+      const previous = usageSamplesRef.current.get(roundId);
+      if (event.retracted) {
+        usageSamplesRef.current.delete(roundId);
+        usageTotalsRef.current = retractSample(usageTotalsRef.current, previous);
+      } else {
+        const next = mergeSample(previous, event);
+        usageSamplesRef.current.set(roundId, next);
+        usageTotalsRef.current = applySample(usageTotalsRef.current, previous, next);
+      }
+      return usageTotalsRef.current;
+    },
+    [],
+  );
 
   const loadCurrentSession = useCallback(async () => {
     const loadId = ++sessionLoadIdRef.current;
@@ -882,6 +1183,7 @@ export default function App() {
         cwd: string;
         filePath: string;
         createdAt: string;
+        worktree?: SessionWorktree | null;
         title?: string | null;
         plan?: PlanState | null;
         runningSessionIds?: string[];
@@ -922,6 +1224,7 @@ export default function App() {
         messages: ChatMessage[];
         compaction?: { messageIndex: number; summary: string } | null;
         compactions?: CompactionPoint[];
+        checkpoints?: SessionCheckpoint[];
       }>("/session/messages");
       // 快速切换时旧请求可能后到，直接丢弃
       if (loadId !== sessionLoadIdRef.current) return false;
@@ -947,26 +1250,21 @@ export default function App() {
       setLastTurn(current.lastTurn ?? null);
       const usage = current.usage;
       const lastMetrics = current.metrics;
-      sessionInputTokensRef.current = usage?.inputTokens ?? 0;
-      sessionCacheInputTokensRef.current = usage?.cacheInputTokens ?? 0;
-      sessionCacheReadTokensRef.current = usage?.cacheReadTokens ?? 0;
-      sessionCacheWriteTokensRef.current = usage?.cacheWriteTokens ?? 0;
-      sessionOutputTokensRef.current = usage?.outputTokens ?? 0;
-      sessionCacheReportedRef.current = Boolean(usage?.cacheReported);
+      // 会话级统计以文件汇总为基座：切回来时历史累计仍在
+      resetSessionUsage();
+      usageTotalsRef.current = totalsFromServer(usage);
       if (usage?.hasUsage || lastMetrics) {
+        const totals = usageTotalsRef.current;
         setTurnMetrics({
           ...EMPTY_TURN_METRICS,
-          inputTokens: usage?.hasUsage ? usage.inputTokens : null,
-          cacheReadTokens: usage?.cacheReported ? usage.cacheReadTokens : null,
-          cacheWriteTokens: usage?.hasUsage ? (usage.cacheWriteTokens ?? 0) : null,
-          outputTokens: usage?.hasUsage ? usage.outputTokens : null,
+          inputTokens: usage?.hasUsage ? totals.input : null,
+          cacheReadTokens: totals.cacheReported ? totals.cacheRead : null,
+          cacheWriteTokens: usage?.hasUsage ? totals.cacheWrite : null,
+          outputTokens: usage?.hasUsage ? totals.output : null,
           tokensPerSecond: lastMetrics?.tokensPerSecond ?? null,
           responseMs: lastMetrics?.responseMs ?? null,
           firstTokenMs: lastMetrics?.firstTokenMs ?? null,
-          cacheHitRate:
-            usage?.cacheReported && usage.cacheInputTokens > 0
-              ? Math.min(usage.cacheReadTokens / usage.cacheInputTokens, 1)
-              : null,
+          cacheHitRate: hitRate(totals),
         });
       } else {
         setTurnMetrics(null);
@@ -993,12 +1291,13 @@ export default function App() {
         messages.messages,
         nextKey,
         messages.compactions?.length ? messages.compactions : (messages.compaction ?? null),
+        messages.checkpoints,
       );
       if (current.lastTurn?.status === "interrupted") {
         history.push({
           kind: "notice",
           key: nextKey("notice"),
-          message: "上次生成被应用退出中断；已保留已生成的内容，可以继续对话。",
+          message: i18n.t("shell:notice.interrupted"),
         });
       }
       if (current.lastError) {
@@ -1009,6 +1308,16 @@ export default function App() {
         history.push({ kind: "compaction", key: nextKey("compaction"), running: true });
       }
       setTimeline(history);
+      // 撤销回滚入口：当前会话最近一次可撤销的回滚（无则隐藏横幅）
+      void api<{ undoable: { rewindId: string; mode: RewindMode; fileCount: number } | null }>(
+        "/session/rewind/undoable",
+      )
+        .then((res) => {
+          if (loadId === sessionLoadIdRef.current) {
+            setUndoableRewind(res.undoable ?? null);
+          }
+        })
+        .catch(() => undefined);
       return true;
     } catch {
       return false;
@@ -1041,15 +1350,114 @@ export default function App() {
     setTimeline((items) => [...items, { kind: "error", key: nextKey("error"), message }]);
   }, []);
 
+  /** 右上角轻提示（如「已是最新版本」）：几秒后自动消失 */
+  const [toast, setToast] = useState<{ key: number; text: string } | null>(null);
+  const toastTimerRef = useRef<number | null>(null);
+  const showToast = useCallback((text: string) => {
+    setToast({ key: Date.now(), text });
+    if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current);
+    toastTimerRef.current = window.setTimeout(() => setToast(null), 2600);
+  }, []);
+
   /**
-   * 源码管理：状态放在 App —— 切到对话/设置时 GitBody 会卸载，
+   * Git 管理：状态放在 App —— 切到对话/设置时 GitBody 会卸载，
    * 选中文件、diff、提交草稿不能跟着丢。只有视图可见时才轮询。
    */
   const git = useGitView({
     workspace: session?.cwd ?? settings?.workspace,
     active: view === "git",
   });
+  /** 聊天页常驻的轻量 git 状态：右上角概览摘要 + 输入框胶囊的未提交过滤共用 */
+  const workspaceGitStatus = useWorkspaceGit({
+    workspace: session?.cwd ?? settings?.workspace,
+    active: view === "chat",
+  });
+  const uncommittedSessionChanges = useMemo(
+    () =>
+      filterUncommittedSessionChanges(
+        sessionChanges,
+        workspaceGitStatus,
+        session?.cwd ?? settings?.workspace ?? null,
+      ),
+    [sessionChanges, workspaceGitStatus, session?.cwd, settings?.workspace],
+  );
   const [gitBranchOpen, setGitBranchOpen] = useState(false);
+
+  /**
+   * 更新（GitCode releases）：检查到新版本后可以下载安装包并打开安装程序。
+   * 状态放这里，更新弹窗在设置页之外也能弹（比如聊天区里的"立即更新"提示）。
+   */
+  const [updateRelease, setUpdateRelease] = useState<UpdateInfo | null>(null);
+  const [updateOpen, setUpdateOpen] = useState(false);
+  /** 发现新版本（启动自动检查或关于页手动检查）：只记录结果，弹窗由用户主动打开 */
+  const discoverUpdate = useCallback((release: UpdateInfo) => {
+    setUpdateRelease(release);
+  }, []);
+
+  // 启动时静默查一次：有新版就在聊天里留一条带"立即更新"的提示（不打扰，但不藏）
+  useEffect(() => {
+    let disposed = false;
+    void checkForUpdates()
+      .then((result) => {
+        if (disposed || !result.ok || !result.hasUpdate) return;
+        setUpdateRelease(result.latest);
+        setTimeline((items) => [
+          ...items,
+          {
+            kind: "notice",
+            key: nextKey("update"),
+            message: i18n.t("shell:notice.updateAvailable", { version: result.latest.version }),
+            action: {
+              label: i18n.t("shell:notice.updateNow"),
+              run: () => setUpdateOpen(true),
+            },
+          },
+        ]);
+      })
+      .catch(() => undefined);
+    return () => {
+      disposed = true;
+    };
+  }, []);
+
+  /**
+   * 静默下载更新（设置里默认开）：检查到新版本就在后台拉安装包。
+   * 进度显示在导航栏左下角的圆环图标上，下完变成重启按钮，点一下打开安装包。
+   */
+  const [silentUpdate, setSilentUpdate] = useState<SilentUpdateState>({ status: "hidden" });
+  const silentStartedRef = useRef(false);
+
+  // 进度事件是全广播：手动弹窗下载与静默下载共用，只在静默进行中才更新圆环
+  useEffect(() => {
+    return onUpdateProgress((next) => {
+      setSilentUpdate((current) =>
+        current.status === "downloading"
+          ? { status: "downloading", percent: next.percent }
+          : current,
+      );
+    });
+  }, []);
+
+  useEffect(() => {
+    if (silentStartedRef.current || !updateRelease?.asset) return;
+    if (!settings) return; // 等设置加载完再决定：用户可能把静默下载关了
+    if (settings.silentUpdate === false) return;
+    silentStartedRef.current = true;
+    setSilentUpdate({ status: "downloading", percent: 0 });
+    void downloadUpdate({ url: updateRelease.asset.url, fileName: updateRelease.asset.name })
+      .then((result) => setSilentUpdate({ status: "done", path: result.path }))
+      .catch(() => setSilentUpdate({ status: "error" }));
+  }, [updateRelease, settings]);
+
+  /** 静默下载完成后的重启安装：打开安装包，Windows 上应用会随之退出 */
+  const restartUpdate = useCallback(async () => {
+    if (silentUpdate.status !== "done") return;
+    try {
+      await openInstaller(silentUpdate.path);
+    } catch (error) {
+      pushError(error instanceof Error ? error.message : String(error));
+    }
+  }, [silentUpdate, pushError]);
 
   const enqueueQueuedPrompt = useCallback((item: QueuedPrompt) => {
     queueVersionRef.current += 1;
@@ -1128,7 +1536,7 @@ export default function App() {
           timeline.push({
             kind: "notice",
             key: nextKey("notice"),
-            message: "这个子 Agent 的回合被中断；已保留生成的内容。",
+            message: i18n.t("shell:notice.subagentInterrupted"),
           });
         }
         updateSubagentRuns((current) => {
@@ -1175,13 +1583,13 @@ export default function App() {
                   agentId,
                   parentSessionId: "",
                   callId: "",
-                  description: "子 Agent",
+                  description: i18n.t("shell:subagent.label"),
                   status: "interrupted",
                   startedAt: new Date().toISOString(),
                   timeline: [],
                   hydrated: true,
                   live: false,
-                  error: "无法加载子 Agent 转录",
+                  error: i18n.t("shell:subagent.loadFailed"),
                 },
               },
         );
@@ -1229,6 +1637,12 @@ export default function App() {
       body: JSON.stringify({ message }),
     });
   }, []);
+  const steerSubagent = useCallback(async (agentId: string, message: string) => {
+    await api(`/session/subagents/${encodeURIComponent(agentId)}/steer`, {
+      method: "POST",
+      body: JSON.stringify({ message }),
+    });
+  }, []);
 
   /** 子 Agent 事件必须最先分流，不能进入主时间线/运行圆点/审批清理逻辑。 */
   const handleSubagentEvent = useCallback(
@@ -1246,9 +1660,81 @@ export default function App() {
         });
         return;
       }
+      if (event.type === "subagent_steer_queued") {
+        const steerId = event.steerId ?? "";
+        const text = event.text ?? "";
+        if (!steerId) return;
+        updateSubagentRuns((current) => {
+          const existing = current[agentId];
+          if (!existing) return current;
+          const pending = existing.pendingSteers ?? [];
+          if (pending.some((item) => item.id === steerId)) return current;
+          return {
+            ...current,
+            [agentId]: {
+              ...existing,
+              pendingSteers: [...pending, { id: steerId, text }],
+              steerError: undefined,
+            },
+          };
+        });
+        return;
+      }
+      if (event.type === "subagent_steer_delivered") {
+        const steerId = event.steerId ?? "";
+        const text = event.text ?? "";
+        updateSubagentRuns((current) => {
+          const existing = current[agentId];
+          if (!existing) return current;
+          const key = `steer-${steerId}`;
+          const timeline = existing.timeline.some((item) => item.key === key)
+            ? existing.timeline
+            : [
+                ...existing.timeline,
+                {
+                  kind: "message" as const,
+                  key,
+                  role: "user" as const,
+                  content: text,
+                },
+              ];
+          return {
+            ...current,
+            [agentId]: {
+              ...existing,
+              pendingSteers: (existing.pendingSteers ?? []).filter((item) => item.id !== steerId),
+              timeline,
+              steerError: undefined,
+            },
+          };
+        });
+        return;
+      }
+      if (event.type === "subagent_steer_dropped") {
+        const steerId = event.steerId ?? "";
+        updateSubagentRuns((current) => {
+          const existing = current[agentId];
+          if (!existing) return current;
+          return {
+            ...current,
+            [agentId]: {
+              ...existing,
+              pendingSteers: (existing.pendingSteers ?? []).filter((item) => item.id !== steerId),
+              steerError:
+                event.reason === "aborted"
+                  ? i18n.t("shell:subagent.steerAborted")
+                  : i18n.t("shell:subagent.steerFinished"),
+            },
+          };
+        });
+        return;
+      }
       if (event.type === "subagent_started") {
         const parentSessionId = event.parentSessionId ?? "";
-        const description = event.description ?? event.agentDescription ?? "子 Agent";
+        if (parentSessionId && parentSessionId === mainSessionIdRef.current) {
+          setWorkspaceOverviewOpen(true);
+        }
+        const description = event.description ?? event.agentDescription ?? i18n.t("shell:subagent.label");
         // 先建 UI，再等子 Agent 首字：自动创建页签但不切换，避免打断当前阅读。
         if (
           !subagentRunsRef.current[agentId] &&
@@ -1304,6 +1790,8 @@ export default function App() {
               timeline,
               hydrated: existing?.hydrated ?? false,
               live: true,
+              pendingSteers: [],
+              steerError: undefined,
               ...(event.prompt ? { prompt: event.prompt } : {}),
               ...(existing?.usage ? { usage: existing.usage } : {}),
             },
@@ -1313,7 +1801,7 @@ export default function App() {
       }
       if (event.type === "subagent_resumed") {
         const parentSessionId = event.parentSessionId ?? "";
-        const description = event.description ?? event.agentDescription ?? "子 Agent";
+        const description = event.description ?? event.agentDescription ?? i18n.t("shell:subagent.label");
         if (parentSessionId && parentSessionId === mainSessionIdRef.current) {
           sideTabsRef.current.prepareSubagent({
             agentId,
@@ -1350,6 +1838,8 @@ export default function App() {
               hydrated: existing?.hydrated ?? false,
               live: true,
               preparing: undefined,
+              pendingSteers: [],
+              steerError: undefined,
               ...(existing?.usage ? { usage: existing.usage } : {}),
             },
           };
@@ -1357,7 +1847,7 @@ export default function App() {
         return;
       }
       if (event.type === "tool_call_progress") {
-        const preparing = toolPreparingLabel(event.count, event.names) ?? undefined;
+        const preparing = toolPreparingLabel(t, event.count, event.names) ?? undefined;
         updateSubagentRuns((current) => {
           const existing = current[agentId];
           if (!existing) return current;
@@ -1373,7 +1863,7 @@ export default function App() {
             agentId,
             parentSessionId: event.parentSessionId ?? "",
             callId: event.callId ?? "",
-            description: event.description ?? event.agentDescription ?? "子 Agent",
+            description: event.description ?? event.agentDescription ?? i18n.t("shell:subagent.label"),
             ...(event.agentType ? { agentType: event.agentType } : {}),
             background: event.background ?? false,
             status: event.status ?? "completed",
@@ -1398,6 +1888,7 @@ export default function App() {
               ...(event.usage ? { usage: event.usage } : {}),
               timeline,
               preparing: undefined,
+              pendingSteers: [],
               live: false,
             },
           };
@@ -1408,18 +1899,23 @@ export default function App() {
           event.parentSessionId &&
           event.parentSessionId === mainSessionIdRef.current
         ) {
-          const label =
+          const statusLabel =
             event.status === "completed"
-              ? "已完成"
+              ? i18n.t("shell:subagent.status.completed")
               : event.status === "failed"
-                ? "失败"
+                ? i18n.t("shell:subagent.status.failed")
                 : event.status === "aborted"
-                  ? "已停止"
-                  : "已中断";
+                  ? i18n.t("shell:subagent.status.aborted")
+                  : i18n.t("shell:subagent.status.interrupted");
           const key = `subagent-notice-${agentId}-${event.endedAt ?? ""}`;
-          const message = `子 Agent「${event.description ?? "子 Agent"}」${label}${
-            event.report ? `：${event.report.slice(0, 120)}` : ""
-          }`;
+          const name = event.description ?? i18n.t("shell:subagent.label");
+          const message = event.report
+            ? i18n.t("shell:subagent.noticeWithReport", {
+                name,
+                status: statusLabel,
+                report: event.report.slice(0, 120),
+              })
+            : i18n.t("shell:subagent.notice", { name, status: statusLabel });
           setTimeline((items) =>
             items.some((item) => item.key === key)
               ? items
@@ -1440,9 +1936,15 @@ export default function App() {
           ...(event.diff ? { diff: event.diff } : {}),
           ...(event.risk ? { risk: event.risk } : {}),
           ...(event.stale ? { stale: true } : {}),
+          ...(event.kind ? { kind: event.kind } : {}),
+          ...(event.command ? { command: event.command } : {}),
+          ...(event.hookEvent ? { hookEvent: event.hookEvent } : {}),
+          ...(event.matcher ? { matcher: event.matcher } : {}),
+          ...(event.source ? { source: event.source } : {}),
+          ...(event.hookReason ? { hookReason: event.hookReason } : {}),
         });
       }
-      if (event.type === "tool_finished") {
+      if (event.type === "approval_resolved" || event.type === "tool_finished") {
         removeApproval(undefined, event.callId);
       }
       updateSubagentRuns((current) => {
@@ -1450,7 +1952,7 @@ export default function App() {
           agentId,
           parentSessionId: event.parentSessionId ?? "",
           callId: "",
-          description: event.agentDescription ?? "子 Agent",
+          description: event.agentDescription ?? i18n.t("shell:subagent.label"),
           ...(event.agentType ? { agentType: event.agentType } : {}),
           status: "running" as const,
           startedAt: new Date().toISOString(),
@@ -1474,14 +1976,37 @@ export default function App() {
         }
         const usage: UsageSummary | undefined =
           event.type === "usage"
-            ? {
-                inputTokens: (existing.usage?.inputTokens ?? 0) + (event.inputTokens ?? 0),
-                outputTokens: (existing.usage?.outputTokens ?? 0) + (event.outputTokens ?? 0),
-                cacheReadTokens:
-                  (existing.usage?.cacheReadTokens ?? 0) + (event.cacheReadTokens ?? 0),
-                cacheWriteTokens:
-                  (existing.usage?.cacheWriteTokens ?? 0) + (event.cacheWriteTokens ?? 0),
-              }
+            ? (() => {
+                // 子 Agent 也走同一套 roundId 替换语义：先撤旧样本再加新样本
+                const key = `${agentId}:${event.roundId}`;
+                const previous = subagentUsageSamplesRef.current.get(key);
+                const base = {
+                  inputTokens: existing.usage?.inputTokens ?? 0,
+                  outputTokens: existing.usage?.outputTokens ?? 0,
+                  cacheReadTokens: existing.usage?.cacheReadTokens ?? 0,
+                  cacheWriteTokens: existing.usage?.cacheWriteTokens ?? 0,
+                };
+                if (event.retracted) {
+                  subagentUsageSamplesRef.current.delete(key);
+                  if (!previous) return existing.usage;
+                  return {
+                    inputTokens: Math.max(0, base.inputTokens - previous.input),
+                    outputTokens: Math.max(0, base.outputTokens - previous.output),
+                    cacheReadTokens: Math.max(0, base.cacheReadTokens - previous.cacheRead),
+                    cacheWriteTokens: Math.max(0, base.cacheWriteTokens - previous.cacheWrite),
+                  };
+                }
+                const next = mergeSample(previous, event);
+                subagentUsageSamplesRef.current.set(key, next);
+                return {
+                  inputTokens: base.inputTokens + next.input - (previous?.input ?? 0),
+                  outputTokens: base.outputTokens + next.output - (previous?.output ?? 0),
+                  cacheReadTokens:
+                    base.cacheReadTokens + next.cacheRead - (previous?.cacheRead ?? 0),
+                  cacheWriteTokens:
+                    base.cacheWriteTokens + next.cacheWrite - (previous?.cacheWrite ?? 0),
+                };
+              })()
             : existing.usage;
         return {
           ...current,
@@ -1501,6 +2026,11 @@ export default function App() {
   const handleEvent = useCallback((event: MeowEvent) => {
     if (event.agentId) {
       handleSubagentEvent(event);
+      return;
+    }
+    // 源码管理里有动作（暂存/提交/切分支）：分支胶囊跟着刷新
+    if (event.type === "git_changed") {
+      setGitRevision((current) => current + 1);
       return;
     }
     if (event.type === "tool_call_progress") {
@@ -1578,7 +2108,17 @@ export default function App() {
         input: event.input,
         ...(event.diff ? { diff: event.diff } : {}),
         ...(event.risk ? { risk: event.risk } : {}),
+        ...(event.stale ? { stale: true } : {}),
+        ...(event.kind ? { kind: event.kind } : {}),
+        ...(event.command ? { command: event.command } : {}),
+        ...(event.hookEvent ? { hookEvent: event.hookEvent } : {}),
+        ...(event.matcher ? { matcher: event.matcher } : {}),
+        ...(event.source ? { source: event.source } : {}),
+        ...(event.hookReason ? { hookReason: event.hookReason } : {}),
       });
+    }
+    if (!event.side && event.type === "approval_resolved" && event.callId) {
+      removeApproval(undefined, event.callId);
     }
     if (!event.side && event.type === "tool_finished") {
       removeApproval(undefined, event.callId);
@@ -1805,7 +2345,12 @@ export default function App() {
           const index = next.findIndex((item) => item.kind === "tool" && item.callId === event.callId) as number;
           if (index >= 0) {
             const item = next[index] as TimelineTool;
-            next[index] = { ...item, output: event.output ?? "", truncated: event.truncated };
+            next[index] = {
+          ...item,
+          output: event.output ?? "",
+          truncated: event.truncated,
+          ...(event.spilled ? { spilled: event.spilled } : {}),
+        };
           }
           break;
         }
@@ -1831,19 +2376,36 @@ export default function App() {
     if (event.type === "message_start") {
       setToolProgress(null);
       if (event.queuedId) completeQueuedPrompt(event.queuedId);
-      // 新回合：重置响应统计（usage 每轮到达一次，逐步填充）
+      // 新回合：只重置回合计时；会话累计 token / 缓存命中率保留
       turnStartAtRef.current = performance.now();
       turnFirstTokenAtRef.current = null;
       roundFirstTokenAtRef.current = null;
-      turnOutputTokensRef.current = 0;
-      // 回合统计重新计时；会话累计 token / 缓存命中率保留
+      const totals = usageTotalsRef.current;
       setTurnMetrics({
         ...EMPTY_TURN_METRICS,
-        inputTokens: sessionInputTokensRef.current || null,
-        cacheReadTokens: sessionCacheReportedRef.current ? sessionCacheReadTokensRef.current : null,
-        cacheWriteTokens: sessionCacheWriteTokensRef.current || null,
-        outputTokens: sessionOutputTokensRef.current || null,
-        cacheHitRate: currentCacheHitRate(),
+        inputTokens: totals.input || null,
+        cacheReadTokens: totals.cacheReported ? totals.cacheRead : null,
+        cacheWriteTokens: totals.cacheWrite || null,
+        outputTokens: totals.output || null,
+        cacheHitRate: hitRate(totals),
+      });
+    }
+    if (event.type === "checkpoint_created") {
+      // 流式回合的回退锚点：服务端打点后补挂到刚乐观追加的用户气泡上（时间线里最后一条没挂过的）
+      setTimeline((items) => {
+        for (let index = items.length - 1; index >= 0; index -= 1) {
+          const item = items[index];
+          if (item.kind !== "message" || item.role !== "user") continue;
+          if (item.checkpointId) break; // 最早的一条未挂锚点的用户消息才是本次回合的
+          const next = [...items];
+          next[index] = {
+            ...item,
+            checkpointId: event.checkpointId,
+            checkpointHasSnapshot: event.hasSnapshot,
+          };
+          return next;
+        }
+        return items;
       });
     }
     // 流式增量：记录首字延迟（整回合一次）与当轮首字时间（结算速度用）
@@ -1893,50 +2455,74 @@ export default function App() {
           contextWindow,
           usedTokens: event.inputTokens,
           source: "usage",
-          breakdown: prev?.breakdown ?? { system: 0, tools: 0, messages: 0 },
+          breakdown: prev?.breakdown ?? { system: 0, tools: 0, skills: 0, messages: 0, other: 0 },
+          skillCount: prev?.skillCount,
           recommendedCompaction: shouldRecommendCompaction(event.inputTokens, contextWindow),
         };
       });
-      // 响应统计：usage 在每次模型调用结束时到达一次
+      // 响应统计：流中会多次上报同一轮，按 roundId 替换样本后派生累计
+      const totals = updateUsageSample(event);
       const now = performance.now();
       const roundStart = roundFirstTokenAtRef.current;
       const roundOutput = typeof event.outputTokens === "number" ? event.outputTokens : null;
-      if (roundOutput != null && roundOutput > 0) {
-        turnOutputTokensRef.current += roundOutput;
-        sessionOutputTokensRef.current += roundOutput;
-      }
-      // 会话累计：input 用于三项 token 明细，cacheInput 只用于缓存命中率分母
-      const usageInput = typeof event.inputTokens === "number" ? event.inputTokens : 0;
-      if (usageInput > 0) {
-        sessionInputTokensRef.current += usageInput;
-      }
-      if (typeof event.cacheReadTokens === "number") {
-        sessionCacheReportedRef.current = true;
-        sessionCacheReadTokensRef.current += event.cacheReadTokens;
-        if (usageInput > 0) sessionCacheInputTokensRef.current += usageInput;
-      }
-      if (typeof event.cacheWriteTokens === "number") {
-        sessionCacheWriteTokensRef.current += event.cacheWriteTokens;
-      }
-      const cacheHitRate = currentCacheHitRate();
-      const seconds = roundStart != null ? (now - roundStart) / 1000 : 0;
+      // 速度只在最终真值上结算：实时样本提前清掉起点会把本轮速度算到下一轮头上
+      const final = event.final === true;
+      const seconds = final && roundStart != null ? (now - roundStart) / 1000 : 0;
       const speed =
-        roundOutput != null && roundOutput > 0 && seconds >= 0.05 ? roundOutput / seconds : null;
-      roundFirstTokenAtRef.current = null;
+        final && roundOutput != null && roundOutput > 0 && seconds >= 0.05
+          ? roundOutput / seconds
+          : null;
+      if (final) roundFirstTokenAtRef.current = null;
       setTurnMetrics((prev) => {
         const base = prev ?? EMPTY_TURN_METRICS;
         return {
           ...base,
-          inputTokens: sessionInputTokensRef.current || base.inputTokens,
-          cacheReadTokens: sessionCacheReportedRef.current
-            ? sessionCacheReadTokensRef.current
-            : null,
-          cacheWriteTokens: sessionCacheWriteTokensRef.current || null,
-          outputTokens: sessionOutputTokensRef.current || base.outputTokens,
+          inputTokens: totals.input || base.inputTokens,
+          cacheReadTokens: totals.cacheReported ? totals.cacheRead : null,
+          cacheWriteTokens: totals.cacheWrite || null,
+          outputTokens: totals.output || base.outputTokens,
           tokensPerSecond: speed ?? base.tokensPerSecond,
-          cacheHitRate,
+          cacheHitRate: hitRate(totals),
         };
       });
+      // 缓存诊断（只在最终真值上结算）：本轮读/写给弹层，状态/原因与失配计数进聚合。
+      // bust 基线按模型分：换模型后的读数跌落是冷启动，不算失配。
+      if (final) {
+        const sample = event.roundId ? usageSamplesRef.current.get(event.roundId) : undefined;
+        const read = sample?.cacheReported ? sample.cacheRead : null;
+        const write = sample?.cacheWrite ?? null;
+        const model = event.model ?? "";
+        const baseline = lastCacheReadRef.current;
+        const bust =
+          read != null && baseline != null && baseline.model === model && isCacheBust(baseline, { read });
+        if (read != null) lastCacheReadRef.current = { model, read };
+        setCacheDiagnostics((prev) => ({
+          lastRound: { read, write },
+          lastState: event.cacheState ?? prev.lastState,
+          lastReason: event.cacheReason ?? prev.lastReason,
+          busts: prev.busts + (bust ? 1 : 0),
+          lastBustDrop: bust && baseline != null && read != null ? baseline.read - read : prev.lastBustDrop,
+          rebuilds:
+            event.cacheState && event.cacheState !== "warm" && event.cacheReason
+              ? { ...prev.rebuilds, [event.cacheReason]: (prev.rebuilds[event.cacheReason] ?? 0) + 1 }
+              : prev.rebuilds,
+        }));
+      }
+      // 网关缓存诊断：逐出/不支持时留一条轻提示，每个会话每种状态只提示一次。
+      if (event.cacheState === "evicted" || event.cacheState === "unsupported") {
+        const sessionKey = `${event.sessionId ?? ""}:${event.cacheState}`;
+        if (cacheNoticeRef.current !== sessionKey) {
+          cacheNoticeRef.current = sessionKey;
+          const message =
+            event.cacheState === "evicted"
+              ? i18n.t("shell:notice.cacheEvicted")
+              : i18n.t("shell:notice.cacheUnsupported");
+          setTimeline((items) => [
+            ...items,
+            { kind: "notice", key: `cache-${sessionKey}-${Date.now()}`, message },
+          ]);
+        }
+      }
     }
     if (
       event.type === "tool_started" ||
@@ -1957,11 +2543,11 @@ export default function App() {
       // 在时间线留一条轻提示，避免用户以为模型"脾气变了"。
       const reason =
         event.reason === "timeout"
-          ? "请求超时"
+          ? i18n.t("shell:error.reason.timeout")
           : event.reason === "rate_limit"
-            ? "触发限流"
+            ? i18n.t("shell:error.reason.rateLimit")
             : event.reason === "server"
-              ? "服务端故障"
+              ? i18n.t("shell:error.reason.server")
               : event.reason;
       const key = `provider-switched-${event.from}-${event.to}-${Date.now()}`;
       setTimeline((items) => [
@@ -1969,13 +2555,33 @@ export default function App() {
         {
           kind: "notice",
           key,
-          message: `服务商已临时切换：${event.from} → ${event.to}（${reason}）。可在设置 → 模型里调整顺序。`,
+          message: i18n.t("shell:notice.providerSwitched", {
+            from: event.from,
+            to: event.to,
+            reason,
+          }),
         },
       ]);
     }
     if (event.type === "file_changed") {
       // 审阅自动展开：页签不存在才新建并激活；已存在只让 ReviewTab 自己刷新
+      if (!event.sessionId || event.sessionId === sessionIdRef.current) {
+        scheduleSessionChangesRefresh();
+      }
       if (sideTabsRef.current.openIfAbsent("review")) setShowInspector(true);
+    }
+    if (event.type === "files_rewound") {
+      // 仅回滚代码完成：审阅面板与 git 面板的数据源（磁盘）已变化，自动展开审阅
+      if (!event.sessionId || event.sessionId === sessionIdRef.current) {
+        scheduleSessionChangesRefresh();
+      }
+      if (sideTabsRef.current.openIfAbsent("review")) setShowInspector(true);
+    }
+    if (
+      event.type === "turn_complete" &&
+      (!event.sessionId || event.sessionId === sessionIdRef.current)
+    ) {
+      scheduleSessionChangesRefresh();
     }
     if (event.type === "plan_updated") {
       setPlan({
@@ -1984,10 +2590,11 @@ export default function App() {
       });
     }
   }, [
+    scheduleSessionChangesRefresh,
     refreshContextUsage,
     pushError,
     reloadSessions,
-    currentCacheHitRate,
+    updateUsageSample,
     completeQueuedPrompt,
     loadCurrentSession,
     clearQueuedPrompts,
@@ -2017,9 +2624,11 @@ export default function App() {
         if (disposed) return;
         setSettings(loadedSettings);
         setThemePreference(loadedSettings.theme ?? "system");
+        // 磁盘上的偏好是权威值：镜像可能滞后（换机、清缓存、旧版本写过别的语言）
+        syncLanguageFromSettings(loadedSettings.language);
         setDrafts(loadedUi.drafts ?? {});
         setShowInspector(loadedUi.inspector.visible);
-        setInspectorWidth(clampInspectorWidth(loadedUi.inspector.width));
+        setInspectorWidth(clampInspectorWidth(loadedUi.inspector.width, LIST_MIN_WIDTH));
         const restoredTabs: SideTab[] = (loadedUi.tabs ?? []).flatMap((tab): SideTab[] => {
           if (tab.kind === "browser") {
             return [{ id: tab.id, kind: "browser", title: tab.title, url: tab.url ?? "" }];
@@ -2047,6 +2656,10 @@ export default function App() {
                 ...(tab.description ? { description: tab.description } : {}),
               },
             ];
+          }
+          if (tab.kind === "plugin") {
+            if (!tab.pluginId) return [];
+            return [{ id: tab.id, kind: "plugin", title: tab.title, pluginId: tab.pluginId }];
           }
           return [{ id: tab.id, kind: tab.kind, title: tab.title }];
         });
@@ -2080,6 +2693,15 @@ export default function App() {
 
     void boot();
     const unsubscribe = window.meow.onEvent(handleEvent);
+    // 悬浮岛发出的 prompt：服务端事件不携带用户消息文本，当前会话命中时在这里补气泡。
+    // 排队场景（回合进行中）气泡会先于执行出现——悬浮岛侧已有同款展示，可接受。
+    const unsubscribeIslandPrompt = window.meow.onIslandPromptSent(({ sessionId, text }) => {
+      if (disposed || !sessionId || sessionId !== mainSessionIdRef.current || !text) return;
+      setTimeline((items) => [
+        ...items,
+        { kind: "message", key: nextKey("user"), role: "user", content: text },
+      ]);
+    });
     const unsubscribeSettings = window.meow.onOpenSettings(() => {
       if (!disposed) setView("settings");
     });
@@ -2089,6 +2711,7 @@ export default function App() {
     return () => {
       disposed = true;
       unsubscribe();
+      unsubscribeIslandPrompt();
       unsubscribeSettings();
       unsubscribeClose();
     };
@@ -2102,12 +2725,12 @@ export default function App() {
     // 附件 chip：绝对路径（不限工作区），作为首部【附件】行交给运行时注入文件内容
     const attachmentLines = chips
       .filter((chip) => chip.kind === "file")
-      .map((chip) => `【附件】${chip.name} · ${chip.path}`);
+      .map((chip) => `【附件】${chip.name} · ${chip.path}`); // i18n-allow 消息首部协议标记，与 src/agent 解析约定一致
     // 技能/插件引用 chip：首部叠加多行标记；插件命令独占，展开后是一整段指令
     const rawInput = overrideText ?? input;
     const commandChip = chips.find((chip) => chip.kind === "command");
     // 手输 `/命令` 时 Composer 已构造好命令标记，不能再把技能引用前缀叠到它前面
-    const inputIsCommandMarker = rawInput.trimStart().startsWith("【插件命令】");
+    const inputIsCommandMarker = rawInput.trimStart().startsWith("【插件命令】"); // i18n-allow 消息首部协议标记，与 src/agent 解析约定一致
     const referenceLines = inputIsCommandMarker
       ? []
       : [
@@ -2116,8 +2739,8 @@ export default function App() {
             .filter((chip) => chip.kind === "skill" || chip.kind === "plugin")
             .map((chip) =>
               chip.kind === "skill"
-                ? `【技能引用】${chip.name} · ${chip.id}`
-                : `【插件引用】${chip.name} · ${chip.id}`,
+                ? `【技能引用】${chip.name} · ${chip.id}` // i18n-allow 消息首部协议标记，与 src/agent 解析约定一致
+                : `【插件引用】${chip.name} · ${chip.id}`, // i18n-allow 消息首部协议标记，与 src/agent 解析约定一致
             ),
         ];
     const referencePrefix = referenceLines.length
@@ -2129,7 +2752,7 @@ export default function App() {
     const commandAttachments = attachmentLines.length ? `\n${attachmentLines.join("\n")}` : "";
     const commandText =
       commandChip && commandChip.kind === "command"
-        ? `【插件命令】${commandChip.name} · ${commandChip.id} · ${commandChip.command}${commandAttachments}\n\n/${commandChip.command}${trimmedArgs ? ` ${trimmedArgs}` : ""}`
+        ? `【插件命令】${commandChip.name} · ${commandChip.id} · ${commandChip.command}${commandAttachments}\n\n/${commandChip.command}${trimmedArgs ? ` ${trimmedArgs}` : ""}` // i18n-allow 消息首部协议标记，与 src/agent 解析约定一致
         : "";
     // 手输 `/命令`（Composer 已把标记拼进 overrideText）：附件行插进标记的首部块，
     // 不能挂在前面 —— 否则 `【插件命令】` 不再是首行，气泡与运行时都解析不到命令。
@@ -2149,10 +2772,57 @@ export default function App() {
           : referencePrefix + rawInput
     ).trim();
     if (!text && !images?.length) return;
-    if (compacting || sessionSwitching) return;
+    if (compacting || sessionSwitching || worktreeBusy) return;
+    const queued = streaming;
+    const firstSend = !timeline.some(
+      (item) => item.kind === "message" && item.role === "user",
+    );
+    let targetSessionId = session?.id;
+    let createdWorktree = false;
+    if (!queued && worktreeIntent && firstSend && !session?.worktree && projectCwd) {
+      setSessionSwitching(true);
+      try {
+        const created = await api<{
+          id?: string;
+          worktree?: SessionWorktree | null;
+          worktreeDirty?: boolean;
+        }>("/session/new", {
+          method: "POST",
+          body: JSON.stringify({
+            cwd: projectCwd,
+            worktree: true,
+            worktreeSettings: {
+              fetchUpstream: settings?.worktreeFetchUpstream ?? false,
+              autoCleanup: settings?.worktreeAutoCleanup ?? true,
+              maxKeep: settings?.worktreeMaxKeep ?? 15,
+            },
+          }),
+        });
+        if (!created?.id) throw new Error("Worktree session was not created.");
+        mainSessionIdRef.current = created.id;
+        targetSessionId = created.id;
+        createdWorktree = true;
+        setWorktreeIntent(false);
+        setTimeline([]);
+        setSessionTitle(null);
+        setPlan(null);
+        setContextWarningDismissed(false);
+        const loaded = await loadCurrentSession();
+        if (!loaded) throw new Error(t("error.worktreeLoad"));
+        void refreshContextUsage();
+        await reloadSessions();
+        if (created.worktreeDirty) {
+          showToast(t("toast.worktreeDirty"));
+        }
+      } catch (err) {
+        pushError(err instanceof Error ? err.message : String(err));
+        return;
+      } finally {
+        setSessionSwitching(false);
+      }
+    }
     if (overrideText === undefined) setInput("");
     if (chips.length) setChips([]);
-    const queued = streaming;
     let queueId: string | undefined;
     let userKey: string | undefined;
     if (queued) {
@@ -2179,15 +2849,17 @@ export default function App() {
       ]);
     }
     // 乐观入列：发送即出现在左侧列表，不等 message_start / 标题生成
-    if (session) {
+    if (targetSessionId) {
       setSessions((list) => {
-        const existing = list.find((item) => item.id === session.id);
+        const existing = list.find((item) => item.id === targetSessionId);
         if (existing) {
           if (existing.messageCount > 0) return list;
           return list.map((item) =>
-            item.id === session.id ? { ...item, messageCount: 1 } : item,
+            item.id === targetSessionId ? { ...item, messageCount: 1 } : item,
           );
         }
+        // 刚建的 worktree 会话已经由 reloadSessions 带入；没有会话对象可复用时不硬造
+        if (createdWorktree || !session) return list;
         return [
           {
             id: session.id,
@@ -2213,7 +2885,7 @@ export default function App() {
         }),
       });
       // 乐观置位：POST 受理后立刻把本会话标成运行中，不等 message_start
-      if (!queued && session) addRunningSession(session.id);
+      if (!queued && targetSessionId) addRunningSession(targetSessionId);
       if (recoveredId) {
         setRecoveredPrompts((items) => items.filter((item) => item.id !== recoveredId));
         void api("/session/recovered/discard", {
@@ -2227,7 +2899,7 @@ export default function App() {
       setInput((current) => (current ? current : text));
       if (!queued) {
         setTimeline((items) => items.filter((item) => item.key !== userKey));
-        if (session) removeRunningSession(session.id);
+        if (targetSessionId) removeRunningSession(targetSessionId);
         void reloadSessions();
       }
       pushError(err instanceof Error ? err.message : String(err));
@@ -2240,12 +2912,20 @@ export default function App() {
     sessionSwitching,
     session,
     sessionTitle,
+    timeline,
+    worktreeIntent,
+    worktreeBusy,
+    projectCwd,
+    loadCurrentSession,
+    refreshContextUsage,
+    showToast,
     addRunningSession,
     removeRunningSession,
     enqueueQueuedPrompt,
     dropQueuedPrompt,
     pushError,
     reloadSessions,
+    t,
   ]);
 
   /** 发送上次未交付的排队消息：走正常 prompt，并把它从恢复列表移除。 */
@@ -2314,6 +2994,20 @@ export default function App() {
   /** 轻量偏好（主题 / 关闭方式 / 归档 / 侧栏项目）：只写盘，不重启 agent server。返回值同步回 state。 */
   const savePreferences = useCallback(async (prefs: Partial<Preferences>): Promise<boolean> => {
     if (prefs.theme !== undefined) setThemePreference(prefs.theme);
+    // 语言先就地切换：界面要立即跟随，落盘由下面的 IPC 负责，不阻塞视觉反馈
+    if (prefs.language !== undefined) applyLanguage(prefs.language);
+    // 语色先乐观更新：下拉立即显示新值；落盘失败再回滚
+    const nextSpeechStyle = prefs.speechStyle;
+    const previousSpeechStyle = settings?.speechStyle ?? "normal";
+    if (nextSpeechStyle !== undefined) {
+      setSettings((prev) => (prev ? { ...prev, speechStyle: nextSpeechStyle } : prev));
+    }
+    // 系统通知开关同理：点一下立刻变，落盘失败再回滚，避免"点了没反应"
+    const nextNotifications = prefs.notifications;
+    const previousNotifications = settings?.notifications ?? true;
+    if (nextNotifications !== undefined) {
+      setSettings((prev) => (prev ? { ...prev, notifications: nextNotifications } : prev));
+    }
     try {
       const saved = await window.meow.savePreferences(prefs);
       setSettings((prev) =>
@@ -2323,7 +3017,38 @@ export default function App() {
               theme: saved?.theme ?? prev.theme,
               closeAction: saved?.closeAction ?? prev.closeAction,
               language: saved?.language ?? prev.language,
+              speechStyle: saved?.speechStyle ?? prev.speechStyle,
               onboardingCompleted: saved?.onboardingCompleted ?? prev.onboardingCompleted,
+              silentUpdate: typeof saved?.silentUpdate === "boolean" ? saved.silentUpdate : prev.silentUpdate,
+              notifications:
+                typeof saved?.notifications === "boolean"
+                  ? saved.notifications
+                  : prev.notifications,
+              floatingIsland:
+                typeof saved?.floatingIsland === "boolean" ? saved.floatingIsland : prev.floatingIsland,
+              worktreeFetchUpstream:
+                typeof saved?.worktreeFetchUpstream === "boolean"
+                  ? saved.worktreeFetchUpstream
+                  : prev.worktreeFetchUpstream,
+              worktreeAutoCleanup:
+                typeof saved?.worktreeAutoCleanup === "boolean"
+                  ? saved.worktreeAutoCleanup
+                  : prev.worktreeAutoCleanup,
+              worktreeMaxKeep:
+                typeof saved?.worktreeMaxKeep === "number"
+                  ? saved.worktreeMaxKeep
+                  : prev.worktreeMaxKeep,
+              includeAgentsMd:
+                typeof saved?.includeAgentsMd === "boolean"
+                  ? saved.includeAgentsMd
+                  : prev.includeAgentsMd,
+              includeClaudeMd:
+                typeof saved?.includeClaudeMd === "boolean"
+                  ? saved.includeClaudeMd
+                  : prev.includeClaudeMd,
+              fontFamily: typeof saved?.fontFamily === "string" ? saved.fontFamily : prev.fontFamily,
+              codeFontFamily:
+                typeof saved?.codeFontFamily === "string" ? saved.codeFontFamily : prev.codeFontFamily,
               projectNames: saved?.projectNames ?? prev.projectNames,
               pinnedProjects: saved?.pinnedProjects ?? prev.pinnedProjects,
               removedProjects: saved?.removedProjects ?? prev.removedProjects,
@@ -2335,19 +3060,110 @@ export default function App() {
             }
           : prev,
       );
+      // 落盘成功后热更新运行中的 server；失败不回滚偏好（下次启动仍会生效）
+      if (nextSpeechStyle !== undefined) {
+        try {
+          await setSpeechStyle(nextSpeechStyle);
+        } catch (err) {
+          pushError(
+            `语色已保存，重启 MeowCode 后生效：${err instanceof Error ? err.message : String(err)}`,
+          );
+        }
+      }
       return true;
     } catch (err) {
+      if (nextSpeechStyle !== undefined) {
+        setSettings((prev) => (prev ? { ...prev, speechStyle: previousSpeechStyle } : prev));
+      }
+      if (nextNotifications !== undefined) {
+        setSettings((prev) => (prev ? { ...prev, notifications: previousNotifications } : prev));
+      }
       pushError(err instanceof Error ? err.message : String(err));
       return false;
     }
-  }, [pushError]);
+  }, [pushError, settings?.speechStyle, settings?.notifications]);
+
+  // ---- 界面字体（外观设置）：导入的自定义字体注册成 @font-face，选中字体写进 --font-app ----
+
+  const [customFonts, setCustomFonts] = useState<Array<{ family: string; url: string }>>([]);
+  const reloadCustomFonts = useCallback(() => {
+    void listCustomFonts()
+      .then(setCustomFonts)
+      .catch(() => undefined);
+  }, []);
+  useEffect(() => {
+    reloadCustomFonts();
+  }, [reloadCustomFonts]);
+
+  // 自定义字体挂到 head 里的专用 style 节点：导入新字体后整段重写
+  useEffect(() => {
+    let style = document.getElementById("mc-custom-fonts") as HTMLStyleElement | null;
+    if (!style) {
+      style = document.createElement("style");
+      style.id = "mc-custom-fonts";
+      document.head.appendChild(style);
+    }
+    style.textContent = customFonts
+      .map(
+        (font) =>
+          `@font-face { font-family: "${font.family}"; src: url("${font.url}"); font-display: swap; }`,
+      )
+      .join("\n");
+  }, [customFonts]);
+
+  // tokens.css 的 --font-sans 首选位读 --font-app；空串清掉变量，回退内置 MiSans
+  const fontFamily = (settings?.fontFamily ?? "").trim();
+  useEffect(() => {
+    if (fontFamily) {
+      document.documentElement.style.setProperty("--font-app", `"${fontFamily.replace(/"/g, "")}"`);
+    } else {
+      document.documentElement.style.removeProperty("--font-app");
+    }
+  }, [fontFamily]);
+
+  // tokens.css 的 --font-mono 首选位读 --font-code；空串清掉变量，回退默认等宽栈
+  const codeFontFamily = (settings?.codeFontFamily ?? "").trim();
+  useEffect(() => {
+    if (codeFontFamily) {
+      document.documentElement.style.setProperty("--font-code", `"${codeFontFamily.replace(/"/g, "")}"`);
+    } else {
+      document.documentElement.style.removeProperty("--font-code");
+    }
+  }, [codeFontFamily]);
+
+  /** 外观设置「导入字体…」：主进程拷文件入库，成功后刷新 @font-face 并返回展示名 */
+  const importFont = useCallback(async (): Promise<string | null> => {
+    try {
+      const result = await importFontFile();
+      if (!result.ok || !result.family) return null;
+      reloadCustomFonts();
+      return result.family;
+    } catch {
+      return null;
+    }
+  }, [reloadCustomFonts]);
+
+  /** 删除已导入的自定义字体：清记录删文件；当前正使用它时由外观页把选择重置回默认 */
+  const removeCustomFont = useCallback(
+    async (family: string): Promise<boolean> => {
+      try {
+        const result = await window.meow.removeCustomFont(family);
+        if (!result.ok) return false;
+        reloadCustomFonts();
+        return true;
+      } catch {
+        return false;
+      }
+    },
+    [reloadCustomFonts],
+  );
 
   // ---- 侧栏项目（工作区）操作 ----
 
   /** 编辑显示名（只改侧栏标签；空名恢复文件夹名） */
   const renameProject = useCallback(
     (cwd: string, name: string) => {
-      const next = { ...(settings?.projectNames ?? {}) };
+      const next = { ...settings?.projectNames };
       const trimmed = name.trim();
       if (trimmed) next[cwd] = trimmed;
       else delete next[cwd];
@@ -2471,6 +3287,22 @@ export default function App() {
     [loadCurrentSession, refreshContextUsage, pushError, clearQueuedPrompts, reloadSessions],
   );
 
+  /** 检索命中 → 打开会话并定位到命中消息；当前会话内直接滚过去（switchSession 不抛错，失败时锚点找不到即无操作） */
+  const openSearchHit = useCallback(
+    async (hit: SessionSearchHit, snippet: SessionSearchSnippet | null) => {
+      if (hit.filePath !== session?.filePath) {
+        await switchSession(hit.filePath);
+      }
+      if (!snippet) return;
+      setMessageFocus(null);
+      requestAnimationFrame(() => {
+        searchFocusSeqRef.current += 1;
+        setMessageFocus({ messageIndex: snippet.messageIndex, token: searchFocusSeqRef.current });
+      });
+    },
+    [session?.filePath, switchSession],
+  );
+
   /** 侧栏重命名任意会话：立即更新列表与当前标题，服务端也会广播。 */
   const renameSessionByPath = useCallback(
     async (filePath: string, title: string) => {
@@ -2492,31 +3324,54 @@ export default function App() {
     [session?.filePath, pushError],
   );
 
-  /** 删除会话；若删的是当前会话，服务端会立刻新建一个同工作区的空会话。 */
-  const deleteSessionByPath = useCallback(
-    async (filePath: string) => {
-      const wasCurrent = session?.filePath === filePath;
-      try {
-        const deleted = await api<{ activeSessionId?: string }>("/sessions/delete", {
-          method: "POST",
-          body: JSON.stringify({ filePath }),
-        });
-        if (deleted?.activeSessionId) mainSessionIdRef.current = deleted.activeSessionId;
-        if (wasCurrent) {
-          clearQueuedPrompts();
-          setRecoveredPrompts([]);
-          setLastTurn(null);
-          setTimeline([]);
-          setSessionTitle(null);
-          setPlan(null);
-          setContextWarningDismissed(false);
-          await loadCurrentSession();
-          void refreshContextUsage();
+  // 回退/恢复的派生会话标题会带「（回滚）/（检查点…）」后缀；加载到这种会话时还原成原标题。
+  useEffect(() => {
+    if (!session?.filePath || !sessionTitle) return;
+    const original = sessionTitle
+      .replace(/（回滚）$/, "")
+      .replace(/（检查点[^）]*）$/, "");
+    if (original !== sessionTitle && original.trim()) {
+      void renameSessionByPath(session.filePath, original);
+    }
+  }, [session?.filePath, sessionTitle, renameSessionByPath]);
+
+  /**
+   * 批量删除会话文件（聊天列表单删与归档区单删/全删共用）。
+   * 逐个删：一个失败（比如会话还在生成）不该把其余的也拦下来；
+   * 返回真正删掉的路径，调用方据此决定要不要从归档列表里移除。
+   */
+  const deleteSessionsByPath = useCallback(
+    async (filePaths: string[]): Promise<string[]> => {
+      if (!filePaths.length) return [];
+      const currentPath = session?.filePath;
+      const deletedPaths: string[] = [];
+      let deletedCurrent = false;
+      for (const filePath of filePaths) {
+        try {
+          const deleted = await api<{ activeSessionId?: string }>("/sessions/delete", {
+            method: "POST",
+            body: JSON.stringify({ filePath }),
+          });
+          if (deleted?.activeSessionId) mainSessionIdRef.current = deleted.activeSessionId;
+          deletedPaths.push(filePath);
+          if (currentPath === filePath) deletedCurrent = true;
+        } catch (err) {
+          pushError(err instanceof Error ? err.message : String(err));
         }
-        await reloadSessions();
-      } catch (err) {
-        pushError(err instanceof Error ? err.message : String(err));
       }
+      if (deletedCurrent) {
+        clearQueuedPrompts();
+        setRecoveredPrompts([]);
+        setLastTurn(null);
+        setTimeline([]);
+        setSessionTitle(null);
+        setPlan(null);
+        setContextWarningDismissed(false);
+        await loadCurrentSession();
+        void refreshContextUsage();
+      }
+      if (deletedPaths.length) await reloadSessions();
+      return deletedPaths;
     },
     [
       session?.filePath,
@@ -2526,6 +3381,32 @@ export default function App() {
       reloadSessions,
       pushError,
     ],
+  );
+
+  /** 删除会话；若删的是当前会话，服务端会立刻新建一个同工作区的空会话。 */
+  const deleteSessionByPath = useCallback(
+    async (filePath: string) => {
+      await deleteSessionsByPath([filePath]);
+    },
+    [deleteSessionsByPath],
+  );
+
+  /**
+   * 归档区删除：先删文件，再把**真正删掉的**从 archivedSessions 里摘掉。
+   * 顺序很重要 —— 删除失败（会话还在生成）时它得继续留在归档列表里，
+   * 否则文件还在、列表里却看不见，就成了谁都找不到的孤儿。
+   */
+  const deleteArchivedSessions = useCallback(
+    async (filePaths: string[]) => {
+      const current = settings?.archivedSessions ?? [];
+      const targets = filePaths.filter((path) => current.includes(path));
+      if (!targets.length) return;
+      const deleted = await deleteSessionsByPath(targets);
+      if (!deleted.length) return;
+      const remaining = current.filter((path) => !deleted.includes(path));
+      void savePreferences({ archivedSessions: remaining });
+    },
+    [settings?.archivedSessions, deleteSessionsByPath, savePreferences],
   );
 
   /** 从会话末尾复制一份完整历史，创建并切换到新分支。 */
@@ -2559,33 +3440,234 @@ export default function App() {
     [loadCurrentSession, refreshContextUsage, pushError, clearQueuedPrompts, reloadSessions],
   );
 
+  /** 归档 / 恢复会话：只改 settings.json 里的路径列表，会话文件本身不动。 */
+  const archiveSession = useCallback(
+    (filePath: string) => {
+      const current = settings?.archivedSessions ?? [];
+      if (!current.includes(filePath)) void savePreferences({ archivedSessions: [...current, filePath] });
+    },
+    [settings?.archivedSessions, savePreferences],
+  );
+
+  const unarchiveSession = useCallback(
+    (filePath: string) => {
+      const current = settings?.archivedSessions ?? [];
+      void savePreferences({ archivedSessions: current.filter((item) => item !== filePath) });
+    },
+    [settings?.archivedSessions, savePreferences],
+  );
+
+  /** 恢复检查点：从该检查点截断分支出新会话并切换过去；原会话归档隐藏（可从归档恢复）。 */
+  const restoreCheckpoint = useCallback(
+    async (checkpointId: string) => {
+      const source = session;
+      const sourceTitle = sessionTitle?.trim() || null;
+      setSessionLoading(true);
+      setSessionSwitching(true);
+      try {
+        clearQueuedPrompts();
+        setRecoveredPrompts([]);
+        setLastTurn(null);
+        const restored = await api<{ id?: string; filePath?: string }>(
+          "/session/checkpoints/restore",
+          {
+            method: "POST",
+            body: JSON.stringify({ checkpointId }),
+          },
+        );
+        if (restored?.id) {
+          mainSessionIdRef.current = restored.id;
+          if (restored.id !== source?.id && source?.filePath) archiveSession(source.filePath);
+          if (restored.id !== source?.id && sourceTitle && restored.filePath) {
+            await renameSessionByPath(restored.filePath, sourceTitle);
+          }
+        }
+        setTimeline([]);
+        setSessionTitle(null);
+        setPlan(null);
+        setContextWarningDismissed(false);
+        await loadCurrentSession();
+        void refreshContextUsage();
+        void reloadSessions();
+      } catch (err) {
+        pushError(err instanceof Error ? err.message : String(err));
+      } finally {
+        setSessionLoading(false);
+        setSessionSwitching(false);
+      }
+    },
+    [
+      session,
+      sessionTitle,
+      loadCurrentSession,
+      refreshContextUsage,
+      pushError,
+      clearQueuedPrompts,
+      reloadSessions,
+      archiveSession,
+      renameSessionByPath,
+    ],
+  );
+
+  /** 预览回滚：dryRun 拿计划，打开预览对话框；确认后才真正执行。 */
+  const rewindCheckpoint = useCallback(
+    async (checkpointId: string, mode: RewindMode = "both") => {
+      try {
+        const plan = await api<RewindPlan>("/session/rewind", {
+          method: "POST",
+          body: JSON.stringify({ checkpointId, mode, dryRun: true }),
+        });
+        setRewindDialog({ plan, busy: false });
+      } catch (err) {
+        pushError(err instanceof Error ? err.message : String(err));
+      }
+    },
+    [pushError],
+  );
+
+  /** 执行回滚：重新预览（keepNewFiles 可能变）拿新 planId，再 apply；派生会话时归档源会话，避免侧栏多出分支。 */
+  const confirmRewind = useCallback(
+    async (force: boolean, keepNewFiles: boolean) => {
+      const current = rewindDialogRef.current;
+      if (!current) return;
+      const source = session;
+      const sourceTitle = sessionTitle?.trim() || null;
+      setRewindDialog({ plan: current.plan, busy: true });
+      const { checkpointId, mode } = {
+        checkpointId: current.plan.checkpoint.id,
+        mode: current.plan.mode,
+      };
+      try {
+        const plan = await api<RewindPlan>("/session/rewind", {
+          method: "POST",
+          body: JSON.stringify({ checkpointId, mode, dryRun: true, keepNewFiles }),
+        });
+        const applied = await api<{ rewindId?: string; id?: string; filePath?: string }>(
+          "/session/rewind",
+          {
+            method: "POST",
+            body: JSON.stringify({ checkpointId, mode, dryRun: false, planId: plan.planId, force, keepNewFiles }),
+          },
+        );
+        setRewindDialog(null);
+        if (applied?.id) {
+          mainSessionIdRef.current = applied.id;
+          if (mode !== "code" && applied.id !== source?.id) {
+            if (source?.filePath) archiveSession(source.filePath);
+            if (sourceTitle && applied.filePath) {
+              await renameSessionByPath(applied.filePath, sourceTitle);
+            }
+          }
+        }
+        clearQueuedPrompts();
+        setRecoveredPrompts([]);
+        setLastTurn(null);
+        setTimeline([]);
+        setSessionTitle(null);
+        setPlan(null);
+        setContextWarningDismissed(false);
+        await loadCurrentSession();
+        void refreshContextUsage();
+        void reloadSessions();
+      } catch (err) {
+        setRewindDialog((prev) => (prev ? { ...prev, busy: false } : prev));
+        pushError(err instanceof Error ? err.message : String(err));
+      }
+    },
+    [
+      session,
+      sessionTitle,
+      loadCurrentSession,
+      refreshContextUsage,
+      pushError,
+      clearQueuedPrompts,
+      reloadSessions,
+      archiveSession,
+      renameSessionByPath,
+    ],
+  );
+
+  /** 撤销最近一次回滚：文件改回回滚前状态；切回源会话并恢复它在列表中的显示，隐藏派生会话。 */
+  const undoRewind = useCallback(async () => {
+    const current = undoableRewind;
+    if (!current) return;
+    const derived = session;
+    setSessionLoading(true);
+    setSessionSwitching(true);
+    try {
+      clearQueuedPrompts();
+      setRecoveredPrompts([]);
+      setLastTurn(null);
+      const undone = await api<{ switched?: { id?: string; filePath?: string } }>(
+        "/session/rewind/undo",
+        {
+          method: "POST",
+          body: JSON.stringify({ rewindId: current.rewindId, switchBack: true }),
+        },
+      );
+      if (undone?.switched?.id) mainSessionIdRef.current = undone.switched.id;
+      const sourcePath = undone?.switched?.filePath;
+      if (sourcePath) {
+        const archived = settings?.archivedSessions ?? [];
+        const next = new Set(archived);
+        next.delete(sourcePath);
+        if (derived?.filePath && derived.filePath !== sourcePath) next.add(derived.filePath);
+        const nextList = [...next];
+        if (
+          nextList.length !== archived.length ||
+          nextList.some((path) => !archived.includes(path))
+        ) {
+          void savePreferences({ archivedSessions: nextList });
+        }
+      }
+      setUndoableRewind(null);
+      setTimeline([]);
+      setSessionTitle(null);
+      setPlan(null);
+      setContextWarningDismissed(false);
+      await loadCurrentSession();
+      void refreshContextUsage();
+      void reloadSessions();
+    } catch (err) {
+      pushError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSessionLoading(false);
+      setSessionSwitching(false);
+    }
+  }, [
+    undoableRewind,
+    session,
+    settings?.archivedSessions,
+    savePreferences,
+    loadCurrentSession,
+    refreshContextUsage,
+    pushError,
+    clearQueuedPrompts,
+    reloadSessions,
+  ]);
+
   /** 切到某个工作区（项目）：保存设置 + 在该项目里开会话。新建项目与切换项目共用。 */
   const applyWorkspace = useCallback(
     async (cwd: string) => {
-      const nextSettings: Settings = { ...settings, workspace: cwd };
-      setSettings(nextSettings);
-      try {
-        await window.meow.saveSettings({
-          ...nextSettings,
-          providers: nextSettings.providers?.map((provider) => ({ ...provider, apiKey: "" })),
-        });
-      } catch (err) {
-        pushError(err instanceof Error ? err.message : String(err));
-        return;
-      }
+      setWorktreeIntent(false);
+      setSettings((prev) => (prev ? { ...prev, workspace: cwd } : prev));
+      // 工作区只影响下次新建会话的默认目录，走轻量偏好通道只写盘。
+      // 用 saveSettings 会让主进程重启 agent server，把运行中的回合直接杀掉。
+      const saved = await savePreferences({ workspace: cwd });
+      if (!saved) return;
       await createSession(cwd);
     },
-    [settings, createSession, pushError],
+    [savePreferences, createSession],
   );
 
   /** 项目行右侧按钮：当前项目直接新开对话，其他项目先切换工作区。 */
   const newChatInProject = useCallback(
     (cwd: string) => {
-      const activeWorkspace = session?.cwd ?? settings?.workspace;
+      const activeWorkspace = projectCwd;
       if (cwd === activeWorkspace) void createSession(cwd);
       else void applyWorkspace(cwd);
     },
-    [session?.cwd, settings?.workspace, createSession, applyWorkspace],
+    [projectCwd, createSession, applyWorkspace],
   );
 
   const pickWorkspace = useCallback(async () => {
@@ -2597,10 +3679,78 @@ export default function App() {
   /** 项目切换菜单选中某项：已是当前项目则什么都不做 */
   const switchProject = useCallback(
     (cwd: string) => {
-      if (cwd === (session?.cwd ?? settings?.workspace)) return;
+      if (cwd === projectCwd) return;
       void applyWorkspace(cwd);
     },
-    [session?.cwd, settings?.workspace, applyWorkspace],
+    [projectCwd, applyWorkspace],
+  );
+
+  // 托盘菜单的「最近对话」：会话列表或当前会话变化就推一次（主进程只做展示与分发）。
+  // 只推最近的一小段，够填满「3 条 + 更多」即可，避免整库列表过 IPC。
+  useEffect(() => {
+    void window.meow?.syncTraySessions?.({
+      activeFilePath: session?.filePath ?? null,
+      activeSessionId: session?.id ?? null,
+      sessions: sessions.slice(0, TRAY_SYNC_LIMIT).map((item) => ({
+        filePath: item.filePath,
+        title: item.title,
+        createdAt: item.createdAt,
+        messageCount: item.messageCount,
+      })),
+    });
+  }, [sessions, session?.filePath, session?.id]);
+
+  // 托盘里点会话 / 点「新对话」：复用侧栏同一条切换与新建逻辑
+  const trayActionsRef = useRef({ switchSession, createSession });
+  useEffect(() => {
+    trayActionsRef.current = { switchSession, createSession };
+  }, [switchSession, createSession]);
+  useEffect(() => {
+    const unsubscribeSwitch = window.meow?.onTraySwitchSession?.((filePath) => {
+      if (filePath) void trayActionsRef.current.switchSession(filePath);
+    });
+    const unsubscribeNew = window.meow?.onTrayNewSession?.(() => {
+      void trayActionsRef.current.createSession();
+    });
+    // 订阅好后再握手：主进程把窗口加载期间排队的那次托盘点击补发过来
+    void window.meow?.notifyTrayReady?.();
+    return () => {
+      unsubscribeSwitch?.();
+      unsubscribeNew?.();
+    };
+  }, []);
+
+  /**
+   * worktree 开关：只记“这次新对话要在独立 worktree 中开始”的意图，首次发送时才创建。
+   * 先查 git 状态：非仓库直接拒绝；主工作区脏只提示（worktree 基于 HEAD）。
+   */
+  const toggleWorktree = useCallback(
+    async (next: boolean) => {
+      if (!next) {
+        setWorktreeIntent(false);
+        return;
+      }
+      if (!session || session.worktree || !projectCwd) return;
+      const expectedSessionId = session.id;
+      setWorktreeBusy(true);
+      try {
+        const status = await api<GitStatus>("/git/status");
+        if (mainSessionIdRef.current !== expectedSessionId) return;
+        if (!status.isRepo) {
+          pushError(t("error.notGitRepo"));
+          return;
+        }
+        setWorktreeIntent(true);
+        if (status.staged.length || status.unstaged.length || status.conflicted.length) {
+          showToast(t("toast.worktreeDirty"));
+        }
+      } catch (err) {
+        pushError(err instanceof Error ? err.message : String(err));
+      } finally {
+        setWorktreeBusy(false);
+      }
+    },
+    [session, projectCwd, pushError, showToast, t],
   );
 
   /**
@@ -2611,14 +3761,16 @@ export default function App() {
   const saveProviders = useCallback(
     async (nextProviders: ProviderSettings[], nextActiveId?: string): Promise<boolean> => {
       if (!settings) return false;
+      const usable = (id: string | undefined) =>
+        nextProviders.some((item) => item.id === id && item.enabled !== false);
+      const requested = nextActiveId ?? settings.providerId;
       const nextSettings: Settings = {
         ...settings,
         providers: nextProviders.map((provider) => ({ ...provider, apiKey: provider.apiKey || undefined })),
-        providerId:
-          nextActiveId ??
-          (nextProviders.some((item) => item.id === settings.providerId)
-            ? settings.providerId
-            : nextProviders[0]?.id),
+        // 被停用/删除的激活模型要让位给第一个仍启用的模型，否则 UI 隐藏它、引擎还在用它
+        providerId: usable(requested)
+          ? requested
+          : (nextProviders.find((item) => item.enabled !== false)?.id ?? nextProviders[0]?.id),
       };
       try {
         const saved = await window.meow.saveSettings(nextSettings);
@@ -2645,21 +3797,29 @@ export default function App() {
     }
   }, [savePreferences, settings?.workspace]);
 
-  /** 归档 / 恢复会话：只改 settings.json 里的路径列表，会话文件本身不动。 */
-  const archiveSession = useCallback(
-    (filePath: string) => {
-      const current = settings?.archivedSessions ?? [];
-      if (!current.includes(filePath)) void savePreferences({ archivedSessions: [...current, filePath] });
+  /** 会话导出：主进程弹保存框 → 拉 server 内容 → 写盘，成功提示完整路径 */
+  const exportSessionByPath = useCallback(
+    async (filePath: string, title: string | null) => {
+      try {
+        const result = await window.meow.exportSession({
+          filePath,
+          ...(title ? { title } : {}),
+          format: "markdown",
+          includeThinking: true,
+          includeTools: true,
+          inlineImages: true,
+        });
+        if (result.canceled) return;
+        if (!result.ok || !result.filePath) {
+          pushError(result.error ?? "Export failed");
+          return;
+        }
+        showToast(t("chat:conversation.exported", { path: result.filePath }));
+      } catch (err) {
+        pushError(err instanceof Error ? err.message : String(err));
+      }
     },
-    [settings?.archivedSessions, savePreferences],
-  );
-
-  const unarchiveSession = useCallback(
-    (filePath: string) => {
-      const current = settings?.archivedSessions ?? [];
-      void savePreferences({ archivedSessions: current.filter((item) => item !== filePath) });
-    },
-    [settings?.archivedSessions, savePreferences],
+    [pushError, showToast, t],
   );
 
   /** 用服务端真实运行/审批/队列状态对账；停止后清除“幽灵运行”。 */
@@ -2828,14 +3988,14 @@ export default function App() {
     try {
       const created = await createHarnessArchitecture(architectureWorkspace, {
         cloneFrom: "standard",
-        name: "自定义 Agent",
+        name: t("architecture.customName"),
       });
       await reloadHarnessArchitectures();
       switchArchitecture(created.id);
     } catch (err) {
       pushError(err instanceof Error ? err.message : String(err));
     }
-  }, [architectureWorkspace, reloadHarnessArchitectures, switchArchitecture, pushError]);
+  }, [architectureWorkspace, reloadHarnessArchitectures, switchArchitecture, pushError, t]);
 
   /** 自定义架构改名（双击左栏名称触发） */
   const renameHarnessArchitectureById = useCallback(
@@ -2902,9 +4062,11 @@ export default function App() {
     const docPath = planDocPath;
     await changeChatMode("default");
     await sendPrompt(
-      docPath ? `计划已确认，请按 ${docPath} 开始实施。` : "计划已确认，请开始实施。",
+      docPath
+        ? t("plan.confirmedWithPath", { path: docPath })
+        : t("plan.confirmed"),
     );
-  }, [changeChatMode, planDocPath, sendPrompt]);
+  }, [changeChatMode, planDocPath, sendPrompt, t]);
 
   /** 切换当前模型（Composer 的模型列表里点某个）。 */
   const changeActiveProvider = useCallback(
@@ -2912,7 +4074,10 @@ export default function App() {
       if (!settings || !providers.some((item) => item.id === providerId)) return;
       const nextSettings: Settings = { ...settings, providerId };
       setSettings(nextSettings);
-      resetTurnMetrics(); // 换模型 = 新缓存域，旧命中率不再可比
+      // 换模型只是换请求目标，不清会话统计（把缓存写入/输出抹掉是 bug）；
+      // 只重置本轮测速起点，避免把旧模型的速度算到新模型头上。
+      roundFirstTokenAtRef.current = null;
+      setTurnMetrics((prev) => (prev ? { ...prev, tokensPerSecond: null } : prev));
       try {
         // 只持久化激活项并热切换，绝不重启 agent server：
         // 重启会丢运行中的会话状态、还可能竞态新建空会话，导致「换模型后丢上下文」。
@@ -2925,7 +4090,7 @@ export default function App() {
         pushError(err instanceof Error ? err.message : String(err));
       }
     },
-    [settings, providers, pushError, resetTurnMetrics],
+    [settings, providers, pushError],
   );
 
   /** 调节某个模型的思考强度（Composer 里调的是当前模型）。 */
@@ -2966,20 +4131,26 @@ export default function App() {
     () => Boolean(session && providers.length && workspaceAvailable !== false),
     [session, providers, workspaceAvailable],
   );
-  /** 项目切换菜单的数据源：已知工作区（会话 cwd ∪ 当前工作区）；当前项排最前，其余按显示名排序 */
+  /** 项目切换菜单的数据源：已知项目（worktree 会话归回原项目）；当前项排最前，其余按显示名排序 */
   const projects = useMemo(() => {
     const set = new Set<string>();
     if (settings?.workspace) set.add(settings.workspace);
-    if (session?.cwd) set.add(session.cwd);
-    for (const item of sessions) set.add(item.cwd);
-    const active = session?.cwd ?? settings?.workspace ?? "";
+    if (projectCwd) set.add(projectCwd);
+    for (const item of sessions) {
+      const cwd = item.worktree?.sourceCwd ?? item.cwd;
+      if (cwd) set.add(cwd);
+    }
+    const active = projectCwd ?? "";
+    const removed = settings?.removedProjects ?? [];
+    // 侧栏里「移除过」的项目也一并从切换菜单隐藏（当前项目除外，不然正在用的会凭空消失）
+    const visible = [...set].filter((cwd) => cwd === active || !removed.includes(cwd));
     const nameOf = (cwd: string) => settings?.projectNames?.[cwd]?.trim() || baseName(cwd);
-    return [...set].sort((a, b) => {
+    return visible.sort((a, b) => {
       if (a === active) return -1;
       if (b === active) return 1;
       return nameOf(a).localeCompare(nameOf(b), "zh");
     });
-  }, [sessions, session?.cwd, settings?.workspace, settings?.projectNames]);
+  }, [sessions, projectCwd, settings?.workspace, settings?.projectNames, settings?.removedProjects]);
   const toolCount = useMemo(() => timeline.filter((item) => item.kind === "tool").length, [timeline]);
   /** 当前会话发过对话才显示上下文占用圆圈（乐观：点发送立即出现） */
   const hasSentMessage = useMemo(
@@ -2996,9 +4167,9 @@ export default function App() {
   const toolPreparing = useMemo(
     () =>
       streaming && toolProgress
-        ? toolPreparingLabel(toolProgress.count, toolProgress.names)
+        ? toolPreparingLabel(t, toolProgress.count, toolProgress.names)
         : null,
-    [streaming, toolProgress],
+    [streaming, toolProgress, t],
   );
   /** 时间线里最近一次写/改的目标文件：参数还没流完时先用它填文件名（模型常在原文件上迭代） */
   const lastTouchedFile = useMemo(() => {
@@ -3053,18 +4224,20 @@ export default function App() {
         <div className="mc-root">
           <TitleBar />
           <Onboarding
-            initialLanguage={settings?.language ?? "system"}
+            initialLanguage={settings?.language ?? getStoredPreference()}
             initialTheme={themePreference}
             providers={providers}
             replay={Boolean(settings?.onboardingCompleted)}
             onSaveLanguage={(value) => void savePreferences({ language: value })}
             onSaveTheme={(value) => void savePreferences({ theme: value })}
-            onSaveProvider={(provider) =>
-              saveProviders(
-                [...providers.filter((item) => item.id !== provider.id), provider],
-                provider.id,
-              )
-            }
+            onSaveProviders={(entries) => {
+              // 引导里返回再连接会用同一批 id：先按 id 去重，避免同一条模型落两次
+              const ids = new Set(entries.map((entry) => entry.id));
+              return saveProviders(
+                [...providers.filter((item) => !ids.has(item.id)), ...entries],
+                entries[0]?.id,
+              );
+            }}
             onFinish={finishOnboarding}
             onClose={() => setOnboardingOpen(false)}
           />
@@ -3083,7 +4256,7 @@ export default function App() {
           <div
             className="mc-listresize"
             role="separator"
-            aria-label="调整左侧列表宽度"
+            aria-label={t("resize.list")}
             data-dragging={listDragging}
             onPointerDown={startListResize}
             onPointerEnter={trackResizeCursor}
@@ -3109,22 +4282,29 @@ export default function App() {
             onOpenPlugins={() => setView("plugins")}
             onOpenSettings={() => setView("settings")}
             onOpenArchitecture={() => setView("architecture")}
+            update={
+              silentUpdate.status === "hidden"
+                ? null
+                : {
+                    status: silentUpdate.status,
+                    percent: silentUpdate.status === "downloading" ? silentUpdate.percent : 0,
+                  }
+            }
+            onUpdateClick={
+              silentUpdate.status === "done"
+                ? () => void restartUpdate()
+                : silentUpdate.status === "error"
+                  ? () => setUpdateOpen(true)
+                  : undefined
+            }
           />
         }
         conversations={
-          /* 设置/市场/源码管理视图：对应导航栏取代对话列表的槽位 */
+          /* 设置/市场/Git 管理视图：对应导航栏取代对话列表的槽位 */
           view === "git" ? (
-            <GitNav
-              git={git}
-              onOpenBranches={() => setGitBranchOpen(true)}
-              onClose={() => setView("chat")}
-            />
+            <GitNav git={git} onOpenBranches={() => setGitBranchOpen(true)} />
           ) : view === "settings" ? (
-            <SettingsNav
-              section={settingsSection}
-              onSection={setSettingsSection}
-              onClose={() => setView("chat")}
-            />
+            <SettingsNav section={settingsSection} onSection={setSettingsSection} />
           ) : view === "plugins" ? (
             <MarketplaceNav tab={marketTab} onTab={setMarketTab} onClose={() => setView("chat")} />
           ) : view === "architecture" ? (
@@ -3149,7 +4329,7 @@ export default function App() {
               approvalSessionIds={[
                 ...new Set(Object.values(approvals).map((item) => item.sessionId)),
               ]}
-              workspace={session?.cwd ?? settings?.workspace}
+              workspace={projectCwd}
               archivedSessions={settings?.archivedSessions ?? []}
               projectNames={settings?.projectNames ?? {}}
               pinnedProjects={settings?.pinnedProjects ?? []}
@@ -3162,6 +4342,7 @@ export default function App() {
               onBranchSession={(filePath) => void branchSessionByPath(filePath)}
               onStopSession={(sessionId) => void stopSessionById(sessionId)}
               onArchiveSession={archiveSession}
+              onExportSession={(filePath, title) => void exportSessionByPath(filePath, title)}
               onArchiveProject={archiveProject}
               onRenameProject={renameProject}
               onTogglePinProject={togglePinProject}
@@ -3178,7 +4359,7 @@ export default function App() {
                 <div
                   className="mc-inspresize"
                   role="separator"
-                  aria-label="调整右侧栏宽度"
+                  aria-label={t("resize.inspector")}
                   onPointerDown={startResize}
                   onPointerEnter={trackResizeCursor}
                   onPointerMove={moveResize}
@@ -3201,6 +4382,7 @@ export default function App() {
                     setShowInspector(true);
                     sideTabs.setPaletteOpen(true);
                   }}
+                  onOpenSearch={() => setSearchOpen(true)}
                   onOpenWorkspace={(cwd) => void openProject(cwd)}
                   onOpenFile={sideTabs.openFile}
                   onPatchTab={sideTabs.patchTab}
@@ -3209,6 +4391,7 @@ export default function App() {
                   onOpenSubagent={openSubagentById}
                   onStopSubagent={(agentId) => void stopSubagent(agentId)}
                   onContinueSubagent={continueSubagent}
+                  onSteerSubagent={steerSubagent}
                   workspace={session?.cwd ?? settings?.workspace}
                   session={session}
                   metrics={turnMetrics}
@@ -3233,9 +4416,25 @@ export default function App() {
         <div className="mc-contentview" data-hidden={view !== "chat"}>
           <ChatHeader
             title={sessionTitle}
-            workspace={session?.cwd}
+            workspace={headerWorkspace}
+            workspaceTitle={headerWorkspaceTitle}
             inspectorOpen={showInspector}
             onToggleInspector={toggleInspector}
+            onOpenSearch={() => setSearchOpen(true)}
+            overview={
+              <WorkspaceOverview
+                status={workspaceGitStatus}
+                subagents={currentSessionSubagents}
+                open={workspaceOverviewOpen}
+                onToggle={toggleWorkspaceOverview}
+                onClose={closeWorkspaceOverview}
+                onOpenGit={() => {
+                  setView("git");
+                  closeWorkspaceOverview();
+                }}
+                onOpenSubagent={openSubagentById}
+              />
+            }
           />
           <ContextWarningBanner
             usage={contextUsage}
@@ -3245,6 +4444,29 @@ export default function App() {
             onCompact={manualCompact}
             onDismiss={() => setContextWarningDismissed(true)}
           />
+          {/* 撤销回滚横幅：当前会话最近一次回滚仍可撤销（文件改回 + 切回源会话） */}
+          {undoableRewind ? (
+            <div className="mc-undobar" role="status">
+              <span className="mc-undobar__text">
+                {i18n.t("shell:notice.undoableRewind", { count: undoableRewind.fileCount })}
+              </span>
+              <button
+                type="button"
+                className="mc-undobar__button"
+                onClick={() => void undoRewind()}
+              >
+                {i18n.t("shell:notice.undoRewind")}
+              </button>
+              <button
+                type="button"
+                className="mc-undobar__close"
+                aria-label={i18n.t("shell:notice.dismiss")}
+                onClick={() => setUndoableRewind(null)}
+              >
+                ×
+              </button>
+            </div>
+          ) : null}
           <MessageList
             items={timeline}
             canUse={canUse}
@@ -3254,6 +4476,13 @@ export default function App() {
             loading={sessionLoading}
             subagentsByCallId={subagentsByCallId}
             onOpenSubagent={openSubagentById}
+            onOpenFile={(path) => {
+              sideTabs.openFile(path);
+              setShowInspector(true);
+            }}
+            onRestoreCheckpoint={(checkpointId) => void restoreCheckpoint(checkpointId)}
+            onRewindCheckpoint={(checkpointId, mode) => void rewindCheckpoint(checkpointId, mode)}
+            focus={messageFocus}
           />
           <Composer
             value={input}
@@ -3272,7 +4501,7 @@ export default function App() {
             onError={pushError}
             onStop={abortSession}
             // 切换/新建会话加载期间禁止发送，避免请求落到上一个会话的 runtime
-            disabled={!canUse || sessionSwitching}
+            disabled={!canUse || sessionSwitching || worktreeBusy}
             streaming={streaming}
             queuedPrompts={queuedPrompts}
             onSteerQueued={(id) => void steerQueuedPrompt(id)}
@@ -3282,6 +4511,13 @@ export default function App() {
             onDiscardRecovered={(id) => void discardRecoveredPrompt(id)}
             canUse={canUse}
             workspace={session?.cwd ?? settings?.workspace}
+            projectCwd={projectCwd}
+            gitBranch={gitBranch}
+            onOpenGit={() => setView("git")}
+            worktreeEnabled={worktreeIntent || Boolean(session?.worktree)}
+            worktreeLocked={Boolean(session?.worktree)}
+            worktreeBusy={worktreeBusy}
+            onToggleWorktree={(next) => void toggleWorktree(next)}
             workspaceAvailable={workspaceAvailable}
             providers={providers}
             activeProviderId={activeProviderId}
@@ -3290,7 +4526,7 @@ export default function App() {
               setSettingsSection("models");
               setView("settings");
             }}
-            model={activeProvider?.displayName || activeProvider?.model || "未配置模型"}
+            model={activeProvider?.displayName || activeProvider?.model || t("model.unconfigured")}
             effort={activeProvider?.reasoningEffort ?? ""}
             onChangeEffort={(value) => void changeEffortFor(activeProviderId, value)}
             permissionMode={permissionMode}
@@ -3308,12 +4544,15 @@ export default function App() {
             contextUsage={contextUsage}
             showContext={hasSentMessage}
             compacting={compacting}
+            cacheDiagnostics={cacheDiagnostics}
             onManualCompact={manualCompact}
             projects={projects}
             projectNames={settings?.projectNames ?? {}}
             onSwitchProject={switchProject}
             onNewProject={() => void pickWorkspace()}
+            onRemoveProject={removeProject}
             plan={plan}
+            changes={uncommittedSessionChanges}
           />
         </div>
 
@@ -3328,6 +4567,22 @@ export default function App() {
           </>
         ) : null}
 
+        {toast ? <Toast key={toast.key} text={toast.text} /> : null}
+
+        <UpdateModal
+          open={updateOpen}
+          release={updateRelease}
+          currentVersion={appInfo ? `v${appInfo.version}` : undefined}
+          silent={
+            silentUpdate.status === "downloading"
+              ? { downloading: true, path: null }
+              : silentUpdate.status === "done"
+                ? { downloading: false, path: silentUpdate.path }
+                : null
+          }
+          onClose={() => setUpdateOpen(false)}
+        />
+
         {view === "settings" ? (
           <SettingsBody
             section={settingsSection}
@@ -3337,12 +4592,30 @@ export default function App() {
             providers={providers}
             activeProviderId={activeProviderId}
             effort={activeProvider?.reasoningEffort ?? ""}
+            turnRunning={runningSessionIds.length > 0}
             sessions={sessions}
             archivedSessions={settings?.archivedSessions ?? []}
+            workspace={session?.cwd ?? settings?.workspace ?? null}
             onUnarchiveSession={unarchiveSession}
+            onDeleteArchivedSession={(filePath) => void deleteArchivedSessions([filePath])}
+            onDeleteAllArchived={() =>
+              void deleteArchivedSessions(settings?.archivedSessions ?? [])
+            }
             onSavePreferences={(prefs) => void savePreferences(prefs)}
             onSaveProviders={(next, activeId) => void saveProviders(next, activeId)}
             onChangeEffort={(id, value) => void changeEffortFor(id, value)}
+            updateRelease={updateRelease}
+            onUpdateDiscovered={discoverUpdate}
+            onOpenUpdate={() => setUpdateOpen(true)}
+            fontFamily={preferences.fontFamily ?? ""}
+            codeFontFamily={preferences.codeFontFamily ?? ""}
+            customFonts={customFonts.map((font) => font.family)}
+            onFontChange={(value) => void savePreferences({ fontFamily: value })}
+            onCodeFontChange={(value) => void savePreferences({ codeFontFamily: value })}
+            onImportFont={importFont}
+            onRemoveFont={removeCustomFont}
+            onToast={showToast}
+            onReloadSessions={() => void reloadSessions()}
           />
         ) : null}
 
@@ -3374,6 +4647,10 @@ export default function App() {
               addChip({ kind: "skill", id: entry.id, name: entry.name, iconUrl });
               setView("chat");
             }}
+            onOpenPluginPanel={(pluginId, title) => {
+              sideTabs.open({ kind: "plugin", pluginId, title });
+              setView("chat");
+            }}
           />
         ) : null}
       </AppShell>
@@ -3386,11 +4663,26 @@ export default function App() {
         risk={approval?.risk}
         stale={approval?.stale}
         agentDescription={approval?.agentDescription}
+        kind={approval?.kind}
+        command={approval?.command}
+        hookEvent={approval?.hookEvent}
+        matcher={approval?.matcher}
+        source={approval?.source}
+        hookReason={approval?.hookReason}
+        sandboxEscape={approval?.sandboxEscape}
         onApprove={() => void respondApproval(true)}
         onDeny={() => void respondApproval(false)}
       />
 
       <CloseConfirmDialog open={closeAsk} onDecide={decideClose} />
+      {rewindDialog ? (
+        <RewindDialog
+          plan={rewindDialog.plan}
+          busy={rewindDialog.busy}
+          onConfirm={({ force, keepNewFiles }) => void confirmRewind(force, keepNewFiles)}
+          onCancel={() => setRewindDialog(null)}
+        />
+      ) : null}
 
       {/* 文件快速打开（Ctrl+P）：选中后在「文件」页签里预览 */}
       <QuickOpenDialog
@@ -3400,6 +4692,13 @@ export default function App() {
           sideTabs.openFile(path);
           setShowInspector(true);
         }}
+      />
+
+      {/* 会话全文检索（Ctrl+K / 聊天头搜索按钮）：Enter 跳到命中会话并定位到那句话 */}
+      <SessionSearchDialog
+        open={searchOpen}
+        onClose={() => setSearchOpen(false)}
+        onOpen={(hit, snippet) => void openSearchHit(hit, snippet)}
       />
     </ThemeProvider>
   );

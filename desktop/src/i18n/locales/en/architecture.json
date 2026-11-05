@@ -1,0 +1,186 @@
+{
+  "nav": {
+    "heading": "Agent Architecture",
+    "agentListAria": "Agent list",
+    "mainAgentGroup": "Main Agent",
+    "subagentGroup": "Subagents · {{name}}",
+    "subagentCount_one": "{{count}} subagent · {{tagline}}",
+    "subagentCount_other": "{{count}} subagents · {{tagline}}",
+    "subagentCount_few": "{{count}} subagents · {{tagline}}",
+    "subagentCount_many": "{{count}} subagents · {{tagline}}",
+    "addArchitecture": "New custom agent architecture",
+    "renameHint": "Double-click the name to rename it",
+    "deleteAria": "Delete “{{name}}”",
+    "currentBadge": "Active",
+    "profileDisabledBadge": "Off in this profile",
+    "readOnlyBadge": "Read-only",
+    "customTagline": "Custom architecture",
+    "loading": "Loading agents…",
+    "emptySubagents": "This agent has no subagents"
+  },
+  "roles": {
+    "general": "General",
+    "explore": "Explore",
+    "planner": "Planner",
+    "scoper": "Scoping",
+    "depthProber": "Depth Probe",
+    "implementer": "Implementer",
+    "reviewer": "Reviewer",
+    "verifier": "Verifier",
+    "freshVerifier": "Fresh Verify",
+    "juror": "Final Review",
+    "sweeper": "Cleanup Sweep",
+    "goalChecker": "Goal Check",
+    "custom": "Custom"
+  },
+  "types": {
+    "agent": "Agent",
+    "tier": "Tier",
+    "gate": "Gate",
+    "role": "Subagent"
+  },
+  "nodeCard": {
+    "agent": "Main Agent",
+    "role": "Subagent",
+    "gate": "Gate",
+    "tier": "Tier",
+    "tierPassThrough": "Tier · pass-through",
+    "agentTip": "The Main Agent is the root runtime; it dispatches subagents through task",
+    "roleTip": "Subagents are instantiated when a task is dispatched",
+    "gateTip": "A gate is a checkpoint; the gate→role edge designates the closing subagent",
+    "tierTip": "Task tier: decides which gates run after admit",
+    "terminalTierTip": "This tier has no gates: it completes right after admit"
+  },
+  "edge": {
+    "closeOut": "close-out"
+  },
+  "select": {
+    "placeholder": "Select an option"
+  },
+  "defaults": {
+    "standardAgent": "Standard Agent",
+    "mainAgent": "Main Agent",
+    "newTier": "New Tier",
+    "newGate": "New Gate",
+    "customRoleDescription": "Custom subagent: the tool allowlist and system prompt are overridden in this node's properties panel"
+  },
+  "status": {
+    "loading": "Loading…",
+    "saving": "Saving…",
+    "saved": "Saved — the governance run loads the new diagram before the next admit",
+    "reset": "Reset to the built-in architecture — takes effect once saved",
+    "connectTarget": "Connect mode: click the target node",
+    "connectPickNode": "Select a node first, then click “Connect”",
+    "dirty": "Unsaved changes"
+  },
+  "toolbar": {
+    "addTier": "Tier",
+    "addGate": "Gate",
+    "addRole": "Subagent",
+    "connect": "Connect",
+    "cancelConnect": "Cancel connect",
+    "connectTip": "Click the source node, then the target node to draw a connection",
+    "delete": "Delete",
+    "deleteTip": "Delete the selected node or connection (deleting a node also removes its edges)",
+    "fit": "Fit to Canvas",
+    "fitTip": "Center and zoom so the whole diagram is visible",
+    "reset": "Reset to Built-in",
+    "save": "Save to Workspace"
+  },
+  "canvas": {
+    "loading": "Loading the architecture diagram…",
+    "legend": "Drag nodes · drag empty space to pan · scroll to zoom | Main Agent→Subagent = task dispatch, Main Agent→Tier = admit | tier→gate number = gate order, gate→role = close-out"
+  },
+  "inspector": {
+    "ariaLabel": "Node properties",
+    "close": "Close properties panel",
+    "edge": "Connection",
+    "agentSubtitle": "Main Agent · {{id}}",
+    "tierSubtitle": "Task Tier · {{id}}",
+    "gateSubtitle": "Quality Gate · {{id}}",
+    "roleSubtitle": "Subagent · {{role}}",
+    "roleSubtitleNumbered": "Subagent · {{role}} #{{ordinal}}",
+    "edgeSubtitle": "Connection · {{type}}",
+    "deleteNode": "Delete Node",
+    "deleteEdge": "Delete Connection"
+  },
+  "fields": {
+    "nodeName": "Node Name",
+    "nodeId": "Node ID",
+    "description": "Responsibility",
+    "availableTools": "Available Tools",
+    "selectAll": "Select All",
+    "clearAll": "Clear",
+    "restoreDefault": "Restore Defaults",
+    "restoreBuiltin": "Restore Built-in",
+    "systemPrompt": "System Prompt",
+    "agentPromptPlaceholder": "Empty = use the active profile's default prompt",
+    "dispatch": "Dispatch Targets",
+    "dispatchHint": "Edit on the connection",
+    "roleType": "Subagent ID",
+    "displayName": "Display Name",
+    "roleDescription": "Subagent Responsibility Summary",
+    "gateBindings": "Gate Bindings",
+    "gateBindingsHint": "Click to rebind",
+    "rolePromptPlaceholder": "Leave empty to use the built-in prompt",
+    "gateName": "Quality Gate Name",
+    "invariant": "Invariant / Acceptance Criteria",
+    "onFail": "On Failure",
+    "closer": "Closing Subagent",
+    "tierName": "Tier Name",
+    "tierId": "Tier ID (only T0 / T1 / T2 are recognized by admit)",
+    "tierDescription": "Tier Description",
+    "tierPrompt": "Tier Prompt (injected on admit, optional)",
+    "tierPromptPlaceholder": "Empty = no injection; anything here is sent to the Main Agent once with the admit report",
+    "gateSequence": "Gate Sequence",
+    "gateSequenceHint": "Click to add or remove",
+    "edgePath": "Path",
+    "edgeType": "Type",
+    "order": "Order (runs ascending within the tier)"
+  },
+  "tools": {
+    "none": "No tools",
+    "allIncludingDynamic": "All tools, plus MCP / browser tools injected dynamically",
+    "selectedCount_one": "{{count}} item selected",
+    "selectedCount_other": "{{count}} items selected",
+    "selectedCount_few": "{{count}} items selected",
+    "selectedCount_many": "{{count}} items selected",
+    "selectedFull": "All tools selected",
+    "followProfile": "Follows the active profile",
+    "inheritedNote": "No extra limit while unset — the profile decides",
+    "orchestrationNote": "task / admit are orchestration channels and are always available",
+    "explicitWhitelistNote": "An explicit allowlist excludes MCP / browser tools injected at runtime"
+  },
+  "registry": {
+    "unavailable": "Registry unavailable",
+    "loading": "Reading the registry…",
+    "unavailableRetry": "Registry unavailable — restart the app or use Retry above",
+    "loadFailed": "Failed to load the subagent registry",
+    "loadFailedHint": "The desktop app may still be running an older server build; restart it and try again.",
+    "retry": "Retry"
+  },
+  "onFail": {
+    "rework": "Rework (loop back to the first gate)",
+    "loopTo": "loop-to:{{id}} (loops back to {{id}})",
+    "block": "block (blocks the lane outright)"
+  },
+  "closer": {
+    "unbound": "Not bound (admit will reject it)"
+  },
+  "empty": {
+    "dispatchEdges": "No dispatch connections yet",
+    "gateNodes": "No gate nodes in this diagram yet"
+  },
+  "tier": {
+    "executionOrder": "Execution order: {{gates}}; change the order on the connection.",
+    "passThrough": "No gates · pass-through (completes right after admit)"
+  },
+  "notes": {
+    "agentPrompt": "The field is prefilled with the active profile's default prompt; save to apply your edits. A custom prompt <strong>replaces</strong> the profile prompt entirely, so keep the tool-usage and path rules intact.",
+    "agentRoot": "The Main Agent is a persistent root runtime and takes part in no gates; closing subagents sign off through the tier→gate→role chain. Subagents cannot dispatch further work.",
+    "rolePrompt": "Leave empty to fall back to the built-in prompt. Read-only subagents still have their approval mode enforced by the registry; a closing subagent must keep the JSON result contract, or ChildResult validation fails.",
+    "gateBinding": "Each gate has exactly one closing subagent; clicking an already bound one unbinds it.",
+    "gateEvidence": "Evidence is measured by the host: implementer checks file changes, reviewer checks critical findings, verifier checks command exit codes; any other subagent is only validated on completed + valid. Gates never trust a model's own account.",
+    "edgeSemantics": "tier→gate edges set the gate order; gate→role edges pick the closing subagent; other connections are informational only."
+  }
+}

@@ -168,7 +168,8 @@
   background: transparent;
   transition: background-color var(--dur) var(--ease);
 }
-.mc-composer__context:hover .mc-composer__projpill,
+/* 只有鼠标真正落在项目胶囊上（或菜单展开）才亮，别把旁边 worktree 开关的悬停也算进来 */
+.mc-composer__projpill:hover,
 .mc-composer__context[data-open="true"] .mc-composer__projpill {
   background: var(--surface-hover);
 }
@@ -222,6 +223,85 @@
 .mc-composer__pickws:focus-visible {
   background: var(--surface-hover);
   color: var(--fg);
+}
+
+/* 分支胶囊：夹在项目胶囊和 worktree 开关中间，三者同高同形，点开是本仓库的分支列表 */
+.mc-composer__branchwrap {
+  position: relative;
+  display: inline-flex;
+  flex-shrink: 1;
+  min-width: 0;
+  margin-left: 8px;
+}
+.mc-composer__branch {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 1;
+  min-width: 0;
+  max-width: 220px;
+  padding: 3px 10px 3px 6px;
+  border: 0;
+  border-radius: var(--radius-full);
+  corner-shape: superellipse(1.5);
+  background: transparent;
+  color: var(--fg-subtle);
+  font-family: inherit;
+  font-size: var(--fs-caption);
+  font-weight: var(--fw-medium);
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background-color var(--dur) var(--ease), color var(--dur) var(--ease);
+}
+.mc-composer__branch > svg {
+  flex-shrink: 0;
+}
+.mc-composer__branch:hover,
+.mc-composer__branch:focus-visible {
+  background: var(--surface-hover);
+  color: var(--fg);
+}
+/* detached HEAD：用警示色，别让人以为还站在正常分支上 */
+.mc-composer__branch[data-detached="true"] {
+  color: var(--warning);
+}
+/* 分支名过长时省略，完整名字在 title 里 */
+.mc-composer__branch .mc-composer__branchname {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* worktree 开关：跟在项目/分支胶囊后面，和项目胶囊同高同形（悬停底色也一样大） */
+.mc-composer__wt {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  margin-left: 8px;
+  /* 用和项目胶囊相同的上下 3px 内边距撑高，两枚胶囊高度天然一致 */
+  padding: 3px 10px 3px 6px;
+  border-radius: var(--radius-full);
+  corner-shape: superellipse(1.5);
+  color: var(--fg-subtle);
+  font-size: var(--fs-caption);
+  font-weight: var(--fw-medium);
+  white-space: nowrap;
+  transition: background-color var(--dur) var(--ease), color var(--dur) var(--ease);
+}
+.mc-composer__wt > svg {
+  flex-shrink: 0;
+}
+.mc-composer__wt:hover,
+.mc-composer__wt:focus-within {
+  background: var(--surface-hover);
+  color: var(--fg);
+}
+.mc-composer__wt[data-on="true"] {
+  color: var(--fg);
+}
+.mc-composer__wt[data-locked="true"] {
+  color: var(--fg-subtle);
 }
 
 /* 项目切换菜单：贴在标签上方 */
@@ -294,8 +374,48 @@
   cursor: pointer;
   transition: background-color var(--dur) var(--ease);
 }
-.mc-projmenu__item:hover {
+/* 每行 = 选项目的 + 右侧删除按钮：悬停同一行时两块一起亮 */
+.mc-projmenu__item:hover,
+.mc-projmenu__row:hover > .mc-projmenu__item {
   background: var(--surface-hover);
+}
+.mc-projmenu__row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  border-radius: var(--radius-md);
+  corner-shape: superellipse(1.5);
+}
+.mc-projmenu__row > .mc-projmenu__item {
+  flex: 1;
+  min-width: 0;
+}
+/* 删除按钮：平时藏着，悬停/聚焦该行才出现，不抢「切换项目」的主操作 */
+.mc-projmenu__remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  margin-right: 4px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--fg-subtle);
+  opacity: 0;
+  cursor: pointer;
+  transition: opacity var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease),
+    background-color var(--dur-fast) var(--ease);
+}
+.mc-projmenu__row:hover > .mc-projmenu__remove,
+.mc-projmenu__remove:focus-visible {
+  opacity: 1;
+}
+.mc-projmenu__remove:hover {
+  background: var(--surface);
+  color: var(--danger);
 }
 .mc-projmenu__item > svg {
   flex-shrink: 0;
@@ -322,6 +442,8 @@
   background: var(--input-fill);
   box-shadow: var(--shadow-md);
   transition: border-color var(--dur) var(--ease);
+  /* 底栏按输入框自身宽度切换紧凑形态，而不是按窗口宽度 */
+  container-type: inline-size;
 }
 .mc-composer[data-disabled="true"] {
   opacity: 0.7;
@@ -373,7 +495,43 @@
   color: var(--fg);
 }
 
+/* 文字区包装：给「AI 美化中」覆盖层提供定位锚点 */
+.mc-composer__textwrap {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+/* 美化进行中：文字区轻微模糊压暗 */
+.mc-composer__polishlayer {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  pointer-events: none;
+  border-radius: calc(var(--radius-2xl) - 1px) calc(var(--radius-2xl) - 1px) 12px 12px;
+  corner-shape: superellipse(1.5);
+  background: color-mix(in oklab, var(--bg) 52%, transparent);
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--fg) 8%, transparent);
+}
+.mc-composer__polishlabel {
+  position: relative;
+  z-index: 1;
+  font-family: var(--font-sans);
+  color: var(--fg-subtle);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
 .mc-composer__input {
+  width: 100%;
   border: 0;
   background: none;
   outline: none;
@@ -407,6 +565,57 @@
   align-items: center;
   gap: 6px;
   min-width: 0;
+  flex-wrap: nowrap;
+}
+
+/* 胶囊文字：低宽度下隐藏，只保留图标；title / aria-label 仍然可读 */
+.mc-composer__pilllabel {
+  display: inline;
+}
+
+@container (max-width: 640px) {
+  .mc-composer__access .mc-composer__pilllabel,
+  .mc-modebadge .mc-composer__pilllabel {
+    display: none;
+  }
+  .mc-composer__access {
+    padding: 0 9px;
+    gap: 0;
+  }
+  .mc-modebadge {
+    padding: 0 8px;
+    gap: 4px;
+  }
+}
+
+@container (max-width: 540px) {
+  .mc-composer__effort {
+    display: none;
+  }
+  .mc-composer__model {
+    max-width: 210px;
+  }
+}
+
+@container (max-width: 440px) {
+  .mc-composer__modelname {
+    display: none;
+  }
+  .mc-composer__model {
+    padding: 0 9px;
+    gap: 5px;
+  }
+}
+
+@container (max-width: 360px) {
+  .mc-composer__bar {
+    gap: 6px;
+    padding: 6px 8px 8px;
+  }
+  .mc-composer__left,
+  .mc-composer__right {
+    gap: 4px;
+  }
 }
 
 /*
@@ -432,9 +641,24 @@
   color: var(--fg);
 }
 
-.mc-composer__accesswrap {
+/* 美化提示词：复用 30px 圆胶囊，只补 loading 旋转与禁用态 */
+.mc-composer__polish:disabled {
+  color: var(--fg-subtlest);
+  cursor: not-allowed;
+}
+.mc-composer__polish:disabled:hover {
+  background: var(--surface);
+  color: var(--fg-subtlest);
+}
+.mc-composer__polishspin {
+  animation: mc-spin 0.9s linear infinite;
+}
+
+.mc-composer__accesswrap,
+.mc-composer__agentwrap {
   position: relative;
   min-width: 0;
+  flex-shrink: 0;
 }
 /* 「+」菜单容器：和权限菜单同样的锚定方式 */
 .mc-pluswrap {
@@ -760,11 +984,13 @@
 .mc-composer__modelwrap {
   position: relative;
   min-width: 0;
+  flex: 0 1 auto;
 }
 .mc-composer__model {
   display: inline-flex;
   align-items: center;
   gap: 7px;
+  min-width: 0;
   max-width: 300px;
   height: 30px;
   padding: 0 12px;
@@ -780,7 +1006,7 @@
 .mc-composer__model:hover {
   background: var(--surface-hover);
 }
-.mc-composer__model > span:first-child {
+.mc-composer__modelname {
   min-width: 0;
 }
 .mc-composer__effort {
@@ -790,6 +1016,12 @@
 .mc-composer__model > svg {
   color: var(--fg-subtle);
   flex-shrink: 0;
+}
+.mc-composer__modelchev {
+  transition: transform var(--dur) var(--ease);
+}
+.mc-composer__model[aria-expanded="true"] .mc-composer__modelchev {
+  transform: rotate(180deg);
 }
 
 .mc-sendbtn {

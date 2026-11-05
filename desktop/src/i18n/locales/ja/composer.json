@@ -1,0 +1,213 @@
+{
+  "image": {
+    "readFailed": "画像を読み込めませんでした",
+    "unsupported": "対応していない画像形式です：{{type}}",
+    "tooLarge": "画像が大きすぎます：{{name}} は自動圧縮後も 2MB を超えています。先にトリミングするか解像度を下げてください",
+    "maxCount_one": "1 つのメッセージに添付できる画像は {{count}} 枚までです",
+    "maxCount_few": "1 つのメッセージに添付できる画像は {{count}} 枚までです",
+    "maxCount_many": "1 つのメッセージに添付できる画像は {{count}} 枚までです",
+    "maxCount_other": "1 つのメッセージに添付できる画像は {{count}} 枚までです",
+    "onlyImages": "添付できるのは画像ファイルのみです",
+    "fallbackName": "画像"
+  },
+  "file": {
+    "pathFailed": "ファイルパスを取得できませんでした：{{name}}",
+    "skipped": "空のファイルまたはフォルダーをスキップしました：{{name}}"
+  },
+  "plugin": {
+    "loadFailed": "読み込みに失敗しました：{{error}}",
+    "local": "ローカルプラグイン"
+  },
+  "permission": {
+    "title": "ツールの実行権限",
+    "readOnly": {
+      "label": "読み取り専用",
+      "desc": "ファイルの読み取り・検索・ブラウザーのみ許可し、ファイルの書き込み・編集・コマンド実行は禁止します"
+    },
+    "ask": {
+      "label": "毎回確認",
+      "desc": "ファイルの書き込み・編集・コマンド実行の前に確認します"
+    },
+    "auto": {
+      "label": "ワークスペース内は自動",
+      "desc": "ワークスペース内の書き込み・編集・通常の開発コマンドは自動実行します。資格情報の読み取り、ダウンロード実行、システム設定、公開・デプロイ、破壊的な git、ワークスペース外のパスは引き続き確認します"
+    },
+    "full": {
+      "label": "フルアクセス",
+      "desc": "このコンピューター上のファイルを読み書きでき、すべてのツールを自動実行します"
+    }
+  },
+  "slash": {
+    "plan": {
+      "label": "プランモード",
+      "desc": "読み取り専用で調査し、実装計画を plans/ 配下のドキュメントにまとめて確認を待ちます"
+    },
+    "goal": {
+      "label": "ゴールモード",
+      "desc": "ゴールに向けて継続的に進め、update_plan で進捗を追跡します"
+    },
+    "exit": "{{mode}}を終了",
+    "menuAria": "コマンド",
+    "group": {
+      "mode": "モード",
+      "command": "コマンド",
+      "plugin": "プラグイン",
+      "skill": "スキル"
+    }
+  },
+  "mode": {
+    "plan": "プランモード",
+    "goal": "ゴールモード",
+    "exitAria": "{{mode}}、クリックで終了",
+    "exitTitle": "クリックでこのモードを終了"
+  },
+  "project": {
+    "menuAria": "プロジェクトを切り替え",
+    "search": "プロジェクトを検索",
+    "empty": "一致するプロジェクトがありません",
+    "new": "新しいプロジェクト",
+    "remove": "一覧から削除",
+    "pickWorkspace": "ワークスペースを選択"
+  },
+  "mention": {
+    "aria": "ワークスペースのファイルを参照",
+    "back": "1 つ上の階層へ",
+    "root": "ワークスペースのルート",
+    "refresh": "一覧を更新",
+    "loadFailed": "読み込みに失敗",
+    "loading": "読み込み中…",
+    "dirFailed": "フォルダーを読み込めません",
+    "noMatch": "一致するファイルがありません",
+    "emptyDir": "このフォルダーは空です"
+  },
+  "queue": {
+    "recoveredAria": "前回送信されなかったメッセージ",
+    "recoveredHead": "前回終了時に未送信",
+    "sendAsNew": "新しいメッセージとして送信",
+    "send": "送信",
+    "discardTitle": "このメッセージを破棄",
+    "discard": "破棄",
+    "pendingAria": "キュー内のメッセージ",
+    "steerTitle": "現在の応答を中止して、このメッセージをすぐ送信",
+    "steer": "割り込み送信",
+    "removeTitle": "キューから削除",
+    "remove": "削除"
+  },
+  "plan": {
+    "answerAria": "質問に回答",
+    "answerSubMultiple": "回答を選ぶか、下に入力してください · 選択すると次の質問に進みます",
+    "answerSub": "回答を選ぶか、下に入力してください",
+    "answerPlaceholder": "別の回答 — Enter で次の質問へ",
+    "prev": "前の質問",
+    "skipRest": "回答せず残りをスキップ",
+    "unanswered": "（未回答）",
+    "confirmAria": "計画を確認",
+    "exit": "プランモードを終了",
+    "confirmTitle": "この計画で実行しますか？",
+    "confirmSub": "確認後、この計画に沿って実行し内容を出力します",
+    "start": "実行を開始",
+    "adjustPlaceholder": "計画を調整 — どう変えるか入力してください",
+    "sendAdjust": "調整を送信",
+    "adjustPrompt": "計画内容を調整してください。送信後、モデルが計画を修正し続けます…"
+  },
+  "branch": {
+    "detached": "detached HEAD · クリックでブランチを切り替え",
+    "current": "現在のブランチ {{name}} · クリックで切り替え",
+    "search": "ブランチを検索",
+    "listAria": "ブランチ一覧",
+    "loading": "ブランチを読み込み中…",
+    "noMatch": "一致するブランチがありません",
+    "empty": "このリポジトリにはまだブランチがありません",
+    "stashSwitch": "ローカルの変更を退避して切り替え",
+    "openGit": "ソース管理を開く"
+  },
+  "worktree": {
+    "locked": "このセッションはすでに独立した worktree で実行中です",
+    "hint": "独立した git worktree でこの会話を開始します。未コミットの変更は引き継がれません"
+  },
+  "input": {
+    "placeholder": {
+      "setup": "先に設定を完了してください",
+      "compacting": "会話履歴を圧縮中です。完了後に送信できます",
+      "streaming": "入力して Enter でキューに追加",
+      "default": "@ でプロジェクトのファイルを参照。画像や任意のファイルをドラッグできます（ワークスペース外も可）"
+    },
+    "polishing": "AI で整文中"
+  },
+  "action": {
+    "more": "その他の操作",
+    "moreTitle": "添付を追加 / モードを切り替え",
+    "plusMenuAria": "追加・参照・コマンド",
+    "upload": "添付をアップロード",
+    "plugins": "プラグイン",
+    "pluginsCount": "プラグイン（{{count}}）",
+    "skills": "スキル",
+    "skillsCount": "スキル（{{count}}）",
+    "installing": "インストール中…",
+    "polish": "プロンプトを整文",
+    "send": "送信",
+    "stop": "停止"
+  },
+  "attach": {
+    "listAria": "送信待ちの画像",
+    "removeImageAria": "画像を削除",
+    "remove": "削除"
+  },
+  "chip": {
+    "listAria": "参照中のスキル・プラグイン・添付",
+    "remove": "{{name}} を削除"
+  },
+  "agent": {
+    "title": "メイン Agent：{{name}}"
+  },
+  "polish": {
+    "discarded": "入力内容が変わったため、整文結果は破棄されました。",
+    "failed": "プロンプトの整文に失敗しました：{{error}}"
+  },
+  "ctx": {
+    "title": "コンテキスト使用量",
+    "close": "閉じる",
+    "used": "使用済み",
+    "windowUnset": "ウィンドウ未設定",
+    "categories": {
+      "system": "システムプロンプト",
+      "tools": "システムツール",
+      "skills": "スキル（{{count}}）",
+      "messages": "メッセージ",
+      "other": "その他"
+    },
+    "hint": "圧縮は古い会話を要約にまとめるだけで、画面の履歴とセッションファイルはそのまま残ります。",
+    "compacting": "圧縮中…",
+    "compact": "今すぐコンテキストを圧縮",
+    "cache": {
+      "stateLabel": "キャッシュ",
+      "stateWarm": "ウォーム",
+      "stateCold": "コールド",
+      "stateEvicted": "退避された",
+      "stateUnsupported": "非対応",
+      "stateUnknown": "不明",
+      "roundLabel": "最新",
+      "round": "読み {{read}} · 書き {{write}}",
+      "busts": "キャッシュ断裂の疑い",
+      "bustTitle": "前ラウンドより約{{drop}}トークン少なく読み取り：プレフィックス書き換えまたはキャッシュ退避",
+      "reasonPrefixChanged": "プレフィックス変更（ツールカタログ/システムプロンプト再生成）",
+      "reasonFirstRequest": "初回リクエスト（コールドスタート）",
+      "reasonIdleExceededTtl": "キャッシュTTLを超えるアイドル",
+      "reasonNotReported": "プロバイダーはキャッシュ詳細を報告していません",
+      "reasonBelowGranularity": "入力が最小キャッシュ可能長未満",
+      "reasonCacheMiss": "キャッシュミス"
+    }
+  },
+  "effort": {
+    "default": "既定",
+    "off": "オフ",
+    "on": "オン",
+    "minimal": "最小",
+    "low": "低",
+    "medium": "中",
+    "high": "高",
+    "xhigh": "非常に高い",
+    "max": "最大",
+    "ultra": "ウルトラ"
+  }
+}

@@ -1,21 +1,34 @@
+import { useTranslation } from "react-i18next";
 import { Badge } from "../ui/Badge";
 import { Toggle } from "../ui/Toggle";
-import type { MarketplaceEntry, McpServerState, PluginDescriptor } from "../../api";
-import { MCP_ENV_PLATFORMS, MCP_PLATFORM_LABELS } from "../../api";
-import { MarketIcon } from "./MarketplaceCard";
+import type { MarketplaceEntryLike, McpServerState, PluginDescriptor } from "../../api";
+import { MCP_ENV_PLATFORMS } from "../../api";
+import { MarketIcon, CommunityBadge } from "./MarketplaceCard";
 import "./marketplace.css";
 
-/** MCP 连接状态徽标（就绪 · N 工具 / 连接中 / 失败） */
-function McpStatusBadge({ state }: { state: McpServerState | undefined }) {
+/** MCP 连接状态徽标（就绪 · N 工具 / 连接中 / 待配置 / 失败）；「我的」栏的手动 MCP 行也用 */
+export function McpStatusBadge({ state }: { state: McpServerState | undefined }) {
+  const { t } = useTranslation("marketplace");
   if (!state) return null;
-  if (state.status === "ready") return <Badge tone="success">就绪 · {state.toolCount} 工具</Badge>;
-  if (state.status === "connecting") return <Badge tone="running">连接中</Badge>;
-  return <Badge tone="danger">失败{state.error ? ` · ${state.error}` : ""}</Badge>;
+  if (state.status === "ready") {
+    return <Badge tone="success">{t("mcp.ready", { count: state.toolCount })}</Badge>;
+  }
+  if (state.status === "connecting") return <Badge tone="running">{t("mcp.connecting")}</Badge>;
+  if (state.status === "unconfigured") {
+    const names = (state.missingEnv ?? []).join(", ");
+    return <Badge tone="neutral">{names ? t("mcp.unconfiguredDetail", { names }) : t("mcp.unconfigured")}</Badge>;
+  }
+  return (
+    <Badge tone="danger">
+      {state.error ? t("mcp.failedDetail", { error: state.error }) : t("mcp.failed")}
+    </Badge>
+  );
 }
 
 function EnvWarning({ names }: { names: string[] }) {
+  const { t } = useTranslation("marketplace");
   if (!names.length) return null;
-  return <span className="mc-mkt__warn">需设置 {names.join("、")}</span>;
+  return <span className="mc-mkt__warn">{t("mcp.envRequired", { names: names.join(", ") })}</span>;
 }
 
 /**
@@ -33,16 +46,20 @@ export function McpRow({
   onDisconnectGithub,
   onConnectOauth,
   onDisconnectOauth,
+  onSetManualToken,
+  onDisconnectManualToken,
   oauthConnected,
   oauthPending,
   onCancelOauth,
+  onDelete,
+  canDelete,
 }: {
-  entry: MarketplaceEntry;
+  entry: MarketplaceEntryLike;
   iconUrl?: string;
   state: McpServerState | undefined;
   busy: boolean;
-  onInstall: (entry: MarketplaceEntry) => void;
-  onUninstall: (entry: MarketplaceEntry) => void;
+  onInstall: (entry: MarketplaceEntryLike) => void;
+  onUninstall: (entry: MarketplaceEntryLike) => void;
   /** GitHub OAuth 是否已连接（settings.githubAuth；token 由主进程保存） */
   githubConnected?: boolean;
   /** GitHub MCP 的“连接/重新授权”入口 */
@@ -50,16 +67,24 @@ export function McpRow({
   /** 解除本机 GitHub 授权 */
   onDisconnectGithub?: () => void;
   /** Gitee/GitCode OAuth 的“连接/重新授权”入口 */
-  onConnectOauth?: (entry: MarketplaceEntry) => void;
+  onConnectOauth?: (entry: MarketplaceEntryLike) => void;
   /** 解除本机 Gitee/GitCode OAuth */
-  onDisconnectOauth?: (entry: MarketplaceEntry) => void;
+  onDisconnectOauth?: (entry: MarketplaceEntryLike) => void;
+  /** 无 OAuth 通道的 MCP（如 Figma Context）的手动令牌粘贴入口 */
+  onSetManualToken?: (entry: MarketplaceEntryLike) => void;
+  /** 手动令牌的「解除授权」入口（删除本机令牌并断开 MCP） */
+  onDisconnectManualToken?: (entry: MarketplaceEntryLike) => void;
   /** Gitee/GitCode OAuth 是否已连接 */
   oauthConnected?: boolean;
   /** 已打开系统浏览器，正在等待授权回调 */
   oauthPending?: boolean;
   /** 放弃本次浏览器授权 */
   onCancelOauth?: () => void;
+  /** 社区条目删除入口（自己的条目才可见） */
+  onDelete?: (entry: MarketplaceEntryLike) => void;
+  canDelete?: boolean;
 }) {
+  const { t } = useTranslation("marketplace");
   const requiresGithub =
     entry.type === "mcp" && (entry.requiresEnv ?? []).includes("MEOWCODE_GITHUB_TOKEN");
   const githubReady = !requiresGithub || githubConnected === true || entry.envReady !== false;
@@ -71,7 +96,7 @@ export function McpRow({
   );
   const oauthPlatform =
     entry.type === "mcp" ? MCP_ENV_PLATFORMS[(entry.requiresEnv ?? [])[0] ?? ""] : undefined;
-  const oauthLabel = oauthPlatform ? MCP_PLATFORM_LABELS[oauthPlatform] : undefined;
+  const oauthLabel = oauthPlatform ? t(`platforms.${oauthPlatform}`) : "";
   const oauthReady = oauthPlatform ? oauthConnected === true : false;
   const showOauthConnect = Boolean(
     oauthPlatform && onConnectOauth && (!oauthReady || state?.status === "failed"),
@@ -83,17 +108,29 @@ export function McpRow({
       <div className="mc-mkt__rowinfo">
         <div className="mc-mkt__rowname">
           <span title={entry.name}>{entry.name}</span>
+          <CommunityBadge entry={entry} />
         </div>
         <p className="mc-mkt__rowdesc">{entry.description}</p>
       </div>
       <div className="mc-mkt__badges">
+        {canDelete && onDelete ? (
+          <button
+            type="button"
+            className="mc-mkt__ghost"
+            title={t("card.deletePrTitle")}
+            disabled={busy}
+            onClick={() => onDelete(entry)}
+          >
+            {t("actions.delete")}
+          </button>
+        ) : null}
         {entry.installed && !showGithubConnect && !showOauthConnect ? (
           <McpStatusBadge state={state} />
         ) : null}
-        {oauthPending ? <Badge tone="running">等待浏览器授权…</Badge> : null}
+        {oauthPending ? <Badge tone="running">{t("oauth.awaitingBrowser")}</Badge> : null}
         {oauthPending && onCancelOauth ? (
           <button type="button" className="mc-mkt__ghost" disabled={busy} onClick={onCancelOauth}>
-            取消授权
+            {t("oauth.cancelAuth")}
           </button>
         ) : null}
         {showOauthConnect && !oauthPending ? (
@@ -105,12 +142,12 @@ export function McpRow({
               state?.status === "failed"
                 ? state.error
                 : oauthReady
-                  ? `用浏览器重新授权 ${oauthLabel}`
-                  : `直接连接：用浏览器授权 ${oauthLabel}，无需粘贴 Token`
+                  ? t("oauth.reauthorizeTitle", { platform: oauthLabel })
+                  : t("oauth.directTitle", { platform: oauthLabel })
             }
             onClick={() => onConnectOauth?.(entry)}
           >
-            {oauthReady ? "重新授权" : `连接 ${oauthLabel}`}
+            {oauthReady ? t("actions.reauthorize") : t("oauth.connectPlatform", { platform: oauthLabel })}
           </button>
         ) : null}
         {oauthPlatform && oauthConnected && onDisconnectOauth ? (
@@ -120,11 +157,34 @@ export function McpRow({
             disabled={busy}
             onClick={() => onDisconnectOauth?.(entry)}
           >
-            解除授权
+            {t("actions.disconnect")}
           </button>
         ) : null}
         {entry.envReady === false && !requiresGithub && !oauthPlatform ? (
-          <EnvWarning names={otherEnvNames} />
+          <>
+            {onSetManualToken ? (
+              <button
+                type="button"
+                className="mc-mkt__connect"
+                disabled={busy}
+                title={t("mcp.setTokenTitle")}
+                onClick={() => onSetManualToken(entry)}
+              >
+                {t("mcp.setToken")}
+              </button>
+            ) : null}
+            <EnvWarning names={otherEnvNames} />
+          </>
+        ) : null}
+        {!requiresGithub && !oauthPlatform && entry.envReady === true && onDisconnectManualToken ? (
+          <button
+            type="button"
+            className="mc-mkt__ghost"
+            disabled={busy}
+            onClick={() => onDisconnectManualToken(entry)}
+          >
+            {t("actions.disconnect")}
+          </button>
         ) : null}
         {showGithubConnect ? (
           <button
@@ -135,12 +195,12 @@ export function McpRow({
               state?.status === "failed"
                 ? state.error
                 : githubReady
-                  ? "重新授权 GitHub"
-                  : "使用 GitHub OAuth 连接"
+                  ? t("github.reauthorizeTitle")
+                  : t("github.connectTitle")
             }
             onClick={() => onConnectGithub?.()}
           >
-            {githubReady ? "重新授权" : "连接 GitHub"}
+            {githubReady ? t("actions.reauthorize") : t("github.connect")}
           </button>
         ) : null}
         {requiresGithub && githubConnected && onDisconnectGithub ? (
@@ -150,18 +210,31 @@ export function McpRow({
             disabled={busy}
             onClick={onDisconnectGithub}
           >
-            解除授权
+            {t("actions.disconnect")}
           </button>
         ) : null}
         {entry.installed ? (
-          <button
-            type="button"
-            className="mc-mkt__ghost"
-            disabled={busy}
-            onClick={() => onUninstall(entry)}
-          >
-            移除
-          </button>
+          <>
+            {entry.updateAvailable ? (
+              <button
+                type="button"
+                className="mc-mkt__install"
+                disabled={busy}
+                title={t("actions.updateTitle", { version: entry.version })}
+                onClick={() => onInstall(entry)}
+              >
+                {busy ? t("actions.updating") : t("actions.update")}
+              </button>
+            ) : null}
+            <button
+              type="button"
+              className="mc-mkt__ghost"
+              disabled={busy}
+              onClick={() => onUninstall(entry)}
+            >
+              {busy ? t("actions.removing") : t("actions.remove")}
+            </button>
+          </>
         ) : (
           <button
             type="button"
@@ -169,13 +242,20 @@ export function McpRow({
             disabled={busy}
             onClick={() => onInstall(entry)}
           >
-            {busy ? "安装中…" : "＋ 安装"}
+            {busy ? t("actions.installing") : t("actions.install")}
           </button>
         )}
       </div>
     </div>
   );
 }
+
+/** 已加载插件的来源徽标（内置 / 全局 / 项目） */
+const SOURCE_LABEL_KEYS: Record<string, string> = {
+  builtin: "pluginSource.builtin",
+  user: "pluginSource.user",
+  project: "pluginSource.project",
+};
 
 /**
  * 已安装插件行：点击进详情页；Toggle 启停（settings.plugins.disabled → server 重启）+ 卸载。
@@ -188,6 +268,7 @@ export function InstalledPluginRow({
   onToggle,
   onUninstall,
   onOpen,
+  onOpenPanel,
 }: {
   descriptor: PluginDescriptor;
   /** 插件介绍（来自市场索引；用户手放的非市场插件没有） */
@@ -197,50 +278,73 @@ export function InstalledPluginRow({
   onToggle: (descriptor: PluginDescriptor, next: boolean) => void;
   onUninstall: (descriptor: PluginDescriptor) => void;
   onOpen: (descriptor: PluginDescriptor) => void;
+  /** 插件自带 ui/index.html 时打开它的面板页签 */
+  onOpenPanel?: (descriptor: PluginDescriptor) => void;
 }) {
+  const { t } = useTranslation("marketplace");
+  const sourceKey = SOURCE_LABEL_KEYS[descriptor.source];
   return (
     <div className="mc-mkt__row">
       <span
         role="button"
         tabIndex={0}
         className="mc-mkt__rowiconbtn"
-        title="查看详情"
+        title={t("actions.viewDetails")}
         onClick={() => onOpen(descriptor)}
         onKeyDown={(event) => {
           if (event.key === "Enter") onOpen(descriptor);
         }}
       >
-        <MarketIcon entry={{ id: descriptor.id, name: descriptor.id, source: descriptor.source }} iconUrl={iconUrl} size={30} />
+        <MarketIcon
+          entry={{ id: descriptor.id, name: descriptor.displayName ?? descriptor.id, source: descriptor.source }}
+          iconUrl={descriptor.iconUrl ?? iconUrl}
+          size={30}
+        />
       </span>
       <button
         type="button"
         className="mc-mkt__rowinfo mc-mkt__rowinfo--clickable"
         onClick={() => onOpen(descriptor)}
-        title="查看详情"
+        title={t("actions.viewDetails")}
       >
         <div className="mc-mkt__rowname">
-          <span>{descriptor.id}</span>
-          <Badge>{descriptor.source === "user" ? "全局" : "项目"}</Badge>
-          {descriptor.error ? <Badge tone="danger">加载失败</Badge> : null}
+          <span>{descriptor.displayName ?? descriptor.id}</span>
+          {sourceKey ? <Badge>{t(sourceKey)}</Badge> : null}
+          {descriptor.error ? <Badge tone="danger">{t("plugin.loadFailed")}</Badge> : null}
         </div>
-        <p className="mc-mkt__rowdesc">{descriptor.error ? descriptor.error : description || "暂无介绍"}</p>
+        <p className="mc-mkt__rowdesc">
+          {descriptor.error ? descriptor.error : descriptor.description || description || t("plugin.noDescription")}
+        </p>
       </button>
       <div className="mc-mkt__badges">
+        {descriptor.ui && onOpenPanel ? (
+          <button
+            type="button"
+            className="mc-mkt__ghost"
+            disabled={busy || !descriptor.enabled || Boolean(descriptor.error)}
+            title={t("actions.openPanel")}
+            onClick={() => onOpenPanel(descriptor)}
+          >
+            {t("actions.openPanel")}
+          </button>
+        ) : null}
         <Toggle
           checked={descriptor.enabled && !descriptor.error}
           disabled={busy}
-          label={`启用插件 ${descriptor.id}`}
+          label={t("plugin.enableAria", { id: descriptor.id })}
           onChange={(next) => onToggle(descriptor, next)}
         />
-        <button
-          type="button"
-          className="mc-mkt__ghost"
-          disabled={busy}
-          title="卸载"
-          onClick={() => onUninstall(descriptor)}
-        >
-          卸载
-        </button>
+        {descriptor.source === "builtin" ? null : (
+          <button
+            type="button"
+            className="mc-mkt__ghost"
+            disabled={busy}
+            title={t("actions.uninstall")}
+            onClick={() => onUninstall(descriptor)}
+          >
+            {t("actions.uninstall")}
+          </button>
+        )}
       </div>
     </div>
   );

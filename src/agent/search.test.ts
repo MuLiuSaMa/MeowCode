@@ -108,6 +108,27 @@ describe("searchGrep", () => {
     expect(result.output).toContain("narrow the pattern or raise maxResults");
   });
 
+  it("hands the untruncated body back as spillText", async () => {
+    const root = await makeWorkspace();
+    const body = Array.from(
+      { length: 400 },
+      (_, index) => `export const value${index} = "${"x".repeat(40)}";`,
+    ).join("\n");
+    await writeFile(path.join(root, "src", "big.ts"), body);
+
+    const capped = await searchGrep(root, ".", "export const", { maxResults: 500 });
+    expect(capped.ok).toBe(true);
+    expect(capped.output.length).toBeLessThan(12_500);
+    expect(capped.spillText).toBeTruthy();
+    expect(capped.spillText!.length).toBeGreaterThan(12_000);
+    // 落盘用全文必须包含内联被砍掉的尾部
+    expect(capped.spillText).toContain("value399");
+
+    const short = await searchGrep(root, "src/alpha.ts", "export", { maxResults: 10 });
+    expect(short.ok).toBe(true);
+    expect(short.spillText).toBeUndefined();
+  });
+
   it("caps each match line so a minified line cannot eat the whole budget", async () => {
     const root = await makeWorkspace();
     await writeFile(path.join(root, "min.js"), `needle${"x".repeat(5_000)}\n`);

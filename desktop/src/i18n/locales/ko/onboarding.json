@@ -1,0 +1,57 @@
+{
+  "actions": {
+    "back": "이전",
+    "next": "계속",
+    "skip": "건너뛰기",
+    "later": "나중에 설정",
+    "connect": "연결",
+    "connecting": "연결 중…",
+    "start": "시작하기",
+    "finishing": "마무리 중…",
+    "close": "가이드 닫기"
+  },
+  "language": {
+    "title": "언어 선택",
+    "label": "언어",
+    "previewLabel": "언어 미리보기",
+    "previewText": "안녕하세요, MeowCode에 오신 것을 환영합니다.",
+    "systemMeta": "시스템 설정 · 현재 {{language}}",
+    "selectedMeta": "인터페이스 언어 · {{language}}"
+  },
+  "theme": {
+    "title": "테마 선택",
+    "desc": "선택 즉시 적용되며, 나중에 설정 → 외관에서 언제든지 변경할 수 있습니다.",
+    "options": {
+      "system": {
+        "label": "시스템 설정",
+        "desc": "Windows의 라이트 / 다크 설정을 실시간으로 따릅니다"
+      },
+      "light": {
+        "label": "라이트",
+        "desc": "항상 라이트 인터페이스를 사용합니다"
+      },
+      "dark": {
+        "label": "다크",
+        "desc": "항상 다크 인터페이스를 사용합니다"
+      }
+    }
+  },
+  "provider": {
+    "title": "AI 프로바이더 선택",
+    "searchLabel": "프로바이더 검색",
+    "searchPlaceholder": "이름 또는 id로 검색, 예: deepseek",
+    "empty": "일치하는 프로바이더가 없습니다 — 「사용자 지정 프로바이더」를 시도해 보세요",
+    "customName": "사용자 지정 프로바이더",
+    "customMeta": "엔드포인트와 키를 직접 입력",
+    "needsEndpoint": "엔드포인트 입력 필요"
+  },
+  "connect": {
+    "title": "AI 프로바이더 연결",
+    "saveFailed": "연결하지 못했습니다. 설정을 확인한 후 다시 시도하세요."
+  },
+  "finish": {
+    "title": "준비 완료",
+    "desc": "설정이 완료되었습니다. 이제 MeowCode를 사용할 수 있습니다.",
+    "noProvider": "아직 구성된 모델이 없습니다. 나중에 설정 → 모델에서 추가할 수 있습니다."
+  }
+}

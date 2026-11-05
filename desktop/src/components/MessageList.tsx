@@ -1,48 +1,66 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { LuCircleAlert, LuInfo } from "react-icons/lu";
-import type { SubagentRun, TimelineItem } from "../api";
+import type { SubagentRun, TimelineItem, TimelineMessage } from "../api";
 import logo from "../assets/icon.png";
 import { AssistantMessage } from "./AssistantMessage";
+import { AssistantStatusLine, type AssistantStatus } from "./AssistantStatusLine";
+import { CheckpointMarker } from "./CheckpointMarker";
 import { CompactionBanner } from "./CompactionBanner";
+import { MessageNavigator } from "./MessageNavigator";
 import { TaskToolRow } from "./TaskToolRow";
 import { ToolRow } from "./ToolRow";
 import { UserBubble } from "./UserBubble";
 import "./MessageList.css";
 
-const EMPTY_PHRASES = [
-  "创造一些了不起的东西",
-  "帮助你修复一些BUG",
-  "帮助你实现梦想",
-  "把想法变成现实",
-  "让重复工作自动化",
-  "一起解决棘手的问题",
-  "写一个趁手的小工具",
-  "搭建你的下一个项目",
-  "整理混乱的代码",
-  "做一个有趣的小产品",
-  "把复杂的逻辑理清",
-  "帮你节省一点时间",
-  "探索一个新的方向",
-  "让灵感落地成代码",
-  "修好那个恼人的问题",
-  "为项目加一个新功能",
-  "写一段优雅的实现",
-  "把 PR 改到能合并",
-  "陪你写完这段代码",
-  "让产品更好用一点",
+/** 表里只存 key：译文在组件里查，切语言才会跟着刷新。 */
+const EMPTY_PHRASE_KEYS = [
+  "empty.phrase.createSomething",
+  "empty.phrase.fixBugs",
+  "empty.phrase.dreams",
+  "empty.phrase.ideas",
+  "empty.phrase.automate",
+  "empty.phrase.hardProblems",
+  "empty.phrase.handyTool",
+  "empty.phrase.nextProject",
+  "empty.phrase.tidyCode",
+  "empty.phrase.funProduct",
+  "empty.phrase.clearLogic",
+  "empty.phrase.saveTime",
+  "empty.phrase.newDirection",
+  "empty.phrase.inspiration",
+  "empty.phrase.annoyance",
+  "empty.phrase.newFeature",
+  "empty.phrase.elegantCode",
+  "empty.phrase.mergePr",
+  "empty.phrase.together",
+  "empty.phrase.usable",
 ] as const;
 
 const EMPTY_EFFECTS = ["wipe", "glow", "slide"] as const;
 
+/** 状态行锚点：跳过 notice / checkpoint / error，取最后一条对话项。 */
+function lastStatusAnchor(items: TimelineItem[]): TimelineItem | undefined {
+  for (let index = items.length - 1; index >= 0; index -= 1) {
+    const item = items[index];
+    if (item.kind === "message" || item.kind === "tool" || item.kind === "compaction") {
+      return item;
+    }
+  }
+  return undefined;
+}
+
 function EmptyState({ canUse }: { canUse: boolean }) {
+  const { t } = useTranslation("chat");
+  const phrases = useMemo(() => EMPTY_PHRASE_KEYS.map((key) => t(key)), [t]);
   const [phraseIndex, setPhraseIndex] = useState(() =>
-    Math.floor(Math.random() * EMPTY_PHRASES.length),
+    Math.floor(Math.random() * EMPTY_PHRASE_KEYS.length),
   );
 
   useEffect(() => {
     const timer = window.setInterval(() => {
       setPhraseIndex((index) => {
-        const next = Math.floor(Math.random() * (EMPTY_PHRASES.length - 1));
+        const next = Math.floor(Math.random() * (EMPTY_PHRASE_KEYS.length - 1));
         return next >= index ? next + 1 : next;
       });
     }, 5_000);
@@ -50,12 +68,12 @@ function EmptyState({ canUse }: { canUse: boolean }) {
   }, []);
 
   return (
-    <div className="mc-empty" aria-label={EMPTY_PHRASES[phraseIndex]}>
+    <div className="mc-empty" aria-label={phrases[phraseIndex]}>
       <img src={logo} alt="" className="mc-empty__logo" />
       {canUse ? (
         <p className="mc-empty__text">
           <span className="mc-empty__words">
-            {EMPTY_PHRASES.map((phrase, index) => {
+            {phrases.map((phrase, index) => {
               const active = index === phraseIndex;
               return (
                 <span
@@ -72,7 +90,7 @@ function EmptyState({ canUse }: { canUse: boolean }) {
           </span>
         </p>
       ) : (
-        <p className="mc-empty__text">配置模型服务商并选择工作区后即可开始。</p>
+        <p className="mc-empty__text">{t("empty.setup")}</p>
       )}
     </div>
   );
@@ -87,6 +105,10 @@ export function MessageList({
   loading,
   subagentsByCallId,
   onOpenSubagent,
+  onOpenFile,
+  onRestoreCheckpoint,
+  onRewindCheckpoint,
+  focus,
 }: {
   items: TimelineItem[];
   canUse: boolean;
@@ -106,15 +128,92 @@ export function MessageList({
   /** 主对话 task 工具行 → 子 Agent 状态（按 callId） */
   subagentsByCallId?: Record<string, SubagentRun>;
   onOpenSubagent?: (agentId: string) => void;
+  /** read_file 工具行点击 → 右侧「文件」页签打开（不传则回落为展开输入/输出） */
+  onOpenFile?: (path: string) => void;
+  /** 检查点「恢复」：从该检查点截断分支出新会话 */
+  onRestoreCheckpoint?: (checkpointId: string) => void;
+  /** 预览式回滚（对话与代码 / 仅代码）：先出预览对话框再执行 */
+  onRewindCheckpoint?: (checkpointId: string, mode: "both" | "code") => void;
+  /** 会话全文检索跳转意图：滚动到指定消息并短暂高亮（token 变化触发重播） */
+  focus?: { messageIndex: number; token: number } | null;
 }) {
+  const { t } = useTranslation("chat");
   const scrollRef = useRef<HTMLDivElement>(null);
   const stickRef = useRef(true);
+
+  /** 回合进行中才显示：具体进度 > 压缩 > 等你回答 > 思考中 > 等待模型响应 > 随机文案；回合结束隐藏。 */
+  const statusLine = useMemo<{ visible: boolean; status: AssistantStatus | null }>(() => {
+    if (preparing) return { visible: true, status: { text: preparing, busy: true } };
+
+    const anchor = lastStatusAnchor(items);
+
+    if (anchor?.kind === "compaction" && anchor.running) {
+      return { visible: true, status: { text: t("status.compacting"), busy: true } };
+    }
+
+    if (anchor?.kind === "tool" && !anchor.replayed && anchor.ok === undefined) {
+      return anchor.tool === "ask_user"
+        ? { visible: true, status: { text: t("status.waitingAnswer"), busy: false } }
+        : { visible: true, status: null };
+    }
+
+    if (anchor?.kind === "message" && anchor.role === "assistant" && anchor.streaming) {
+      return {
+        visible: true,
+        status:
+          anchor.thinking && !anchor.content
+            ? { text: t("status.thinking"), busy: true }
+            : null,
+      };
+    }
+
+    if (waiting) return { visible: true, status: { text: t("waiting.response"), busy: true } };
+
+    return { visible: false, status: null };
+  }, [items, waiting, preparing, t]);
+
+  // 对话浏览条只列用户消息；不足两条时没有浏览意义，不渲染
+  const userNavItems = useMemo(
+    () =>
+      items.filter(
+        (item): item is TimelineMessage =>
+          item.kind === "message" && item.role === "user",
+      ),
+    [items],
+  );
 
   useLayoutEffect(() => {
     const el = scrollRef.current;
     if (!el || !stickRef.current) return;
     el.scrollTop = el.scrollHeight;
   }, [items, waiting, preparing]);
+
+  // 检索跳转：滚到命中消息并触发描边。deps 只放 focus——
+  // 放 items 会在流式输出期间每帧重滚，和用户抢滚动条。
+  useEffect(() => {
+    if (!focus) return;
+    const el = scrollRef.current;
+    if (!el) return;
+    stickRef.current = false;
+    let raf = 0;
+    const locate = (allowRetry: boolean) => {
+      const anchor = el.querySelector<HTMLElement>(`[data-message-index="${focus.messageIndex}"]`);
+      if (!anchor) {
+        // 会话内容可能还在按需渲染：下一帧再找一次
+        if (allowRetry) raf = requestAnimationFrame(() => locate(false));
+        return;
+      }
+      anchor.scrollIntoView({ block: "center" });
+      const token = String(focus.token);
+      anchor.dataset.flash = token;
+      window.setTimeout(() => {
+        // 只清除自己这一轮的标记，避免覆盖同 index 的下一次跳转
+        if (anchor.dataset.flash === token) delete anchor.dataset.flash;
+      }, 1800);
+    };
+    raf = requestAnimationFrame(() => locate(true));
+    return () => cancelAnimationFrame(raf);
+  }, [focus]);
 
   const handleScroll = () => {
     const el = scrollRef.current;
@@ -123,89 +222,109 @@ export function MessageList({
   };
 
   return (
-    <div className="mc-stream" ref={scrollRef} onScroll={handleScroll}>
-      <div className="mc-stream__inner">
-        {!items.length ? (
-          loading ? null : <EmptyState canUse={canUse} />
-        ) : (
-          <div className="mc-stream__list">
-            {items.map((item, itemIndex) =>
-              item.kind === "compaction" ? (
-                <CompactionBanner
-                  key={item.key}
-                  compacting={Boolean(item.running)}
-                  interrupted={Boolean(item.interrupted)}
-                  failed={Boolean(item.failed)}
-                  note={item.summary ?? null}
+    <div className="mc-streamwrap">
+      <div className="mc-stream" ref={scrollRef} onScroll={handleScroll}>
+        <div className="mc-stream__inner">
+          {!items.length ? (
+            loading ? null : <EmptyState canUse={canUse} />
+          ) : (
+            <div className="mc-stream__list">
+              {items.map((item, _itemIndex) =>
+                item.kind === "compaction" ? (
+                  <CompactionBanner
+                    key={item.key}
+                    compacting={Boolean(item.running)}
+                    interrupted={Boolean(item.interrupted)}
+                    failed={Boolean(item.failed)}
+                    note={item.summary ?? null}
+                  />
+                ) : item.kind === "checkpoint" ? (
+                  <CheckpointMarker
+                    key={item.key}
+                    item={item}
+                    onRestore={onRestoreCheckpoint}
+                    onRewind={onRewindCheckpoint}
+                  />
+                ) : item.kind === "tool" ? (
+                  (() => {
+                    const agent =
+                      item.tool === "task" ? subagentsByCallId?.[item.callId] : undefined;
+                    return agent && onOpenSubagent ? (
+                      <TaskToolRow key={item.key} item={item} agent={agent} onOpen={onOpenSubagent} />
+                    ) : (
+                      <ToolRow key={item.key} item={item} onOpenFile={onOpenFile} />
+                    );
+                  })()
+                ) : item.kind === "notice" ? (
+                  <div key={item.key} className="mc-noticeitem" role="status">
+                    <LuInfo size={15} className="mc-noticeitem__icon" />
+                    <span className="mc-noticeitem__text">{item.message}</span>
+                    {item.action ? (
+                      <button
+                        type="button"
+                        className="mc-noticeitem__action"
+                        onClick={item.action.run}
+                      >
+                        {item.action.label}
+                      </button>
+                    ) : null}
+                  </div>
+                ) : item.kind === "error" ? (
+                  <div key={item.key} className="mc-erritem" role="alert">
+                    <LuCircleAlert size={15} className="mc-erritem__icon" />
+                    <span className="mc-erritem__text">{item.message}</span>
+                  </div>
+                ) : item.role === "user" ? (
+                  <UserBubble
+                    key={item.key}
+                    content={item.content}
+                    images={item.images}
+                    navKey={item.key}
+                    messageIndex={item.messageIndex}
+                    checkpointId={item.checkpointId}
+                    checkpointHasSnapshot={item.checkpointHasSnapshot}
+                    onRewind={
+                      onRewindCheckpoint
+                        ? (checkpointId) => {
+                            // 自动点挂在消息上：有快照走预览（both），否则直接仅对话回滚
+                            void onRewindCheckpoint(checkpointId, "both");
+                          }
+                        : undefined
+                    }
+                  />
+                ) : (
+                  <AssistantMessage
+                    key={item.key}
+                    content={item.content}
+                    thinking={item.thinking}
+                    messageIndex={item.messageIndex}
+                  />
+                ),
+              )}
+              {preparingTool ? (
+                // 参数还在流式生成：先占一条工具行，明确告诉用户正在写入/修改文件
+                <ToolRow
+                  key="__preparing_file__"
+                  item={{
+                    kind: "tool",
+                    key: "__preparing_file__",
+                    callId: "__preparing_file__",
+                    tool: preparingTool.tool,
+                    input: (() => {
+                      const target = preparingTool.path ?? preparingTool.fallbackPath;
+                      return target ? { path: target } : {};
+                    })(),
+                  }}
                 />
-              ) : item.kind === "tool" ? (
-                (() => {
-                  const agent =
-                    item.tool === "task" ? subagentsByCallId?.[item.callId] : undefined;
-                  return agent && onOpenSubagent ? (
-                    <TaskToolRow key={item.key} item={item} agent={agent} onOpen={onOpenSubagent} />
-                  ) : (
-                    <ToolRow key={item.key} item={item} />
-                  );
-                })()
-              ) : item.kind === "notice" ? (
-                <div key={item.key} className="mc-noticeitem" role="status">
-                  <LuInfo size={15} className="mc-noticeitem__icon" />
-                  <span className="mc-noticeitem__text">{item.message}</span>
-                </div>
-              ) : item.kind === "error" ? (
-                <div key={item.key} className="mc-erritem" role="alert">
-                  <LuCircleAlert size={15} className="mc-erritem__icon" />
-                  <span className="mc-erritem__text">{item.message}</span>
-                </div>
-              ) : item.role === "user" ? (
-                <UserBubble key={item.key} content={item.content} images={item.images} />
-              ) : (
-                <AssistantMessage
-                  key={item.key}
-                  content={item.content}
-                  thinking={item.thinking}
-                  streaming={item.streaming}
-                  // 工具参数生成中：末条助手消息不再显示空白正文的闪动光标
-                  preparing={Boolean(
-                    (preparing || preparingTool) && itemIndex === items.length - 1,
-                  )}
-                />
-              ),
-            )}
-            {preparingTool ? (
-              // 参数还在流式生成：先占一条工具行，明确告诉用户正在写入/修改文件
-              <ToolRow
-                key="__preparing_file__"
-                item={{
-                  kind: "tool",
-                  key: "__preparing_file__",
-                  callId: "__preparing_file__",
-                  tool: preparingTool.tool,
-                  input: (() => {
-                    const target = preparingTool.path ?? preparingTool.fallbackPath;
-                    return target ? { path: target } : {};
-                  })(),
-                }}
-              />
-            ) : null}
-            {preparingTool ? null : preparing || waiting ? (
-              <div
-                className="mc-waiting"
-                role="status"
-                aria-label={preparing ?? "等待模型响应"}
-              >
-                <span className="mc-waiting__text">{preparing ?? "等待模型响应"}</span>
-                <span className="mc-waiting__dots" aria-hidden="true">
-                  <i />
-                  <i />
-                  <i />
-                </span>
-              </div>
-            ) : null}
-          </div>
-        )}
+              ) : null}
+              {statusLine.visible ? <AssistantStatusLine status={statusLine.status} /> : null}
+            </div>
+          )}
+        </div>
       </div>
+      {userNavItems.length >= 2 ? (
+        <MessageNavigator scrollRef={scrollRef} messages={userNavItems} />
+      ) : null}
     </div>
   );
 }

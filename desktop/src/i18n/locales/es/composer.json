@@ -1,0 +1,213 @@
+{
+  "image": {
+    "readFailed": "No se pudo leer la imagen",
+    "unsupported": "Formato de imagen no compatible: {{type}}",
+    "tooLarge": "Imagen demasiado grande: {{name}} sigue superando los 2 MB tras comprimirla. Recórtala o reduce la resolución primero.",
+    "maxCount_one": "Solo puedes adjuntar {{count}} imagen por mensaje",
+    "maxCount_few": "Puedes adjuntar como máximo {{count}} imágenes por mensaje",
+    "maxCount_many": "Puedes adjuntar como máximo {{count}} imágenes por mensaje",
+    "maxCount_other": "Puedes adjuntar como máximo {{count}} imágenes por mensaje",
+    "onlyImages": "Solo se pueden adjuntar archivos de imagen",
+    "fallbackName": "Imagen"
+  },
+  "file": {
+    "pathFailed": "No se pudo leer la ruta del archivo: {{name}}",
+    "skipped": "Se omitió un archivo o carpeta vacíos: {{name}}"
+  },
+  "plugin": {
+    "loadFailed": "Error al cargar: {{error}}",
+    "local": "Plugin local"
+  },
+  "permission": {
+    "title": "Permisos de herramientas",
+    "readOnly": {
+      "label": "Solo lectura",
+      "desc": "Permite leer archivos, buscar y usar el navegador; prohíbe escribir, modificar archivos y ejecutar comandos"
+    },
+    "ask": {
+      "label": "Preguntar siempre",
+      "desc": "Pide confirmación antes de escribir, modificar archivos o ejecutar comandos"
+    },
+    "auto": {
+      "label": "Automático en el espacio de trabajo",
+      "desc": "Las escrituras, modificaciones y comandos de desarrollo habituales dentro del espacio de trabajo se ejecutan automáticamente; el acceso a credenciales, la descarga y ejecución, los ajustes del sistema, la publicación/despliegue, los comandos git destructivos y las rutas externas siguen pidiendo confirmación"
+    },
+    "full": {
+      "label": "Acceso completo",
+      "desc": "Lee y escribe archivos en todo el equipo y ejecuta todas las herramientas automáticamente"
+    }
+  },
+  "slash": {
+    "plan": {
+      "label": "Modo plan",
+      "desc": "Investigación de solo lectura; escribe el plan de implementación en un documento bajo plans/ y espera tu confirmación"
+    },
+    "goal": {
+      "label": "Modo objetivo",
+      "desc": "Avanza de forma continua hacia el objetivo y sigue el progreso con update_plan"
+    },
+    "exit": "Salir de {{mode}}",
+    "menuAria": "Comandos",
+    "group": {
+      "mode": "Modos",
+      "command": "Comandos",
+      "plugin": "Plugins",
+      "skill": "Habilidades"
+    }
+  },
+  "mode": {
+    "plan": "Modo plan",
+    "goal": "Modo objetivo",
+    "exitAria": "{{mode}}, haz clic para salir",
+    "exitTitle": "Haz clic para salir de este modo"
+  },
+  "project": {
+    "menuAria": "Cambiar de proyecto",
+    "search": "Buscar proyectos",
+    "empty": "Ningún proyecto coincide",
+    "new": "Nuevo proyecto",
+    "remove": "Quitar de la lista",
+    "pickWorkspace": "Seleccionar espacio de trabajo"
+  },
+  "mention": {
+    "aria": "Referenciar archivos del espacio de trabajo",
+    "back": "Subir un nivel",
+    "root": "Raíz del espacio de trabajo",
+    "refresh": "Actualizar lista",
+    "loadFailed": "Error de lectura",
+    "loading": "Cargando…",
+    "dirFailed": "No se puede leer la carpeta",
+    "noMatch": "Ningún archivo coincide",
+    "emptyDir": "Esta carpeta está vacía"
+  },
+  "queue": {
+    "recoveredAria": "Mensajes sin enviar de la última vez",
+    "recoveredHead": "Sin enviar al cerrar la última vez",
+    "sendAsNew": "Enviar como mensaje nuevo",
+    "send": "Enviar",
+    "discardTitle": "Descartar este mensaje",
+    "discard": "Descartar",
+    "pendingAria": "Mensajes en cola",
+    "steerTitle": "Detener la respuesta actual y enviar este mensaje ahora",
+    "steer": "Interrumpir ahora",
+    "removeTitle": "Quitar de la cola",
+    "remove": "Eliminar"
+  },
+  "plan": {
+    "answerAria": "Responder a la pregunta",
+    "answerSubMultiple": "Elige una respuesta o escríbela abajo · pasa sola a la siguiente pregunta",
+    "answerSub": "Elige una respuesta o escríbela abajo",
+    "answerPlaceholder": "Otra idea — pulsa Enter para la siguiente pregunta",
+    "prev": "Anterior",
+    "skipRest": "Omitir el resto",
+    "unanswered": "(sin responder)",
+    "confirmAria": "Confirmar plan",
+    "exit": "Salir del modo plan",
+    "confirmTitle": "¿Ejecutar según este plan?",
+    "confirmSub": "Tras confirmar, ejecutaré este plan y generaré el resultado",
+    "start": "Empezar a ejecutar",
+    "adjustPlaceholder": "Ajusta el plan — dime qué cambiar",
+    "sendAdjust": "Enviar ajuste",
+    "adjustPrompt": "Ajusta el plan; tras enviarlo, el modelo seguirá modificándolo…"
+  },
+  "branch": {
+    "detached": "detached HEAD · haz clic para cambiar de rama",
+    "current": "Rama actual {{name}} · haz clic para cambiar",
+    "search": "Buscar ramas",
+    "listAria": "Lista de ramas",
+    "loading": "Leyendo ramas…",
+    "noMatch": "Ninguna rama coincide",
+    "empty": "Este repositorio aún no tiene ramas",
+    "stashSwitch": "Guardar cambios locales y cambiar",
+    "openGit": "Abrir control de código fuente"
+  },
+  "worktree": {
+    "locked": "Esta sesión ya se ejecuta en su propio worktree",
+    "hint": "Iniciar esta conversación en un worktree de git aparte; los cambios sin confirmar no se trasladan"
+  },
+  "input": {
+    "placeholder": {
+      "setup": "Completa la configuración primero",
+      "compacting": "Comprimiendo el historial de la conversación; podrás enviar cuando termine",
+      "streaming": "Escribe y pulsa Enter para poner en cola",
+      "default": "Escribe @ para referenciar archivos del proyecto; puedes arrastrar imágenes o cualquier archivo (incluso fuera del espacio de trabajo)"
+    },
+    "polishing": "La IA está puliendo"
+  },
+  "action": {
+    "more": "Más acciones",
+    "moreTitle": "Añadir adjuntos / cambiar de modo",
+    "plusMenuAria": "Añadir, referenciar y comandos",
+    "upload": "Subir adjunto",
+    "plugins": "Plugins",
+    "pluginsCount": "Plugins ({{count}})",
+    "skills": "Habilidades",
+    "skillsCount": "Habilidades ({{count}})",
+    "installing": "Instalando…",
+    "polish": "Pulir prompt",
+    "send": "Enviar",
+    "stop": "Detener"
+  },
+  "attach": {
+    "listAria": "Imágenes por enviar",
+    "removeImageAria": "Quitar imagen",
+    "remove": "Quitar"
+  },
+  "chip": {
+    "listAria": "Habilidades, plugins y adjuntos referenciados",
+    "remove": "Quitar {{name}}"
+  },
+  "agent": {
+    "title": "Agente principal: {{name}}"
+  },
+  "polish": {
+    "discarded": "La entrada cambió, así que se descartó el resultado pulido.",
+    "failed": "No se pudo pulir el prompt: {{error}}"
+  },
+  "ctx": {
+    "title": "Uso del contexto",
+    "close": "Cerrar",
+    "used": "Usado",
+    "windowUnset": "ventana no definida",
+    "categories": {
+      "system": "Prompt del sistema",
+      "tools": "Herramientas del sistema",
+      "skills": "Habilidades ({{count}})",
+      "messages": "Mensajes",
+      "other": "Otros"
+    },
+    "hint": "La compresión agrupa los turnos anteriores en un resumen; el historial en pantalla y el archivo de la sesión se conservan completos.",
+    "compacting": "Comprimiendo…",
+    "compact": "Comprimir contexto ahora",
+    "cache": {
+      "stateLabel": "Caché",
+      "stateWarm": "Caliente",
+      "stateCold": "Frío",
+      "stateEvicted": "Desalojada",
+      "stateUnsupported": "No compatible",
+      "stateUnknown": "Desconocido",
+      "roundLabel": "Última",
+      "round": "lectura {{read}} · escritura {{write}}",
+      "busts": "Posible fallo de caché",
+      "bustTitle": "Se leyeron ~{{drop}} tokens menos que en la ronda anterior: prefijo reescrito o caché desalojada",
+      "reasonPrefixChanged": "Prefijo cambiado (catálogo de herramientas / prompt del sistema reescrito)",
+      "reasonFirstRequest": "Primera solicitud (arranque en frío)",
+      "reasonIdleExceededTtl": "Inactivo más allá del TTL de caché",
+      "reasonNotReported": "El proveedor no reportó detalles de caché",
+      "reasonBelowGranularity": "Entrada por debajo de la longitud mínima almacenable en caché",
+      "reasonCacheMiss": "Fallo de caché"
+    }
+  },
+  "effort": {
+    "default": "Predeterminado",
+    "off": "Desactivado",
+    "on": "Activado",
+    "minimal": "Mínimo",
+    "low": "Bajo",
+    "medium": "Medio",
+    "high": "Alto",
+    "xhigh": "Muy alto",
+    "max": "Máximo",
+    "ultra": "Ultra"
+  }
+}

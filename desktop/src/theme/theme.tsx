@@ -6,6 +6,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { useTranslation } from "react-i18next";
 import type { ThemePreference } from "../api";
 
 export type ResolvedTheme = "light" | "dark";
@@ -90,6 +91,8 @@ export function ThemeProvider({
 
 export function useTheme(): ThemeContextValue {
   const context = useContext(ThemeContext);
-  if (!context) throw new Error("useTheme 必须在 ThemeProvider 内使用");
+  // 内部约定被破坏时的开发期报错；放在这里取译文，避免模块顶层求值
+  const { t } = useTranslation("shell");
+  if (!context) throw new Error(t("theme.providerMissing"));
   return context;
 }

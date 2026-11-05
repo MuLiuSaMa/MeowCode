@@ -85,6 +85,18 @@
   --win-close-hover: #c42b1c;
   --win-close-fg: #ffffff;
 
+  /* ---- 语法高亮（code-highlight.css 消费；hljs-* 类只做映射，颜色全在这里配） ----
+     品牌底色黑白灰：关键字紫 / 字符串绿 / 数字橙 / 函数青 / 类型黄 / 标签红，
+     变量与属性保持近前景的中性亮色（GitHub-dark 的做法），注释纯灰。 */
+  --code-tok-keyword: #c678dd;
+  --code-tok-string: #98c379;
+  --code-tok-number: #d19a66;
+  --code-tok-comment: #6e7681;
+  --code-tok-function: #56b6c2;
+  --code-tok-type: #e5c07b;
+  --code-tok-tag: #e06c75;
+  --code-tok-attr: #cccccc;
+
   /*
    * Codex 风蓝紫强调色 —— 只用在「思考强度」滑杆上。
    * 蓝 #0c77ff 与紫罗兰渐变都是从参考图里直接取样的。
@@ -124,8 +136,11 @@
   --shadow-lg: 0 16px 48px -12px rgb(0 0 0 / 0.65);
 
   /* ---- typography ---- */
-  --font-sans: "MiSans", "PingFang SC", "Microsoft YaHei", "Segoe UI", system-ui, -apple-system, sans-serif;
-  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", "MiSans", monospace;
+  /* --font-app / --font-code 由外观设置写入（界面 / 代码字体选择）；不设置时走各自回退栈 */
+  /* MiSans 只有 CJK + 拉丁；日语假名、韩语、西里尔、天城文（印地语）靠栈尾按字符回退。
+     注意别动下面三个 --fw-*：那是按 MiSans wght 轴（Regular=330）校准出来的 */
+  --font-sans: var(--font-app, "MiSans"), "PingFang SC", "Microsoft YaHei", "Segoe UI", "Nirmala UI", "Yu Gothic UI", "Malgun Gothic", "Noto Sans", system-ui, -apple-system, sans-serif;
+  --font-mono: var(--font-code, ui-monospace), SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", "MiSans", monospace;
   --fw-normal: 380;
   --fw-medium: 450;
   --fw-semibold: 520;
@@ -203,6 +218,16 @@
   --diff-del-surface: rgba(224 47 47 / 0.12);
   --win-close-hover: #c42b1c;
   --win-close-fg: #ffffff;
+
+  /* ---- 语法高亮（亮色：One Light 系，压暗保对比度） ---- */
+  --code-tok-keyword: #a626a4;
+  --code-tok-string: #50a14f;
+  --code-tok-number: #b76b01;
+  --code-tok-comment: #a0a1a7;
+  --code-tok-function: #0b8f8f;
+  --code-tok-type: #c18401;
+  --code-tok-tag: #e45649;
+  --code-tok-attr: #383a42;
   --accent: #0c77ff;
   --accent-violet: #8a69fd;
   --accent-gradient: linear-gradient(

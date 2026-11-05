@@ -1,0 +1,232 @@
+{
+  "rail": {
+    "home": "Home",
+    "architecture": "Agent architecture",
+    "git": "Git",
+    "plugins": "Marketplace",
+    "settings": "Settings"
+  },
+  "update": {
+    "downloadingPercent": "Downloading the new version {{percent}}%",
+    "downloading": "Downloading the new version",
+    "dismiss": "Dismiss",
+    "restart": "Restart and install update",
+    "failedAria": "Automatic download failed, click to download manually",
+    "failedTitle": "Automatic download failed, click to download manually"
+  },
+  "window": {
+    "minimize": "Minimize",
+    "restore": "Restore",
+    "maximize": "Maximize",
+    "close": "Close"
+  },
+  "approval": {
+    "title": "Permission required",
+    "requestSubagent": "Subagent \"{{name}}\" wants to use {{tool}}.",
+    "requestApp": "MeowCode wants to use {{tool}}.",
+    "stale": "The file changed during approval. The preview below was regenerated, please confirm again.",
+    "risk": "High-risk command",
+    "diff": "Proposed changes",
+    "deny": "Deny",
+    "approve": "Allow",
+    "hookTitle": "Hook wants to run a command",
+    "hookRequest": "Event: {{event}}",
+    "hookFromAgent": "Requested by subagent \"{{name}}\"",
+    "hookMatcher": "Matcher: {{matcher}}",
+    "hookSource": "Config: {{source}}",
+    "hookNote": "This command runs with your user permissions. Approval is remembered for this session only.",
+    "hookRun": "Run",
+    "hookSkip": "Skip",
+    "hookReasonTitle": "Hook requires confirmation",
+    "sandboxTitle": "The sandbox blocked this write",
+    "sandboxDesc": "The command tried to write outside the workspace and was stopped by the OS-level write sandbox.",
+    "sandboxCommand": "Blocked command",
+    "sandboxEvidence": "Sandbox evidence",
+    "sandboxNote": "Retrying outside the sandbox runs this command with your user privileges. This allows one attempt only and does not disable the sandbox.",
+    "sandboxDeny": "Keep sandbox",
+    "sandboxRetry": "Retry outside sandbox"
+  },
+  "plan": {
+    "aria": "Task plan",
+    "expand": "Expand task plan",
+    "collapse": "Collapse task plan",
+    "allDone": "All tasks completed",
+    "endedHeadline": "The plan has ended",
+    "ended": "Ended",
+    "status": {
+      "pending": "Pending",
+      "inProgress": "In progress",
+      "completed": "Completed",
+      "cancelled": "Cancelled"
+    },
+    "confirmedWithPath": "The plan is confirmed. Start implementing it from {{path}}.",
+    "confirmed": "The plan is confirmed. Start implementing it.",
+    "stepsProgress": "Steps {{done}} / {{total}}",
+    "filesChanged": "{{n}} file(s) changed"
+  },
+  "status": {
+    "preparingSubagents_one": "Preparing {{count}} subagent…",
+    "preparingSubagents_few": "Preparing {{count}} subagents…",
+    "preparingSubagents_many": "Preparing {{count}} subagents…",
+    "preparingSubagents_other": "Preparing {{count}} subagents…",
+    "preparingWrites": "Writing file…",
+    "preparingEdits": "Editing file…",
+    "preparingTools_one": "Preparing {{count}} tool call…",
+    "preparingTools_few": "Preparing {{count}} tool calls…",
+    "preparingTools_many": "Preparing {{count}} tool calls…",
+    "preparingTools_other": "Preparing {{count}} tool calls…"
+  },
+  "notice": {
+    "interrupted": "The previous generation was interrupted when the app quit. The generated content was kept, so you can continue.",
+    "updateAvailable": "New version {{version}} available",
+    "updateNow": "Update now",
+    "subagentInterrupted": "This subagent's turn was interrupted. The generated content was kept.",
+    "cacheEvicted": "The server may have evicted the cache (idle longer than the declared TTL), so this turn was billed as a cache miss.",
+    "cacheUnsupported": "This gateway returned no cache hit for an unchanged prefix and may not support prompt caching, so cost is calculated on the full input.",
+    "providerSwitched": "Provider switched temporarily: {{from}} → {{to}} ({{reason}}). You can reorder providers in Settings → Models.",
+    "undoableRewind": "Rewound {{count}} files; this rewind can still be undone (the original session is kept).",
+    "undoRewind": "Undo rewind",
+    "dismiss": "Dismiss"
+  },
+  "subagent": {
+    "label": "Subagent",
+    "loadFailed": "Could not load the subagent transcript",
+    "steerAborted": "Message not delivered: the subagent stopped",
+    "steerFinished": "Message not delivered: the subagent already finished",
+    "status": {
+      "completed": "Completed",
+      "failed": "Failed",
+      "aborted": "Stopped",
+      "interrupted": "Interrupted"
+    },
+    "notice": "Subagent \"{{name}}\" {{status}}",
+    "noticeWithReport": "Subagent \"{{name}}\" {{status}}: {{report}}"
+  },
+  "error": {
+    "reason": {
+      "timeout": "request timed out",
+      "rateLimit": "rate limit hit",
+      "server": "server error"
+    },
+    "worktreeLoad": "The worktree session failed to load after being created. Please try again.",
+    "notGitRepo": "The current workspace is not a git repository, so worktree isolation is unavailable."
+  },
+  "toast": {
+    "worktreeDirty": "The main workspace has uncommitted changes: worktrees start from HEAD, so those changes are not carried over"
+  },
+  "architecture": {
+    "customName": "Custom agent"
+  },
+  "model": {
+    "unconfigured": "No model configured"
+  },
+  "resize": {
+    "list": "Resize the left list",
+    "inspector": "Resize the right panel"
+  },
+  "theme": {
+    "providerMissing": "useTheme must be used inside a ThemeProvider"
+  },
+  "updateModal": {
+    "currentVersion": "Current {{version}}",
+    "noAsset": "This release does not include an installer for your platform, so it cannot be downloaded online.",
+    "noNotes": "This release has no release notes.",
+    "downloadDone": "Download complete",
+    "downloading": "Downloading {{percent}}%",
+    "downloadSize": " ({{received}} / {{total}})",
+    "later": "Later",
+    "restart": "Restart to update",
+    "cancel": "Cancel",
+    "downloadingShort": "Downloading…",
+    "download": "Download update"
+  },
+  "modelPopover": {
+    "aria": "Model and thinking effort",
+    "selectModel": "Select model",
+    "empty": "No models are enabled. Add one in Settings → Models.",
+    "manage": "Manage models",
+    "back": "Back to model list",
+    "effort": "Thinking effort"
+  },
+  "taskRow": {
+    "status": {
+      "running": "Running",
+      "completed": "Completed",
+      "failed": "Failed",
+      "aborted": "Stopped",
+      "interrupted": "Interrupted"
+    },
+    "background": "Background",
+    "open": "Open subagent: {{name}}",
+    "durationUnderSecond": "<1s",
+    "durationSeconds": "{{value}}s",
+    "durationMinutes": "{{minutes}}m {{seconds}}s"
+  },
+  "closeDialog": {
+    "title": "What should MeowCode do when you close the window?",
+    "desc": "MeowCode will keep running in the background. You can reopen it from the system tray.",
+    "remember": "Remember my choice (change it in Settings → General)",
+    "cancel": "Cancel",
+    "tray": "Minimize to tray",
+    "quit": "Close completely"
+  },
+  "contextWarning": {
+    "usage": "Context is <b>{{percent}}%</b> full ({{used}} / {{window}}).",
+    "hintStreaming": " You can compact manually after this turn to avoid automatic compaction when the next request overflows.",
+    "hint": " Compacting manually is recommended to avoid automatic compaction when the next request overflows.",
+    "compacting": "Compacting…",
+    "compactAfterTurn": "Compact after this turn",
+    "compactNow": "Compact now",
+    "dismissAria": "Dismiss compaction hint",
+    "dismissTitle": "Don't show again"
+  },
+  "compaction": {
+    "compacting": "Compacting conversation history…",
+    "interrupted": "The last compaction was interrupted when the app quit",
+    "failed": "The last compaction failed; history was not compacted",
+    "done": "Conversation history compacted; earlier messages are kept as a summary"
+  },
+  "messageNav": {
+    "aria": "Conversation navigation",
+    "noText": "(No text)",
+    "itemTitle": "Message {{index}}: {{preview}}",
+    "images_one": "{{count, number}} image",
+    "images_few": "{{count, number}} images",
+    "images_many": "{{count, number}} images",
+    "images_other": "{{count, number}} images"
+  },
+  "agentProfile": {
+    "aria": "Main agent profile",
+    "customDesc": "Custom architecture · Uses the current profile's capabilities",
+    "dispatchable_one": "{{tagline}} · Can dispatch {{count, number}} subagent",
+    "dispatchable_few": "{{tagline}} · Can dispatch {{count, number}} subagents",
+    "dispatchable_many": "{{tagline}} · Can dispatch {{count, number}} subagents",
+    "dispatchable_other": "{{tagline}} · Can dispatch {{count, number}} subagents"
+  },
+  "contextMeter": {
+    "usage": "Context {{used}} / {{window}} ({{percent}}%)",
+    "noWindow": "No context window set",
+    "aria": "Context usage"
+  },
+  "bootSplash": {
+    "aria": "Starting MeowCode"
+  },
+  "island": {
+    "connecting": "Connecting…",
+    "running": "{{n}} session(s) running",
+    "waitingApproval": "Waiting for approval",
+    "idle": "Idle",
+    "approvalHint": "Waiting for approval",
+    "thinking": "Thinking…",
+    "working": "Working…",
+    "hadError": "Something went wrong",
+    "untitled": "Untitled session",
+    "empty": "No messages yet",
+    "stop": "Stop",
+    "send": "Send",
+    "openMain": "Open main window",
+    "inputPlaceholder": "Type a message, Enter to send",
+    "inputIdle": "This session is not running. Open it in the main window to continue.",
+    "dropHint": "Drop to attach"
+  }
+}

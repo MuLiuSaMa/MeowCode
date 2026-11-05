@@ -1,6 +1,8 @@
 import { promises as fs, type Dirent } from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { createJiti, type Jiti } from "jiti";
+import { builtinMeta, iconSvgToDataUrl } from "./builtin-meta.js";
 import type { PluginRegistry } from "./registry.js";
 import type { PluginDescriptor, PluginFactory, PluginLoadError, PluginSource } from "./types.js";
 
@@ -10,6 +12,38 @@ const PLUGIN_EXTENSIONS = new Set([".ts", ".mts", ".js", ".mjs", ".cjs"]);
 const INDEX_CANDIDATES = ["index.ts", "index.mts", "index.js", "index.mjs", "index.cjs"];
 /** 跳过的文件：类型声明与测试文件不作为插件 */
 const IGNORED_BASENAMES = /\.(d\.ts|test\.tsx?|spec\.tsx?)$/i;
+
+/**
+ * 内置插件根目录：与 loader 同级的 builtin/（src 与 dist 的目录布局一致，
+ * 开发期跑 src、生产跑 dist 都能解析到）。可用 MEOWCODE_BUILTIN_PLUGINS_DIR
+ * 覆盖（测试隔离 / 打包布局特殊时）。同 id 时 project > user > builtin。
+ */
+function builtinPluginsDir(): string {
+  return (
+    process.env.MEOWCODE_BUILTIN_PLUGINS_DIR ||
+    path.join(path.dirname(fileURLToPath(import.meta.url)), "builtin")
+  );
+}
+
+/** 来源优先级：数字大的遮蔽数字小的。 */
+const SOURCE_RANK: Record<PluginSource, number> = { project: 3, user: 2, builtin: 1 };
+
+/**
+ * 目录型插件是否自带 UI 面板：`<插件目录>/ui/index.html`。
+ * 面板由渲染层用 iframe 加载（服务端走 `/plugin-ui/<id>/...`）。
+ */
+async function detectPluginUi(entryFile: string): Promise<{ title: string; entry: string } | null> {
+  try {
+    const dir = path.dirname(entryFile);
+    const uiDir = path.join(dir, "ui");
+    const entry = path.join(uiDir, "index.html");
+    const stats = await fs.stat(entry);
+    if (!stats.isFile()) return null;
+    return { title: path.basename(dir), entry: "index.html" };
+  } catch {
+    return null;
+  }
+}
 
 export type DiscoveredPlugin = { id: string; path: string; source: PluginSource };
 export type DiscoveryRoot = { dir: string; source: PluginSource };
@@ -91,21 +125,21 @@ export async function discoverPlugins(
         const item: DiscoveredPlugin = { id, path: full, source };
         const existing = byId.get(id);
         if (!existing) byId.set(id, item);
-        else if (existing.source === "project" && source === "user") shadowed.push(item);
+        else if (SOURCE_RANK[existing.source] > SOURCE_RANK[source]) shadowed.push(item);
       } else if (entry.isDirectory()) {
         const entryFile = await resolveDirectoryEntry(full);
         if (!entryFile) continue;
         const item: DiscoveredPlugin = { id: entry.name, path: entryFile, source };
         const existing = byId.get(entry.name);
         if (!existing) byId.set(entry.name, item);
-        else if (existing.source === "project" && source === "user") shadowed.push(item);
+        else if (SOURCE_RANK[existing.source] > SOURCE_RANK[source]) shadowed.push(item);
       }
     }
   }
 
-  // project 按文件名字典序、再 user，保证加载顺序确定
+  // project 先于 user 先于 builtin，同级按文件名字典序，保证加载顺序确定
   const plugins = [...byId.values()].sort((a, b) => {
-    if (a.source !== b.source) return a.source === "project" ? -1 : 1;
+    if (a.source !== b.source) return SOURCE_RANK[b.source] - SOURCE_RANK[a.source];
     return a.id.localeCompare(b.id);
   });
   return { plugins, shadowed };
@@ -132,6 +166,7 @@ export async function loadPlugins(options: LoadPluginsOptions): Promise<{
   const disabled = new Set(options.disabled ?? []);
 
   const { plugins, shadowed } = await discoverPlugins([
+    { dir: builtinPluginsDir(), source: "builtin" },
     { dir: projectDir, source: "project" },
     { dir: userDir, source: "user" },
   ]);
@@ -140,12 +175,14 @@ export async function loadPlugins(options: LoadPluginsOptions): Promise<{
   const errors: PluginLoadError[] = [];
 
   for (const item of shadowed) {
+    const shadower =
+      item.source === "builtin" ? "a user or project plugin" : "a project plugin";
     descriptors.push({
       id: item.id,
       path: item.path,
       source: item.source,
       enabled: false,
-      error: "shadowed by project plugin with the same id",
+      error: `shadowed by ${shadower} with the same id`,
     });
   }
 
@@ -156,8 +193,22 @@ export async function loadPlugins(options: LoadPluginsOptions): Promise<{
       source: item.source,
       enabled: !disabled.has(item.id),
     };
+    // 内置插件：填 manifest 元数据（显示名 / 介绍 / 图标 dataUrl），
+    // UI 不再退化成字母兜底图标 + 「暂无介绍」
+    if (item.source === "builtin") {
+      const meta = builtinMeta(item.id);
+      if (meta) {
+        descriptor.displayName = meta.displayName;
+        descriptor.description = meta.description;
+        descriptor.iconUrl = iconSvgToDataUrl(meta.iconSvg);
+      }
+    }
     descriptors.push(descriptor);
     if (!descriptor.enabled) continue;
+
+    // 目录型插件可以带 ui/index.html：登记成右侧面板（单文件插件没有目录，自然没有 UI）
+    const ui = await detectPluginUi(item.path);
+    if (ui) descriptor.ui = { panel: ui };
 
     options.registry.addPlugin(item.id, item.source, item.path);
     try {

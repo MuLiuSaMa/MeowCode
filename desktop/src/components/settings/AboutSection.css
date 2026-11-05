@@ -1,0 +1,178 @@
+/* 关于页：Logo 居中 + 版本/作者/官网/仓库 + 鸣谢卡片 */
+.mc-about {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  max-width: 640px;
+}
+
+.mc-about__head {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 0 2px;
+}
+
+.mc-about__logo {
+  width: 76px;
+  height: 76px;
+  border-radius: 18px;
+  object-fit: contain;
+  /* 图标自带圆角与底色：只加一点点阴影，别在浅色主题下糊成一团 */
+  filter: drop-shadow(0 6px 16px rgb(0 0 0 / 0.22));
+}
+
+/* 文字 Logo：和左上角标题栏同一份资源（2217×377），按高度给宽 */
+.mc-about__wordmark {
+  height: 26px;
+  width: auto;
+  user-select: none;
+}
+
+.mc-about__rows {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  /* 行内边距由 FieldRow 自己给（12/16），这里只留 2px 避免上下边贴太紧 */
+  padding: 2px 0;
+}
+/* 链接可能很长：允许收缩换行，别把卡片顶破 */
+.mc-about__rows .mc-fieldrow__control {
+  flex-shrink: 1;
+  min-width: 0;
+}
+
+.mc-about__value {
+  font-size: var(--fs-sm);
+  color: var(--fg-subtle);
+}
+
+.mc-about__version {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.mc-about__check {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 9px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--fg);
+  font-family: inherit;
+  font-size: var(--fs-xs);
+  cursor: pointer;
+  transition: background-color var(--dur) var(--ease), color var(--dur) var(--ease);
+}
+.mc-about__check:hover:not(:disabled) {
+  background: var(--surface-hover);
+}
+.mc-about__check:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+/* 查到新版本：按钮换成醒目的警示橙，点击弹出更新窗口 */
+.mc-about__check[data-found] {
+  gap: 4px;
+  border-color: color-mix(in oklab, var(--warning) 55%, transparent);
+  background: var(--warning-surface);
+  color: var(--warning);
+  font-weight: var(--fw-medium);
+}
+.mc-about__check[data-found]:hover {
+  background: color-mix(in oklab, var(--warning) 22%, transparent);
+}
+
+.mc-about__link {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--fg);
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  text-decoration: underline;
+  text-decoration-color: var(--border-strong);
+  text-underline-offset: 3px;
+  cursor: pointer;
+  text-align: right;
+  overflow-wrap: anywhere;
+  transition: text-decoration-color var(--dur) var(--ease);
+}
+.mc-about__link:hover {
+  text-decoration-color: var(--fg);
+}
+
+.mc-about__loading {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: var(--fs-base);
+  color: var(--fg-subtle);
+}
+
+/* 鸣谢：与版本信息同款卡片（mc-about__rows），左侧项目名、右侧仓库地址 */
+.mc-about__thankstitle {
+  margin: 0;
+  padding: 12px 16px 4px;
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+  color: var(--fg-subtle);
+}
+
+/* 赞助：接在鸣谢下面，同款卡片里并排两张收款码 */
+.mc-about__sponsorhint {
+  margin: 0;
+  padding: 0 16px 6px;
+  font-size: var(--fs-xs);
+  color: var(--fg-subtlest);
+}
+
+.mc-about__qrcodes {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  padding: 6px 16px 14px;
+}
+
+.mc-about__qr {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 10px 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  transition: border-color var(--dur) var(--ease), background-color var(--dur) var(--ease);
+}
+.mc-about__qr:hover {
+  border-color: var(--border-strong);
+  background: var(--surface-hover);
+}
+
+/* 二维码必须留白底才扫得动：图片自带白底，圆角裁切即可 */
+.mc-about__qrimg {
+  width: 100%;
+  max-width: 168px;
+  aspect-ratio: 1 / 1;
+  object-fit: contain;
+  border-radius: var(--radius-sm);
+  background: #ffffff;
+  user-select: none;
+}
+
+.mc-about__qrname {
+  font-size: var(--fs-sm);
+  color: var(--fg);
+  line-height: var(--lh-tight);
+}

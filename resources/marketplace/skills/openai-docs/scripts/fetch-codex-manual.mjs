@@ -171,15 +171,20 @@ const requestManualWithFetch = async (url, { method, timeoutMs }) => {
     );
   }
 
-  return withTimeout(
-    (signal) =>
-      fetch(url, {
-        method,
-        headers: { "User-Agent": USER_AGENT },
-        signal,
-      }),
-    timeoutMs,
-  );
+  return withTimeout(async (signal) => {
+    const response = await fetch(url, {
+      method,
+      headers: { "User-Agent": USER_AGENT },
+      signal,
+    });
+    if (!response.ok || method === "HEAD") return response;
+    // Keep body reads inside both the timeout and transport fallback.
+    return makeResponse({
+      body: await response.text(),
+      headers: response.headers,
+      status: response.status,
+    });
+  }, timeoutMs);
 };
 
 const requestManual = async (url, { cacheDir, method, timeoutMs }) => {
@@ -426,52 +431,31 @@ const fetchCodexManual = async ({
   const outlinePath = outlineFilePath(resolvedCacheDir);
   const checkedAt = new Date().toISOString();
 
-  const cachedManual = await readCachedManual(resolvedCacheDir, expectedSha256);
-  if (cachedManual !== null) {
-    const outline = buildOutline(cachedManual);
-    const outlineText = outlineMarkdown(outline);
-    await writeOutline(resolvedCacheDir, outlineText);
+  let manualText = await readCachedManual(resolvedCacheDir, expectedSha256);
+  const cacheStatus = manualText === null ? "updated" : "hit";
+  if (manualText === null) {
+    const getResponse = await requestManual(manualUrl, {
+      cacheDir: resolvedCacheDir,
+      method: "GET",
+      timeoutMs,
+    });
+    const getHeaderSha256 = readHeaderSha(getResponse);
+    if (getHeaderSha256 !== expectedSha256) {
+      throw new ManualFetchError(
+        `${HASH_HEADER} changed between HEAD and GET for ${manualUrl}.`,
+      );
+    }
 
-    return {
-      outlineText,
-      status: {
-        manualUrl,
-        headerSha256: expectedSha256,
-        fetchedManualSha256: expectedSha256,
-        manualHashMatches: true,
-        cacheStatus: "hit",
-        cacheDir: resolvedCacheDir,
-        manualPath,
-        outlinePath,
-        checkedAt,
-        lineCount: outline.lineCount,
-        headingCount: outline.headingCount,
-      },
-    };
+    manualText = await getResponse.text();
+    if (sha256(manualText) !== expectedSha256) {
+      throw new ManualFetchError(
+        `${HASH_HEADER} did not match the fetched manual body for ${manualUrl}.`,
+      );
+    }
+
+    await writeCachedManual(resolvedCacheDir, manualText);
   }
 
-  const getResponse = await requestManual(manualUrl, {
-    cacheDir: resolvedCacheDir,
-    method: "GET",
-    timeoutMs,
-  });
-  const getHeaderSha256 = readHeaderSha(getResponse);
-  if (getHeaderSha256 !== expectedSha256) {
-    throw new ManualFetchError(
-      `${HASH_HEADER} changed between HEAD and GET for ${manualUrl}.`,
-    );
-  }
-
-  const manualText = await getResponse.text();
-  const actualSha256 = sha256(manualText);
-  const manualHashMatches = actualSha256 === expectedSha256;
-  if (!manualHashMatches) {
-    throw new ManualFetchError(
-      `${HASH_HEADER} did not match the fetched manual body for ${manualUrl}.`,
-    );
-  }
-
-  await writeCachedManual(resolvedCacheDir, manualText);
   const outline = buildOutline(manualText);
   const outlineText = outlineMarkdown(outline);
   await writeOutline(resolvedCacheDir, outlineText);
@@ -481,9 +465,9 @@ const fetchCodexManual = async ({
     status: {
       manualUrl,
       headerSha256: expectedSha256,
-      fetchedManualSha256: actualSha256,
-      manualHashMatches,
-      cacheStatus: "updated",
+      fetchedManualSha256: expectedSha256,
+      manualHashMatches: true,
+      cacheStatus,
       cacheDir: resolvedCacheDir,
       manualPath,
       outlinePath,

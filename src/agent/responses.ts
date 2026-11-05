@@ -1,4 +1,4 @@
-import { fetchWithRetry } from "./http.js";
+import { buildAuthHeaders, fetchWithRetry, mergeExtraHeaders, type AuthStyle } from "./http.js";
 import { parseJson, readSseFrames } from "./sse.js";
 import { ProviderRequestError } from "./provider-error.js";
 import { isToolCallComplete, summarizeToolCalls, type ToolCallProgress } from "./tool-progress.js";
@@ -132,6 +132,12 @@ type ResponsesChunk = {
 export async function streamResponses(options: {
   url: string;
   apiKey?: string;
+  /** 鉴权头风格；缺省用 OpenAI 系默认 Bearer */
+  authStyle?: AuthStyle;
+  /** 额外请求头（同名覆盖内置） */
+  extraHeaders?: Record<string, string>;
+  /** 额外请求体字段（展开合并进顶层） */
+  extraBody?: Record<string, unknown>;
   model: string;
   maxTokens?: number;
   reasoningEffort?: string;
@@ -156,6 +162,8 @@ export async function streamResponses(options: {
   signal?: AbortSignal;
   onDelta: (delta: string) => void;
   onThinking?: (delta: string) => void;
+  /** 流中实时用量（Responses 只在 response.completed 时给出，等价于尾块） */
+  onUsage?: (usage: TokenUsage) => void;
   onToolCall?: (progress: ToolCallProgress) => void;
   /** 流式中某个工具调用参数完整闭合时立即回调（实验：流中提前执行只读工具） */
   onToolCallComplete?: (call: ToolCall) => void;
@@ -166,11 +174,16 @@ export async function streamResponses(options: {
   /** 仅当本次请求被服务端 store:true 留存时返回；后续请求可用它续接增量链 */
   responseId?: string;
 }> {
-  const headers: Record<string, string> = { "content-type": "application/json" };
-  if (options.apiKey) headers.authorization = `Bearer ${options.apiKey}`;
-  // 会话亲和：与 prompt_cache_key 同源，让中间代理/网关按会话粘住缓存分片，
-  // 避免两个会话的前缀互相顶掉（部分代理只认 header 不认 body）。
-  if (options.promptCacheKey) headers["x-session-id"] = options.promptCacheKey;
+  const headers = mergeExtraHeaders(
+    {
+      "content-type": "application/json",
+      ...buildAuthHeaders(options.apiKey, options.authStyle, "bearer"),
+      // 会话亲和：与 prompt_cache_key 同源，让中间代理/网关按会话粘住缓存分片，
+      // 避免两个会话的前缀互相顶掉（部分代理只认 header 不认 body）。
+      ...(options.promptCacheKey ? { "x-session-id": options.promptCacheKey } : {}),
+    },
+    options.extraHeaders,
+  );
 
   const inc = options.incremental;
   const incrementalActive = Boolean(inc);
@@ -213,6 +226,8 @@ export async function streamResponses(options: {
           },
         }
       : {}),
+    // 用户自定义字段最后展开：同名覆盖内置，用于网关特有的开关
+    ...options.extraBody,
   });
 
   const doFetch = () =>
@@ -241,6 +256,7 @@ export async function streamResponses(options: {
   const toolCalls = new Map<string, ToolCall>();
   const completedCalls = new Set<string>();
   let usage: TokenUsage | undefined;
+  let reportedUsage: TokenUsage | undefined;
   let finishReason: string | undefined;
   let sawTerminal = false;
   // 只有 store:true 的成功请求才回传 responseId —— 调用方据此决定增量链是否延续
@@ -313,6 +329,15 @@ export async function streamResponses(options: {
           outputTokens: reported.output_tokens,
           ...(cachedTokens !== undefined ? { cacheReadTokens: cachedTokens } : {}),
         };
+        if (
+          reportedUsage === undefined ||
+          reportedUsage.inputTokens !== usage.inputTokens ||
+          reportedUsage.outputTokens !== usage.outputTokens ||
+          reportedUsage.cacheReadTokens !== usage.cacheReadTokens
+        ) {
+          reportedUsage = usage;
+          options.onUsage?.(usage);
+        }
       }
       if (incrementalActive && chunk.response?.id) {
         storedResponseId = chunk.response.id;

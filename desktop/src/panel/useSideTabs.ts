@@ -1,4 +1,6 @@
 import { useCallback, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
+import type { TFunction } from "i18next";
 
 /**
  * 右侧面板（RightPanel）的页签状态。
@@ -12,6 +14,7 @@ export type SideTab =
   | { id: string; kind: "browser"; title: string; url: string; agent?: boolean }
   | { id: string; kind: "workspace"; title: string; path?: string }
   | { id: string; kind: "review" | "sidechat" | "terminal" | "plan" | "subagents"; title: string }
+  | { id: string; kind: "plugin"; title: string; pluginId: string }
   | {
       id: string;
       kind: "subagent";
@@ -24,6 +27,7 @@ export type SideTab =
 
 export type SideTabOpen =
   | { kind: "browser"; url: string; title?: string }
+  | { kind: "plugin"; pluginId: string; title: string }
   | { kind: "workspace" | "review" | "sidechat" | "terminal" | "plan" | "subagents" };
 
 export type SubagentTabOpen = {
@@ -33,19 +37,23 @@ export type SubagentTabOpen = {
   description: string;
 };
 
-const HOME_TAB: SideTab = { id: "home", kind: "home", title: "新标签页" };
-
-const SINGLETON_TITLES: Record<
+/**
+ * 单例页签的标题只存 key：在 hook 里按当前语言查表后再交给渲染，
+ * 切语言即时刷新。用户数据（路径、网址、子 Agent 描述）仍存在 title 里。
+ */
+const SINGLETON_TITLE_KEYS: Record<
   "workspace" | "review" | "sidechat" | "terminal" | "plan" | "subagents",
   string
 > = {
-  workspace: "文件",
-  review: "审阅",
-  sidechat: "侧边聊天",
-  terminal: "终端",
-  plan: "计划",
-  subagents: "子 Agent",
+  workspace: "tabs.workspace",
+  review: "tabs.review",
+  sidechat: "tabs.sidechat",
+  terminal: "tabs.terminal",
+  plan: "tabs.plan",
+  subagents: "tabs.subagents",
 };
+
+const HOME_TAB: SideTab = { id: "home", kind: "home", title: "" };
 
 let tabSeq = 0;
 function nextTabId(kind: string): string {
@@ -58,7 +66,8 @@ function subagentTab(request: SubagentTabOpen) {
   return {
     id: `subagent-${request.agentId}`,
     kind: "subagent" as const,
-    title: description || "子 Agent",
+    // 描述是用户数据；为空时由标题表补「子 Agent」
+    title: description,
     agentId: request.agentId,
     parentSessionId: request.parentSessionId,
     ...(request.callId ? { callId: request.callId } : {}),
@@ -66,7 +75,23 @@ function subagentTab(request: SubagentTabOpen) {
   };
 }
 
+/** 查表补标题：单例页签按 kind 取 key，子 Agent 无描述时用兜底文案。 */
+function resolveTitle(tab: SideTab, t: TFunction<"panel">): SideTab {
+  if (tab.kind === "browser") return tab;
+  if (tab.kind === "subagent") return tab.title ? tab : { ...tab, title: t("tabs.subagent") };
+  if (tab.kind === "home") return { ...tab, title: t("tabs.home") };
+  // 插件页签的标题是插件名（用户数据），不参与 i18n
+  if (tab.kind === "plugin") return tab;
+  return { ...tab, title: t(SINGLETON_TITLE_KEYS[tab.kind]) };
+}
+
+/** 用户数据的页签保留 title；其余页签的 title 由 key 现算，恢复时清掉旧译文。 */
+function isDataTitleTab(tab: SideTab): boolean {
+  return tab.kind === "browser" || tab.kind === "subagent" || tab.kind === "plugin";
+}
+
 export function useSideTabs() {
+  const { t } = useTranslation("panel");
   const [tabs, setTabs] = useState<SideTab[]>([HOME_TAB]);
   const [activeId, setActiveId] = useState<string>("home");
   /** 文件快开面板开关（Ctrl+P） */
@@ -79,7 +104,8 @@ export function useSideTabs() {
     for (const tab of restored) {
       if (!tab || tab.id === "home" || seen.has(tab.id)) continue;
       seen.add(tab.id);
-      unique.push(tab);
+      // 持久化的是上次的译文：非用户数据的页签清掉，渲染时按当前语言重算
+      unique.push(isDataTitleTab(tab) ? tab : { ...tab, title: "" });
     }
     setTabs([HOME_TAB, ...unique]);
     const nextActive =
@@ -111,6 +137,25 @@ export function useSideTabs() {
         setActiveId(tab.id);
         return;
       }
+      if (request.kind === "plugin") {
+        // 一个插件一个页签：按 pluginId 复用
+        const existingPlugin = tabs.find(
+          (tab) => tab.kind === "plugin" && tab.pluginId === request.pluginId,
+        );
+        if (existingPlugin) {
+          setActiveId(existingPlugin.id);
+          return;
+        }
+        const pluginTab: SideTab = {
+          id: nextTabId("plugin"),
+          kind: "plugin",
+          title: request.title,
+          pluginId: request.pluginId,
+        };
+        setTabs((current) => [...current, pluginTab]);
+        setActiveId(pluginTab.id);
+        return;
+      }
       const existing = tabs.find((tab) => tab.kind === request.kind);
       if (existing) {
         setActiveId(existing.id);
@@ -119,7 +164,7 @@ export function useSideTabs() {
       const tab: SideTab = {
         id: nextTabId(request.kind),
         kind: request.kind,
-        title: SINGLETON_TITLES[request.kind],
+        title: "",
       };
       setTabs((current) => [...current, tab]);
       setActiveId(tab.id);
@@ -141,7 +186,7 @@ export function useSideTabs() {
       const tab: SideTab = {
         id: nextTabId("workspace"),
         kind: "workspace",
-        title: SINGLETON_TITLES.workspace,
+        title: "",
         path,
       };
       setTabs((current) => [...current, tab]);
@@ -158,7 +203,7 @@ export function useSideTabs() {
   const openIfAbsent = useCallback(
     (kind: "review" | "plan"): boolean => {
       if (tabs.some((tab) => tab.kind === kind)) return false;
-      const tab: SideTab = { id: `${kind}-auto`, kind, title: SINGLETON_TITLES[kind] };
+      const tab: SideTab = { id: `${kind}-auto`, kind, title: "" };
       setTabs((current) => (current.some((item) => item.kind === kind) ? current : [...current, tab]));
       setActiveId(tab.id);
       return true;
@@ -209,7 +254,7 @@ export function useSideTabs() {
         ? current
         : [
             ...current,
-            { id: "subagents", kind: "subagents" as const, title: SINGLETON_TITLES.subagents },
+            { id: "subagents", kind: "subagents" as const, title: "" },
           ],
     );
   }, []);
@@ -256,11 +301,13 @@ export function useSideTabs() {
     );
   }, []);
 
-  const activeTab = tabs.find((tab) => tab.id === activeId) ?? HOME_TAB;
+  /** 对外暴露的页签：标题按当前语言查表现算，切语言即时刷新 */
+  const titledTabs = useMemo(() => tabs.map((tab) => resolveTitle(tab, t)), [tabs, t]);
+  const activeTab = titledTabs.find((tab) => tab.id === activeId) ?? titledTabs[0];
 
   return useMemo(
     () => ({
-      tabs,
+      tabs: titledTabs,
       activeId,
       activeTab,
       paletteOpen,
@@ -278,7 +325,7 @@ export function useSideTabs() {
       hydrate,
     }),
     [
-      tabs,
+      titledTabs,
       activeId,
       activeTab,
       paletteOpen,

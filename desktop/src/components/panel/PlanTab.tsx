@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { LuExternalLink, LuFileText, LuListChecks, LuRotateCw } from "react-icons/lu";
 import { api, type WorkflowRoadmap } from "../../api";
 import { Markdown } from "../ui/Markdown";
@@ -16,22 +17,23 @@ type PlanDocState = {
   message?: string;
 };
 
-const LANE_STATUS_LABELS: Record<string, string> = {
-  queued: "排队中",
-  active: "进行中",
-  done: "已完成",
-  blocked: "已阻塞",
+const LANE_STATUS_KEYS: Record<string, string> = {
+  queued: "laneStatus.queued",
+  active: "laneStatus.active",
+  done: "laneStatus.done",
+  blocked: "laneStatus.blocked",
 };
 
 /** 治理 roadmap：tier 徽章 + 每个 lane 的 G4/G5/G6 门禁状态。 */
 function RoadmapSection({ roadmap }: { roadmap: WorkflowRoadmap }) {
+  const { t } = useTranslation("panel");
   return (
     <section className="mc-plan__roadmap" data-completed={roadmap.completed}>
       <div className="mc-plan__roadmaphead">
         <LuListChecks size={13} />
-        <span>治理任务 · {roadmap.tier}</span>
+        <span>{t("plan.governance", { tier: roadmap.tier })}</span>
         <span className="mc-plan__roadmapstate">
-          {roadmap.completed ? "全部通过" : "进行中"}
+          {roadmap.completed ? t("plan.allPassed") : t("plan.inProgress")}
         </span>
       </div>
       {roadmap.lanes.length ? (
@@ -44,7 +46,7 @@ function RoadmapSection({ roadmap }: { roadmap: WorkflowRoadmap }) {
                   {lane.objective}
                 </span>
                 <span className="mc-plan__lanestate">
-                  {LANE_STATUS_LABELS[lane.status] ?? lane.status}
+                  {LANE_STATUS_KEYS[lane.status] ? t(LANE_STATUS_KEYS[lane.status]) : lane.status}
                 </span>
               </div>
               <div className="mc-plan__gates">
@@ -58,14 +60,14 @@ function RoadmapSection({ roadmap }: { roadmap: WorkflowRoadmap }) {
                   </span>
                 ))}
                 {lane.repairCount ? (
-                  <span className="mc-plan__repairs">返工 {lane.repairCount}/3</span>
+                  <span className="mc-plan__repairs">{t("plan.repairs", { count: lane.repairCount })}</span>
                 ) : null}
               </div>
             </div>
           ))}
         </div>
       ) : (
-        <p className="mc-plan__hint">T0 琐碎任务：无门禁，直接实现并验证。</p>
+        <p className="mc-plan__hint">{t("plan.trivial")}</p>
       )}
     </section>
   );
@@ -94,6 +96,7 @@ export function PlanTab({
   /** 治理 roadmap 快照；无治理 run 时为空 */
   roadmap?: WorkflowRoadmap | null;
 }) {
+  const { t } = useTranslation("panel");
   const [state, setState] = useState<PlanDocState>({ status: "idle" });
   const [reload, setReload] = useState(0);
   /** 写入中首次读盘必然 ENOENT：不当作错误，等写完的 version 变化再读 */
@@ -135,9 +138,9 @@ export function PlanTab({
           <span className="mc-plan__emptyicon" aria-hidden>
             <LuFileText size={20} />
           </span>
-          <p className="mc-plan__emptytitle">还没有计划文档</p>
+          <p className="mc-plan__emptytitle">{t("plan.emptyTitle")}</p>
           <p className="mc-plan__emptyhint">
-            计划模式会用只读工具先调研，再把实施计划写到 plans/ 下，文档会显示在这里。
+            {t("plan.emptyHint")}
           </p>
         </div>
       </div>
@@ -155,14 +158,14 @@ export function PlanTab({
         {writing ? (
           <span className="mc-plan__status">
             <span className="mc-plan__spinner" aria-hidden />
-            {state.status === "ready" ? "更新中" : "正在写入"}
+            {state.status === "ready" ? t("plan.updating") : t("plan.writing")}
           </span>
         ) : null}
         <button
           type="button"
           className="mc-plan__btn"
-          aria-label="重新读取"
-          title="重新读取"
+          aria-label={t("plan.reload")}
+          title={t("plan.reload")}
           onClick={() => setReload((current) => current + 1)}
         >
           <LuRotateCw size={13} />
@@ -170,8 +173,8 @@ export function PlanTab({
         <button
           type="button"
           className="mc-plan__btn"
-          aria-label="在编辑器中打开"
-          title="在编辑器中打开"
+          aria-label={t("filePreview.openInEditor")}
+          title={t("filePreview.openInEditor")}
           disabled={!workspace}
           onClick={() => {
             if (workspace) void window.meow.openPath(joinWorkspacePath(workspace, path));
@@ -185,9 +188,9 @@ export function PlanTab({
         {state.status === "error" ? (
           <p className="mc-plan__hint">{state.message}</p>
         ) : writing && !state.content ? (
-          <p className="mc-plan__hint">正在写入计划文档…</p>
+          <p className="mc-plan__hint">{t("plan.writingBody")}</p>
         ) : state.status === "loading" ? (
-          <p className="mc-plan__hint">正在读取计划文档…</p>
+          <p className="mc-plan__hint">{t("plan.loadingBody")}</p>
         ) : (
           <Markdown content={state.content ?? ""} className="mc-plan__markdown" />
         )}

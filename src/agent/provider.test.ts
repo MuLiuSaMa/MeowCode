@@ -12,7 +12,18 @@ describe("completionUrl", () => {
       "https://ark.cn-beijing.volces.com/api/coding/v3/chat/completions",
     );
   });
-});
+
+  it("keeps suffixed version segments (v1beta / v1alpha)", () => {
+    expect(completionUrl("https://generativelanguage.googleapis.com/v1beta/openai")).toBe(
+      "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
+    );
+    expect(completionUrl("https://generativelanguage.googleapis.com/v1beta")).toBe(
+      "https://generativelanguage.googleapis.com/v1beta/chat/completions",
+    );
+    expect(completionUrl("https://api.example.com/v1alpha")).toBe(
+      "https://api.example.com/v1alpha/chat/completions",
+    );
+  });});
 
 function sseResponse(chunks: object[]): Response {
   const encoder = new TextEncoder();
@@ -50,6 +61,46 @@ const baseOptions = {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+});
+
+describe("streamChatCompletion usage reporting", () => {
+  it("reports the tail-block usage once, deduping repeated identical blocks", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        sseResponse([
+          { choices: [{ delta: { content: "hi" } }] },
+          {
+            choices: [{ delta: {}, finish_reason: "stop" }],
+            usage: {
+              prompt_tokens: 1000,
+              completion_tokens: 20,
+              prompt_tokens_details: { cached_tokens: 800 },
+            },
+          },
+          {
+            choices: [],
+            usage: {
+              prompt_tokens: 1000,
+              completion_tokens: 20,
+              prompt_tokens_details: { cached_tokens: 800 },
+            },
+          },
+        ]),
+      ),
+    );
+
+    const samples: Array<{ inputTokens?: number; outputTokens?: number; cacheReadTokens?: number }> = [];
+    const result = await streamChatCompletion({
+      ...baseOptions,
+      onUsage: (usage) => samples.push({ ...usage }),
+    });
+
+    expect(samples).toHaveLength(1);
+    expect(samples[0]).toMatchObject({ inputTokens: 1000, outputTokens: 20, cacheReadTokens: 800 });
+    // 返回值保持兼容：既有调用方仍拿到最终 usage
+    expect(result.usage?.outputTokens).toBe(20);
+  });
 });
 
 describe("streamChatCompletion tool progress", () => {
@@ -270,12 +321,13 @@ describe("streamChatCompletion tool images", () => {
     });
 
     const toolMessage = bodies[0].messages.find((message) => message.role === "tool");
-    expect(Array.isArray(toolMessage?.content)).toBe(true);
-    expect((toolMessage?.content as unknown[])[0]).toEqual({
+    const toolContent = toolMessage?.content as unknown[] | undefined;
+    expect(Array.isArray(toolContent)).toBe(true);
+    expect(toolContent?.[0]).toEqual({
       type: "text",
       text: "Screenshot captured",
     });
-    expect((toolMessage?.content as unknown[])[1]).toEqual({
+    expect(toolContent?.[1]).toEqual({
       type: "image_url",
       image_url: { url: "data:image/png;base64,AAA" },
     });
@@ -466,5 +518,81 @@ describe("streamChatCompletion user images", () => {
       role: "user",
       content: [{ type: "image_url", image_url: { url: "data:image/png;base64,AAA" } }],
     });
+  });
+});
+
+describe("streamChatCompletion auth/extra fields", () => {
+  it("authStyle=api-key + extraHeaders + extraBody 进入 chat completions 请求", async () => {
+    const calls: Array<{ headers: Record<string, string>; body: Record<string, unknown> }> = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: string, init: RequestInit) => {
+        calls.push({
+          headers: init.headers as Record<string, string>,
+          body: JSON.parse(String(init.body)) as Record<string, unknown>,
+        });
+        return sseResponse([{ choices: [{ delta: { content: "ok" }, finish_reason: "stop" }] }]);
+      }),
+    );
+    await streamChatCompletion({
+      ...baseOptions,
+      provider: {
+        ...baseOptions.provider,
+        apiKey: "azure-key",
+        authStyle: "api-key",
+        extraHeaders: { "x-title": "MeowCode" },
+        extraBody: { enable_thinking: false },
+      },
+    });
+    expect(calls).toHaveLength(1);
+    expect(calls[0].headers["api-key"]).toBe("azure-key");
+    expect(calls[0].headers.authorization).toBeUndefined();
+    expect(calls[0].headers["x-title"]).toBe("MeowCode");
+    expect(calls[0].body.enable_thinking).toBe(false);
+  });
+
+  it("anthropic-messages 协议同样消费 authStyle/extraHeaders/extraBody", async () => {
+    const calls: Array<{ headers: Record<string, string>; body: Record<string, unknown> }> = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: string, init: RequestInit) => {
+        calls.push({
+          headers: init.headers as Record<string, string>,
+          body: JSON.parse(String(init.body)) as Record<string, unknown>,
+        });
+        return new Response(
+          new ReadableStream({
+            start(controller) {
+              const encoder = new TextEncoder();
+              controller.enqueue(
+                encoder.encode(
+                  'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"hi"}}\n\n',
+                ),
+              );
+              controller.enqueue(encoder.encode('data: {"type":"message_stop"}\n\n'));
+              controller.close();
+            },
+          }),
+          { status: 200, headers: { "content-type": "text/event-stream" } },
+        );
+      }),
+    );
+    await streamChatCompletion({
+      ...baseOptions,
+      provider: {
+        ...baseOptions.provider,
+        protocol: "anthropic-messages",
+        baseUrl: "https://gateway.example.com",
+        apiKey: "k",
+        authStyle: "bedrock-api-key",
+        extraHeaders: { "x-tenant": "t1" },
+        extraBody: { metadata: { user: "u1" } },
+      },
+    });
+    expect(calls).toHaveLength(1);
+    expect(calls[0].headers.authorization).toBe("Bedrock-API-Key k");
+    expect(calls[0].headers["x-api-key"]).toBeUndefined();
+    expect(calls[0].headers["x-tenant"]).toBe("t1");
+    expect(calls[0].body.metadata).toEqual({ user: "u1" });
   });
 });

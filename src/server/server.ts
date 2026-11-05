@@ -2,10 +2,12 @@ import http from "node:http";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import os from "node:os";
-import { mkdirSync } from "node:fs";
+import { mkdirSync, existsSync, statSync } from "node:fs";
 import { readFile, readdir, rm, stat, unlink, writeFile, cp } from "node:fs/promises";
 import { randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import { AgentRuntime, isApprovalMode, isSessionMode } from "../agent/runtime.js";
+import { listProviderModels, resolveProviderModelsOptions } from "../agent/models-list.js";
+import { MAX_POLISH_INPUT_CHARS } from "../agent/prompt-polish.js";
 import { AGENT_ROLE_NAMES, BUILTIN_AGENTS } from "../agent/agent-definition.js";
 import {
   AGENT_PROFILES,
@@ -13,6 +15,21 @@ import {
   isAgentProfile,
 } from "../agent/agent-profiles.js";
 import { toolDefinitions } from "../agent/tools.js";
+import { isSpeechStyle, readSpeechStyleFromEnv } from "../agent/speech-style.js";
+import {
+  getProxyConfig,
+  isProxyMode,
+  readProxyFromEnv,
+  setProxyConfig,
+  type ProxyMode,
+} from "../agent/proxy.js";
+import {
+  getSandboxSettings,
+  normalizeSandboxSettings,
+  readSandboxSettingsFromEnv,
+  setSandboxSettings,
+} from "../agent/sandbox/policy.js";
+import { probeSandbox, revokeSandboxGrantsRemote } from "../agent/sandbox/runner-client.js";
 import {
   builtinHarnessSeed,
   createHarnessArchitecture,
@@ -25,24 +42,92 @@ import {
   saveHarnessDocument,
 } from "../agent/harness-document.js";
 import { SessionStore, newEntryId, sessionFileName } from "../agent/session-store.js";
+import { deriveSessionAtCheckpoint } from "./session-derive.js";
+import {
+  RewindError,
+  applyRewind,
+  applyUndo,
+  cachePlan,
+  findUndoable,
+  planRewind,
+  planUndo,
+  takePlan,
+} from "./rewind.js";
+import { buildExportDoc, renderJson } from "../agent/session-export.js";
+import { renderMarkdown } from "../agent/session-export-markdown.js";
+import { renderHtml } from "../agent/session-export-html.js";
 import { readJsonFile, writeJsonAtomic } from "../agent/atomic-json.js";
+import {
+  deleteMemory,
+  isValidMemoryName,
+  listMemoryItems,
+  memoryDirFor,
+  readMemory,
+  writeMemoryFile,
+  type MemoryScope,
+} from "../agent/memory.js";
+import { type InstructionSettings } from "../agent/instructions.js";
+import {
+  deleteRule,
+  isValidRuleName,
+  listRules,
+  readRule,
+  writeRule,
+} from "../agent/rules.js";
 import { createBrowserHostFromEnv } from "../agent/browser-host.js";
 import { displayPath, resolveWithinWorkspace } from "../agent/paths.js";
 import { planFallbacks } from "../agent/provider-fallback.js";
 import {
   GitError,
   createGitService,
-  collectCommitContext,
   type GitErrorCode,
 } from "./git.js";
+import {
+  createSessionWorktree,
+  pruneSessionWorktrees,
+  removeSessionWorktree,
+  type CreatedSessionWorktree,
+} from "./worktree.js";
 import { listWorkspaceFiles } from "../agent/search.js";
+import {
+  DEFAULT_LIMIT,
+  MAX_LIMIT,
+  MAX_QUERY_CHARS,
+  invalidateSearchIndex,
+  searchIndexPath,
+  searchSessions,
+} from "../agent/session-search.js";
 import {
   createPluginSystem,
   loadCommandIndex,
   type CommandIndex,
   type PluginSystem,
 } from "../plugins/index.js";
+import { builtinDetailFallback } from "../plugins/builtin-meta.js";
+import {
+  loadHooksConfig,
+  parseHooksScope,
+  parseRunMode,
+  summarizeHooks,
+} from "../plugins/builtin/claude-code-hooks/config.js";
 import { createMarketplaceStore, MarketplaceError } from "./marketplace.js";
+import { applyImport, applyImportItem, detectImportSources, planImport, type ImportAppId, type ImportGroupId } from "./data-import.js";
+
+/** /import/plan 与 /import/apply 共用的请求体校验。 */
+function parseImportRequest(body: { appId?: unknown; groups?: unknown }):
+  | { appId: ImportAppId; groups: ImportGroupId[] }
+  | null {
+  if (body.appId !== "qoder" && body.appId !== "qoderintl" && body.appId !== "workbuddy" && body.appId !== "workbuddyai" && body.appId !== "zcode" && body.appId !== "opencode" && body.appId !== "dsh" && body.appId !== "codex") return null;
+  const groups = Array.isArray(body.groups)
+    ? body.groups.filter((id): id is ImportGroupId =>
+        id === "mcp" || id === "memory" || id === "skills" || id === "tasks",
+      )
+    : [];
+  return { appId: body.appId, groups };
+}
+import { createCommunitySource } from "./marketplace-community.js";
+import { createThirdPartySource, type ThirdPartySource } from "./marketplace-thirdparty.js";
+import { getLspManager } from "../lsp/manager.js";
 import { discoverSkills } from "../plugins/skills.js";
 import type {
   PendingApproval,
@@ -143,6 +228,26 @@ function readPluginsConfigFromEnv(): { disabled: string[] } {
   }
 }
 
+/**
+ * 回合后记忆蒸馏开关（MEOWCODE_MEMORY_EXTRACTION）：桌面端 settings.json 的
+ * 初始值。未设置视为开（服务端直跑/测试场景跟随默认）。运行中可经
+ * PUT /config/memory-extraction 实时切换，settings.json 由桌面端另行落盘。
+ */
+function readMemoryExtractionFromEnv(): boolean {
+  const raw = process.env.MEOWCODE_MEMORY_EXTRACTION;
+  if (raw === undefined || raw.trim() === "") return true;
+  const normalized = raw.trim().toLowerCase();
+  return normalized !== "0" && normalized !== "false";
+}
+
+/** 自我学习：**默认关闭**，只有显式写 1/true/on 才开启。 */
+function readLearningFromEnv(): boolean {
+  const raw = process.env.MEOWCODE_SELF_LEARNING;
+  if (raw === undefined || raw.trim() === "") return false;
+  const normalized = raw.trim().toLowerCase();
+  return normalized === "1" || normalized === "true" || normalized === "on";
+}
+
 function sendJson(response: http.ServerResponse, status: number, body: unknown): void {
   response.writeHead(status, {
     "content-type": "application/json; charset=utf-8",
@@ -155,10 +260,20 @@ function sendError(response: http.ServerResponse, status: number, code: string, 
   sendJson(response, status, { error: { code, message } });
 }
 
+/** /memory 路由的 scope 参数：不合法值一律 400，不猜测默认层。 */
+function parseMemoryScopeParam(value: string | null | undefined): MemoryScope | null {
+  return value === "user" || value === "project" ? value : null;
+}
+
 /** 市场路由错误统一映射：not_found→404、not_managed→409、invalid_id→400，其余 500 */
 function sendMarketplaceError(response: http.ServerResponse, error: unknown): void {
   if (error instanceof MarketplaceError) {
-    const status = error.code === "not_found" ? 404 : error.code === "not_managed" ? 409 : 400;
+    const status =
+      error.code === "not_found"
+        ? 404
+        : error.code === "not_managed" || error.code === "conflict"
+          ? 409
+          : 400;
     sendError(response, status, error.code, error.message);
     return;
   }
@@ -202,8 +317,16 @@ function isAuthorized(header: string | string[] | undefined, token: string): boo
   return actual.length === expected.length && timingSafeEqual(actual, expected);
 }
 
-/** 预览用 MIME 映射（/workspace/raw） */
+/** 预览与插件 UI 共用的 MIME 映射（/workspace/raw、/plugin-ui） */
 const MIME_BY_EXT: Record<string, string> = {
+  html: "text/html; charset=utf-8",
+  htm: "text/html; charset=utf-8",
+  css: "text/css; charset=utf-8",
+  js: "text/javascript; charset=utf-8",
+  mjs: "text/javascript; charset=utf-8",
+  json: "application/json; charset=utf-8",
+  txt: "text/plain; charset=utf-8",
+  woff2: "font/woff2",
   png: "image/png",
   jpg: "image/jpeg",
   jpeg: "image/jpeg",
@@ -265,11 +388,13 @@ const PROMPT_IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/webp", "im
 const MAX_PROMPT_DOCUMENTS = 2;
 const MAX_PROMPT_DOCUMENT_BASE64 = 28_000_000;
 const PROMPT_DOCUMENT_TYPES = new Set(["application/pdf"]);
-/** 允许运行时热更新的 MCP 凭据 env（desktop OAuth 登录后写入；不接受任意环境变量）。 */
+/** 允许运行时热更新的 MCP 凭据 env（desktop OAuth 登录/手动令牌后写入；不接受任意环境变量）。 */
 const MCP_CREDENTIAL_ENV_NAMES = new Set([
   "MEOWCODE_GITHUB_TOKEN",
   "MEOWCODE_GITEE_TOKEN",
   "MEOWCODE_GITCODE_TOKEN",
+  "MEOWCODE_FIGMA_TOKEN",
+  "LUCKIN_MCP_TOKEN",
 ]);
 
 type ParsedAttachments = {
@@ -344,17 +469,40 @@ export async function startServer(options: { port?: number; token?: string } = {
   // 密钥只留在内存：删掉环境变量后，模型通过 run_command 读 env 也拿不到。
   delete process.env.MEOWCODE_PROVIDERS;
   const sessionsDir = process.env.MEOWCODE_SESSIONS_DIR ?? DEFAULT_SESSIONS_DIR;
+  const worktreesDir =
+    process.env.MEOWCODE_WORKTREES_DIR ?? path.join(path.dirname(sessionsDir), "worktrees");
   const providerId = process.env.MEOWCODE_PROVIDER_ID;
   const workspace = process.env.MEOWCODE_WORKSPACE;
+  // 回合后记忆蒸馏：env 给初值，PUT /config/memory-extraction 运行中实时切换
+  let memoryExtractionEnabled = readMemoryExtractionFromEnv();
+  // 自我学习：env 给初值，PUT /config/learning 运行中实时切换
+  let learningEnabled = readLearningFromEnv();
+  // 网络代理：env 给初值，PUT /config/proxy 运行中实时切换。
+  // 必须在任何对外请求之前落地，否则首个 provider 调用会绕过代理。
+  setProxyConfig(readProxyFromEnv());
+  let proxyConfig = getProxyConfig();
+  // AGENTS.md / CLAUDE.md 导入开关：env 给初值，PUT /config/instructions 运行中实时切换
+  let instructionSettings: InstructionSettings = {
+    includeAgentsMd: process.env.MEOWCODE_INCLUDE_AGENTS_MD !== "0",
+    includeClaudeMd: process.env.MEOWCODE_INCLUDE_CLAUDE_MD !== "0",
+  };
+  // 语色：env 给初值，PUT /config/speech-style 运行中实时切换
+  let speechStyle = readSpeechStyleFromEnv();
+  // 命令沙箱：env 给初值；exec 层进程级单例，PUT /config/sandbox 直接覆盖所有 runtime
+  setSandboxSettings(readSandboxSettingsFromEnv());
   // 实验开关（桌面端经环境变量注入；默认全关）
   const experimental = readExperimentalFromEnv();
   // 插件系统：目录发现 + jiti 加载 + MCP；desktop 经 MEOWCODE_PLUGINS 注入禁用清单
   const pluginsWorkspace = workspace ?? process.cwd();
+  // 用户层根目录（MCP 配置 / 命令索引 / 技能 / 记忆 / 市场）：默认真实 home，
+  // 测试经 MEOWCODE_HOME_DIR 整体隔离——缺了它单测会把真实 ~/.meowcode/mcp.json
+  // 的 MCP 服务器拉起来，重连退避能把回合拖过测试超时（server.test.ts SSE 用例踩过）。
+  const homeDir = process.env.MEOWCODE_HOME_DIR || os.homedir();
   // MCP 不阻塞 HTTP 服务就绪：gitcode 这类 stdio MCP 走 npx 拉起，光解析包 + 启动
   // 子进程就要好几秒，没必要让窗口空等。工具就绪前会被首个回合前的 awaitMcpReady 拦住。
   const pluginSystem: PluginSystem = await createPluginSystem({
     workspace: pluginsWorkspace,
-    homeDir: os.homedir(),
+    homeDir,
     blockOnMcp: false,
     ...(() => {
       const { disabled } = readPluginsConfigFromEnv();
@@ -368,19 +516,35 @@ export async function startServer(options: { port?: number; token?: string } = {
   });
   let commandIndex: CommandIndex = await loadCommandIndex({
     workspace: pluginsWorkspace,
-    homeDir: os.homedir(),
+    homeDir,
     registry: pluginSystem.registry,
   });
   // 插件市场：bundles 目录（desktop 注入 MEOWCODE_MARKETPLACE_DIR；未设置=市场功能为空）
   const marketplace = createMarketplaceStore(process.env.MEOWCODE_MARKETPLACE_DIR);
+  // 社区市场源：GitCode 收录仓库（展示/安装；提交/删除走主进程 IPC，不经此服务端）
+  const communityMarket = createCommunitySource();
+  // 第三方市场源：ClawHub + SkillHub 聚合（仅 skill）
+  const thirdPartyMarket = createThirdPartySource();
   /** plugin/mcp 安装卸载后重载插件系统与命令索引（skill 走每轮重扫，无需 reload） */
   const reloadAfterMarketChange = async (): Promise<void> => {
     await pluginSystem.reload();
     commandIndex = await loadCommandIndex({
       workspace: pluginsWorkspace,
-      homeDir: os.homedir(),
+      homeDir,
       registry: pluginSystem.registry,
     });
+    // 插件/MCP 变更属于显式边界：应用会话里延后的工具删除/改写。
+    runtime.rebuildToolCatalog("plugin_reload");
+  };
+  /** mcp.json 变化（「我的」手动添加/启停）后 diff 重连 MCP：凭据与 enabled 变了必须重连子进程 */
+  const reloadAfterMcpChange = async (): Promise<void> => {
+    await pluginSystem.reload({ restartMcp: true });
+    commandIndex = await loadCommandIndex({
+      workspace: pluginsWorkspace,
+      homeDir,
+      registry: pluginSystem.registry,
+    });
+    runtime.rebuildToolCatalog("plugin_reload");
   };
   mkdirSync(sessionsDir, { recursive: true });
   /** 桌面端注入的内嵌浏览器桥（env）；CLI / 测试环境没有，浏览器工具自动不注册 */
@@ -432,6 +596,11 @@ export async function startServer(options: { port?: number; token?: string } = {
       browserHost,
       ...(experimental ? { experimental } : {}),
       plugins: pluginSystem.registry,
+      mcpReady: pluginSystem.mcpReady,
+      memoryExtraction: memoryExtractionEnabled,
+      learning: learningEnabled,
+      instructionSettings,
+      speechStyle,
     });
     instance.onEvent(broadcast);
     return instance;
@@ -661,10 +830,22 @@ export async function startServer(options: { port?: number; token?: string } = {
         browserHost,
         // 侧边聊天不参与子 Agent 体系：避免派生出不可见的子会话
         enableTaskTool: false,
+        memoryExtraction: memoryExtractionEnabled,
+        learning: learningEnabled,
+        instructionSettings,
+        speechStyle,
       });
       sideRuntime.onEvent((event) => broadcast({ ...event, side: true }));
     }
     return sideRuntime;
+  };
+  /** 规则文件增删改后让所有存活 runtime 在下一轮重新读取 instructions。 */
+  const invalidateInstructions = (): void => {
+    runtime.invalidateInstructions();
+    if (sideRuntime) sideRuntime.invalidateInstructions();
+    for (const instance of backgroundRuntimes.values()) {
+      instance.invalidateInstructions();
+    }
   };
   const restoreSideRuntime = async (filePath?: string): Promise<void> => {
     if (!filePath) return;
@@ -686,9 +867,12 @@ export async function startServer(options: { port?: number; token?: string } = {
   const server = http.createServer(async (request, response) => {
     const url = new URL(request.url ?? "/", `http://127.0.0.1:${request.socket.localPort}`);
     const pathname = url.pathname;
-    // /session/asset 服务于 <img> 标签，带不了 Authorization 头：允许 query token 等价鉴权
-    // （token 只在本机内存里，server 只监听 127.0.0.1，泄漏面可控）
-    const assetQueryToken = pathname === "/session/asset" ? url.searchParams.get("token") : null;
+    // /session/asset 服务于 <img> 标签、/plugin-ui 服务于插件 iframe：两者都带不了
+    // Authorization 头，允许 query token 等价鉴权（token 只在本机内存里，server 只监听 127.0.0.1）
+    const assetQueryToken =
+      pathname === "/session/asset" || pathname.startsWith("/plugin-ui/")
+        ? url.searchParams.get("token")
+        : null;
     const authorized =
       isAuthorized(request.headers.authorization, authToken) || assetQueryToken === authToken;
     if (!authorized) {
@@ -779,6 +963,7 @@ export async function startServer(options: { port?: number; token?: string } = {
         sendJson(response, 200, {
           id: session.id,
           cwd: session.cwd,
+          worktree: session.worktree ?? null,
           filePath: session.filePath,
           createdAt: session.createdAt,
           messageCount: session.messages.length,
@@ -829,6 +1014,7 @@ export async function startServer(options: { port?: number; token?: string } = {
 
       // 本会话 Agent 改过的文件（审阅面板数据源）：按文件聚合，最新在前
       if (pathname === "/session/changes" && request.method === "GET") {        const session = runtime.current;
+        const summaryOnly = url.searchParams.get("summary") === "1";
         type ChangeSummary = {
           path: string;
           operation: "write_file" | "edit_file";
@@ -872,6 +1058,20 @@ export async function startServer(options: { port?: number; token?: string } = {
               : item,
           )
           .sort((a, b) => b.timestamp.localeCompare(a.timestamp));
+        // 输入框悬浮胶囊只要统计：summary=1 丢掉 diff，避免每次 file_changed 都传 40k 文本
+        if (summaryOnly) {
+          sendJson(response, 200, {
+            changes: changes.map(({ path, operation, changeCount, added, removed, timestamp }) => ({
+              path,
+              operation,
+              changeCount,
+              added,
+              removed,
+              timestamp,
+            })),
+          });
+          return;
+        }
         sendJson(response, 200, { changes });
         return;
       }
@@ -1046,16 +1246,19 @@ export async function startServer(options: { port?: number; token?: string } = {
           }
 
           if (pathname === "/git/stage" && request.method === "POST") {
-            const body = await readJsonBody<{ paths?: unknown }>(request);
-            await git.stage(body.paths);
+            const body = await readJsonBody<{ paths?: unknown; all?: boolean }>(request);
+            // all：列表可能被截断，交给服务端整仓暂存，避免几万个路径拼进命令行
+            if (body.all === true) await git.stageAll();
+            else await git.stage(body.paths);
             broadcast({ type: "git_changed" });
             sendJson(response, 200, { ok: true });
             return;
           }
 
           if (pathname === "/git/unstage" && request.method === "POST") {
-            const body = await readJsonBody<{ paths?: unknown }>(request);
-            await git.unstage(body.paths);
+            const body = await readJsonBody<{ paths?: unknown; all?: boolean }>(request);
+            if (body.all === true) await git.unstageAll();
+            else await git.unstage(body.paths);
             broadcast({ type: "git_changed" });
             sendJson(response, 200, { ok: true });
             return;
@@ -1267,6 +1470,47 @@ export async function startServer(options: { port?: number; token?: string } = {
         return;
       }
 
+      // 会话全文检索：纯本地子串匹配影子索引，零 LLM 调用
+      if (pathname === "/sessions/search" && request.method === "GET") {
+        const query = (url.searchParams.get("q") ?? "").trim();
+        if (query.length > MAX_QUERY_CHARS) {
+          sendError(response, 400, "invalid_request", `q must be at most ${MAX_QUERY_CHARS} characters.`);
+          return;
+        }
+        if (!query) {
+          sendJson(response, 200, {
+            query: "",
+            hits: [],
+            scanned: 0,
+            reindexed: 0,
+            truncated: false,
+          });
+          return;
+        }
+        const rawLimit = Number(url.searchParams.get("limit") ?? "");
+        const limit =
+          Number.isFinite(rawLimit) && rawLimit > 0 ? Math.min(Math.floor(rawLimit), MAX_LIMIT) : DEFAULT_LIMIT;
+        const workspace = (url.searchParams.get("workspace") ?? "").trim();
+        try {
+          sendJson(
+            response,
+            200,
+            await searchSessions(sessionsDir, query, {
+              limit,
+              ...(workspace ? { workspace } : {}),
+            }),
+          );
+        } catch (error) {
+          sendError(
+            response,
+            500,
+            "search_failed",
+            error instanceof Error ? error.message : String(error),
+          );
+        }
+        return;
+      }
+
       // 重命名任意会话（侧栏行菜单；不必先切换过去）
       if (pathname === "/sessions/title" && request.method === "PUT") {
         const body = await readJsonBody<{ filePath?: string; title?: string }>(request);
@@ -1372,6 +1616,8 @@ export async function startServer(options: { port?: number; token?: string } = {
             force: true,
           }).catch(() => undefined);
         }
+        // 会话全文检索的影子索引：会话没了，索引一并清掉
+        await invalidateSearchIndex(sessionsDir, path.basename(filePath)).catch(() => undefined);
         // 会话图片资产：整目录清理，避免孤儿文件堆积
         if (deletedSessionId) {
           await rm(path.join(sessionsDir, "assets", deletedSessionId), {
@@ -1432,6 +1678,9 @@ export async function startServer(options: { port?: number; token?: string } = {
             createdAt: new Date().toISOString(),
             parentSessionId: source.id,
             rootSessionId,
+            ...(sourceHeader.type === "session" && sourceHeader.worktree
+              ? { worktree: sourceHeader.worktree }
+              : {}),
           };
           // 分支图片资产：把源会话 assets 拷到分支名下并改写引用前缀，
           // 两边各自独立（删除一边不影响另一边）。拷贝失败不阻断分支：引用照抄，
@@ -1525,17 +1774,468 @@ export async function startServer(options: { port?: number; token?: string } = {
         return;
       }
 
-      if (pathname === "/session/messages" && request.method === "GET") {
+      // 会话检查点：列出（时间线分隔线） / 手动创建 / 恢复（截断分支出新会话）
+      if (pathname === "/session/checkpoints" && request.method === "GET") {
         const session = runtime.current;
+        sendJson(response, 200, { checkpoints: session?.checkpoints ?? [] });
+        return;
+      }
+
+      if (pathname === "/session/checkpoint" && request.method === "POST") {
+        if (!runtime.current) {
+          sendError(response, 404, "no_session", "No active session.");
+          return;
+        }
+        if (hasPendingWork(runtime)) {
+          sendError(
+            response,
+            409,
+            "session_busy",
+            "该会话还在生成、排队或等待审批，停止后再创建检查点。",
+          );
+          return;
+        }
+        const body = await readJsonBody<{ label?: string }>(request).catch(
+          () => ({}) as { label?: string },
+        );
+        try {
+          const checkpoint = await runtime.createCheckpoint(
+            typeof body.label === "string" ? body.label : undefined,
+          );
+          sendJson(response, 200, { checkpoint });
+        } catch (error) {
+          sendError(
+            response,
+            500,
+            "checkpoint_failed",
+            error instanceof Error ? error.message : String(error),
+          );
+        }
+        return;
+      }
+
+      if (pathname === "/session/checkpoints/restore" && request.method === "POST") {
+        const body = await readJsonBody<{ filePath?: string; checkpointId?: string }>(request);
+        const checkpointId =
+          typeof body.checkpointId === "string" ? body.checkpointId.trim() : "";
+        if (!checkpointId) {
+          sendError(response, 400, "invalid_request", "checkpointId is required.");
+          return;
+        }
+        const filePath = body.filePath
+          ? resolveSessionFile(body.filePath)
+          : (runtime.current?.filePath ?? null);
+        if (!filePath) {
+          sendError(response, 400, "invalid_request", "No session to restore from.");
+          return;
+        }
+        const target = findRuntimeForSessionFile(filePath);
+        if (target && hasPendingWork(target)) {
+          sendError(
+            response,
+            409,
+            "session_busy",
+            "该会话还在生成、排队或等待审批，停止后再恢复检查点。",
+          );
+          return;
+        }
+        try {
+          const source = await SessionStore.load(filePath);
+          const checkpointExists = source.entries.some(
+            (entry) => entry.type === "checkpoint" && entry.id === checkpointId,
+          );
+          if (!checkpointExists) {
+            sendError(
+              response,
+              404,
+              "checkpoint_not_found",
+              "Checkpoint not found in this session.",
+            );
+            return;
+          }
+          // 派生逻辑抽到 session-derive.ts（/session/rewind 也复用）；restore 语义 = 仅回滚对话
+          const derived = await deriveSessionAtCheckpoint({
+            sourceFilePath: filePath,
+            source,
+            checkpointId,
+            sessionsDir,
+          });
+
+          const next = createFreshRuntime();
+          await next.switchSession(derived.filePath);
+          demoteActiveRuntime();
+          runtime = next;
+          pruneBackgroundRuntimes(runtime.current?.id);
+          const session = runtime.current;
+          if (!session) throw new Error("Failed to activate the restored session.");
+          await rememberActiveSession(session);
+          sendJson(response, 200, {
+            id: session.id,
+            cwd: session.cwd,
+            filePath: session.filePath,
+            createdAt: session.createdAt,
+            title: session.title,
+          });
+        } catch (error) {
+          sendError(
+            response,
+            500,
+            "restore_failed",
+            error instanceof Error ? error.message : String(error),
+          );
+        }
+        return;
+      }
+
+      if (pathname === "/session/messages" && request.method === "GET") {
+        // 悬浮岛等第二窗口要读后台会话的历史：带 sessionId 时路由到对应 runtime（仅运行/排队/审批中的后台会话有 runtime）
+        const target = resolveRuntime(url.searchParams.get("sessionId")?.trim() || undefined);
+        const session = target?.current ?? null;
         if (!session) {
-          sendJson(response, 200, { messages: [], compaction: null, compactions: [] });
+          sendJson(response, 200, {
+            messages: [],
+            compaction: null,
+            compactions: [],
+            checkpoints: [],
+            compactionQuality: null,
+          });
           return;
         }
         sendJson(response, 200, {
           messages: session.messagesForClient,
           compaction: session.lastCompaction,
           compactions: session.compactionPoints,
+          checkpoints: session.checkpoints,
+          compactionQuality: session.lastCompactionQuality,
         });
+        return;
+      }
+
+      // 会话/代码双回滚：预览（dryRun）与执行。both=对话+代码 / conversation=仅对话 / code=仅代码
+      if (pathname === "/session/rewind" && request.method === "POST") {
+        const body = await readJsonBody<{
+          checkpointId?: string;
+          mode?: string;
+          dryRun?: boolean;
+          planId?: string;
+          force?: boolean;
+          keepNewFiles?: boolean;
+          filePath?: string;
+        }>(request);
+        const checkpointId = typeof body.checkpointId === "string" ? body.checkpointId.trim() : "";
+        if (!checkpointId) {
+          sendError(response, 400, "invalid_request", "checkpointId is required.");
+          return;
+        }
+        const mode: "both" | "conversation" | "code" =
+          body.mode === "conversation" || body.mode === "code" ? body.mode : "both";
+        const dryRun = body.dryRun !== false;
+        const keepNewFiles = body.keepNewFiles === true;
+        const force = body.force === true;
+        const filePath = body.filePath
+          ? resolveSessionFile(body.filePath)
+          : (runtime.current?.filePath ?? null);
+        if (!filePath) {
+          sendError(response, 400, "invalid_request", "No session to rewind.");
+          return;
+        }
+        const target = findRuntimeForSessionFile(filePath);
+        if (target && hasPendingWork(target)) {
+          sendError(
+            response,
+            409,
+            "session_busy",
+            "该会话还在生成、排队或等待审批，停止后再回滚。",
+          );
+          return;
+        }
+        const sendRewindError = (error: unknown): void => {
+          if (error instanceof RewindError) {
+            const status =
+              error.code === "needs_force" || error.code === "cwd_changed"
+                ? 409
+                : error.code === "apply_failed" ||
+                    error.code === "derive_failed" ||
+                    error.code === "blob_missing"
+                  ? 500
+                  : 400;
+            sendError(response, status, error.code, error.message);
+            return;
+          }
+          sendError(
+            response,
+            500,
+            "rewind_failed",
+            error instanceof Error ? error.message : String(error),
+          );
+        };
+        try {
+          const source =
+            target?.current && target.current.filePath === filePath
+              ? target.current
+              : await SessionStore.load(filePath);
+          // 与打点共用同一 store 实例（内存 state 才一致）；拥有该会话的 runtime 优先
+          const store = (target ?? runtime).snapshotStoreOf(source);
+          if (!store) {
+            sendError(response, 400, "no_snapshot", "文件快照已关闭，无法回滚代码（可仅回滚对话）。");
+            return;
+          }
+          if (dryRun) {
+            const plan = await planRewind({ session: source, checkpointId, mode, store, keepNewFiles });
+            cachePlan(plan);
+            sendJson(response, 200, plan);
+            return;
+          }
+          const plan = body.planId ? takePlan(body.planId) : null;
+          if (!plan || plan.checkpoint.id !== checkpointId) {
+            sendError(response, 400, "plan_expired", "预览已过期，请重新预览后再回滚。");
+            return;
+          }
+          const result = await applyRewind({
+            session: source,
+            plan,
+            store,
+            force,
+            derive: async () => {
+              const derived = await deriveSessionAtCheckpoint({
+                sourceFilePath: filePath,
+                source,
+                checkpointId: plan.checkpoint.id,
+                sessionsDir,
+                titleSuffix: "（回滚）",
+              });
+              const next = createFreshRuntime();
+              await next.switchSession(derived.filePath);
+              demoteActiveRuntime();
+              runtime = next;
+              pruneBackgroundRuntimes(runtime.current?.id);
+              const activated = runtime.current;
+              if (!activated) throw new Error("Failed to activate the rewound session.");
+              await rememberActiveSession(activated);
+              return derived;
+            },
+          });
+          // 留痕：切换完成后再追加，用 runtime 持有的 live store —— 内存态与文件同步，
+          // undoable 查询（runtime.current.lastRewind）立刻可见，无需重进页面
+          const entrySession = runtime.current;
+          if (!entrySession) throw new Error("Failed to activate the rewound session.");
+          await entrySession.appendRewind({
+            checkpointId: plan.checkpoint.id,
+            mode: plan.mode,
+            journal: result.rewindId,
+            ...(result.derived ? { derivedSessionId: result.derived.id } : {}),
+            sourceSessionId: source.id,
+            fileCount: result.applied + result.deleted,
+          });
+          // 三种模式都广播：code 给主窗刷新审阅面板；both/conversation 让悬浮岛等
+          // 订阅方清掉源会话尾流并重新拉快照（activeId 已切到派生会话）
+          (target ?? runtime).emit({
+            type: "files_rewound",
+            sessionId: source.id,
+            checkpointId: plan.checkpoint.id,
+            restored: result.applied,
+            deleted: result.deleted,
+          });
+          sendJson(response, 200, {
+            rewindId: result.rewindId,
+            applied: result.applied,
+            deleted: result.deleted,
+            ...(result.derived
+              ? (() => {
+                  const session = runtime.current;
+                  return {
+                    id: session?.id ?? result.derived.id,
+                    filePath: session?.filePath ?? result.derived.filePath,
+                    cwd: session?.cwd,
+                    createdAt: session?.createdAt,
+                    title: session?.title,
+                  };
+                })()
+              : {}),
+          });
+        } catch (error) {
+          sendRewindError(error);
+        }
+        return;
+      }
+
+      // 当前会话最近一次可撤销的回滚
+      if (pathname === "/session/rewind/undoable" && request.method === "GET") {
+        const session = runtime.current;
+        const store = session ? runtime.snapshotStoreOf(session) : null;
+        if (!session || !store) {
+          sendJson(response, 200, { undoable: null });
+          return;
+        }
+        try {
+          sendJson(response, 200, { undoable: await findUndoable(session, store) });
+        } catch (error) {
+          sendError(
+            response,
+            500,
+            "rewind_failed",
+            error instanceof Error ? error.message : String(error),
+          );
+        }
+        return;
+      }
+
+      // 撤销回滚：把文件改回回滚前状态；both/conversation 模式可切回源会话（对话同步还原）
+      if (pathname === "/session/rewind/undo" && request.method === "POST") {
+        const body = await readJsonBody<{
+          rewindId?: string;
+          dryRun?: boolean;
+          switchBack?: boolean;
+          force?: boolean;
+        }>(request);
+        const session = runtime.current;
+        if (!session) {
+          sendError(response, 404, "no_session", "No active session.");
+          return;
+        }
+        if (hasPendingWork(runtime)) {
+          sendError(
+            response,
+            409,
+            "session_busy",
+            "该会话还在生成、排队或等待审批，停止后再撤销回滚。",
+          );
+          return;
+        }
+        const store = runtime.snapshotStoreOf(session);
+        if (!store) {
+          sendError(response, 400, "no_snapshot", "文件快照已关闭，无法撤销回滚。");
+          return;
+        }
+        const sendUndoError = (error: unknown): void => {
+          if (error instanceof RewindError) {
+            const status = error.code === "needs_force" ? 409 : 400;
+            sendError(response, status, error.code, error.message);
+            return;
+          }
+          sendError(
+            response,
+            500,
+            "undo_failed",
+            error instanceof Error ? error.message : String(error),
+          );
+        };
+        try {
+          const { plan, journal } = await planUndo(
+            session,
+            store,
+            typeof body.rewindId === "string" ? body.rewindId : undefined,
+          );
+          if (body.dryRun) {
+            sendJson(response, 200, {
+              plan,
+              undoable: await findUndoable(session, store),
+            });
+            return;
+          }
+          const result = await applyUndo({ session, plan, journal, store, force: body.force === true });
+          // journal 用完即删：撤销只允许一次（redo 不支持，源会话/派生会话留档兜底）
+          await rm(store.journalFile(journal.rewindId), { force: true }).catch(() => undefined);
+          // 悬浮岛等订阅方同步：撤销也是一次文件回写，源会话尾流作废
+          runtime.emit({
+            type: "files_rewound",
+            sessionId: runtime.current?.id ?? journal.sourceSessionId,
+            checkpointId: journal.checkpointId,
+            restored: result.restored,
+            deleted: result.deleted,
+          });
+          let switched: { id: string; filePath: string; title: string | null } | null = null;
+          const sourceFile =
+            journal.mode !== "code" && body.switchBack !== false
+              ? resolveSessionFile(journal.sourceFilePath)
+              : null;
+          if (sourceFile) {
+            const next = createFreshRuntime();
+            await next.switchSession(sourceFile);
+            demoteActiveRuntime();
+            runtime = next;
+            pruneBackgroundRuntimes(runtime.current?.id);
+            const activated = runtime.current;
+            if (activated) {
+              await rememberActiveSession(activated);
+              switched = {
+                id: activated.id,
+                filePath: activated.filePath,
+                title: activated.title,
+              };
+            }
+          }
+          sendJson(response, 200, { ...result, ...(switched ? { switched } : {}) });
+        } catch (error) {
+          sendUndoError(error);
+        }
+        return;
+      }
+
+      // 会话导出：markdown / html 直接回文本，json 回结构化文档。
+      // 主进程负责选路径与写盘（渲染层没有 fs），这里只产内容。
+      if (pathname === "/session/export" && request.method === "POST") {
+        const body = await readJsonBody<{
+          filePath?: string;
+          format?: "markdown" | "html" | "json";
+          includeThinking?: boolean;
+          includeTools?: boolean;
+          inlineImages?: boolean;
+          maxToolOutput?: number;
+        }>(request);
+        const filePath = resolveSessionFile(body.filePath);
+        if (!filePath) {
+          sendError(response, 400, "invalid_request", "filePath must be a session file.");
+          return;
+        }
+        const format = body.format === "json" ? "json" : body.format === "html" ? "html" : "markdown";
+        try {
+          // 正在运行的会话先把待写队列刷盘，否则会漏掉最后几条
+          const live = findRuntimeForSessionFile(filePath);
+          if (live) await live.flush().catch(() => undefined);
+          const store = await SessionStore.load(filePath);
+          let payload: string;
+          try {
+            const doc = buildExportDoc(store.entries, {
+              includeThinking: body.includeThinking !== false,
+              includeTools: body.includeTools !== false,
+            });
+            const options = {
+              sourcePath: filePath,
+              inlineImages: body.inlineImages !== false,
+              ...(typeof body.maxToolOutput === "number"
+                ? { maxToolOutput: Math.max(0, body.maxToolOutput) }
+                : {}),
+            };
+            payload =
+              format === "json"
+                ? renderJson(doc)
+                : format === "html"
+                  ? renderHtml(doc, options)
+                  : renderMarkdown(doc, options);
+          } finally {
+            await store.close().catch(() => undefined);
+          }
+          const contentType =
+            format === "json"
+              ? "application/json; charset=utf-8"
+              : format === "html"
+                ? "text/html; charset=utf-8"
+                : "text/markdown; charset=utf-8";
+          response.writeHead(200, {
+            "content-type": contentType,
+            "content-length": Buffer.byteLength(payload),
+            "cache-control": "no-store",
+          });
+          response.end(payload);
+        } catch (error) {
+          sendError(
+            response,
+            404,
+            "export_failed",
+            error instanceof Error ? error.message : String(error),
+          );
+        }
         return;
       }
 
@@ -1653,15 +2353,117 @@ export async function startServer(options: { port?: number; token?: string } = {
         return;
       }
 
+      const subagentSteerMatch = pathname.match(/^\/session\/subagents\/([^/]+)\/steer$/);
+      if (subagentSteerMatch && request.method === "POST") {
+        const agentId = subagentSteerMatch[1];
+        const parent = runtime.current;
+        if (!parent || !SUBAGENT_ID_PATTERN.test(agentId)) {
+          sendError(response, 400, "invalid_request", "agentId must be a subagent session id.");
+          return;
+        }
+        const body = await readJsonBody<{ message?: string }>(request);
+        const message = typeof body.message === "string" ? body.message.trim() : "";
+        if (!message) {
+          sendError(response, 400, "invalid_request", "message must not be empty.");
+          return;
+        }
+        try {
+          runtime.steerSubagent(agentId, message);
+          sendJson(response, 200, { mode: "queued" });
+        } catch (error) {
+          const text = error instanceof Error ? error.message : String(error);
+          const status = /not found/i.test(text)
+            ? 404
+            : /not running|pending steers|too long/i.test(text)
+              ? 409
+              : 400;
+          sendError(response, status, "subagent_steer_failed", text);
+        }
+        return;
+      }
+
       if (pathname === "/session/new" && request.method === "POST") {
-        const body = await readJsonBody<{ cwd?: string }>(request);
+        const body = await readJsonBody<{
+          cwd?: string;
+          worktree?: boolean;
+          worktreeSettings?: {
+            fetchUpstream?: boolean;
+            autoCleanup?: boolean;
+            maxKeep?: number;
+          };
+        }>(request);
+        const sourceCwd = path.resolve(
+          body.cwd ?? runtime.current?.cwd ?? workspace ?? process.cwd(),
+        );
+        let created: CreatedSessionWorktree | null = null;
+        if (body.worktree === true) {
+          const worktreeSettings = body.worktreeSettings ?? {};
+          if (worktreeSettings.autoCleanup === true) {
+            try {
+              const sessions = await runtime.listSessions();
+              const referencedPaths = new Set(
+                sessions.flatMap((session) =>
+                  session.worktree ? [session.worktree.path] : [],
+                ),
+              );
+              const requestedMaxKeep =
+                typeof worktreeSettings.maxKeep === "number" &&
+                Number.isFinite(worktreeSettings.maxKeep)
+                  ? worktreeSettings.maxKeep
+                  : 15;
+              const cleanup = await pruneSessionWorktrees({
+                worktreesDir,
+                maxKeep: Math.max(1, Math.min(100, Math.floor(requestedMaxKeep))),
+                referencedPaths,
+              });
+              if (cleanup.removed || cleanup.failed) {
+                console.error(
+                  `[worktree] cleanup removed=${cleanup.removed} skippedDirty=${cleanup.skippedDirty} skippedReferenced=${cleanup.skippedReferenced} failed=${cleanup.failed}`,
+                );
+              }
+            } catch (error) {
+              console.error(
+                `[worktree] cleanup skipped: ${
+                  error instanceof Error ? error.message : String(error)
+                }`,
+              );
+            }
+          }
+          try {
+            created = await createSessionWorktree(sourceCwd, worktreesDir, {
+              fetchUpstream: worktreeSettings.fetchUpstream === true,
+            });
+          } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            const detail = error instanceof GitError ? error.detail : undefined;
+            sendError(
+              response,
+              400,
+              "worktree_failed",
+              detail && detail !== message ? `${message}\n${detail}` : message,
+            );
+            return;
+          }
+        }
         const next = createFreshRuntime();
-        const session = await next.newSession(body.cwd);
+        let session;
+        try {
+          session = await next.newSession(
+            created?.cwd ?? sourceCwd,
+            created ? { worktree: created.worktree } : {},
+          );
+        } catch (error) {
+          if (created) await removeSessionWorktree(created.worktree).catch(() => undefined);
+          throw error;
+        }
         demoteActiveRuntime();
         runtime = next;
         pruneBackgroundRuntimes(session.id);
         await rememberActiveSession(runtime.current);
-        sendJson(response, 200, session);
+        sendJson(response, 200, {
+          ...session,
+          ...(created?.dirty ? { worktreeDirty: true } : {}),
+        });
         return;
       }
 
@@ -1677,6 +2479,7 @@ export async function startServer(options: { port?: number; token?: string } = {
         sendJson(response, 200, {
           id: session.id,
           cwd: session.cwd,
+          worktree: session.worktree ?? null,
           filePath: session.filePath,
           messages: session.messages,
         });
@@ -2019,8 +2822,8 @@ export async function startServer(options: { port?: number; token?: string } = {
           sendError(response, 400, "invalid_harness", saved.errors.join("\n"));
           return;
         }
-        // 只有保存的是当前档位的图才需要重载
-        if (profile === runtime.currentAgentProfile) runtime.refreshHarness();
+        // 只有保存的是当前档位的图才需要重载；notice=true：下一回合追加 in-history 提醒
+        if (profile === runtime.currentAgentProfile) runtime.refreshHarness(true);
         sendJson(response, 200, { workspace, profile, saved: true });
         return;
       }
@@ -2179,6 +2982,150 @@ export async function startServer(options: { port?: number; token?: string } = {
         return;
       }
 
+      // 插件自带的 UI 面板资源：`<pluginDir>/ui/**`。
+      // 只能读已加载插件的 ui 目录，路径穿越一律拒绝；iframe 用 query token 访问。
+      if (pathname.startsWith("/plugin-ui/")) {
+        const rest = pathname.slice("/plugin-ui/".length);
+        const slash = rest.indexOf("/");
+        if (slash <= 0) {
+          sendError(response, 400, "invalid_request", "expected /plugin-ui/<id>/<path>");
+          return;
+        }
+        const pluginId = decodeURIComponent(rest.slice(0, slash));
+        const relative = decodeURIComponent(rest.slice(slash + 1));
+        const descriptor = pluginSystem.descriptors().find((item) => item.id === pluginId);
+        if (!descriptor) {
+          sendError(response, 404, "not_found", "plugin not found");
+          return;
+        }
+        if (!descriptor.ui) {
+          sendError(response, 404, "not_found", "plugin has no ui");
+          return;
+        }
+        // descriptor.path 是入口文件；UI 面板固定在同级 ui/ 目录
+        const uiDir = path.resolve(path.dirname(descriptor.path), "ui");
+        const target = path.resolve(uiDir, relative);
+        if (target !== uiDir && !target.startsWith(`${uiDir}${path.sep}`)) {
+          sendError(response, 403, "forbidden", "path outside the plugin ui directory");
+          return;
+        }
+        try {
+          const stats = await stat(target);
+          if (!stats.isFile()) {
+            sendError(response, 404, "not_found", "not a file");
+            return;
+          }
+          const buffer = await readFile(target);
+          response.writeHead(200, {
+            "content-type": mimeForFile(target),
+            "content-length": buffer.byteLength,
+            // 开发期改完 HTML 刷新即可生效
+            "cache-control": "no-store",
+          });
+          response.end(buffer);
+        } catch {
+          sendError(response, 404, "not_found", "file not found");
+        }
+        return;
+      }
+
+      // Claude Code hooks 配置摘要：设置页只读展示 + 打开编辑（不在 MeowCode 内写文件）
+      if (pathname === "/hooks/config" && request.method === "GET") {
+        const scope = parseHooksScope(process.env.MEOWCODE_CC_HOOKS_SCOPE);
+        const runMode = parseRunMode(process.env.MEOWCODE_HOOKS_RUN_MODE);
+        const hooksHome = process.env.MEOWCODE_CC_HOOKS_HOME || os.homedir();
+        const config = await loadHooksConfig({
+          homeDir: hooksHome,
+          workspace: pluginsWorkspace,
+          scope,
+          runMode,
+          fresh: true,
+        });
+        const summary = summarizeHooks(config);
+        const descriptor = pluginSystem
+          .descriptors()
+          .find((plugin) => plugin.id === "claude-code-hooks");
+        sendJson(response, 200, {
+          enabled: descriptor?.enabled ?? false,
+          ...(descriptor?.error ? { error: descriptor.error } : {}),
+          ...summary,
+        });
+        return;
+      }
+
+      // 数据导入：探测其他应用数据 + 执行导入（只写 ~/.meowcode 与 sessions，不碰来源）
+      if (pathname === "/import/sources" && request.method === "GET") {
+        sendJson(response, 200, { sources: await detectImportSources(homeDir) });
+        return;
+      }
+      if (pathname === "/import/plan" && request.method === "POST") {
+        const body = await readJsonBody<{ appId?: unknown; groups?: unknown }>(request);
+        const parsed = parseImportRequest(body);
+        if (!parsed) {
+          sendError(response, 400, "invalid_request", "appId must be qoder / qoderintl / workbuddy / workbuddyai / zcode / opencode / dsh / codex");
+          return;
+        }
+        if (parsed.groups.length === 0) {
+          sendError(response, 400, "invalid_request", "groups must contain mcp / memory / skills / tasks");
+          return;
+        }
+        const items = await planImport(homeDir, sessionsDir, parsed.appId, parsed.groups);
+        sendJson(response, 200, {
+          items: items.map(({ group, name, key }) => ({ group, name, ...(key ? { key } : {}) })),
+        });
+        return;
+      }
+      if (pathname === "/import/apply-one" && request.method === "POST") {
+        const body = await readJsonBody<{ appId?: unknown; group?: unknown; name?: unknown; key?: unknown }>(
+          request,
+        );
+        const appId = body.appId;
+        if (appId !== "qoder" && appId !== "qoderintl" && appId !== "workbuddy" && appId !== "workbuddyai" && appId !== "zcode" && appId !== "opencode" && appId !== "dsh" && appId !== "codex") {
+          sendError(response, 400, "invalid_request", "appId must be qoder / qoderintl / workbuddy / workbuddyai / zcode / opencode / dsh / codex");
+          return;
+        }
+        const groupId = body.group;
+        if (groupId !== "mcp" && groupId !== "memory" && groupId !== "skills" && groupId !== "tasks") {
+          sendError(response, 400, "invalid_request", "group must be mcp / memory / skills / tasks");
+          return;
+        }
+        if (typeof body.name !== "string" || body.name.length === 0) {
+          sendError(response, 400, "invalid_request", "name is required");
+          return;
+        }
+        // 重新解析 plan 定位该项：不存在（已导入/已消失）按 skipped 处理
+        const items = await planImport(homeDir, sessionsDir, appId, [groupId]);
+        const item = items.find(
+          (entry) =>
+            entry.group === groupId &&
+            (typeof body.key === "string" ? entry.key === body.key : entry.name === body.name),
+        );
+        if (!item) {
+          sendJson(response, 200, { status: "skipped" });
+          return;
+        }
+        const result = await applyImportItem(homeDir, sessionsDir, pluginsWorkspace, item);
+        if (result.status === "imported" && groupId === "mcp") {
+          await reloadAfterMcpChange();
+        }
+        sendJson(response, 200, result);
+        return;
+      }
+      if (pathname === "/import/apply" && request.method === "POST") {
+        const body = await readJsonBody<{ appId?: unknown; groups?: unknown }>(request);
+        const parsed = parseImportRequest(body);
+        if (!parsed || parsed.groups.length === 0) {
+          sendError(response, 400, "invalid_request", "invalid appId or groups");
+          return;
+        }
+        const report = await applyImport(homeDir, sessionsDir, pluginsWorkspace, parsed.appId, parsed.groups);
+        if (report.mcpChanged) {
+          await reloadAfterMcpChange();
+        }
+        sendJson(response, 200, report);
+        return;
+      }
+
       // 已安装技能列表：输入框「+ → 技能」与 `/` 面板的数据源；cwd 跟随当前会话工作区
       if (pathname === "/skills" && request.method === "GET") {
         const query = new URL(request.url ?? "/", "http://localhost").searchParams;
@@ -2186,7 +3133,7 @@ export async function startServer(options: { port?: number; token?: string } = {
         const skills = await discoverSkills(
           [
             { dir: path.join(cwd, ".meowcode", "skills"), source: "project" },
-            { dir: path.join(os.homedir(), ".meowcode", "skills"), source: "user" },
+            { dir: path.join(homeDir, ".meowcode", "skills"), source: "user" },
           ],
           { allowMissingDescription: true },
         );
@@ -2207,9 +3154,10 @@ export async function startServer(options: { port?: number; token?: string } = {
           const result = await pluginSystem.reload({ restartMcp: true });
           commandIndex = await loadCommandIndex({
             workspace: pluginsWorkspace,
-            homeDir: os.homedir(),
+            homeDir,
             registry: pluginSystem.registry,
           });
+          runtime.rebuildToolCatalog("plugin_reload");
           sendJson(response, 200, {
             plugins: result.descriptors,
             errors: result.errors,
@@ -2250,9 +3198,10 @@ export async function startServer(options: { port?: number; token?: string } = {
           const result = await pluginSystem.reload({ restartMcp: true });
           commandIndex = await loadCommandIndex({
             workspace: pluginsWorkspace,
-            homeDir: os.homedir(),
+            homeDir,
             registry: pluginSystem.registry,
           });
+          runtime.rebuildToolCatalog("plugin_reload");
           sendJson(response, 200, {
             ok: true,
             plugins: result.descriptors,
@@ -2268,7 +3217,7 @@ export async function startServer(options: { port?: number; token?: string } = {
 
       // 插件市场：bundles 索引 + 安装/卸载（目标固定 ~/.meowcode/）
       if (pathname === "/marketplace" && request.method === "GET") {
-        const listing = await marketplace.list({ homeDir: os.homedir() });
+        const listing = await marketplace.list({ homeDir });
         sendJson(response, 200, { items: listing.entries, icons: listing.icons });
         return;
       }
@@ -2289,9 +3238,16 @@ export async function startServer(options: { port?: number; token?: string } = {
           sendJson(
             response,
             200,
-            await marketplace.detail(detailId.trim(), detailType, { homeDir: os.homedir() }),
+            await marketplace.detail(detailId.trim(), detailType, { homeDir }),
           );
         } catch (error) {
+          // 内置插件不在市场索引里：市场 not_found 时用 builtin manifest 兜底，
+          // 桌面端点「已加载插件」里的内置行也能进详情页看使用说明
+          const fallback = builtinDetailFallback(detailId.trim());
+          if (fallback && error instanceof MarketplaceError && error.code === "not_found") {
+            sendJson(response, 200, fallback);
+            return;
+          }
           sendMarketplaceError(response, error);
         }
         return;
@@ -2309,7 +3265,7 @@ export async function startServer(options: { port?: number; token?: string } = {
           return;
         }
         try {
-          const result = await marketplace.install(body.id.trim(), type, { homeDir: os.homedir() });
+          const result = await marketplace.install(body.id.trim(), type, { homeDir });
           if (type !== "skill") await reloadAfterMarketChange();
           sendJson(response, 200, result);
         } catch (error) {
@@ -2330,11 +3286,297 @@ export async function startServer(options: { port?: number; token?: string } = {
           return;
         }
         try {
-          await marketplace.uninstall(body.id.trim(), type, { homeDir: os.homedir() });
+          await marketplace.uninstall(body.id.trim(), type, { homeDir });
           if (type !== "skill") await reloadAfterMarketChange();
           sendJson(response, 200, { uninstalled: true });
         } catch (error) {
           sendMarketplaceError(response, error);
+        }
+        return;
+      }
+
+      // ---- 社区市场（GitCode 收录仓库）----
+
+      // 社区列表：?refresh=1 强制失效缓存；官方同 id 条目被跳过
+      if (pathname === "/marketplace/community" && request.method === "GET") {
+        const query = new URL(request.url ?? "/", "http://localhost").searchParams;
+        const refresh = query.get("refresh") === "1";
+        try {
+          const officialIds = await marketplace.ids();
+          const listing = await communityMarket.list({ homeDir }, { refresh, officialIds });
+          sendJson(response, 200, { items: listing.entries, icons: listing.icons });
+        } catch (error) {
+          sendError(
+            response,
+            502,
+            "community_source_failed",
+            error instanceof Error ? error.message : String(error),
+          );
+        }
+        return;
+      }
+
+      // 社区详情：技能 → SKILL.md 正文
+      if (pathname === "/marketplace/community/detail" && request.method === "GET") {
+        const query = new URL(request.url ?? "/", "http://localhost").searchParams;
+        const detailId = query.get("id") ?? "";
+        const detailType = query.get("type") as "skill" | "plugin" | "mcp" | null;
+        if (
+          !detailId.trim() ||
+          (detailType !== "skill" && detailType !== "plugin" && detailType !== "mcp")
+        ) {
+          sendError(response, 400, "invalid_request", "id and type (skill|plugin|mcp) are required");
+          return;
+        }
+        try {
+          sendJson(
+            response,
+            200,
+            await communityMarket.detail(detailId.trim(), detailType, { homeDir }),
+          );
+        } catch (error) {
+          sendMarketplaceError(response, error);
+        }
+        return;
+      }
+
+      // 社区安装：写官方同款安装标记，卸载走官方 /marketplace/uninstall
+      if (pathname === "/marketplace/community/install" && request.method === "POST") {
+        const body = await readJsonBody<{ id?: string; type?: string }>(request);
+        const type = body.type;
+        if (
+          typeof body.id !== "string" ||
+          !body.id.trim() ||
+          (type !== "skill" && type !== "plugin" && type !== "mcp")
+        ) {
+          sendError(response, 400, "invalid_request", "id and type (skill|plugin|mcp) are required");
+          return;
+        }
+        try {
+          const result = await communityMarket.install(body.id.trim(), type, { homeDir });
+          if (type !== "skill") await reloadAfterMarketChange();
+          sendJson(response, 200, result);
+        } catch (error) {
+          sendMarketplaceError(response, error);
+        }
+        return;
+      }
+
+      // ---- 第三方市场：ClawHub + SkillHub 聚合（仅 skill）----
+
+      // 第三方列表/搜索：?query= 搜索、?source= 只取一源、?refresh=1 强制失效缓存；
+      // cursors 传上一次响应的 nextCursors 翻页
+      if (pathname === "/marketplace/thirdparty" && request.method === "GET") {
+        const query = new URL(request.url ?? "/", "http://localhost").searchParams;
+        const source = query.get("source");
+        let cursors: Partial<Record<ThirdPartySource, string>> | undefined;
+        if (query.get("cursors")) {
+          try {
+            const parsed = JSON.parse(query.get("cursors")!) as Record<string, unknown>;
+            cursors = {
+              ...(typeof parsed.clawhub === "string" ? { clawhub: parsed.clawhub } : {}),
+              ...(typeof parsed.skillhub === "string" ? { skillhub: parsed.skillhub } : {}),
+            };
+          } catch {
+            sendError(response, 400, "invalid_request", "cursors must be a JSON object of source → cursor");
+            return;
+          }
+        }
+        try {
+          const listing = await thirdPartyMarket.list(
+            { homeDir },
+            {
+              ...(query.get("query") ? { query: query.get("query")! } : {}),
+              ...(source === "clawhub" || source === "skillhub" ? { source: source as ThirdPartySource } : {}),
+              ...(query.get("refresh") === "1" ? { refresh: true } : {}),
+              ...(cursors ? { cursors } : {}),
+            },
+          );
+          sendJson(response, 200, {
+            items: listing.entries,
+            sources: listing.sources,
+            icons: listing.icons,
+            nextCursors: listing.nextCursors,
+          });
+        } catch (error) {
+          sendMarketplaceError(response, error);
+        }
+        return;
+      }
+
+      // 第三方详情：skill → SKILL.md 正文
+      if (pathname === "/marketplace/thirdparty/detail" && request.method === "GET") {
+        const query = new URL(request.url ?? "/", "http://localhost").searchParams;
+        const detailId = query.get("id") ?? "";
+        if (!detailId.trim()) {
+          sendError(response, 400, "invalid_request", "id is required");
+          return;
+        }
+        try {
+          sendJson(response, 200, await thirdPartyMarket.detail(detailId.trim(), { homeDir }));
+        } catch (error) {
+          sendMarketplaceError(response, error);
+        }
+        return;
+      }
+
+      // 第三方安装：写官方同款安装标记，卸载走官方 /marketplace/uninstall
+      if (pathname === "/marketplace/thirdparty/install" && request.method === "POST") {
+        const body = await readJsonBody<{ id?: string }>(request);
+        if (typeof body.id !== "string" || !body.id.trim()) {
+          sendError(response, 400, "invalid_request", "id is required");
+          return;
+        }
+        try {
+          sendJson(response, 200, await thirdPartyMarket.install(body.id.trim(), { homeDir }));
+        } catch (error) {
+          sendMarketplaceError(response, error);
+        }
+        return;
+      }
+
+      // ---- 「我的」：手动添加的 skill / plugin / MCP（标记 manual-<type>-<id>.json）----
+
+      // 「我的」列表：manual 标记 join 插件 descriptors 与 MCP 运行状态
+      if (pathname === "/marketplace/mine" && request.method === "GET") {
+        const base = await marketplace.mineList({ homeDir });
+        const descriptors = new Map(pluginSystem.descriptors().map((d) => [d.id, d]));
+        const mcpStatuses = pluginSystem.mcp.statuses();
+        sendJson(response, 200, {
+          skills: base.skills,
+          plugins: base.plugins.map((entry) => {
+            const descriptor = descriptors.get(entry.id);
+            return {
+              ...entry,
+              displayName: descriptor?.displayName,
+              description: descriptor?.description,
+              enabled: descriptor?.enabled ?? false,
+              error: descriptor?.error,
+            };
+          }),
+          mcp: base.mcp.map((entry) => {
+            const status = mcpStatuses[entry.id];
+            return {
+              ...entry,
+              mcpStatus: status?.status,
+              toolCount: status?.toolCount,
+              error: status?.error,
+              missingEnv: status?.missingEnv,
+            };
+          }),
+        });
+        return;
+      }
+
+      // 手动导入本地 skill 目录 / plugin 文件或目录
+      if (pathname === "/marketplace/manual/import" && request.method === "POST") {
+        const body = await readJsonBody<{ type?: string; path?: string }>(request);
+        const type = body.type;
+        if (
+          (type !== "skill" && type !== "plugin") ||
+          typeof body.path !== "string" ||
+          !body.path.trim()
+        ) {
+          sendError(response, 400, "invalid_request", "type (skill|plugin) and path are required");
+          return;
+        }
+        try {
+          const result = await marketplace.manualImport(
+            { type, sourcePath: body.path.trim() },
+            { homeDir },
+          );
+          if (type !== "skill") await reloadAfterMarketChange();
+          sendJson(response, 200, result);
+        } catch (error) {
+          sendMarketplaceError(response, error);
+        }
+        return;
+      }
+
+      // 手动添加/更新 MCP server（表单或粘贴 JSON 都归一到 {id, server}）
+      if (pathname === "/marketplace/manual/mcp" && request.method === "POST") {
+        const body = await readJsonBody<{ id?: string; server?: unknown }>(request);
+        if (
+          typeof body.id !== "string" ||
+          !body.id.trim() ||
+          !body.server ||
+          typeof body.server !== "object" ||
+          Array.isArray(body.server)
+        ) {
+          sendError(response, 400, "invalid_request", "id and server object are required");
+          return;
+        }
+        try {
+          const result = await marketplace.manualMcpSave(
+            { id: body.id.trim(), server: body.server as Record<string, unknown> },
+            { homeDir },
+          );
+          await reloadAfterMcpChange();
+          sendJson(response, 200, result);
+        } catch (error) {
+          sendMarketplaceError(response, error);
+        }
+        return;
+      }
+
+      // 手动 MCP 启停：改 mcp.json 的 enabled 字段并 diff 重连
+      if (pathname === "/marketplace/manual/mcp-toggle" && request.method === "POST") {
+        const body = await readJsonBody<{ id?: string; enabled?: boolean }>(request);
+        if (typeof body.id !== "string" || !body.id.trim() || typeof body.enabled !== "boolean") {
+          sendError(response, 400, "invalid_request", "id and enabled are required");
+          return;
+        }
+        try {
+          const result = await marketplace.manualMcpToggle(
+            { id: body.id.trim(), enabled: body.enabled },
+            { homeDir },
+          );
+          await reloadAfterMcpChange();
+          sendJson(response, 200, result);
+        } catch (error) {
+          sendMarketplaceError(response, error);
+        }
+        return;
+      }
+
+      // 提示词美化：不依赖会话 / 仓库；side 指定侧边聊 runtime（模型选择独立）
+      if (pathname === "/prompt/polish" && request.method === "POST") {
+        const body = await readJsonBody<{ text?: unknown; side?: unknown }>(request);
+        const text = typeof body.text === "string" ? body.text.trim() : "";
+        if (!text) {
+          sendError(response, 400, "invalid_request", "请输入要美化的提示词。");
+          return;
+        }
+        if (text.length > MAX_POLISH_INPUT_CHARS) {
+          sendError(
+            response,
+            400,
+            "invalid_request",
+            `提示词过长（最多 ${MAX_POLISH_INPUT_CHARS} 字符），请先缩短后再试。`,
+          );
+          return;
+        }
+        if (body.side !== undefined && typeof body.side !== "boolean") {
+          sendError(response, 400, "invalid_request", "side must be a boolean.");
+          return;
+        }
+
+        const target = body.side === true ? ensureSideRuntime() : runtime;
+        const controller = new AbortController();
+        // 与 commit-message 同款：内部可能重试一次（更大预算），给足 90s
+        const timer = setTimeout(() => controller.abort(), 90_000);
+        try {
+          const polished = await target.polishPrompt(text, { signal: controller.signal });
+          sendJson(response, 200, { text: polished });
+        } catch (error) {
+          const message = controller.signal.aborted
+            ? "美化提示词超时（90 秒），请重试或缩短提示词。"
+            : error instanceof Error
+              ? error.message
+              : String(error);
+          sendError(response, 502, "prompt_polish_failed", message);
+        } finally {
+          clearTimeout(timer);
         }
         return;
       }
@@ -2380,6 +3622,332 @@ export async function startServer(options: { port?: number; token?: string } = {
             model: provider.model,
           })),
         });
+        return;
+      }
+
+      // 回合后记忆蒸馏开关：GET 查询；PUT 实时切换（新会话 runtime + 存活的
+      // 前台/后台/侧边 runtime 全部生效）。settings.json 的落盘由桌面端负责。
+      if (pathname === "/config/memory-extraction" && request.method === "GET") {
+        sendJson(response, 200, { enabled: memoryExtractionEnabled });
+        return;
+      }
+      if (pathname === "/config/memory-extraction" && request.method === "PUT") {
+        const body = await readJsonBody<{ enabled?: unknown }>(request);
+        if (typeof body.enabled !== "boolean") {
+          sendError(response, 400, "invalid_request", "enabled must be a boolean");
+          return;
+        }
+        memoryExtractionEnabled = body.enabled;
+        runtime.memoryExtraction = body.enabled;
+        if (sideRuntime) sideRuntime.memoryExtraction = body.enabled;
+        for (const instance of backgroundRuntimes.values()) {
+          instance.memoryExtraction = body.enabled;
+        }
+        sendJson(response, 200, { enabled: memoryExtractionEnabled });
+        return;
+      }
+
+      // 自我学习开关：GET 查询；PUT 实时切换（与记忆蒸馏同款：前台/侧边/后台全生效）。
+      if (pathname === "/config/learning" && request.method === "GET") {
+        sendJson(response, 200, { enabled: learningEnabled });
+        return;
+      }
+      if (pathname === "/config/learning" && request.method === "PUT") {
+        const body = await readJsonBody<{ enabled?: unknown }>(request);
+        if (typeof body.enabled !== "boolean") {
+          sendError(response, 400, "invalid_request", "enabled must be a boolean");
+          return;
+        }
+        learningEnabled = body.enabled;
+        runtime.learning = body.enabled;
+        if (sideRuntime) sideRuntime.learning = body.enabled;
+        for (const instance of backgroundRuntimes.values()) {
+          instance.learning = body.enabled;
+        }
+        sendJson(response, 200, { enabled: learningEnabled });
+        return;
+      }
+      // 网络代理：GET 查询；PUT 实时切换（下一次对外请求即生效，无需重启）。
+      if (pathname === "/config/proxy" && request.method === "GET") {
+        sendJson(response, 200, proxyConfig);
+        return;
+      }
+      if (pathname === "/config/proxy" && request.method === "PUT") {
+        const body = await readJsonBody<{ mode?: unknown; url?: unknown }>(request);
+        if (!isProxyMode(body.mode)) {
+          sendError(response, 400, "invalid_request", "mode must be direct|system|manual");
+          return;
+        }
+        const url = typeof body.url === "string" ? body.url.trim() : "";
+        // 地址允许为空/暂时不合法：用户可能刚切到手动模式还没填完。
+        // 解析失败时 resolveProxyUrl 会退回直连，不会把请求打死。
+        proxyConfig = { mode: body.mode as ProxyMode, url };
+        setProxyConfig(proxyConfig);
+        sendJson(response, 200, proxyConfig);
+        return;
+      }
+
+      // 学习产物快照：用户模型 / 经验 / 技能 / 账本 / 审计
+      if (pathname === "/learning/items" && request.method === "GET") {
+        const snapshot = await runtime.learningSnapshot().catch(() => null);
+        if (!snapshot) {
+          sendError(response, 500, "snapshot_failed", "could not read learning state");
+          return;
+        }
+        sendJson(response, 200, snapshot);
+        return;
+      }
+      // 技能管理：删除 / 重新启用 / 回滚上一版
+      if (pathname === "/learning/skill" && request.method === "POST") {
+        const body = await readJsonBody<{
+          action?: unknown;
+          scope?: unknown;
+          name?: unknown;
+        }>(request);
+        const action = body.action;
+        const scope = body.scope;
+        const name = body.name;
+        if (
+          (action !== "delete" && action !== "reactivate" && action !== "rollback") ||
+          (scope !== "user" && scope !== "project") ||
+          typeof name !== "string" ||
+          !name.trim()
+        ) {
+          sendError(response, 400, "invalid_request", "action, scope and name are required");
+          return;
+        }
+        const ok = await runtime.manageLearnedSkill(action, scope, name).catch(() => false);
+        sendJson(response, 200, { ok });
+        return;
+      }
+      // 清除所有学到的：两层学习根全清，不可撤销（设置页二次确认后调用）
+      if (pathname === "/learning/clear" && request.method === "POST") {
+        const result = await runtime.clearLearning().catch(() => ({ cleared: [] as string[] }));
+        sendJson(response, 200, result);
+        return;
+      }
+      // 立即整理：合并近义经验、蒸技能（用户手动触发，不受 30 分钟空档限制）
+      if (pathname === "/learning/consolidate" && request.method === "POST") {
+        const result = await runtime.consolidateLearning().catch(() => ({ applied: [] as string[] }));
+        sendJson(response, 200, result);
+        return;
+      }
+
+      // AGENTS.md / CLAUDE.md 导入开关：GET 查询；PUT 实时切换并清掉指令快照。
+      if (pathname === "/config/instructions" && request.method === "GET") {
+        sendJson(response, 200, instructionSettings);
+        return;
+      }
+      if (pathname === "/config/instructions" && request.method === "PUT") {
+        const body = await readJsonBody<{
+          includeAgentsMd?: unknown;
+          includeClaudeMd?: unknown;
+        }>(request);
+        if (
+          typeof body.includeAgentsMd !== "boolean" &&
+          typeof body.includeClaudeMd !== "boolean"
+        ) {
+          sendError(
+            response,
+            400,
+            "invalid_request",
+            "includeAgentsMd or includeClaudeMd must be a boolean",
+          );
+          return;
+        }
+        instructionSettings = {
+          ...instructionSettings,
+          ...(typeof body.includeAgentsMd === "boolean"
+            ? { includeAgentsMd: body.includeAgentsMd }
+            : {}),
+          ...(typeof body.includeClaudeMd === "boolean"
+            ? { includeClaudeMd: body.includeClaudeMd }
+            : {}),
+        };
+        runtime.setInstructionSettings(instructionSettings);
+        if (sideRuntime) sideRuntime.setInstructionSettings(instructionSettings);
+        for (const instance of backgroundRuntimes.values()) {
+          instance.setInstructionSettings(instructionSettings);
+        }
+        sendJson(response, 200, instructionSettings);
+        return;
+      }
+
+      // 语色：GET 查询；PUT 实时切换（新会话 runtime + 存活的
+      // 前台/后台/侧边 runtime 全部生效）。settings.json 的落盘由桌面端负责。
+      if (pathname === "/config/speech-style" && request.method === "GET") {
+        sendJson(response, 200, { style: speechStyle });
+        return;
+      }
+      if (pathname === "/config/speech-style" && request.method === "PUT") {
+        const body = await readJsonBody<{ style?: unknown }>(request);
+        if (!isSpeechStyle(body.style)) {
+          sendError(
+            response,
+            400,
+            "invalid_request",
+            'style must be "normal", "tafei" or "dazui"',
+          );
+          return;
+        }
+        const next = body.style;
+        speechStyle = next;
+        runtime.speechStyle = next;
+        if (sideRuntime) sideRuntime.speechStyle = next;
+        for (const instance of backgroundRuntimes.values()) {
+          instance.speechStyle = next;
+        }
+        sendJson(response, 200, { style: speechStyle });
+        return;
+      }
+
+      // 命令沙箱：GET 查询；PUT 实时切换（exec 层单例，前后台/子 agent 一起生效）。
+      // 开启或新增可写根时先 probe：顺带完成首次 ACL 传播，失败绝不落配置。
+      if (pathname === "/config/sandbox" && request.method === "GET") {
+        sendJson(response, 200, {
+          ...getSandboxSettings(),
+          platform: process.platform,
+          supported: process.platform === "win32",
+          workspace: workspace ?? "",
+        });
+        return;
+      }
+      if (pathname === "/config/sandbox" && request.method === "PUT") {
+        const body = await readJsonBody<{
+          enabled?: unknown;
+          writableRoots?: unknown;
+          allowTemp?: unknown;
+          grantTimeoutMs?: unknown;
+          confirmDelete?: unknown;
+        }>(request);
+        if (body.enabled !== undefined && typeof body.enabled !== "boolean") {
+          sendError(response, 400, "invalid_request", "enabled must be a boolean");
+          return;
+        }
+        if (body.confirmDelete !== undefined && typeof body.confirmDelete !== "boolean") {
+          sendError(response, 400, "invalid_request", "confirmDelete must be a boolean");
+          return;
+        }
+        const current = getSandboxSettings();
+        const enabled = typeof body.enabled === "boolean" ? body.enabled : current.enabled;
+        const writableRoots = Array.isArray(body.writableRoots)
+          ? body.writableRoots.filter((item): item is string => typeof item === "string")
+          : current.writableRoots;
+        if (Array.isArray(body.writableRoots)) {
+          for (const root of writableRoots) {
+            if (!path.isAbsolute(root) || !existsSync(root) || !statSync(root).isDirectory()) {
+              sendError(
+                response,
+                400,
+                "invalid_request",
+                `writable root is not an existing directory: ${root}`,
+              );
+              return;
+            }
+          }
+        }
+        const next = normalizeSandboxSettings({
+          enabled,
+          mode: "workspace-write",
+          writableRoots,
+          allowTemp:
+            typeof body.allowTemp === "boolean" ? body.allowTemp : current.allowTemp,
+          grantTimeoutMs:
+            typeof body.grantTimeoutMs === "number"
+              ? body.grantTimeoutMs
+              : current.grantTimeoutMs,
+          confirmDelete:
+            typeof body.confirmDelete === "boolean"
+              ? body.confirmDelete
+              : current.confirmDelete,
+        });
+        if (next.enabled && process.platform !== "win32") {
+          sendError(
+            response,
+            400,
+            "sandbox_unavailable",
+            "The command sandbox is only available on Windows.",
+          );
+          return;
+        }
+        const rootsChanged =
+          JSON.stringify(next.writableRoots) !== JSON.stringify(current.writableRoots);
+        let probeDurationMs: number | undefined;
+        if (next.enabled && (!current.enabled || rootsChanged)) {
+          if (!workspace) {
+            sendError(response, 400, "invalid_request", "workspace is required");
+            return;
+          }
+          const probe = await probeSandbox({ workspace, settings: next });
+          if (!probe.ok) {
+            sendError(
+              response,
+              400,
+              "sandbox_unavailable",
+              probe.detail ?? "sandbox probe failed",
+            );
+            return;
+          }
+          probeDurationMs = probe.durationMs;
+        }
+        setSandboxSettings(next);
+        sendJson(response, 200, {
+          ...getSandboxSettings(),
+          platform: process.platform,
+          supported: process.platform === "win32",
+          workspace: workspace ?? "",
+          ...(probeDurationMs !== undefined ? { probeDurationMs } : {}),
+        });
+        return;
+      }
+      if (pathname === "/config/sandbox/probe" && request.method === "POST") {
+        if (!workspace) {
+          sendError(response, 400, "invalid_request", "workspace is required");
+          return;
+        }
+        const result = await probeSandbox({ workspace, settings: getSandboxSettings() });
+        sendJson(response, 200, { ...result, backend: "windows-acl", workspace });
+        return;
+      }
+      if (pathname === "/config/sandbox/revoke" && request.method === "POST") {
+        if (!workspace) {
+          sendError(response, 400, "invalid_request", "workspace is required");
+          return;
+        }
+        const result = await revokeSandboxGrantsRemote({
+          workspace,
+          settings: getSandboxSettings(),
+        });
+        sendJson(response, 200, result);
+        return;
+      }
+
+      // 服务商模型列表（设置页「获取模型列表」）：渲染端不能直连 provider，
+      // 由服务端代发，密钥只在这里使用。
+      if (pathname === "/provider/models" && request.method === "POST") {
+        const body = await readJsonBody<{
+          providerId?: string;
+          baseUrl?: string;
+          protocol?: string;
+          apiKey?: string;
+          authStyle?: "bearer" | "api-key" | "bedrock-api-key" | "none";
+          extraHeaders?: Record<string, string>;
+        }>(request);
+        // 编辑已保存的服务商时表单不持有密钥：按 id 回退到运行时里的存档配置
+        const stored = body.providerId
+          ? runtime.providersConfig.find((provider) => provider.id === body.providerId)
+          : undefined;
+        const resolved = resolveProviderModelsOptions(body, stored);
+        if (!resolved.ok) {
+          sendError(response, 400, "invalid_request", resolved.error);
+          return;
+        }
+        const result = await listProviderModels(resolved.options);
+        if (!result.ok) {
+          sendError(response, 502, "provider_models_failed", result.error);
+          return;
+        }
+        sendJson(response, 200, { models: result.models });
         return;
       }
 
@@ -2647,6 +4215,173 @@ export async function startServer(options: { port?: number; token?: string } = {
         return;
       }
 
+      // 记忆管理（设置页数据源）：user 层在 home，project 层跟随 cwd query（与 /skills 同规约）
+      if (pathname === "/memory" && request.method === "GET") {
+        const query = new URL(request.url ?? "/", "http://localhost").searchParams;
+        const cwd = query.get("cwd")?.trim() || pluginsWorkspace;
+        const [user, project] = await Promise.all([
+          listMemoryItems(memoryDirFor("user", cwd, homeDir)),
+          listMemoryItems(memoryDirFor("project", cwd)),
+        ]);
+        sendJson(response, 200, { user, project });
+        return;
+      }
+
+      if (pathname === "/memory/file" && request.method === "GET") {
+        const query = new URL(request.url ?? "/", "http://localhost").searchParams;
+        const scope = parseMemoryScopeParam(query.get("scope"));
+        const name = query.get("name")?.trim() ?? "";
+        const cwd = query.get("cwd")?.trim() || pluginsWorkspace;
+        if (!scope) {
+          sendError(response, 400, "invalid_scope", 'scope must be "user" or "project".');
+          return;
+        }
+        if (!isValidMemoryName(name)) {
+          sendError(response, 400, "invalid_name", "Memory names are lowercase kebab-case (letters, digits, hyphens).");
+          return;
+        }
+        const record = await readMemory(memoryDirFor(scope, cwd, homeDir), name);
+        if (!record) {
+          sendError(response, 404, "not_found", `Memory "${name}" not found in ${scope} scope.`);
+          return;
+        }
+        sendJson(response, 200, {
+          name: record.name,
+          scope,
+          content: record.raw,
+          created: record.created,
+        });
+        return;
+      }
+
+      if (pathname === "/memory/file" && request.method === "PUT") {
+        const body = await readJsonBody<{
+          scope?: string;
+          name?: string;
+          content?: string;
+          cwd?: string;
+        }>(request);
+        const scope = parseMemoryScopeParam(typeof body.scope === "string" ? body.scope : null);
+        const name = typeof body.name === "string" ? body.name.trim() : "";
+        const cwd = typeof body.cwd === "string" && body.cwd.trim() ? body.cwd.trim() : pluginsWorkspace;
+        if (!scope) {
+          sendError(response, 400, "invalid_scope", 'scope must be "user" or "project".');
+          return;
+        }
+        if (!isValidMemoryName(name)) {
+          sendError(response, 400, "invalid_name", "Memory names are lowercase kebab-case (letters, digits, hyphens).");
+          return;
+        }
+        await writeMemoryFile(memoryDirFor(scope, cwd, homeDir), name, String(body.content ?? ""));
+        sendJson(response, 200, { success: true });
+        return;
+      }
+
+      if (pathname === "/memory/file" && request.method === "DELETE") {
+        const query = new URL(request.url ?? "/", "http://localhost").searchParams;
+        const scope = parseMemoryScopeParam(query.get("scope"));
+        const name = query.get("name")?.trim() ?? "";
+        const cwd = query.get("cwd")?.trim() || pluginsWorkspace;
+        if (!scope) {
+          sendError(response, 400, "invalid_scope", 'scope must be "user" or "project".');
+          return;
+        }
+        if (!isValidMemoryName(name)) {
+          sendError(response, 400, "invalid_name", "Memory names are lowercase kebab-case (letters, digits, hyphens).");
+          return;
+        }
+        const removed = await deleteMemory(memoryDirFor(scope, cwd, homeDir), name);
+        if (!removed) {
+          sendError(response, 404, "not_found", `Memory "${name}" not found in ${scope} scope.`);
+          return;
+        }
+        sendJson(response, 200, { success: true });
+        return;
+      }
+
+      // 项目规则（设置页）：cwd 跟随当前工作区，文件落在 .meowcode/rules/*.md
+      if (pathname === "/rules" && request.method === "GET") {
+        const query = new URL(request.url ?? "/", "http://localhost").searchParams;
+        const cwd = query.get("cwd")?.trim() || runtime.current?.cwd || pluginsWorkspace;
+        sendJson(response, 200, { rules: await listRules(cwd) });
+        return;
+      }
+
+      if (pathname === "/rules/file" && request.method === "GET") {
+        const query = new URL(request.url ?? "/", "http://localhost").searchParams;
+        const name = query.get("name")?.trim() ?? "";
+        const cwd = query.get("cwd")?.trim() || runtime.current?.cwd || pluginsWorkspace;
+        if (!isValidRuleName(name)) {
+          sendError(
+            response,
+            400,
+            "invalid_name",
+            "Rule names are lowercase kebab-case (letters, digits, hyphens).",
+          );
+          return;
+        }
+        const rule = await readRule(cwd, name);
+        if (!rule) {
+          sendError(response, 404, "not_found", `Rule "${name}" not found.`);
+          return;
+        }
+        sendJson(response, 200, rule);
+        return;
+      }
+
+      if (pathname === "/rules/file" && request.method === "PUT") {
+        const body = await readJsonBody<{
+          cwd?: string;
+          name?: string;
+          content?: string;
+        }>(request);
+        const name = typeof body.name === "string" ? body.name.trim() : "";
+        const cwd =
+          typeof body.cwd === "string" && body.cwd.trim()
+            ? body.cwd.trim()
+            : runtime.current?.cwd || pluginsWorkspace;
+        if (!isValidRuleName(name)) {
+          sendError(
+            response,
+            400,
+            "invalid_name",
+            "Rule names are lowercase kebab-case (letters, digits, hyphens).",
+          );
+          return;
+        }
+        if (typeof body.content !== "string") {
+          sendError(response, 400, "invalid_request", "content must be a string");
+          return;
+        }
+        await writeRule(cwd, name, body.content);
+        invalidateInstructions();
+        sendJson(response, 200, { success: true });
+        return;
+      }
+
+      if (pathname === "/rules/file" && request.method === "DELETE") {
+        const query = new URL(request.url ?? "/", "http://localhost").searchParams;
+        const name = query.get("name")?.trim() ?? "";
+        const cwd = query.get("cwd")?.trim() || runtime.current?.cwd || pluginsWorkspace;
+        if (!isValidRuleName(name)) {
+          sendError(
+            response,
+            400,
+            "invalid_name",
+            "Rule names are lowercase kebab-case (letters, digits, hyphens).",
+          );
+          return;
+        }
+        const removed = await deleteRule(cwd, name);
+        if (!removed) {
+          sendError(response, 404, "not_found", `Rule "${name}" not found.`);
+          return;
+        }
+        invalidateInstructions();
+        sendJson(response, 200, { success: true });
+        return;
+      }
+
       sendError(response, 404, "not_found", `No route for ${request.method} ${pathname}`);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -2713,6 +4448,7 @@ export async function startServer(options: { port?: number; token?: string } = {
     }
     await stateWriteChain.catch(() => undefined);
     await pluginSystem.dispose().catch(() => undefined);
+    getLspManager().disposeAll();
   };
 
   const onProcessMessage = (message: unknown): void => {

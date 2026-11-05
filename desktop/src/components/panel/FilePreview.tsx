@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { LuCopy, LuExternalLink } from "react-icons/lu";
 import { api } from "../../api";
+import { highlightToLines } from "../../code-highlight";
+import { formatNumber } from "../../i18n/format";
 import "./FilePreview.css";
 
 /** 单次渲染行数上限（1MB 文本可能上万行，只展示前 N 行并提示） */
@@ -42,6 +45,7 @@ function base64ToBlobUrl(contentBase64: string, mime: string): string {
  * 工作区限定由服务端保证；二进制 20MB、文本 1MB 上限。
  */
 export function FilePreview({ path: relativePath, workspace }: { path: string; workspace?: string }) {
+  const { t } = useTranslation("panel");
   const kind = previewKind(relativePath);
   const [state, setState] = useState<{ status: "loading" | "ready" | "error"; content?: string; message?: string }>({
     status: "loading",
@@ -88,6 +92,11 @@ export function FilePreview({ path: relativePath, workspace }: { path: string; w
 
   const lines = useMemo(() => (state.content ?? "").split(/\r?\n/), [state.content]);
   const visible = lines.slice(0, MAX_VIEW_LINES);
+  // 语法高亮按行拆分（跨行 span 在行尾闭合、下行重开），颜色走 --code-tok-* 主题令牌
+  const highlighted = useMemo(
+    () => (kind === "text" ? highlightToLines(state.content ?? "", relativePath) : null),
+    [state.content, relativePath, kind],
+  );
 
   const copyPath = () => {
     void navigator.clipboard?.writeText(relativePath).catch(() => undefined);
@@ -102,14 +111,14 @@ export function FilePreview({ path: relativePath, workspace }: { path: string; w
         <span className="mc-preview__path mc-truncate" title={relativePath}>
           {relativePath}
         </span>
-        <button type="button" className="mc-preview__btn" aria-label="复制路径" title="复制路径" onClick={copyPath}>
+        <button type="button" className="mc-preview__btn" aria-label={t("filePreview.copyPath")} title={t("filePreview.copyPath")} onClick={copyPath}>
           <LuCopy size={13} />
         </button>
         <button
           type="button"
           className="mc-preview__btn"
-          aria-label="在编辑器中打开"
-          title="在编辑器中打开"
+          aria-label={t("filePreview.openInEditor")}
+          title={t("filePreview.openInEditor")}
           disabled={!workspace}
           onClick={openExternal}
         >
@@ -118,7 +127,7 @@ export function FilePreview({ path: relativePath, workspace }: { path: string; w
       </div>
 
       {state.status === "loading" ? (
-        <p className="mc-preview__empty">加载中…</p>
+        <p className="mc-preview__empty">{t("filePreview.loading")}</p>
       ) : state.status === "error" ? (
         <p className="mc-preview__empty">{state.message}</p>
       ) : kind === "image" && mediaUrl ? (
@@ -140,12 +149,22 @@ export function FilePreview({ path: relativePath, workspace }: { path: string; w
           {visible.map((line, index) => (
             <div className="mc-preview__line" key={index}>
               <span className="mc-preview__no">{index + 1}</span>
-              <span className="mc-preview__text">{line || " "}</span>
+              {highlighted ? (
+                <span
+                  className="mc-preview__text"
+                  dangerouslySetInnerHTML={{ __html: highlighted[index] || " " }}
+                />
+              ) : (
+                <span className="mc-preview__text">{line || " "}</span>
+              )}
             </div>
           ))}
           {lines.length > MAX_VIEW_LINES ? (
             <p className="mc-preview__truncated">
-              仅显示前 {MAX_VIEW_LINES} 行（共 {lines.length} 行）
+              {t("filePreview.truncated", {
+                shown: formatNumber(MAX_VIEW_LINES),
+                total: formatNumber(lines.length),
+              })}
             </p>
           ) : null}
         </div>

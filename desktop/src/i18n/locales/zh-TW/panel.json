@@ -1,0 +1,176 @@
+{
+  "tabs": {
+    "home": "新分頁",
+    "workspace": "檔案",
+    "review": "審閱",
+    "sidechat": "側邊聊天",
+    "terminal": "終端機",
+    "plan": "計畫",
+    "subagents": "子 Agent",
+    "subagent": "子 Agent"
+  },
+  "runStatus": {
+    "running": "執行中",
+    "completed": "已完成",
+    "failed": "失敗",
+    "aborted": "已停止",
+    "interrupted": "已中斷"
+  },
+  "laneStatus": {
+    "queued": "排隊中",
+    "active": "進行中",
+    "done": "已完成",
+    "blocked": "已封鎖"
+  },
+  "home": {
+    "toolsSection": "工具",
+    "sessionSection": "工作階段資訊",
+    "card": {
+      "workspace": "檔案",
+      "search": "對話檢索",
+      "sidechat": "側邊聊天",
+      "terminal": "終端機",
+      "review": "審閱",
+      "subagents": "子 Agent"
+    },
+    "fileMenu": "檔案選單",
+    "quickOpen": "快速開啟（Ctrl+P）",
+    "revealInExplorer": "在檔案總管中開啟",
+    "field": {
+      "workspace": "工作區",
+      "provider": "供應商",
+      "model": "模型",
+      "sessionId": "工作階段 ID",
+      "toolCalls": "工具呼叫",
+      "uncachedInput": "未快取輸入",
+      "cacheRead": "快取讀取",
+      "cacheStatus": "快取狀態",
+      "cacheWrite": "快取寫入",
+      "output": "輸出",
+      "cacheHitRate": "快取命中率（工作階段）",
+      "speed": "生成速度",
+      "response": "回應時間",
+      "firstToken": "首字延遲"
+    },
+    "notReported": "未回報",
+    "cache": {
+      "localBreakpoint": "本機斷點 · {{ttl}}",
+      "autoTtl": "自動（人 1h / 機器 5m）",
+      "serverManaged": "伺服器端託管",
+      "serverManagedUncontrolled": "伺服器端託管 · TTL/逐出不可控",
+      "notReported": "{{base}}（未回報）",
+      "miss": "{{base}}（未命中）",
+      "hitting": "{{base}}（命中中）"
+    },
+    "tokenValue": "{{value}} tok"
+  },
+  "subagent": {
+    "fallbackTitle": "子 Agent",
+    "background": "背景",
+    "stop": "停止這個子 Agent",
+    "readOnly": "唯讀執行",
+    "canContinue": "可繼續對話",
+    "tokensIn": "入 {{tokens}}",
+    "tokensOut": "出 {{tokens}}",
+    "loadingTranscript": "正在載入逐字稿…",
+    "emptyTranscript": "尚無逐字稿",
+    "pendingSteers_one": "已插話，將在下一步生效（{{count}}）",
+    "pendingSteers_other": "已插話，將在下一步生效（{{count}}）",
+    "pendingSteers_few": "已插話，將在下一步生效（{{count}}）",
+    "pendingSteers_many": "已插話，將在下一步生效（{{count}}）",
+    "steerPlaceholderReadOnly": "插話給 {{role}}（下一步生效，唯讀）…",
+    "steerPlaceholder": "插話：下一步生效，不中斷目前執行…",
+    "steer": "插話",
+    "steerTitle": "下一步生效",
+    "runningHint": "執行中，完成後可以繼續對話",
+    "continuePlaceholderReadOnly": "繼續讓 {{role}} 執行（唯讀）…",
+    "continuePlaceholder": "繼續讓子 Agent 工作…",
+    "send": "傳送"
+  },
+  "subagents": {
+    "emptyTitle": "目前工作階段還沒有子 Agent",
+    "emptyHint": "主 Agent 派發 task 後會出現在這裡",
+    "onlyCurrentSession": "僅顯示目前工作階段的子 Agent",
+    "open": "開啟子 Agent 逐字稿",
+    "invalidFallback": "宿主驗證未通過",
+    "invalidTooltip": "{{reason}}：{{summary}}",
+    "verified": "已驗證",
+    "unverified": "驗證未過",
+    "criticalFindings_one": "{{count}} 嚴重",
+    "criticalFindings_other": "{{count}} 嚴重",
+    "criticalFindings_few": "{{count}} 嚴重",
+    "criticalFindings_many": "{{count}} 嚴重"
+  },
+  "sidechat": {
+    "interruptedNotice": "上次生成被應用程式結束中斷；已保留已生成的內容，可以繼續對話。",
+    "generating": "生成中…",
+    "standalone": "獨立工作階段 · 與主對話並行",
+    "initializing": "初始化…",
+    "newSession": "新工作階段",
+    "noModel": "未設定模型",
+    "planConfirmedWithPath": "計畫已確認，請依 {{path}} 開始實作。",
+    "planConfirmed": "計畫已確認，請開始實作。"
+  },
+  "browser": {
+    "back": "上一頁",
+    "forward": "下一頁",
+    "reload": "重新整理",
+    "addressPlaceholder": "搜尋或輸入網址"
+  },
+  "filePreview": {
+    "copyPath": "複製路徑",
+    "openInEditor": "在編輯器中開啟",
+    "loading": "載入中…",
+    "truncated": "僅顯示前 {{shown}} 行（共 {{total}} 行）"
+  },
+  "plan": {
+    "governance": "治理任務 · {{tier}}",
+    "allPassed": "全部通過",
+    "inProgress": "進行中",
+    "repairs": "返工 {{count}}/3",
+    "trivial": "T0 瑣碎任務：無門檻，直接實作並驗證。",
+    "emptyTitle": "還沒有計畫文件",
+    "emptyHint": "計畫模式會先用唯讀工具調研，再把實作計畫寫到 plans/ 下，文件會顯示在這裡。",
+    "updating": "更新中",
+    "writing": "正在寫入",
+    "reload": "重新讀取",
+    "writingBody": "正在寫入計畫文件…",
+    "loadingBody": "正在讀取計畫文件…"
+  },
+  "quickOpen": {
+    "title": "快速開啟",
+    "placeholder": "輸入檔案名稱或路徑",
+    "failed": "檔案清單讀取失敗，請重試",
+    "loading": "載入中…",
+    "noMatch": "沒有符合的檔案",
+    "empty": "工作區裡沒有檔案"
+  },
+  "review": {
+    "loading": "載入中…",
+    "changedFiles_one": "{{count}} 個檔案有變更",
+    "changedFiles_other": "{{count}} 個檔案有變更",
+    "changedFiles_few": "{{count}} 個檔案有變更",
+    "changedFiles_many": "{{count}} 個檔案有變更",
+    "refresh": "重新整理",
+    "failed": "讀取失敗，請稍後重試",
+    "empty": "本工作階段還沒有檔案變更",
+    "changeCount_one": "變更 {{count}} 次",
+    "changeCount_other": "變更 {{count}} 次",
+    "changeCount_few": "變更 {{count}} 次",
+    "changeCount_many": "變更 {{count}} 次",
+    "diffAria": "{{path}} 的變更"
+  },
+  "workspace": {
+    "loading": "載入中…",
+    "readFailed": "讀取失敗",
+    "truncated": "…共 {{total}} 項，僅顯示前 {{shown}}",
+    "selectFile": "在右側選擇檔案預覽（文字 / 圖片 / 影片 / 音訊 / PDF）",
+    "resizeAria": "調整檔案清單寬度",
+    "filterPlaceholder": "篩選檔案…",
+    "searching": "搜尋中…",
+    "noMatch": "沒有符合的檔案"
+  },
+  "terminal": {
+    "exited": "[行程已結束]"
+  }
+}

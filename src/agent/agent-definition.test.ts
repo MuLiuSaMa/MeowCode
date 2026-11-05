@@ -17,6 +17,7 @@ const KNOWN_TOOLS = new Set([
   "update_plan",
   "task",
   "context_status",
+  "diagnostics",
   "ask_user",
   "browser_navigate",
   "browser_snapshot",

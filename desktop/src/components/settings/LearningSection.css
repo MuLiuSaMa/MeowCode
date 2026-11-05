@@ -1,0 +1,165 @@
+/* BETA 标记：和导航里的小标记同款，但字号略大一点配分区标题 */
+.mc-learning__beta {
+  padding: 0 6px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: var(--fw-medium);
+  letter-spacing: 0.06em;
+  line-height: 16px;
+  color: var(--fg-subtle);
+  user-select: none;
+}
+
+.mc-learning {
+  display: flex;
+  flex-direction: column;
+}
+
+.mc-learning__toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.mc-learning__count {
+  font-size: var(--fs-sm);
+  color: var(--fg-subtle);
+}
+
+.mc-learning__count strong {
+  color: var(--fg);
+  font-weight: var(--fw-medium);
+}
+
+.mc-learning__muted {
+  color: var(--fg-subtle);
+  font-size: var(--fs-sm);
+}
+
+.mc-learning__loading {
+  display: flex;
+  justify-content: center;
+  padding: 24px 0;
+}
+
+.mc-learning__empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  padding: 26px 16px;
+  color: var(--fg-subtlest);
+  font-size: var(--fs-base);
+}
+
+.mc-learning__list,
+.mc-learning__plain {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.mc-learning__row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px 10px 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.mc-learning__row:last-child {
+  border-bottom: none;
+}
+
+.mc-learning__main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.mc-learning__name {
+  font-weight: var(--fw-medium);
+  font-size: var(--fs-sm);
+  color: var(--fg);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mc-learning__desc {
+  color: var(--fg-subtle);
+  font-size: var(--fs-sm);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 状态徽标：试用期低调，转正中性，退役压暗 —— 一眼能看出「这条能不能信」 */
+.mc-learning__badge {
+  flex-shrink: 0;
+  padding: 1px 7px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  font-size: var(--fs-xs, 11px);
+  color: var(--fg-subtle);
+}
+
+.mc-learning__badge--active {
+  color: var(--fg);
+  border-color: var(--fg-subtle);
+}
+
+.mc-learning__badge--retired {
+  opacity: 0.55;
+  text-decoration: line-through;
+}
+
+.mc-learning__stats {
+  flex-shrink: 0;
+  display: flex;
+  gap: 6px;
+  font-variant-numeric: tabular-nums;
+  font-size: var(--fs-sm);
+}
+
+.mc-learning__helped {
+  color: var(--success, #2e7d32);
+}
+
+.mc-learning__hurt {
+  color: var(--danger, #c0392b);
+}
+
+.mc-learning__actions {
+  flex-shrink: 0;
+  display: flex;
+  gap: 2px;
+}
+
+.mc-learning__plain li {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 9px 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.mc-learning__plain li:last-child {
+  border-bottom: none;
+}
+
+.mc-learning__trigger {
+  flex-shrink: 0;
+  margin-left: auto;
+  color: var(--fg-subtlest);
+  font-size: var(--fs-sm);
+  font-family: var(--font-code, monospace);
+}

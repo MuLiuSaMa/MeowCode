@@ -1,4 +1,3 @@
-import { spawn, type ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { promises as fs } from "node:fs";
 import path from "node:path";
@@ -14,16 +13,36 @@ import {
   type TextFileFailure,
 } from "./edit-content.js";
 import { DEFAULT_AGENT_TYPES } from "./agent-definition.js";
+import { estimateToolDefinitionsTokens } from "./context.js";
 import { renderChangeSnippet } from "./diff.js";
 import { readMultiEditGroups } from "./multi-edit.js";
 import { readPdfBase64, readPdfText } from "./pdf.js";
 import { grabFrames, grabStoryboard, probeVideo, type VideoToolResult } from "./video.js";
 import { resolveToolPath, IGNORED_ENTRY_NAMES } from "./paths.js";
+import { runDiagnosticsTool } from "../lsp/tool.js";
 import { runCodeInSandbox, type HostToolBridge } from "./code-mode.js";
 import { sliceLinesForModel } from "./read-slice.js";
 import { changedSinceRead, recordRead, recordWrite } from "./read-state.js";
 import { searchGlob, searchGrep } from "./search.js";
+import { persistToolOutput } from "./tool-output.js";
+import {
+  deleteMemory,
+  isValidMemoryName,
+  memoryDirFor,
+  readMemory,
+  saveMemory,
+  type MemoryScope,
+} from "./memory.js";
 import type { ToolDefinition, ToolResult } from "./types.js";
+import { classifySandboxDenial } from "./sandbox/denial.js";
+import { getSandboxSettings } from "./sandbox/policy.js";
+import { runShellCommand } from "./exec/shell.js";
+import { MAX_COMMAND_OUTPUT_BYTES } from "./exec/types.js";
+
+// 执行面已抽到 ./exec；这里保留旧导出，git 服务与既有单测的导入路径不变。
+export { commandEnv } from "./exec/env.js";
+export { decodeCommandOutput } from "./exec/encoding.js";
+export { killProcessTree } from "./exec/process-tree.js";
 
 const MAX_OUTPUT_CHARS = 20000;
 /** 结构化搜索结果（grep/glob）超过这个长度就先落盘再降级，模型按需续读。 */
@@ -31,8 +50,6 @@ const STRUCTURED_OUTPUT_CHARS = 8_000;
 const STRUCTURED_HEAD_CHARS = 4_000;
 const MAX_COMMAND_OUTPUT_CHARS = 12000;
 const MAX_COMMAND_HEAD_CHARS = 4000;
-/** 命令输出采集上限：只保护内存，超出部分明确告知模型被截断 */
-const MAX_COMMAND_OUTPUT_BYTES = 1_000_000;
 const MAX_READ_LINES = 400;
 /**
  * read_file 超长文件落盘阈值：文件超过这个字符数且一屏读不完时，
@@ -44,8 +61,6 @@ const READ_HEAD_PREVIEW_LINES = 100;
 const READ_TAIL_PREVIEW_LINES = 40;
 const READ_TAIL_PREVIEW_CHARS = 4_000;
 const MAX_LIST_ENTRIES = 500;
-const TOOL_OUTPUT_DIR = path.join(".meowcode", "tool-output");
-const TOOL_OUTPUT_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 
 export function truncateOutput(text: string, max = MAX_OUTPUT_CHARS): { output: string; truncated: boolean } {
   if (text.length <= max) {
@@ -78,43 +93,65 @@ export function truncateMiddle(
   };
 }
 
-/** 超过预算的完整工具输出落到工作区，模型可用 read_file 继续读取。 */
-async function persistToolOutput(workspace: string, tool: string, text: string): Promise<string> {
-  // 输出目录也可能被替换成指向外部的 junction；与文件工具走同一套真实路径校验。
-  const dir = await resolveToolPath(workspace, TOOL_OUTPUT_DIR);
-  await fs.mkdir(dir, { recursive: true });
-  const stamp = new Date().toISOString().replace(/[:.]/g, "-");
-  const file = path.join(dir, `${tool}-${stamp}-${randomUUID().slice(0, 8)}.log`);
-  await fs.writeFile(file, text, "utf8");
-  await cleanupToolOutput(dir);
-  return path.relative(workspace, file).split(path.sep).join("/");
-}
-
-async function cleanupToolOutput(dir: string): Promise<void> {
-  const cutoff = Date.now() - TOOL_OUTPUT_RETENTION_MS;
-  try {
-    const entries = await fs.readdir(dir, { withFileTypes: true });
-    await Promise.all(
-      entries
-        .filter((entry) => entry.isFile())
-        .map(async (entry) => {
-          const file = path.join(dir, entry.name);
-          try {
-            const stat = await fs.stat(file);
-            if (stat.mtimeMs < cutoff) await fs.unlink(file);
-          } catch {
-            // 并发清理或文件已消失不影响本次输出
-          }
-        }),
-    );
-  } catch {
-    // 清理失败不应阻断工具结果
-  }
-}
-
 function toolResult(output: string, ok = true): ToolResult {
   const truncated = truncateOutput(output);
   return { output: truncated.output, ok };
+}
+
+/** tool_search 的实现：按关键词检索全部在册动态工具，命中的延迟工具提升回可见区。 */
+function searchDynamicTools(args: Record<string, unknown>): ToolResult {
+  const query = String(args.query ?? "").trim();
+  if (!query) return toolResult("tool_search requires a non-empty `query`.", false);
+  const limit = Math.min(Math.max(Number(args.limit) || 5, 1), 10);
+  const tokens = query
+    .toLowerCase()
+    .split(/[^a-z0-9_]+/)
+    .filter(Boolean);
+  if (!tokens.length) return toolResult("tool_search requires a non-empty `query`.", false);
+
+  const scored: { name: string; score: number; description: string; deferred: boolean }[] = [];
+  for (const [name, tool] of dynamicTools) {
+    const description = tool.definition.function.description ?? "";
+    const haystackName = name.toLowerCase();
+    const haystackDesc = description.toLowerCase();
+    let score = 0;
+    for (const token of tokens) {
+      if (haystackName.includes(token)) score += 3;
+      else if (haystackDesc.includes(token)) score += 1;
+    }
+    if (score > 0) {
+      scored.push({ name, score, description, deferred: deferredDynamicTools.has(name) });
+    }
+  }
+  if (!scored.length) {
+    const all = [...dynamicTools.keys()].sort();
+    return toolResult(
+      `No registered tool matches "${query}". Registered tools: ${
+        all.join(", ") || "(none)"
+      }. Deferred tools are also listed above — try tool_search again with a keyword from their names.`,
+    );
+  }
+  // deferred 优先展示（那是模型看不到的），同级再按分数、名字排序
+  scored.sort(
+    (a, b) =>
+      Number(b.deferred) - Number(a.deferred) || b.score - a.score || a.name.localeCompare(b.name, "en"),
+  );
+  const lines: string[] = [];
+  const promoted: string[] = [];
+  for (const hit of scored.slice(0, limit)) {
+    if (hit.deferred && promoteDynamicTool(hit.name)) promoted.push(hit.name);
+    lines.push(`- ${hit.name}: ${hit.description}`);
+  }
+  const header = promoted.length
+    ? `Promoted for your next turn (schema will be in your tools list; call them from the next request): ${promoted.join(", ")}`
+    : "Top matches (already visible — call them directly):";
+  return toolResult(`${header}\n${lines.join("\n")}`);
+}
+
+/** memory_* 工具的 scope 参数：其余值（含缺省）都拒绝，不猜测默认层。 */
+function parseMemoryScope(value: unknown): MemoryScope | null {
+  if (value === "user" || value === "project") return value;
+  return null;
 }
 
 /**
@@ -128,7 +165,8 @@ export async function degradeStructuredOutput(
   workspace: string,
   tool: string,
   output: string,
-): Promise<{ output: string; truncated: boolean }> {
+  spillText?: string,
+): Promise<{ output: string; truncated: boolean; spilled?: string }> {
   if (output.length <= STRUCTURED_OUTPUT_CHARS) {
     return { output, truncated: false };
   }
@@ -137,12 +175,18 @@ export async function degradeStructuredOutput(
   const body = noticeMatch ? output.slice(0, noticeMatch.index) : output;
   const notice = noticeMatch ? noticeMatch[1] : "";
   const head = body.slice(0, STRUCTURED_HEAD_CHARS);
-  const omitted = body.length - head.length;
-  const saved = await persistToolOutput(workspace, tool, output).catch(() => null);
+  // 落盘写完整结果：搜索层的内联裁剪（12k）不该影响 artifact 的完整性
+  const full = spillText ?? output;
+  const omitted = Math.max(0, full.length - head.length);
+  const saved = await persistToolOutput(workspace, tool, full).catch(() => null);
   const hint = saved
     ? `\n... [${omitted} more characters omitted; full result saved to ${saved} — page it with read_file (offset/limit) instead of re-running this search]`
     : `\n... [${omitted} more characters omitted; narrow the pattern to see more]`;
-  return { output: head + hint + notice, truncated: true };
+  return {
+    output: head + hint + notice,
+    truncated: true,
+    ...(saved ? { spilled: saved } : {}),
+  };
 }
 
 /** 文本安全读取失败时的模型可读提示；read / write / edit 共用同一套判定。 */
@@ -168,53 +212,6 @@ function textFileProblem(name: string, failure: TextFileFailure): ToolResult {
     default:
       return { output: `${name} not found.`, ok: false };
   }
-}
-
-/** 这些变量即使命中敏感词也保留（系统运行必需） */
-const SAFE_ENV_NAMES = new Set([
-  "PATH",
-  "PATHEXT",
-  "SYSTEMROOT",
-  "WINDIR",
-  "COMSPEC",
-  "TEMP",
-  "TMP",
-  "USERPROFILE",
-  "HOMEDRIVE",
-  "HOMEPATH",
-  "APPDATA",
-  "LOCALAPPDATA",
-  "NUMBER_OF_PROCESSORS",
-  "PROCESSOR_ARCHITECTURE",
-  "PROCESSOR_IDENTIFIER",
-  "OS",
-]);
-
-/** 凭据类环境变量：命令不应该能读到用户的 token/key/secret */
-const SENSITIVE_ENV_PATTERN =
-  /(^|_)(KEY|KEYS|TOKEN|TOKENS|SECRET|SECRETS|PASSWORD|PASSWD|CREDENTIAL|CREDENTIALS|AUTH|COOKIE|SESSION)(_|$)/i;
-// 只拦真正指向凭据的变量；AWS_REGION / NPM_CONFIG_* 这类普通配置继续继承
-const SENSITIVE_ENV_PREFIXES = ["KUBECONFIG", "PGPASSFILE", "NETRC"];
-
-/**
- * 子进程环境：剔除 MeowCode 自身与用户凭据，保留系统/路径等基础变量。
- * 与 codex 的 shell_environment_policy 同思路：命令默认不该继承 API key。
- */
-export function commandEnv(env: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
-  const result: NodeJS.ProcessEnv = {};
-  for (const [key, value] of Object.entries(env)) {
-    if (value === undefined) continue;
-    if (/^meowcode_/i.test(key)) continue;
-    const upper = key.toUpperCase();
-    if (SAFE_ENV_NAMES.has(upper)) {
-      result[key] = value;
-      continue;
-    }
-    if (SENSITIVE_ENV_PATTERN.test(key)) continue;
-    if (SENSITIVE_ENV_PREFIXES.some((prefix) => upper.startsWith(prefix))) continue;
-    result[key] = value;
-  }
-  return result;
 }
 
 export const toolDefinitions: ToolDefinition[] = [
@@ -434,7 +431,8 @@ export const toolDefinitions: ToolDefinition[] = [
     type: "function",
     function: {
       name: "run_command",
-      description: "Run a PowerShell command in the workspace. Requires approval. Long output keeps head and tail; full log is saved under .meowcode/tool-output/.",
+      description:
+        "Run a PowerShell command in the workspace. Routine commands run automatically; only destructive ones (disk, registry, shutdown) ask first. Long output keeps head and tail; full log is saved under .meowcode/tool-output/. When the command sandbox is enabled, writes outside the workspace and configured extra roots are blocked; a blocked command may ask once to retry outside the sandbox.",
       parameters: {
         type: "object",
         properties: {
@@ -534,6 +532,28 @@ export const toolDefinitions: ToolDefinition[] = [
   {
     type: "function",
     function: {
+      name: "diagnostics",
+      description:
+        "Get language-server type errors/warnings for a file or directory. Read-only.",
+      parameters: {
+        type: "object",
+        properties: {
+          path: {
+            type: "string",
+            description: "File or directory (default '.').",
+          },
+          maxResults: {
+            type: "integer",
+            description: "Max results (1-100).",
+          },
+        },
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
       name: "ask_user",
       description:
         "Ask the user clarifying questions and wait for the answers. Be PROACTIVE: if a decision would significantly change the outcome (audience, use case, style, tech choice, scope) and cannot be safely inferred, ASK instead of guessing. Batch ALL questions into ONE call (up to 4); never one call per question. Each question: 2-4 mutually exclusive short options; the user can also type a custom answer.",
@@ -559,6 +579,103 @@ export const toolDefinitions: ToolDefinition[] = [
           },
         },
         required: ["questions"],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "memory_read",
+      description:
+        "Read one long-term memory file in full. The Memory index in the system instructions lists the saved entries with one-line summaries.",
+      parameters: {
+        type: "object",
+        properties: {
+          scope: {
+            type: "string",
+            enum: ["user", "project"],
+            description: '"user" = cross-project memories, "project" = this workspace.',
+          },
+          name: {
+            type: "string",
+            description: "Entry name from the index (kebab-case slug).",
+          },
+        },
+        required: ["scope", "name"],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "memory_write",
+      description:
+        'Save or update a long-term memory that persists across sessions. Use proactively when you learn a reusable fact (user preference, workflow convention, project decision): one fact per file, check the Memory index for duplicates, never store secrets or what the code/git shows, no need to ask first. scope: user = cross-project, project = this workspace.',
+      parameters: {
+        type: "object",
+        properties: {
+          scope: {
+            type: "string",
+            enum: ["user", "project"],
+            description: '"user" = cross-project, "project" = this workspace.',
+          },
+          name: {
+            type: "string",
+            description: "Kebab-case slug for the fact, e.g. docker-cli.",
+          },
+          description: {
+            type: "string",
+            description: "One-line summary shown in the memory index.",
+          },
+          content: {
+            type: "string",
+            description: "Full memory body with the context needed later.",
+          },
+        },
+        required: ["scope", "name", "description", "content"],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "memory_delete",
+      description:
+        "Delete an outdated or wrong long-term memory file and remove it from the index.",
+      parameters: {
+        type: "object",
+        properties: {
+          scope: {
+            type: "string",
+            enum: ["user", "project"],
+            description: '"user" = cross-project memories, "project" = this workspace.',
+          },
+          name: {
+            type: "string",
+            description: "Entry name from the index (kebab-case slug).",
+          },
+        },
+        required: ["scope", "name"],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "tool_search",
+      description:
+        "Search registered MCP/plugin tools by keyword. When many tools are deferred to keep the context small, a match surfaces them: the tool becomes callable from your next turn. Use it before assuming a capability is missing.",
+      parameters: {
+        type: "object",
+        properties: {
+          query: { type: "string", description: "Keywords, e.g. \"browser screenshot\" or \"figma\"." },
+          limit: { type: "integer", description: "Max matches to surface (1-10, default 5)." },
+        },
+        required: ["query"],
         additionalProperties: false,
       },
     },
@@ -636,6 +753,120 @@ export type DynamicTool = {
 };
 
 const dynamicTools = new Map<string, DynamicTool>();
+/**
+ * 已注销动态工具名（MCP 断线 / 卸载）。会话快照仍保留其 schema，
+ * 模型再次调用时给明确原因，而不是含糊的 "Unknown tool"。
+ */
+const retiredDynamicNames = new Set<string>();
+const RETIRED_NAME_CAP = 256;
+
+function rememberRetired(name: string): void {
+  retiredDynamicNames.add(name);
+  if (retiredDynamicNames.size > RETIRED_NAME_CAP) {
+    const oldest = retiredDynamicNames.values().next().value;
+    if (oldest !== undefined) retiredDynamicNames.delete(oldest);
+  }
+}
+
+/**
+ * 动态工具 schema 的软预算：MCP / 插件工具每轮随请求全量发送，是唯一会随
+ * 「装了几个 server」无限增长的部分。超预算只告警不再统一降档——统一重写会把
+ * 已发送的工具描述换字节，整段缓存前缀失效；收缩下沉到注册时按单工具裁剪。
+ */
+const DYNAMIC_TOOL_BUDGET_TOKENS = 8_000;
+/** 单工具注册即冻结的体积上限：超出按档裁剪自身，之后集合增长不改写它。 */
+const DYNAMIC_TOOL_MAX_TOKENS = 400;
+/** 逐档收缩：工具描述 / 字段描述（0 = 删掉字段描述）。按顺序降档直到落进预算。 */
+const DYNAMIC_DESCRIPTION_LEVELS: ReadonlyArray<{ tool: number; property: number }> = [
+  { tool: 240, property: 120 },
+  { tool: 120, property: 60 },
+  { tool: 80, property: 30 },
+  { tool: 40, property: 0 },
+];
+
+let dynamicToolsRev = 0;
+let dynamicDefinitionsCache: {
+  version: number;
+  tools: ToolDefinition[];
+  trimmed: boolean;
+} | null = null;
+
+/** 词边界裁剪；max <= 0 表示直接丢弃。 */
+function clipDescription(text: string, max: number): string {
+  if (max <= 0) return "";
+  const normalized = text.replace(/\s+/g, " ").trim();
+  if (normalized.length <= max) return normalized;
+  const head = normalized.slice(0, Math.max(0, max - 2));
+  const cut = head.lastIndexOf(" ");
+  return `${(cut > max * 0.6 ? head.slice(0, cut) : head).trimEnd()} …`;
+}
+
+/** 递归重写一个字段节点的描述（保留 type/enum/required 等一切结构）。 */
+function rewritePropertyDescriptions(node: unknown, propertyMax: number): unknown {
+  if (!node || typeof node !== "object" || Array.isArray(node)) return node;
+  const source = node as Record<string, unknown>;
+  const out: Record<string, unknown> = { ...source };
+  if (typeof source.description === "string") {
+    if (propertyMax <= 0) delete out.description;
+    else out.description = clipDescription(source.description, propertyMax);
+  }
+  if (source.properties && typeof source.properties === "object" && !Array.isArray(source.properties)) {
+    const nested: Record<string, unknown> = {};
+    for (const [name, child] of Object.entries(source.properties as Record<string, unknown>)) {
+      nested[name] = rewritePropertyDescriptions(child, propertyMax);
+    }
+    out.properties = nested;
+  }
+  if (source.items && typeof source.items === "object") {
+    out.items = rewritePropertyDescriptions(source.items, propertyMax);
+  }
+  return out;
+}
+
+function rewriteDefinitionDescriptions(
+  definition: ToolDefinition,
+  toolMax: number,
+  propertyMax: number,
+): ToolDefinition {
+  const parameters = definition.function.parameters as Record<string, unknown> | undefined;
+  const properties = parameters?.properties;
+  const nextProperties: Record<string, unknown> = {};
+  if (properties && typeof properties === "object" && !Array.isArray(properties)) {
+    for (const [name, value] of Object.entries(properties as Record<string, unknown>)) {
+      nextProperties[name] = rewritePropertyDescriptions(value, propertyMax);
+    }
+  }
+  return {
+    ...definition,
+    function: {
+      ...definition.function,
+      description: clipDescription(definition.function.description, toolMax),
+      parameters: {
+        type: "object",
+        properties: properties ? nextProperties : definition.function.parameters.properties,
+        ...(definition.function.parameters.required
+          ? { required: definition.function.parameters.required }
+          : {}),
+        ...(definition.function.parameters.additionalProperties !== undefined
+          ? { additionalProperties: definition.function.parameters.additionalProperties }
+          : {}),
+      },
+    },
+  };
+}
+
+/**
+ * 注册即冻结：只按该工具自身体积裁剪（原始定义 ≤ 上限则逐字保留），
+ * 集合后续增长不会再改写它的定义字节 —— 已发送的描述换字节 = 缓存前缀整段失效。
+ */
+function fitDynamicDefinition(definition: ToolDefinition, capTokens: number): ToolDefinition {
+  let current = definition;
+  for (const { tool, property } of DYNAMIC_DESCRIPTION_LEVELS) {
+    if (estimateToolDefinitionsTokens([current]) <= capTokens) return current;
+    current = rewriteDefinitionDescriptions(current, tool, property);
+  }
+  return current;
+}
 
 const RESERVED_DYNAMIC_TOOL_NAMES = new Set<string>([
   ...toolDefinitions.map((d) => d.function.name),
@@ -656,16 +887,110 @@ export function registerDynamicTool(name: string, tool: DynamicTool): { ok: bool
   if (dynamicTools.has(name)) {
     return { ok: false, error: `tool "${name}" is already registered` };
   }
-  dynamicTools.set(name, tool);
+  dynamicTools.set(name, {
+    ...tool,
+    definition: fitDynamicDefinition(tool.definition, DYNAMIC_TOOL_MAX_TOKENS),
+  });
+  retiredDynamicNames.delete(name);
+  dynamicToolsRev += 1;
+  dynamicDefinitionsCache = null;
   return { ok: true };
 }
 
 export function unregisterDynamicTool(name: string): void {
-  dynamicTools.delete(name);
+  if (dynamicTools.delete(name)) {
+    unpinDynamicTool(name);
+    dynamicToolsRev += 1;
+    dynamicDefinitionsCache = null;
+    rememberRetired(name);
+  }
 }
 
+/** 超预算被延迟展示的动态工具：注册在册、可按名调用，但 schema 不进 tools 段。 */
+const deferredDynamicTools = new Set<string>();
+/** tool_search 命中后被固定展示的工具（会话生命周期内保持可见，FIFO 淘汰最旧）。 */
+const pinnedDynamicTools: string[] = [];
+const PINNED_DYNAMIC_TOOL_MAX = 8;
+
+/**
+ * 把 tool_search 命中的延迟工具固定回可见区（下轮请求 schema 随目录追加，缓存安全）。
+ * 返回 true 表示发生了实际提升。
+ */
+export function promoteDynamicTool(name: string): boolean {
+  if (!dynamicTools.has(name)) return false;
+  if (pinnedDynamicTools.includes(name)) return false;
+  pinnedDynamicTools.push(name);
+  if (pinnedDynamicTools.length > PINNED_DYNAMIC_TOOL_MAX) {
+    const evicted = pinnedDynamicTools.shift();
+    if (evicted !== undefined && !dynamicTools.has(evicted)) {
+      // 被顶掉又已卸载的工具顺手清出固定表
+    }
+  }
+  dynamicToolsRev += 1;
+  dynamicDefinitionsCache = null;
+  return true;
+}
+
+/** 动态工具卸载时同步清固定表。 */
+function unpinDynamicTool(name: string): void {
+  const index = pinnedDynamicTools.indexOf(name);
+  if (index >= 0) pinnedDynamicTools.splice(index, 1);
+}
+
+/** 当前被延迟展示的动态工具名（诊断 / tool_search 兜底列表用）。 */
+export function deferredDynamicToolNames(): string[] {
+  return [...deferredDynamicTools].sort();
+}
+
+/**
+ * 动态工具定义：**按名字升序**输出，并套用描述预算。
+ *
+ * 排序是为了缓存前缀稳定 —— MCP server 并发 connect 的完成顺序不稳定，
+ * 按注册顺序输出会让 tools 断点（缓存断点）在每次重连后整段失效。
+ *
+ * 集合超过整体预算时不再全量发送：按名字序累计装到预算为止，其余转入
+ * deferred（仍在册、可调用，schema 不发）。tool_search 命中的工具会被固定回
+ * 可见区（promote），下轮请求经 reconcileToolCatalog 以「新增」追加到目录末尾，
+ * 不破坏缓存前缀 —— claude-code isDeferred 同款语义。
+ */
 export function listDynamicToolDefinitions(): ToolDefinition[] {
-  return [...dynamicTools.values()].map((t) => t.definition);
+  const cached = dynamicDefinitionsCache;
+  if (cached && cached.version === dynamicToolsRev) return cached.tools;
+  const sorted = [...dynamicTools.keys()].sort();
+  const visible: ToolDefinition[] = [];
+  let used = 0;
+  for (const name of sorted) {
+    const definition = dynamicTools.get(name)!.definition;
+    const cost = estimateToolDefinitionsTokens([definition]);
+    if (pinnedDynamicTools.includes(name) || used + cost <= DYNAMIC_TOOL_BUDGET_TOKENS) {
+      visible.push(definition);
+      used += cost;
+    } else {
+      deferredDynamicTools.add(name);
+    }
+  }
+  for (const name of deferredDynamicTools) {
+    if (!dynamicTools.has(name) || visible.some((def) => def.function.name === name)) {
+      deferredDynamicTools.delete(name);
+    }
+  }
+  dynamicDefinitionsCache = {
+    version: dynamicToolsRev,
+    tools: visible,
+    trimmed: deferredDynamicTools.size > 0,
+  };
+  return visible;
+}
+
+/** 动态工具注册表版本：runtime 用它判断是否需要重建原始工具表。 */
+export function dynamicToolsVersion(): number {
+  return dynamicToolsRev;
+}
+
+/** 动态工具描述是否因预算被裁剪过（true 说明该关掉一些 MCP server）。 */
+export function dynamicToolDefinitionsTrimmed(): boolean {
+  listDynamicToolDefinitions();
+  return dynamicDefinitionsCache?.trimmed === true;
 }
 
 export function hasDynamicTool(name: string): boolean {
@@ -680,6 +1005,8 @@ export type ToolRunOptions = {
   /** 完全访问：允许工作区外的绝对路径 */
   allowOutsideWorkspace?: boolean;
   signal?: AbortSignal;
+  /** run_command 的单次沙箱覆盖：bypass 只用于「用户批准后沙箱外重试一次」 */
+  sandbox?: "enforce" | "bypass";
   /**
    * run_code 的宿主写/命令桥（write/edit/multiEdit/run）。由 runtime 注入，
    * 每次调用都走与普通工具一致的路径守卫与审批；缺省时 run_code 保持只读语义。
@@ -714,6 +1041,12 @@ export type ToolRunOptions = {
    * false 时只返回可操作的文字提示（chat completions 没有可移植的 file 块）。
    */
   pdfDocuments?: boolean;
+  /**
+   * 批量读的「已读」查询（由 runtime 注入 LoopGuard）：
+   * 返回 true 表示该文件本会话已完整读过且没变，正文可以只给一行占位。
+   * 缺省（工具单测直调）时行为与之前完全一致。
+   */
+  readCoverage?: (target: string) => Promise<boolean>;
 };
 
 export async function executeTool(
@@ -731,7 +1064,15 @@ export async function executeTool(
       const shaped = truncateOutput(result.output);
       return { ...result, output: shaped.output, truncated: shaped.truncated };
     }
+    if (retiredDynamicNames.has(name)) {
+      return {
+        output: `Tool "${name}" is temporarily unavailable (its MCP server disconnected or was removed). Retry later or use another tool.`,
+        ok: false,
+      };
+    }
     switch (name) {
+      case "tool_search":
+        return searchDynamicTools(args);
       case "list_dir":
         return await listDir(workspace, typeof args.path === "string" ? args.path : ".", allowOutsideWorkspace);
       case "read_file":
@@ -753,6 +1094,7 @@ export async function executeTool(
           Array.isArray(args.paths) ? (args.paths as string[]) : [],
           args.limit,
           allowOutsideWorkspace,
+          options,
         );
       case "read_video": {
         const target = typeof args.path === "string" ? args.path.trim() : "";
@@ -803,8 +1145,18 @@ export async function executeTool(
           allowOutsideWorkspace,
         );
         if (!result.ok) return result;
-        const degraded = await degradeStructuredOutput(workspace, "glob", result.output);
-        return { ...result, output: degraded.output, truncated: degraded.truncated };
+        const degraded = await degradeStructuredOutput(
+          workspace,
+          "glob",
+          result.output,
+          result.spillText,
+        );
+        return {
+          ...result,
+          output: degraded.output,
+          truncated: degraded.truncated,
+          ...(degraded.spilled ? { spilled: degraded.spilled } : {}),
+        };
       }
       case "grep": {
         const result = await searchGrep(
@@ -821,8 +1173,18 @@ export async function executeTool(
           allowOutsideWorkspace,
         );
         if (!result.ok) return result;
-        const degraded = await degradeStructuredOutput(workspace, "grep", result.output);
-        return { ...result, output: degraded.output, truncated: degraded.truncated };
+        const degraded = await degradeStructuredOutput(
+          workspace,
+          "grep",
+          result.output,
+          result.spillText,
+        );
+        return {
+          ...result,
+          output: degraded.output,
+          truncated: degraded.truncated,
+          ...(degraded.spilled ? { spilled: degraded.spilled } : {}),
+        };
       }
       case "run_code":
         // PTC 语义在沙箱内完成：中间工具输出留在沙箱与日志里，结果只回最终值。
@@ -854,9 +1216,84 @@ export async function executeTool(
       case "multi_edit":
         return await multiEdit(workspace, input, allowOutsideWorkspace);
       case "run_command":
-        return await runCommand(workspace, String(args.command ?? ""), signal);
+        return await runCommand(workspace, String(args.command ?? ""), signal, options.sandbox);
+      case "diagnostics":
+        return await runDiagnosticsTool({
+          workspace,
+          target: typeof args.path === "string" ? args.path : ".",
+          maxResults: args.maxResults,
+          allowOutsideWorkspace,
+          signal,
+        });
       case "update_plan":
         return { output: "Plan updates are handled by the agent runtime.", ok: true };
+      case "memory_read": {
+        const scope = parseMemoryScope(args.scope);
+        const name = String(args.name ?? "").trim();
+        if (!scope) {
+          return { ok: false, output: 'memory_read requires scope "user" or "project".' };
+        }
+        if (!isValidMemoryName(name)) {
+          return {
+            ok: false,
+            output: `Invalid memory name "${name}": use lowercase kebab-case (letters, digits, hyphens).`,
+          };
+        }
+        const record = await readMemory(memoryDirFor(scope, workspace), name);
+        if (!record) {
+          return {
+            ok: false,
+            output: `Memory "${name}" not found in ${scope} scope. The Memory index in the system instructions lists the saved entries.`,
+          };
+        }
+        return toolResult(record.raw);
+      }
+      case "memory_write": {
+        const scope = parseMemoryScope(args.scope);
+        const name = String(args.name ?? "").trim();
+        if (!scope) {
+          return { ok: false, output: 'memory_write requires scope "user" or "project".' };
+        }
+        if (!isValidMemoryName(name)) {
+          return {
+            ok: false,
+            output: `Invalid memory name "${name}": use lowercase kebab-case (letters, digits, hyphens).`,
+          };
+        }
+        const description = String(args.description ?? "").trim();
+        const content = String(args.content ?? "");
+        if (!description || !content.trim()) {
+          return {
+            ok: false,
+            output: "memory_write requires a one-line description and the memory content.",
+          };
+        }
+        const result = await saveMemory(memoryDirFor(scope, workspace), name, {
+          description,
+          content,
+        });
+        return toolResult(
+          `${result.existed ? "Updated" : "Saved"} ${scope} memory "${name}" (index updated).`,
+        );
+      }
+      case "memory_delete": {
+        const scope = parseMemoryScope(args.scope);
+        const name = String(args.name ?? "").trim();
+        if (!scope) {
+          return { ok: false, output: 'memory_delete requires scope "user" or "project".' };
+        }
+        if (!isValidMemoryName(name)) {
+          return {
+            ok: false,
+            output: `Invalid memory name "${name}": use lowercase kebab-case (letters, digits, hyphens).`,
+          };
+        }
+        const removed = await deleteMemory(memoryDirFor(scope, workspace), name);
+        if (!removed) {
+          return { ok: false, output: `Memory "${name}" not found in ${scope} scope.` };
+        }
+        return toolResult(`Deleted ${scope} memory "${name}".`);
+      }
       default:
         return { output: `Unknown tool: ${name}`, ok: false };
     }
@@ -891,7 +1328,11 @@ async function listDir(workspace: string, target: string, allowOutsideWorkspace 
   const notice = saved
     ? `\n... [truncated: showing first ${shown} of ${lines.length} entries; full list saved to ${saved}]`
     : `\n... [truncated: ${lines.length - shown} more entries]`;
-  return { output: lines.slice(0, shown).join("\n") + notice, ok: true };
+  return {
+    output: lines.slice(0, shown).join("\n") + notice,
+    ok: true,
+    ...(saved ? { spilled: saved } : {}),
+  };
 }
 
 /** read_file 能直接当图片交给模型的扩展名 */
@@ -1090,19 +1531,30 @@ async function readFile(options: {
     if (tailStart <= head.lastLine) {
       // 头段已经覆盖到文件末尾（例如模型明确从靠后位置开始读），不重复给尾段
       const suffix = saved ? `\n... [full content of ${name} saved to ${saved}]` : "";
-      return { output: `${head.text}${oversizedNotice}${suffix}`, ok: true };
+      return {
+        output: `${head.text}${oversizedNotice}${suffix}`,
+        ok: true,
+        readRange: { start, end: head.lastLine, total },
+        ...(saved ? { spilled: saved } : {}),
+      };
     }
     const omitted = tailStart - head.lastLine - 1;
     const hint = saved
       ? `\n... [${omitted} lines omitted; full content of ${name} saved to ${saved} — read that path with read_file (offset/limit) to page through]`
       : `\n... [${omitted} lines omitted; use offset=${head.lastLine + 1} to continue]`;
-    return { output: `${head.text}${hint}\n${tail}${oversizedNotice}`, ok: true };
+    // 头尾预览不是连续区间，只登记头段：区间去重宁可少算，不能把没给过的行算成已读
+    return {
+      output: `${head.text}${hint}\n${tail}${oversizedNotice}`,
+      ok: true,
+      readRange: { start, end: head.lastLine, total },
+      ...(saved ? { spilled: saved } : {}),
+    };
   }
 
   const output = read.file.oversized
     ? `${slice.text}${oversizedNotice}`
     : slice.text;
-  return { output, ok: true };
+  return { output, ok: true, readRange: { start, end: slice.lastLine, total: slice.total } };
 }
 
 /**
@@ -1148,6 +1600,36 @@ export const READ_MANY_MAX_PATHS = 12;
 const READ_MANY_MIN_FILE_BUDGET = 1_500;
 
 /**
+ * 批量读的「预算已耗尽」分支：给头几行 + 全文落盘。
+ *
+ * 只回一句「自己用 read_file」会逼模型为了看开头再发一次调用 ——
+ * 那是一次整轮上下文重发，比多给 800 字符贵得多。
+ */
+async function overflowSection(
+  workspace: string,
+  target: string,
+  file: string,
+  remaining: number,
+): Promise<string> {
+  const fallback = `=== ${target} ===\n[skipped: output budget exhausted — use read_file for this path]`;
+  const previewBudget = Math.min(800, remaining - 120);
+  if (previewBudget < 200) return fallback;
+  const ext = path.extname(file).toLowerCase();
+  // 图片/PDF 走 read_file 专用通道，批量切片会读成乱码
+  if (IMAGE_MIME_BY_EXT[ext] || ext === ".pdf") return fallback;
+  const read = await readTextFile(file, { headOnly: true });
+  if (!read.ok) return `=== ${target} ===\n${textFileProblem(path.basename(file), read).output}`;
+  await recordRead(file);
+  const preview = sliceLinesForModel(read.file.content, { budget: previewBudget, maxLines: 20 });
+  const saved = await persistToolOutput(workspace, "read_many", read.file.content).catch(() => null);
+  const rest = Math.max(0, preview.total - preview.lastLine);
+  const hint = saved
+    ? `... [${rest} more lines; full content saved to ${saved} — read that path with read_file (offset/limit)]`
+    : `... [${rest} more lines; use read_file for this path]`;
+  return `=== ${target} ===\n${preview.text}\n${hint}`;
+}
+
+/**
  * 批量只读：一次调用读多个文本文件，替代同一批 N 次 read_file。
  * 收益不在"能并行"（模型本来就可以一条消息发多个调用），而在：
  *  1) 每个文件结果省掉一次 tool 消息包装（call id / role / 分隔）；
@@ -1160,6 +1642,7 @@ async function readMany(
   rawPaths: string[],
   limit: unknown,
   allowOutsideWorkspace = false,
+  options?: ToolRunOptions,
 ): Promise<ToolResult> {
   // 去重保序：重复路径只读一次，结果位置不变
   const seen = new Set<string>();
@@ -1184,44 +1667,62 @@ async function readMany(
   const maxLines = Math.max(1, Number(limit ?? 0) || Number.MAX_SAFE_INTEGER);
 
   const sections: string[] = [];
+  const readRanges: Array<{ path: string; start: number; end: number; total: number }> = [];
   let used = 0;
-  let skipped = 0;
+  // 归一化去重：./a.ts 与 a.ts 是同一个文件，不能读两遍
+  const seenFiles = new Set<string>();
   for (const target of paths) {
-    // 剩余预算不够再读一个文件：剩余的全部标记 skipped（模型可用 read_file 单独续读）
     const remaining = totalBudget - used;
-    if (sections.length && remaining < READ_MANY_MIN_FILE_BUDGET) {
-      skipped += 1;
-      sections.push(`=== ${target} ===\n[skipped: output budget exhausted — use read_file for this path]`);
-      continue;
-    }
     const file = await resolveToolPath(workspace, target, allowOutsideWorkspace).catch(
       () => null,
     );
     const name = path.basename(file ?? target);
     if (!file) {
-      sections.push(`=== ${target} ===\nError: path is outside the workspace.`);
+      const section = `=== ${target} ===\nError: path is outside the workspace.`;
+      sections.push(section);
+      used += section.length;
+      continue;
+    }
+    // 去重放在预算判断之前：重复路径不该在「预算耗尽」分支被预览 + 落盘两次
+    if (seenFiles.has(file)) continue;
+    seenFiles.add(file);
+    // 剩余预算不够再读一个文件：给头几行 + 全文落盘。
+    // 只回一句「自己用 read_file」会逼模型为看开头再发一次调用，那是整轮上下文重发。
+    if (sections.length && remaining < READ_MANY_MIN_FILE_BUDGET) {
+      const section = await overflowSection(workspace, target, file, remaining);
+      sections.push(section);
+      used += section.length;
+      continue;
+    }
+    // 之前已完整读过且文件没变：正文不必再发一遍（省 token，不省 I/O）
+    if (options?.readCoverage && (await options.readCoverage(target).catch(() => false))) {
+      const section = `=== ${target} ===\n[already read in full earlier this session and unchanged — reuse that result]`;
+      sections.push(section);
+      used += section.length;
       continue;
     }
     // 图片/二进制不在批量通道里处理：read_file 才有图片附加与缩图逻辑
     if (IMAGE_MIME_BY_EXT[path.extname(file).toLowerCase()]) {
-      sections.push(
-        `=== ${target} ===\n[image file — use read_file to attach it as a picture]`,
-      );
+      const section = `=== ${target} ===\n[image file — use read_file to attach it as a picture]`;
+      sections.push(section);
+      used += section.length;
       continue;
     }
     // PDF 同理：批量通道按行切片会读出乱码，必须走 read_file 的文本层通道
     if (path.extname(file).toLowerCase() === ".pdf") {
-      sections.push(
-        `=== ${target} ===\n[PDF — use read_file with pages="1-20" to extract its text layer]`,
-      );
+      const section = `=== ${target} ===\n[PDF — use read_file with pages="1-20" to extract its text layer]`;
+      sections.push(section);
+      used += section.length;
       continue;
     }
     const read = await readTextFile(file, { headOnly: true });
     if (!read.ok) {
-      sections.push(`=== ${target} ===\n${textFileProblem(name, read).output}`);
+      const section = `=== ${target} ===\n${textFileProblem(name, read).output}`;
+      sections.push(section);
+      used += section.length;
       continue;
     }
-    // 登记逐文件读状态：之后 edit_file 才能判断"模型看到的版本是否最新"
+    // 登记逐文件读状态：之后 edit_file 才能判断「模型看到的版本是否最新」
     await recordRead(file);
     const fileBudget = Math.min(perFileBudget, remaining);
     const slice = sliceLinesForModel(read.file.content, {
@@ -1235,11 +1736,21 @@ async function readMany(
       slice.lastLine < slice.total && !read.file.oversized
         ? `\n... [${slice.total - slice.lastLine} more lines; use read_file ${target} offset=${slice.lastLine + 1}]`
         : "";
-    sections.push(`=== ${target} ===\n${slice.text}${continuation}${oversizedNotice}`);
-    used += Math.min(slice.text.length, fileBudget) + 40;
+    const section = `=== ${target} ===\n${slice.text}${continuation}${oversizedNotice}`;
+    sections.push(section);
+    // 预算按实际输出长度记账：估算值会让后续文件的可读空间漂移
+    used += section.length;
+    if (slice.lastLine >= 1) {
+      readRanges.push({ path: target, start: 1, end: slice.lastLine, total: slice.total });
+    }
   }
-  const header = paths.length > 1 ? `Read ${paths.length} files:\n` : "";
-  return { ok: true, output: `${header}${sections.join("\n\n")}` };
+  // 头部按实际段落数算：文件级去重后 paths.length 可能大于真正读到的文件数
+  const header = sections.length > 1 ? `Read ${sections.length} files://n` : "";
+  return {
+    ok: true,
+    output: `${header}${sections.join("\n\n")}`,
+    ...(readRanges.length ? { readRanges } : {}),
+  };
 }
 
 /** 原子写入：先写同目录临时文件再 rename，避免写一半崩进程把文件截断。 */
@@ -1535,183 +2046,81 @@ async function multiEdit(
   return toolResult(lines.join("\n"));
 }
 
-/** Windows 上只 kill 直接子进程会留下孙进程占着管道；必须整棵树终止。 */
-/** 杀掉整棵子进程树（Windows 走 taskkill /T）。git 服务复用同一份实现，不复制逻辑。 */
-export function killProcessTree(child: ChildProcess): void {
-  const pid = child.pid;
-  if (!pid) return;
-  if (process.platform === "win32") {
-    const killer = spawn("taskkill", ["/pid", String(pid), "/T", "/F"], {
-      windowsHide: true,
-      stdio: "ignore",
-      env: commandEnv(),
-    });
-    killer.on("error", () => {
-      try {
-        child.kill();
-      } catch {
-        // 进程可能已经退出
-      }
-    });
-    return;
-  }
-  try {
-    process.kill(-pid, "SIGKILL");
-  } catch {
-    try {
-      child.kill("SIGKILL");
-    } catch {
-      // 进程可能已经退出
-    }
-  }
-}
-
-/**
- * 命令输出先按字节累积、结束时一次性解码。
- * 逐 chunk toString("utf8") 会把跨 chunk 边界的多字节字符（中文 Windows 上很常见）切成乱码；
- * 无上限累积则刷屏命令会先把内存吃满，truncateMiddle 根本没机会生效。
- */
-function createOutputSink(limit: number) {
-  const chunks: Buffer[] = [];
-  let bytes = 0;
-  return {
-    push(chunk: Buffer): void {
-      if (bytes >= limit) return;
-      const room = limit - bytes;
-      chunks.push(chunk.length > room ? chunk.subarray(0, room) : chunk);
-      bytes += Math.min(chunk.length, room);
-    },
-    get capped(): boolean {
-      return bytes >= limit;
-    },
-    text(): string {
-      return Buffer.concat(chunks).toString("utf8");
-    },
-  };
-}
-
-/** PowerShell 5.1 默认按系统 OEM 码页输出；显式切到 UTF-8 才能和上面的解码对上。 */
-const UTF8_OUTPUT_PREAMBLE = "try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch { };\n";
-
-async function runCommand(workspace: string, command: string, signal?: AbortSignal): Promise<ToolResult> {
+/** ToolResult 适配层：执行面只回原始字节，这里保留原有的截断/落盘/文案语义。 */
+async function runCommand(
+  workspace: string,
+  command: string,
+  signal?: AbortSignal,
+  sandbox?: "enforce" | "bypass",
+): Promise<ToolResult> {
   if (!command.trim()) {
     return { output: "command is empty.", ok: false };
   }
   if (signal?.aborted) {
     return { output: "Command aborted by the user.", ok: false };
   }
-  const executable = await resolvePowerShell();
-  if (signal?.aborted) {
-    return { output: "Command aborted by the user.", ok: false };
-  }
-
-  return new Promise((resolve) => {
-    let settled = false;
-    const stdout = createOutputSink(MAX_COMMAND_OUTPUT_BYTES);
-    const stderr = createOutputSink(MAX_COMMAND_OUTPUT_BYTES);
-    let timer: NodeJS.Timeout | undefined;
-    const combined = () =>
-      [stdout.text(), stderr.text()].filter(Boolean).join("\n--- stderr ---\n") || "(no output)";
-    const child = spawn(
-      executable,
-      ["-NoLogo", "-NoProfile", "-NonInteractive", "-Command", UTF8_OUTPUT_PREAMBLE + command],
-      {
-        cwd: workspace,
-        windowsHide: true,
-        detached: process.platform !== "win32",
-        env: { ...commandEnv(), POWERSHELL_TELEMETRY_OPTOUT: "1" },
-      },
-    );
-
-    function cleanup(): void {
-      if (timer) clearTimeout(timer);
-      signal?.removeEventListener("abort", onAbort);
-    }
-    function finish(result: ToolResult): void {
-      if (settled) return;
-      settled = true;
-      cleanup();
-      child.stdout?.destroy();
-      child.stderr?.destroy();
-      resolve(result);
-    }
-    function onAbort(): void {
-      killProcessTree(child);
-      finish({ output: "Command aborted by the user.", ok: false });
-    }
-
-    child.stdout?.on("data", (chunk: Buffer) => stdout.push(chunk));
-    child.stderr?.on("data", (chunk: Buffer) => stderr.push(chunk));
-    child.on("error", (error) => {
-      finish({ output: error.message, ok: false });
-    });
-    child.on("close", (code) => {
-      if (settled) return;
-      const full = combined();
-      const capped = stdout.capped || stderr.capped;
-      const preview = truncateMiddle(full);
-      if (!preview.truncated && !capped) {
-        finish({ output: preview.output, ok: code === 0 });
-        return;
-      }
-      void persistToolOutput(workspace, "run_command", full)
-        .then((saved) =>
-          finish({
-            output: `${preview.output}\n... [${
-              capped ? `capture stopped at ${MAX_COMMAND_OUTPUT_BYTES} bytes; ` : ""
-            }full output saved to ${saved}; read it with read_file]`,
-            ok: code === 0,
-          }),
-        )
-        .catch(() => finish({ output: preview.output, ok: code === 0 }));
-    });
-
-    signal?.addEventListener("abort", onAbort, { once: true });
-    if (signal?.aborted) {
-      onAbort();
-      return;
-    }
-    timer = setTimeout(() => {
-      killProcessTree(child);
-      const partial = truncateMiddle(combined());
-      finish({
-        output: `Command timed out after 120s and was terminated.${partial.output ? `\n${partial.output}` : ""}`,
-        ok: false,
-      });
-    }, 120_000);
+  const result = await runShellCommand({
+    workspace,
+    command,
+    ...(signal ? { signal } : {}),
+    ...(sandbox ? { sandbox } : {}),
   });
-}
-
-let powershellProbe: Promise<string> | undefined;
-
-/** 探测结果在一次进程生命周期内不会变，避免每条命令都付一次 spawn（最坏 5 秒）。 */
-function resolvePowerShell(): Promise<string> {
-  const override = process.env.MEOWCODE_POWERSHELL;
-  if (override) return Promise.resolve(override);
-  powershellProbe ??= findPowerShell();
-  return powershellProbe;
-}
-
-async function findPowerShell(): Promise<string> {
-  return new Promise((resolve) => {
-    const child = spawn("pwsh.exe", ["-NoLogo", "-NoProfile", "-Command", "$PSVersionTable.PSVersion.Major"], {
-      windowsHide: true,
-      // 探测进程同样不能继承完整环境（里面可能有服务商密钥）
-      env: commandEnv(),
-    });
-    let settled = false;
-    let timer: NodeJS.Timeout | undefined;
-    const finish = (name: string) => {
-      if (settled) return;
-      settled = true;
-      if (timer) clearTimeout(timer);
-      child.kill();
-      resolve(name);
+  if (result.sandboxUnavailable) {
+    return {
+      output: `Command was not run: the command sandbox is unavailable (${result.sandboxUnavailable.code}: ${result.sandboxUnavailable.detail}). Fix or disable it in Settings, or run a command without the sandbox after approval.`,
+      ok: false,
     };
-    child.on("error", () => finish("powershell.exe"));
-    child.on("close", (code) => finish(code === 0 ? "pwsh.exe" : "powershell.exe"));
-    // pwsh 探测本身也不能无限等
-    timer = setTimeout(() => finish("powershell.exe"), 5_000);
-  });
+  }
+  const denial = result.sandboxed
+    ? classifySandboxDenial({
+        exitCode: result.code,
+        output: result.combined,
+        command,
+        timedOut: result.timedOut,
+        aborted: result.aborted,
+        ...(result.spawnError ? { spawnError: result.spawnError } : {}),
+        writableRoots: getSandboxSettings().writableRoots,
+      })
+    : undefined;
+  const denied = (output: string): string =>
+    denial ? `${output}\n[sandbox] The command was blocked by the write sandbox.` : output;
+  const sandboxField = denial ? { sandboxDenial: denial } : {};
+  if (result.aborted) {
+    return { output: "Command aborted by the user.", ok: false, ...sandboxField };
+  }
+  if (result.timedOut) {
+    const partial = truncateMiddle(result.combined);
+    return {
+      output: denied(
+        `Command timed out after 120s and was terminated.${partial.output ? `\n${partial.output}` : ""}`,
+      ),
+      ok: false,
+      ...sandboxField,
+    };
+  }
+  if (result.spawnError) {
+    return { output: result.spawnError, ok: false, ...sandboxField };
+  }
+  const full = result.combined;
+  const capped = result.capped;
+  const preview = truncateMiddle(full);
+  if (!preview.truncated && !capped) {
+    return { output: denied(preview.output), ok: result.code === 0, ...sandboxField };
+  }
+  try {
+    const saved = await persistToolOutput(workspace, "run_command", full);
+    return {
+      output: denied(
+        `${preview.output}\n... [${
+          capped ? `capture stopped at ${MAX_COMMAND_OUTPUT_BYTES} bytes; ` : ""
+        }full output saved to ${saved}; read it with read_file]`,
+      ),
+      ok: result.code === 0,
+      spilled: saved,
+      ...sandboxField,
+    };
+  } catch {
+    return { output: denied(preview.output), ok: result.code === 0, ...sandboxField };
+  }
 }
 

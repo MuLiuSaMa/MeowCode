@@ -6,7 +6,7 @@
   gap: 6px;
   width: var(--rail-w);
   flex-shrink: 0;
-  padding: 6px 0 0;
+  padding: 6px 0;
   /* 外框是一整块系统毛玻璃：导航条自身不再叠底色/描边/模糊，避免色差和割裂 */
   background: transparent;
   -webkit-app-region: no-drag;
@@ -34,6 +34,133 @@
 }
 .mc-rail__btn[data-active="true"],
 .mc-rail__btn[data-active="true"]:hover {
+  background: var(--surface-hover);
+  color: var(--fg);
+}
+
+/* ---- 左下角：静默下载更新 ---- */
+
+.mc-rail__update {
+  position: relative;
+  display: flex;
+  margin-top: auto; /* 推到底部 */
+}
+/* 更新图标整体比普通导航按钮大一圈，突出更新入口 */
+.mc-rail__updatebtn {
+  position: relative;
+  width: 48px;
+  height: 48px;
+}
+.mc-rail__updatebtn[data-kind="downloading"] {
+  cursor: default; /* 进度环只是展示，不可点 */
+}
+/* 重启安装：图标后面垫一个绿色圆底，尺寸与下载圆环一致（30px），热区仍是整颗按钮 */
+.mc-rail__updatebtn[data-kind="done"] {
+  color: var(--success-strong);
+}
+.mc-rail__updatebtn[data-kind="done"]::before {
+  content: "";
+  position: absolute;
+  inset: 6px;
+  border-radius: 50%;
+  background: var(--success-surface);
+  transition: background-color var(--dur) var(--ease);
+}
+.mc-rail__updatebtn[data-kind="done"]:hover {
+  background: transparent; /* 只提亮圆底，别把 42px 热区整块点亮 */
+}
+.mc-rail__updatebtn[data-kind="done"]:hover::before {
+  background: color-mix(in oklab, var(--success-strong) 26%, transparent);
+}
+.mc-rail__updatebtn[data-kind="done"] svg {
+  position: relative; /* 压在 ::before 圆底之上 */
+}
+.mc-rail__updatebtn[data-kind="error"] {
+  color: var(--danger);
+}
+
+/* 圆环进度：SVG 铺满按钮留边区域，中心叠一个小下载图标 */
+.mc-rail__ring {
+  position: absolute;
+  inset: 6px;
+  width: calc(100% - 12px);
+  height: calc(100% - 12px);
+}
+.mc-rail__ringtrack {
+  fill: none;
+  stroke: var(--border);
+  stroke-width: 2;
+}
+.mc-rail__ringfill {
+  fill: none;
+  stroke: var(--success-strong);
+  stroke-width: 2;
+  stroke-linecap: round;
+  /* 进度从正上方开始顺时针走 */
+  transform: rotate(-90deg);
+  transform-origin: center;
+  transition: stroke-dashoffset 0.2s linear;
+}
+.mc-rail__ringicon {
+  color: var(--fg-subtle);
+}
+
+/* 「新版本自动下载中」引导气泡：锚在下载图标右侧 */
+.mc-rail__updatepop {
+  position: absolute;
+  left: calc(100% + 16px);
+  bottom: 5px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 8px 7px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-elevated);
+  box-shadow: var(--shadow-lg);
+  color: var(--fg);
+  font-size: var(--fs-xs);
+  white-space: nowrap;
+  z-index: 40;
+  animation: mc-rail-pop-in var(--dur) var(--ease);
+}
+.mc-rail__updatepop::before {
+  content: "";
+  position: absolute;
+  left: -4.5px;
+  bottom: 13px;
+  width: 8px;
+  height: 8px;
+  border-left: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-elevated);
+  transform: rotate(45deg);
+}
+@keyframes mc-rail-pop-in {
+  from {
+    opacity: 0;
+    transform: translateX(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.mc-rail__updatepopclose {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 17px;
+  height: 17px;
+  padding: 0;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--fg-subtlest);
+  cursor: pointer;
+  transition: background-color var(--dur) var(--ease), color var(--dur) var(--ease);
+}
+.mc-rail__updatepopclose:hover {
   background: var(--surface-hover);
   color: var(--fg);
 }

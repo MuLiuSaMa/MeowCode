@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { useEffect, useState } from "react";
 import {
   LuBadgeCheck,
@@ -113,6 +114,7 @@ export function ArchitectureNav({
   /** 删除自定义架构 */
   onDeleteArchitecture?: (id: string) => void;
 }) {
+  const { t } = useTranslation("architecture");
   // 自定义架构是标准 Agent 的副本：角色白名单/门禁语义都按 standard 判定
   const builtinProfile: AgentProfileId = isBuiltinProfileId(profile) ? profile : "standard";
   const profileInfo = AGENT_PROFILES[builtinProfile];
@@ -176,18 +178,18 @@ export function ArchitectureNav({
   };
 
   return (
-    <nav className="mc-panel mc-panel--conversations mc-arch__nav" aria-label="Agent 列表">
+    <nav className="mc-panel mc-panel--conversations mc-arch__nav" aria-label={t("nav.agentListAria")}>
       <div className="mc-arch__head">
-        <h1 className="mc-arch__heading">Agent 架构</h1>
+        <h1 className="mc-arch__heading">{t("nav.heading")}</h1>
       </div>
       <div className="mc-arch__grouprow">
-        <p className="mc-arch__grouplabel">主 Agent</p>
+        <p className="mc-arch__grouplabel">{t("nav.mainAgentGroup")}</p>
         {onAddArchitecture ? (
           <button
             type="button"
             className="mc-arch__groupadd"
-            title="新建自定义 Agent 架构"
-            aria-label="新建自定义 Agent 架构"
+            title={t("nav.addArchitecture")}
+            aria-label={t("nav.addArchitecture")}
             onClick={onAddArchitecture}
           >
             <LuPlus size={12} />
@@ -200,7 +202,7 @@ export function ArchitectureNav({
           const info = builtin ? AGENT_PROFILES[item.id as AgentProfileId] : null;
           const Icon = info?.icon ?? LuPuzzle;
           const label = info?.label ?? item.name ?? item.id;
-          const tagline = info?.tagline ?? "自定义架构";
+          const tagline = info?.tagline ?? t("nav.customTagline");
           const isActive = builtin && activeProfile === item.id;
           const count = countFor(item.id);
           const editing = editingId === item.id;
@@ -211,7 +213,7 @@ export function ArchitectureNav({
                 className="mc-arch__roleitem"
                 data-active={profile === item.id}
                 aria-pressed={profile === item.id}
-                title={builtin ? tagline : "双击名称可改名"}
+                title={builtin ? tagline : t("nav.renameHint")}
                 onClick={() => {
                   onSelectProfile(item.id);
                   const nodeId = harnessAgentId(item.id);
@@ -249,19 +251,19 @@ export function ArchitectureNav({
                     </span>
                   )}
                   <span className="mc-arch__roleid">
-                    {count === null ? tagline : `子 Agent ${count} 个 · ${tagline}`}
+                    {count === null ? tagline : t("nav.subagentCount", { count, tagline })}
                   </span>
                 </span>
                 <span className="mc-arch__rolebadges">
-                  {isActive ? <span className="mc-arch__badge">当前</span> : null}
+                  {isActive ? <span className="mc-arch__badge">{t("nav.currentBadge")}</span> : null}
                 </span>
               </button>
               {builtin || !onDeleteArchitecture ? null : (
                 <button
                   type="button"
                   className="mc-arch__roledelete"
-                  title={`删除「${label}」`}
-                  aria-label={`删除「${label}」`}
+                  title={t("nav.deleteAria", { name: label })}
+                  aria-label={t("nav.deleteAria", { name: label })}
                   onClick={(event) => {
                     event.stopPropagation();
                     onDeleteArchitecture(item.id);
@@ -274,7 +276,7 @@ export function ArchitectureNav({
           );
         })}
       </ul>
-      <p className="mc-arch__grouplabel">子 Agent · {currentArchName}</p>
+      <p className="mc-arch__grouplabel">{t("nav.subagentGroup", { name: currentArchName })}</p>
       {roleAgents.length ? (
         <ul className="mc-arch__roles">
           {roleAgents.map((entry) => {
@@ -305,11 +307,11 @@ export function ArchitectureNav({
                   <span className="mc-arch__rolebadges">
                     {profileInfo.roles.includes(entry.roleType as SubagentType) ? null : (
                       <span className="mc-arch__badge" data-tone="muted">
-                        档位禁用
+                        {t("nav.profileDisabledBadge")}
                       </span>
                     )}
                     {READ_ONLY_ROLES.has(entry.roleType) ? (
-                      <span className="mc-arch__badge">只读</span>
+                      <span className="mc-arch__badge">{t("nav.readOnlyBadge")}</span>
                     ) : null}
                   </span>
                 </button>
@@ -319,7 +321,7 @@ export function ArchitectureNav({
         </ul>
       ) : (
         <p className="mc-arch__navempty">
-          {agents.length === 0 ? "正在加载 Agent…" : "该 Agent 未包含子 Agent"}
+          {t(agents.length === 0 ? "nav.loading" : "nav.emptySubagents")}
         </p>
       )}
     </nav>

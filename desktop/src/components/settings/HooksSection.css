@@ -1,0 +1,180 @@
+/* Hooks 设置分节：只读摘要 + 文件入口 + 运行方式 */
+
+.mc-hooks__state {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 18px 20px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  corner-shape: superellipse(1.5);
+  background: var(--surface);
+  color: var(--fg-subtle);
+  font-size: var(--fs-base);
+}
+
+.mc-hooks__state--error {
+  color: var(--fg);
+  border-color: color-mix(in srgb, var(--danger) 35%, var(--border));
+}
+
+.mc-hooks__warning {
+  margin: 0;
+  padding: 10px 16px;
+  border-top: 1px solid var(--border);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-normal);
+  color: var(--fg-subtle);
+  background: color-mix(in srgb, var(--warning, #d97706) 8%, transparent);
+}
+
+.mc-hooks__muted {
+  margin: 0;
+  padding: 10px 16px;
+  border-top: 1px solid var(--border);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-normal);
+  color: var(--fg-subtlest);
+}
+
+.mc-hooks__empty {
+  margin: 12px 16px;
+  padding: 18px 16px;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-md);
+  text-align: center;
+  font-size: var(--fs-sm);
+  color: var(--fg-subtlest);
+}
+
+.mc-hooks__events {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 16px;
+}
+
+.mc-hooks__event {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  corner-shape: superellipse(1.4);
+  background: color-mix(in srgb, var(--surface) 70%, var(--bg));
+  overflow: hidden;
+}
+
+.mc-hooks__eventhead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.mc-hooks__eventname {
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+  color: var(--fg);
+}
+
+.mc-hooks__count {
+  font-size: var(--fs-caption);
+  color: var(--fg-subtlest);
+}
+
+.mc-hooks__commands {
+  display: flex;
+  flex-direction: column;
+}
+
+.mc-hooks__commandrow {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 9px 12px;
+}
+
+.mc-hooks__commandrow + .mc-hooks__commandrow {
+  border-top: 1px solid var(--border);
+}
+
+.mc-hooks__command {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+  color: var(--fg);
+}
+
+.mc-hooks__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.mc-hooks__badge {
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--surface-hover);
+  font-size: var(--fs-caption);
+  color: var(--fg-subtle);
+}
+
+.mc-hooks__badge--excluded {
+  color: var(--fg-subtlest);
+  background: transparent;
+  border: 1px dashed var(--border);
+}
+
+.mc-hooks__files {
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid var(--border);
+}
+
+.mc-hooks__filerow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 11px 16px;
+}
+
+.mc-hooks__filerow + .mc-hooks__filerow {
+  border-top: 1px solid var(--border);
+}
+
+.mc-hooks__filetext {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.mc-hooks__filename {
+  font-size: var(--fs-base);
+  color: var(--fg);
+}
+
+.mc-hooks__filepath {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+  font-size: var(--fs-caption);
+  color: var(--fg-subtle);
+}
+
+.mc-hooks__filemeta {
+  font-size: var(--fs-caption);
+  color: var(--fg-subtlest);
+}
+
+.mc-hooks__fileerror {
+  font-size: var(--fs-caption);
+  color: var(--danger);
+}

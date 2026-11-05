@@ -17,6 +17,8 @@ export type DialogProps = {
  */
 export function Dialog({ open, onClose, labelledBy, children, className }: DialogProps) {
   const ref = useRef<HTMLDialogElement>(null);
+  /** 按下起点是否在背板上：防止「面板内按下 → 拖出弹窗松开」被浏览器合成出 dialog 上的 click 而误关 */
+  const pressOnBackdrop = useRef(false);
 
   useEffect(() => {
     const el = ref.current;
@@ -43,8 +45,17 @@ export function Dialog({ open, onClose, labelledBy, children, className }: Dialo
         event.preventDefault();
         onClose();
       }}
+      onMouseDown={(event) => {
+        pressOnBackdrop.current = event.target === ref.current;
+      }}
+      onMouseUp={(event) => {
+        if (event.target !== ref.current) pressOnBackdrop.current = false;
+      }}
       onClick={(event) => {
-        if (event.target === ref.current) onClose();
+        if (event.target === ref.current && pressOnBackdrop.current) {
+          pressOnBackdrop.current = false;
+          onClose();
+        }
       }}
     >
       <div className="mc-dialog__panel">{children}</div>

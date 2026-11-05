@@ -37,6 +37,7 @@ const EXPLORE_TOOLS: ReadonlySet<string> = new Set([
   "glob",
   "grep",
   "context_status",
+  "diagnostics",
   "run_code",
 ]);
 
@@ -74,6 +75,7 @@ const VERIFIER_TOOLS: ReadonlySet<string> = new Set([
   "glob",
   "grep",
   "context_status",
+  "diagnostics",
   "run_code",
   "run_command",
 ]);

@@ -1,0 +1,142 @@
+.mc-memory {
+  display: flex;
+  flex-direction: column;
+}
+
+/* 与 mc-models__toolbar 同范式：左计数 + 右动作，底部与列表拉分隔线 */
+.mc-memory__toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.mc-memory__count {
+  font-size: var(--fs-sm);
+  color: var(--fg-subtle);
+}
+
+.mc-memory__count strong {
+  color: var(--fg);
+  font-weight: var(--fw-medium);
+}
+
+.mc-memory__loading {
+  display: flex;
+  justify-content: center;
+  padding: 24px 0;
+}
+
+.mc-memory__empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin: 0;
+  padding: 26px 16px;
+  color: var(--fg-subtlest);
+  font-size: var(--fs-base);
+}
+
+.mc-memory__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  max-height: 420px;
+  overflow-y: auto;
+}
+
+.mc-memory__row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-right: 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.mc-memory__row:last-child {
+  border-bottom: none;
+}
+
+.mc-memory__item {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 4px 10px 16px;
+  background: none;
+  border: none;
+  text-align: left;
+  cursor: pointer;
+  color: var(--fg);
+}
+
+.mc-memory__item:hover {
+  background: var(--surface-hover);
+}
+
+.mc-memory__name {
+  flex-shrink: 0;
+  max-width: 40%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: var(--fw-medium);
+  font-size: var(--fs-sm);
+}
+
+.mc-memory__desc {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--fg-subtle);
+  font-size: var(--fs-sm);
+}
+
+.mc-memory__date {
+  flex-shrink: 0;
+  color: var(--fg-subtlest);
+  font-size: var(--fs-sm);
+}
+
+.mc-memory__delete {
+  flex-shrink: 0;
+}
+
+.mc-memory__editor {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.mc-memory__textarea {
+  width: 100%;
+  min-height: 240px;
+  resize: vertical;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  color: var(--fg);
+  font-family: var(--font-code, monospace);
+  font-size: var(--fs-sm);
+  line-height: 1.5;
+}
+
+.mc-memory__textarea:focus-visible {
+  outline: 2px solid var(--accent, currentColor);
+  outline-offset: -1px;
+}
+
+.mc-memory__error {
+  margin: 0;
+  color: var(--danger, #c0392b);
+  font-size: var(--fs-sm);
+}

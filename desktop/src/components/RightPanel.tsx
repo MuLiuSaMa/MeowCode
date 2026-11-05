@@ -1,4 +1,5 @@
 import { useCallback, useState, type ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 import {
   LuArrowLeft,
   LuArrowRight,
@@ -9,18 +10,25 @@ import {
   LuListChecks,
   LuMessageSquare,
   LuPlus,
+  LuPuzzle,
   LuRotateCw,
   LuSparkles,
   LuTerminal,
   LuUsers,
   LuX,
 } from "react-icons/lu";
-import type { ProviderSettings, SubagentRun, TurnMetrics, WorkflowRoadmap } from "../api";
+import type {
+  ProviderSettings,
+  SubagentRun,
+  TurnMetrics,
+  WorkflowRoadmap,
+} from "../api";
 import { normalizeAddress } from "../panel/address";
 import type { SideTab, SideTabOpen } from "../panel/useSideTabs";
 import { BrowserTab } from "./panel/BrowserTab";
 import { HomeTab } from "./panel/HomeTab";
 import { PlanTab } from "./panel/PlanTab";
+import { PluginFrameTab } from "./panel/PluginFrameTab";
 import { ReviewTab } from "./panel/ReviewTab";
 import { SideChatTab } from "./panel/SideChatTab";
 import { SubagentTab } from "./panel/SubagentTab";
@@ -50,6 +58,8 @@ function tabIcon(tab: SideTab): ReactNode {
       return <LuSparkles size={12} />;
     case "subagents":
       return <LuUsers size={12} />;
+    case "plugin":
+      return <LuPuzzle size={12} />;
   }
 }
 
@@ -60,6 +70,7 @@ export function RightPanel({
   onClose,
   onOpen,
   onOpenPalette,
+  onOpenSearch,
   onOpenWorkspace,
   onOpenFile,
   onPatchTab,
@@ -68,6 +79,7 @@ export function RightPanel({
   onOpenSubagent,
   onStopSubagent,
   onContinueSubagent,
+  onSteerSubagent,
   workspace,
   session,
   metrics,
@@ -87,6 +99,8 @@ export function RightPanel({
   onOpen: (request: SideTabOpen) => void;
   /** 打开文件快开面板（Ctrl+P） */
   onOpenPalette: () => void;
+  /** 打开会话全文检索弹窗（Ctrl+K） */
+  onOpenSearch: () => void;
   onOpenWorkspace: (cwd: string) => void;
   /** 在「文件」页签里选中文件（树点击 / 快开选中） */
   onOpenFile: (path: string) => void;
@@ -98,6 +112,7 @@ export function RightPanel({
   onOpenSubagent: (agentId: string) => void;
   onStopSubagent: (agentId: string) => void;
   onContinueSubagent: (agentId: string, message: string) => Promise<void>;
+  onSteerSubagent: (agentId: string, message: string) => Promise<void>;
   workspace?: string;
   session: { id: string; cwd: string } | null;
   /** 最近一次 AI 回合的响应统计（会话信息） */
@@ -115,6 +130,7 @@ export function RightPanel({
   /** 治理 roadmap 快照（当前会话）；计划页签顶部展示 lanes 与 gate 状态 */
   roadmap?: WorkflowRoadmap | null;
 }) {
+  const { t } = useTranslation("chat");
   const activeTab = tabs.find((tab) => tab.id === activeId) ?? tabs[0];
   /** 顶部搜索栏只属于「新标签页」；其他页签各有自己的上下文 */
   const isHome = activeTab?.kind === "home";
@@ -138,7 +154,7 @@ export function RightPanel({
   return (
     <aside className="mc-panel mc-panel--inspector mc-rtp">
       {/* 页签栏 */}
-      <div className="mc-rtp__tabs" role="tablist" aria-label="右侧面板标签页">
+      <div className="mc-rtp__tabs" role="tablist" aria-label={t("rightPanel.tabsAria")}>
         {tabs.map((tab) => (
           <div
             key={tab.id}
@@ -156,7 +172,7 @@ export function RightPanel({
               <button
                 type="button"
                 className="mc-rtp__tabclose"
-                aria-label="关闭标签页"
+                aria-label={t("rightPanel.closeTab")}
                 onClick={() => onClose(tab.id)}
               >
                 <LuX size={12} />
@@ -164,7 +180,7 @@ export function RightPanel({
             ) : null}
           </div>
         ))}
-        <button type="button" className="mc-rtp__tabadd" aria-label="新标签页" onClick={() => onActivate("home")}>
+        <button type="button" className="mc-rtp__tabadd" aria-label={t("rightPanel.newTab")} onClick={() => onActivate("home")}>
           <LuPlus size={14} />
         </button>
       </div>
@@ -172,19 +188,19 @@ export function RightPanel({
       {/* 工具栏：只有新标签页有 */}
       {isHome ? (
         <div className="mc-rtp__toolbar">
-          <button type="button" className="mc-rtp__navbtn" aria-label="后退" disabled>
+          <button type="button" className="mc-rtp__navbtn" aria-label={t("rightPanel.back")} disabled>
             <LuArrowLeft size={14} />
           </button>
-          <button type="button" className="mc-rtp__navbtn" aria-label="前进" disabled>
+          <button type="button" className="mc-rtp__navbtn" aria-label={t("rightPanel.forward")} disabled>
             <LuArrowRight size={14} />
           </button>
-          <button type="button" className="mc-rtp__navbtn" aria-label="刷新" disabled>
+          <button type="button" className="mc-rtp__navbtn" aria-label={t("rightPanel.reload")} disabled>
             <LuRotateCw size={13} />
           </button>
           <input
             className="mc-rtp__address"
             value={address}
-            placeholder="搜索或输入网址"
+            placeholder={t("rightPanel.addressPlaceholder")}
             onChange={(event) => setAddress(event.target.value)}
             onKeyDown={(event) => {
               if (event.key === "Enter") submitAddress();
@@ -201,6 +217,7 @@ export function RightPanel({
               <HomeTab
                 onOpen={onOpen}
                 onOpenPalette={onOpenPalette}
+                onOpenSearch={onOpenSearch}
                 onOpenWorkspace={onOpenWorkspace}
                 workspace={workspace}
                 session={session}
@@ -239,6 +256,14 @@ export function RightPanel({
                 onEnsure={onEnsureSubagent}
                 onStop={onStopSubagent}
                 onContinue={onContinueSubagent}
+                onSteer={onSteerSubagent}
+                onOpenFile={onOpenFile}
+              />
+            ) : tab.kind === "plugin" ? (
+              <PluginFrameTab
+                pluginId={tab.pluginId}
+                active={tab.id === activeId}
+                sessionId={session?.id}
               />
             ) : (
               <SideChatTab
@@ -247,6 +272,7 @@ export function RightPanel({
                 providers={providers}
                 activeProviderId={provider?.id ?? ""}
                 onManageModels={onManageModels}
+                onOpenFile={onOpenFile}
               />
             )}
           </div>

@@ -26,6 +26,10 @@
   text-align: center;
 }
 
+/* 操作列要按内容占宽（确认删除 + 取消必须同一行），其余列让位并截断 */
+.mc-models__table {
+  table-layout: auto;
+}
 .mc-models__name {
   display: flex;
   align-items: center;
@@ -47,7 +51,9 @@
   grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
   gap: 6px;
   margin-top: 14px;
-  max-height: 46vh;
+  /* 撑满弹窗剩余高度，列表在内部滚动，底部不留下空白 */
+  flex: 1 1 auto;
+  min-height: 0;
   overflow-y: auto;
 }
 .mc-picker__item {
@@ -225,38 +231,50 @@
   color: var(--fg-subtlest);
   flex-shrink: 0;
 }
-.mc-modelform__presets {
+
+/* ---- 高级设置（默认折叠）---- */
+.mc-modelform__advanced {
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid var(--border);
+  padding-top: 12px;
+}
+.mc-modelform__advancedtoggle {
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
-  gap: 6px;
-  min-height: 34px;
-  padding: 0 12px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  corner-shape: superellipse(1.5);
-  background: var(--input-fill);
-}
-.mc-modelform__preset {
-  padding: 3px 9px;
+  gap: 8px;
+  padding: 6px 8px;
+  margin: -2px -8px 0;
   border: 0;
-  border-radius: var(--radius-full);
-  background: var(--surface);
-  color: var(--fg-subtle);
-  font-family: inherit;
-  font-size: var(--fs-xs);
-  cursor: pointer;
-  transition: background-color var(--dur) var(--ease), color var(--dur) var(--ease);
-}
-.mc-modelform__preset:hover {
-  background: var(--surface-hover);
+  border-radius: var(--radius-md);
+  background: transparent;
   color: var(--fg);
+  font-family: inherit;
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+  cursor: pointer;
+  transition: background-color var(--dur) var(--ease);
 }
-.mc-modelform__presetsep {
-  width: 1px;
-  height: 16px;
-  background: var(--border);
-  margin: 0 4px;
+.mc-modelform__advancedtoggle:hover {
+  background: var(--surface-hover);
+}
+.mc-modelform__advancedchevron {
+  color: var(--fg-subtle);
+  transition: transform var(--dur) var(--ease);
+}
+.mc-modelform__advancedchevron[data-open="true"] {
+  transform: rotate(180deg);
+}
+.mc-modelform__advancedhint {
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-normal);
+  color: var(--fg-subtlest);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mc-modelform__advancedbody {
+  margin-top: 14px;
 }
 
 /* ---- 归档分区 ---- */
@@ -271,15 +289,65 @@
   color: var(--fg-subtlest);
 }
 
-/* ---- 关于页 ---- */
-.mc-about__value {
-  font-size: var(--fs-sm);
-  color: var(--fg-subtle);
+
+/* ---- 服务商弹层里的模型行：一行一个模型，设置/删除在行尾 ---- */
+.mc-modelrows {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 12px;
 }
-.mc-about__loading {
+.mc-modelrows__head {
   display: flex;
   align-items: center;
-  gap: 10px;
-  font-size: var(--fs-base);
-  color: var(--fg-subtle);
+  justify-content: space-between;
+  gap: 8px;
+}
+.mc-modelrows__toolbar {
+  display: flex;
+  gap: 8px;
+}
+.mc-modelrow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+/* 图标按钮对齐输入框的 34px 高度，避免行尾两个按钮比输入框矮一截 */
+.mc-modelrow .mc-iconbtn {
+  width: 34px;
+  height: 34px;
+}
+.mc-modelrow__id {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+/* 获取模型列表：可滚动的多选清单 */
+.mc-fetchmodels {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 320px;
+  overflow-y: auto;
+  padding: 4px 2px;
+}
+.mc-fetchmodels .mc-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+/* 行内输入框不渲染标签（TextField 的 label 是空串占位），否则整行被空标签撑高、图标按钮会偏上 */
+.mc-modelrow .mc-field__label {
+  display: none;
+}
+/* 模型行：勾选框 + 模型 ID + 最大上下文 + 设置/删除 */
+.mc-modelrow__check {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  accent-color: var(--brand);
+  cursor: pointer;
+}
+.mc-modelrow__context {
+  flex: 0 0 110px;
 }

@@ -1,0 +1,10 @@
+/* 外观设置：字体选择行（界面 / 代码字体下拉共用，统一宽度） */
+.mc-appearance__fontrow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.mc-appearance__fontrow .mc-customselect {
+  width: 240px;
+  flex-shrink: 0;
+}

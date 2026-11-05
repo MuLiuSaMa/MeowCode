@@ -108,7 +108,12 @@
   outline: none;
 }
 
-/* 宽版弹窗（服务商选择器 / 模型表单用）—— 必须定义在 .mc-dialog 之后才能覆盖宽度 */
+/* 宽版弹窗（服务商选择器 / 模型表单用）—— 固定宽度，避免不同内容把弹窗撑窄或撑宽 */
 .mc-dialog--wide {
+  width: min(92vw, 780px);
   max-width: min(92vw, 780px);
+}
+/* 宽版弹窗固定高度：内容变化（如模型表单展开「高级设置」）时弹窗不再忽高忽低，超出部分内部滚动 */
+.mc-dialog--wide .mc-dialog__panel {
+  height: min(720px, 86vh);
 }

@@ -1,0 +1,57 @@
+{
+  "actions": {
+    "back": "Zurück",
+    "next": "Weiter",
+    "skip": "Überspringen",
+    "later": "Später einrichten",
+    "connect": "Verbinden",
+    "connecting": "Verbindung wird hergestellt…",
+    "start": "Loslegen",
+    "finishing": "Einrichtung wird abgeschlossen…",
+    "close": "Einführung schließen"
+  },
+  "language": {
+    "title": "Sprache wählen",
+    "label": "Sprache",
+    "previewLabel": "Sprachvorschau",
+    "previewText": "Hallo und willkommen bei MeowCode.",
+    "systemMeta": "Systemsprache · aktuell {{language}}",
+    "selectedMeta": "Oberflächensprache · {{language}}"
+  },
+  "theme": {
+    "title": "Design wählen",
+    "desc": "Wird sofort übernommen. Sie können es später jederzeit unter Einstellungen → Aussehen ändern.",
+    "options": {
+      "system": {
+        "label": "Systemfarben",
+        "desc": "Folgt in Echtzeit der hellen / dunklen Einstellung von Windows"
+      },
+      "light": {
+        "label": "Hell",
+        "desc": "Immer die helle Oberfläche verwenden"
+      },
+      "dark": {
+        "label": "Dunkel",
+        "desc": "Immer die dunkle Oberfläche verwenden"
+      }
+    }
+  },
+  "provider": {
+    "title": "KI-Anbieter wählen",
+    "searchLabel": "Anbieter suchen",
+    "searchPlaceholder": "Nach Name oder id suchen, z. B. deepseek",
+    "empty": "Kein passender Anbieter — versuchen Sie „Eigener Anbieter“",
+    "customName": "Eigener Anbieter",
+    "customMeta": "Endpunkt und Schlüssel von Hand eintragen",
+    "needsEndpoint": "Endpunkt erforderlich"
+  },
+  "connect": {
+    "title": "KI-Anbieter verbinden",
+    "saveFailed": "Verbindung fehlgeschlagen. Bitte prüfen Sie die Einstellungen und versuchen Sie es erneut."
+  },
+  "finish": {
+    "title": "Alles bereit",
+    "desc": "Die Einrichtung ist abgeschlossen. Sie können MeowCode jetzt verwenden.",
+    "noProvider": "Noch kein Modell konfiguriert — Sie können später unter Einstellungen → Modelle eines hinzufügen."
+  }
+}

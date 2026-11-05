@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  breakdownMessages,
+  compactionTriggerTokens,
   estimateContextTokens,
   estimateMessageTokens,
   estimateMessagesTokens,
@@ -301,6 +303,52 @@ describe("repairToolPairs", () => {
     const repaired = repairToolPairs(messages);
     expect(repaired).toEqual([user("hi"), assistant("partial answer")]);
   });
+
+  /**
+   * 增量传输（Responses 的 previous_response_id）靠「消息对象引用未变 ⇒ 内容未变」
+   * 判定前缀可复用。这里一旦改成重建对象，链会每轮都断、静默退化成全量重发，
+   * 而且不报错——所以必须用 toBe 锁住引用，而不是只断言内容相等。
+   */
+  it("配对完整时保持对象引用不变（增量链的前缀复用前提）", () => {
+    const call: ChatMessage = {
+      role: "assistant",
+      content: null,
+      tool_calls: [
+        { id: "c1", type: "function", function: { name: "read_file", arguments: "{}" } },
+        { id: "c2", type: "function", function: { name: "grep", arguments: "{}" } },
+      ],
+    };
+    const resultA = toolResult("c1", "a");
+    const resultB = toolResult("c2", "b");
+    const tail = assistant("done");
+    const messages: ChatMessage[] = [user("go"), call, resultA, resultB, tail];
+
+    const repaired = repairToolPairs(messages);
+    expect(repaired).toHaveLength(5);
+    expect(repaired[0]).toBe(messages[0]);
+    expect(repaired[1]).toBe(call);
+    expect(repaired[2]).toBe(resultA);
+    expect(repaired[3]).toBe(resultB);
+    expect(repaired[4]).toBe(tail);
+  });
+
+  it("剔除无效调用时才重建该条 assistant，其余消息引用不动", () => {
+    const call: ChatMessage = {
+      role: "assistant",
+      content: "working",
+      tool_calls: [
+        { id: "c1", type: "function", function: { name: "read_file", arguments: "{}" } },
+        { id: "missing", type: "function", function: { name: "grep", arguments: "{}" } },
+      ],
+    };
+    const first = user("go");
+    const result = toolResult("c1", "ok");
+    const repaired = repairToolPairs([first, call, result]);
+
+    expect(repaired[0]).toBe(first);
+    expect(repaired[2]).toBe(result);
+    expect(repaired[1]).not.toBe(call); // 这一条确实被改写，允许换新对象
+  });
 });
 
 describe("estimateMessageTokens with Anthropic thinking blocks", () => {
@@ -429,18 +477,51 @@ describe("shrinkToolOutputs", () => {
     const messages = [user("hi"), assistant("hello")];
     expect(shrinkToolOutputs(messages)).toEqual({ messages, changed: false });
   });
+
+  it("spilled 命中的收缩摘录带 locator，全文标注算进预算", () => {
+    const messages: ChatMessage[] = [user("do it")];
+    for (let index = 0; index < 4; index += 1) {
+      messages.push(toolCall(`call-${index}`));
+      messages.push({
+        role: "tool",
+        content: `out-${index} ${"y".repeat(3000)}`,
+        tool_call_id: `call-${index}`,
+        name: "run_command",
+      });
+    }
+    const spilled = new Map([
+      ["call-0", ".meowcode/tool-output/run_command-x.log"],
+      ["call-1", ".meowcode/tool-output/run_command-y.log"],
+    ]);
+    const { messages: shrunk, changed } = shrinkToolOutputs(messages, { spilled });
+    expect(changed).toBe(true);
+    const tools = shrunk.filter((message) => message.role === "tool");
+    // 默认 keepRecentUnits=2：只有最旧两个工具单元被收缩，locator 只出现在它们身上
+    expect(tools[0] && tools[0].role === "tool" ? tools[0].content : "").toContain(
+      "full text saved to .meowcode/tool-output/run_command-x.log; read it with read_file",
+    );
+    expect(tools[1] && tools[1].role === "tool" ? tools[1].content : "").toContain(
+      "full text saved to .meowcode/tool-output/run_command-y.log",
+    );
+    expect(tools[2] && tools[2].role === "tool" ? tools[2].content : "").not.toContain("full text saved");
+    expect(
+      tools[3] && tools[3].role === "tool" ? tools[3].content : "",
+    ).toBe(`out-3 ${"y".repeat(3000)}`);
+    // 收敛口径不变：带 locator 的摘录总长仍 ≤ maxChars（逐字保留的后两条不在此列）
+    expect(tools[0] && tools[0].role === "tool" ? tools[0].content.length : 0).toBeLessThanOrEqual(1_200);
+    expect(tools[1] && tools[1].role === "tool" ? tools[1].content.length : 0).toBeLessThanOrEqual(1_200);
+  });
 });
 
-describe("trimMessages stale tool output eviction", () => {
+describe("trimMessages keeps history append-only under budget", () => {
   const toolCall = (id: string): ChatMessage => ({
     role: "assistant",
     content: null,
     tool_calls: [{ id, type: "function", function: { name: "read_file", arguments: "{}" } }],
   });
 
-  it("elides old read results even when everything fits the budget", () => {
-    // 大窗口（200K）下历史远未超预算：旧输出也必须主动淘汰，
-    // 否则几轮前的大 read 结果会在每个后续请求里反复计费
+  it("does not rewrite any message when everything fits the budget", () => {
+    // 缓存优先：预算内任何中段改写都会让上一次请求已缓存的前缀整段失效。
     const messages: ChatMessage[] = [system, user("do it")];
     for (let index = 0; index < 8; index += 1) {
       messages.push(toolCall(`call-${index}`));
@@ -450,31 +531,12 @@ describe("trimMessages stale tool output eviction", () => {
 
     const trimmed = trimMessages(messages, 200_000, 4_096);
 
-    expect(trimmed.some((message) => message.role === "tool" && message.content.includes("output elided"))).toBe(true);
-    // 全部轮次仍在（结构保留），只有内容被淘汰
-    expect(trimmed.filter((message) => message.role === "tool")).toHaveLength(8);
-    // 最近 6 轮原样保留
-    const last = trimmed.filter((message) => message.role === "tool").at(-1);
-    expect(last && last.content.length).toBe(6000);
+    expect(trimmed).toHaveLength(messages.length);
+    trimmed.forEach((message, index) => expect(message).toBe(messages[index]));
+    expect(JSON.stringify(trimmed)).toBe(JSON.stringify(messages));
   });
 
-  it("elides old read results instead of dropping whole rounds", () => {
-    const messages: ChatMessage[] = [system, user("do it")];
-    for (let index = 0; index < 8; index += 1) {
-      messages.push(toolCall(`call-${index}`));
-      messages.push({ role: "tool", content: "x".repeat(6000), tool_call_id: `call-${index}`, name: "read_file" });
-    }
-    messages.push(assistant("done"));
-
-    const trimmed = trimMessages(messages, 12_000, 1_000);
-
-    expect(trimmed.some((message) => message.role === "tool" && message.content.includes("output elided"))).toBe(true);
-    // 最近 6 轮原样保留
-    const last = trimmed.filter((message) => message.role === "tool").at(-1);
-    expect(last && last.content.length).toBe(6000);
-  });
-
-  it("never elides edit results, because they record what was changed", () => {
+  it("never shrinks edit results, because they record what was changed", () => {
     const messages: ChatMessage[] = [system, user("do it")];
     for (let index = 0; index < 8; index += 1) {
       messages.push(toolCall(`call-${index}`));
@@ -485,7 +547,7 @@ describe("trimMessages stale tool output eviction", () => {
     const trimmed = trimMessages(messages, 12_000, 1_000);
     const tools = trimmed.filter((message) => message.role === "tool");
 
-    expect(tools.some((message) => message.content.includes("output elided"))).toBe(false);
+    expect(tools.some((message) => message.content.includes("chars trimmed"))).toBe(false);
   });
 
   it("超出预算时先抽旧工具输出（保住全部轮次），而不是原样发送", () => {
@@ -505,5 +567,96 @@ describe("trimMessages stale tool output eviction", () => {
     expect(tools[0].content.length).toBeLessThan(2_000);
     expect(tools[2].content).toContain("chars trimmed");
     expect(tools[3].content.length).toBe(40_000);
+  });
+});
+
+describe("breakdownMessages", () => {
+  const call = (id: string): ChatMessage => ({
+    role: "assistant",
+    content: null,
+    tool_calls: [{ id, type: "function", function: { name: "read_file", arguments: "{}" } }],
+  });
+
+  it("按角色与工具名拆分，各桶加总恒等于消息总量", () => {
+    const messages: ChatMessage[] = [
+      system,
+      user("hello"),
+      call("c1"),
+      { role: "tool", content: "x".repeat(4_000), tool_call_id: "c1", name: "read_file" },
+      call("c2"),
+      { role: "tool", content: "y".repeat(800), tool_call_id: "c2", name: "grep" },
+      assistant("done"),
+      { role: "user", content: "Runtime context: [mode] plan mode is active" },
+    ];
+    const detail = breakdownMessages(messages);
+    expect(detail.total).toBe(estimateMessagesTokens(messages));
+    // read_file 输出远大于 grep，排第一
+    expect(detail.toolResults[0]).toMatchObject({ name: "read_file" });
+    expect(detail.toolResults.find((item) => item.name === "grep")?.tokens).toBeGreaterThan(0);
+    // 模式提示属于注入通道，不能算进用户正文
+    expect(detail.injected).toBeGreaterThan(0);
+    expect(detail.userText).toBeGreaterThan(0);
+    expect(detail.assistantText).toBeGreaterThan(0);
+  });
+
+  it("图片按张计价并单列，不重复计入正文", () => {
+    const messages: ChatMessage[] = [
+      {
+        role: "user",
+        content: "see screenshot",
+        images: [{ data: "AAAA", mimeType: "image/png" }],
+      },
+    ];
+    const detail = breakdownMessages(messages);
+    expect(detail.media).toBe(1_500);
+    expect(detail.total).toBe(estimateMessagesTokens(messages));
+    expect(detail.userText).toBeLessThan(detail.total);
+  });
+
+  it("工具超过 topN 时合并成 other tools，总量不变", () => {
+    const messages: ChatMessage[] = [];
+    for (let index = 0; index < 12; index += 1) {
+      messages.push(call(`t${index}`));
+      messages.push({
+        role: "tool",
+        content: "z".repeat(400),
+        tool_call_id: `t${index}`,
+        name: `tool_${index}`,
+      });
+    }
+    const detail = breakdownMessages(messages, 3);
+    expect(detail.toolResults).toHaveLength(4);
+    expect(detail.toolResults.at(-1)?.name).toBe("other tools");
+    expect(detail.total).toBe(estimateMessagesTokens(messages));
+  });
+});
+
+describe("compactionTriggerTokens", () => {
+  it("大窗口由 15% 余量决定，与 OpenCode 的 ceiling 对齐", () => {
+    // 200k：余量 max(30000, 16000)=30000 → room 170000；0.85 比值 170000 → 取 170000
+    expect(compactionTriggerTokens(200_000, 8_192, 0.85)).toBe(170_000);
+    // 预热档 0.8 更严：min(160000, 170000)
+    expect(compactionTriggerTokens(200_000, 8_192, 0.8)).toBe(160_000);
+  });
+
+  it("窗口不足以让出 16k 时退回 15% 份额，不会把阈值压没", () => {
+    // 16k：15%=2400 且不足 2×16000 的固定档 → 输出预留 8192 取大者 → room 7808
+    expect(compactionTriggerTokens(16_384, 8_192, 0.85)).toBe(8_192);
+  });
+
+  it("输出预留吃满窗口时退回纯比值", () => {
+    // 8k：max(min(8192,21000), 1228)=8192 → room 0 → 退回 floor(8192×0.85)
+    expect(compactionTriggerTokens(8_192, 8_192, 0.85)).toBe(6_963);
+  });
+
+  it("窗口未知返回 0，调用方按不触发处理", () => {
+    expect(compactionTriggerTokens(null)).toBe(0);
+    expect(compactionTriggerTokens(0)).toBe(0);
+  });
+
+  it("建议压缩与软阈值同源，小窗口不再晚触发", () => {
+    // 32k 窗口用了 20k：旧口径 62% 不报警，新口径已过 min(27852, 16768)
+    expect(shouldRecommendCompaction(20_000, 32_768, 8_192)).toBe(true);
+    expect(shouldRecommendCompaction(12_000, 32_768, 8_192)).toBe(false);
   });
 });

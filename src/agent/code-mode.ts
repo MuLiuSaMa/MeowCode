@@ -27,6 +27,7 @@ import { readTextFile } from "./edit-content.js";
 import { IGNORED_ENTRY_NAMES, resolveToolPath } from "./paths.js";
 import { recordRead } from "./read-state.js";
 import { globPaths, grepMatches } from "./search.js";
+import { sweepToolOutput } from "./tool-output.js";
 
 export const CODE_MODE_TIMEOUT_MS = 30_000;
 /** 最终返回值进入对话的上限；超出截断（完整值在日志里，可按需续读）。 */
@@ -37,6 +38,60 @@ export const CODE_MODE_MAX_READ_CHARS = 200_000;
 export const CODE_MODE_MAX_CALLS = 200;
 const CODE_MODE_MAX_LOG_CHARS = 40_000;
 const CONSOLE_TAIL_LINES = 8;
+
+/**
+ * 沙箱内的桥/console 工厂：必须在 vm realm 里创建宿主函数的包装器。
+ * 直接把宿主函数挂进 context 会被 `fn.constructor("return process")()` 逃逸；
+ * 这里宿主函数只存在于闭包里，跨边界只传 JSON 字符串。
+ */
+const SANDBOX_FACTORY_SOURCE = `(hostCall, hostLog) => {
+  "use strict";
+  const requirePayload = (raw) => {
+    const result = JSON.parse(raw);
+    if (!result || result.ok !== true) {
+      throw new Error(result && result.error ? String(result.error) : "meow: host call failed");
+    }
+    return result.value;
+  };
+  const call = (method) => async (...args) => {
+    let payload;
+    try {
+      payload = JSON.stringify({ method, args });
+    } catch {
+      throw new Error("meow: arguments are not JSON-serializable.");
+    }
+    return requirePayload(await hostCall(payload));
+  };
+  const meow = Object.create(null);
+  for (const name of ["read", "readMany", "grep", "glob", "listDir", "write", "edit", "multiEdit", "run"]) {
+    meow[name] = call(name);
+  }
+  const log = (prefix) => (...args) => {
+    const parts = [];
+    for (const item of args) {
+      try {
+        if (typeof item === "string") {
+          parts.push(item.slice(0, 500));
+        } else {
+          const text = JSON.stringify(item);
+          parts.push(text === undefined ? String(item) : text.slice(0, 500));
+        }
+      } catch {
+        parts.push("[unprintable]");
+      }
+    }
+    hostLog(prefix + parts.join(" ").slice(0, 4000));
+  };
+  const contextConsole = Object.create(null);
+  contextConsole.log = log("console: ");
+  contextConsole.info = log("console: ");
+  contextConsole.warn = log("console.warn: ");
+  contextConsole.error = log("console.error: ");
+  return { meow, console: contextConsole };
+}`;
+const sandboxFactoryScript = new vm.Script(SANDBOX_FACTORY_SOURCE, {
+  filename: "run_code_bridge.js",
+});
 const CODE_MODE_LOG_DIR = path.join(".meowcode", "tool-output");
 
 export type CodeModeResult = { output: string; ok: boolean };
@@ -287,30 +342,27 @@ export async function runCodeInSandbox(input: {
       }),
   };
 
-  const formatArgs = (args: unknown[]): string =>
-    args
-      .map((item) => {
-        if (typeof item === "string") return item.slice(0, 500);
-        try {
-          return JSON.stringify(item)?.slice(0, 500) ?? String(item);
-        } catch {
-          return String(item);
-        }
-      })
-      .join(" ");
-
-  const sandboxConsole = {
-    log: (...args: unknown[]) => pushLog(`console: ${formatArgs(args)}`),
-    info: (...args: unknown[]) => pushLog(`console: ${formatArgs(args)}`),
-    warn: (...args: unknown[]) => pushLog(`console.warn: ${formatArgs(args)}`),
-    error: (...args: unknown[]) => pushLog(`console.error: ${formatArgs(args)}`),
+  /** 宿主 dispatcher：只接受/返回 JSON 字符串，宿主函数与对象完全不进入 vm realm。 */
+  const dispatchHostCall = async (payload: unknown): Promise<string> => {
+    try {
+      if (typeof payload !== "string") throw new Error("meow: invalid call payload.");
+      const request = JSON.parse(payload) as { method?: unknown; args?: unknown };
+      const method = typeof request.method === "string" ? request.method : "";
+      const args = Array.isArray(request.args) ? (request.args as unknown[]) : [];
+      const fn = (bridge as unknown as Record<string, (...values: unknown[]) => unknown>)[method];
+      if (typeof fn !== "function") throw new Error(`meow: unknown method ${method}.`);
+      const value = await fn(...args);
+      return JSON.stringify({ ok: true, value });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return JSON.stringify({ ok: false, error: message });
+    }
   };
 
   // Object.create(null) 做载体：contextify 的全局代理会把属性查找回落到载体对象
-  // 的原型链上，普通对象会把宿主 realm 的 Object/Function 构造器泄漏进沙箱
-  //（this.constructor.constructor("return process")() 经典逃逸）。
-  // 空原型载体 + 显式屏蔽危险全局后，Function 逃逸只落在全新 V8 realm 里，
-  // 那里没有 process / require —— 宿主全局不可达（测试锁定该行为）。
+  // 的原型链上，普通对象会把宿主 realm 的 Object/Function 构造器泄漏进沙箱。
+  // 空原型载体只放原始值与 context realm 内创建的桥/console；codegen（字符串
+  // 与 wasm）在 context 内禁用，`fn.constructor("return process")()` 无法再编译。
   const sandbox: Record<string, unknown> = Object.create(null) as Record<string, unknown>;
   sandbox.process = undefined;
   sandbox.require = undefined;
@@ -318,9 +370,22 @@ export async function runCodeInSandbox(input: {
   sandbox.exports = undefined;
   sandbox.global = undefined;
   sandbox.globalThis = undefined;
-  sandbox.meow = bridge;
-  sandbox.console = sandboxConsole;
-  const context = vm.createContext(sandbox);
+  const context = vm.createContext(sandbox, {
+    codeGeneration: { strings: false, wasm: false },
+  });
+
+  const sandboxRuntime = sandboxFactoryScript.runInContext(context) as (
+    hostCall: (payload: string) => Promise<string>,
+    hostLog: (line: string) => void,
+  ) => { meow: Record<string, unknown>; console: Record<string, unknown> };
+  const runtimeGlobals = sandboxRuntime(
+    (payload) => dispatchHostCall(payload),
+    (line) => {
+      if (typeof line === "string") pushLog(line);
+    },
+  );
+  sandbox.meow = runtimeGlobals.meow;
+  sandbox.console = runtimeGlobals.console;
 
   const seconds = () => `${((Date.now() - startedAt) / 1000).toFixed(1)}s`;
 
@@ -415,6 +480,8 @@ async function persistLog(workspace: string, lines: string[]): Promise<string | 
     const stamp = new Date().toISOString().replace(/[:.]/g, "-");
     const file = path.join(dir, `run_code-${stamp}-${randomUUID().slice(0, 8)}.log`);
     await fs.writeFile(file, text, "utf8");
+    // 与其它工具输出共用 7 天保留策略：日志目录会随长会话无限增长
+    await sweepToolOutput(workspace);
     return path.relative(workspace, file).split(path.sep).join("/");
   } catch {
     return null;

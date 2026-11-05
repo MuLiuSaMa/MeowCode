@@ -1,0 +1,584 @@
+{
+  "language": {
+    "section": "언어",
+    "title": "화면 언어",
+    "description": "MeowCode 인터페이스의 표시 언어를 선택합니다. 재시작 없이 즉시 적용됩니다.",
+    "system": "시스템 설정"
+  },
+  "speech": {
+    "section": "말투",
+    "field": "답변 말투",
+    "desc": {
+      "normal": "기본 말투: 간결하고 직접적이며 전문적으로, 핵심만 전달합니다.",
+      "tafei": "永雏塔菲(타피) 말투: 자신을 타피라고 부르는 발랄하고 애교 많은 고양이 소녀 말투로, 문장 끝에 '먀오(喵)'를 붙이고 가끔 시그니처 대사를 씁니다. 기술 내용은 정확하게 유지됩니다.",
+      "dazui": "大嘴: 아, 이, 이게… 그렇죠. 1000만 이내 최고의 말투."
+    },
+    "options": {
+      "normal": "일반",
+      "tafei": "永雏塔菲",
+      "dazui": "大嘴"
+    }
+  },
+  "nav": {
+    "heading": "설정",
+    "ariaLabel": "설정 분류",
+    "back": "대화로 돌아가기"
+  },
+  "sections": {
+    "general": "일반",
+    "appearance": "외관",
+    "shortcuts": "단축키",
+    "models": "모델",
+    "memory": "메모리",
+    "archive": "보관",
+    "about": "정보",
+    "island": "AI 悬浮岛",
+    "hooks": "Hooks",
+    "dataImport": "데이터 가져오기",
+    "rules": "규칙",
+    "worktree": "Worktrees",
+    "learning": "자기 학습",
+    "rewind": "세션 되돌리기",
+    "sandbox": "샌드박스"
+  },
+  "close": {
+    "section": "창 닫기 동작",
+    "field": "창을 닫을 때",
+    "desc": {
+      "ask": "닫을 때마다 트레이로 숨길지 종료할지 확인합니다.",
+      "tray": "창을 닫으면 시스템 트레이로 숨겨지고 MeowCode가 백그라운드에서 계속 실행됩니다.",
+      "quit": "창을 닫으면 MeowCode가 바로 종료됩니다."
+    },
+    "options": {
+      "ask": "매번 확인",
+      "tray": "트레이로 숨기기",
+      "quit": "바로 종료"
+    }
+  },
+  "update": {
+    "section": "업데이트",
+    "field": "백그라운드에서 업데이트 받기",
+    "desc": {
+      "on": "시작 시 새 버전을 찾으면 백그라운드에서 자동으로 받고, 완료 후 탐색 바 좌측 하단에 다시 시작 버튼이 나타납니다. 클릭하면 설치됩니다.",
+      "off": "시작할 때 조용히 확인하고 알림만 표시하며, 받기와 설치는 정보 페이지에서 직접 합니다."
+    }
+  },
+  "appearance": {
+    "themeSection": "테마",
+    "themeField": "외관 테마",
+    "themeDesc": "「시스템 설정」을 선택하면 Windows의 라이트 / 다크 설정을 실시간으로 따릅니다. 전환 즉시 적용되며 재시작이 필요 없습니다.",
+    "theme": {
+      "system": "시스템 설정",
+      "light": "라이트",
+      "dark": "다크"
+    },
+    "fontSection": "글꼴",
+    "fontDesc": "「인터페이스 글꼴」은 채팅과 사이드바 등 화면 텍스트에, 「코드 글꼴」은 코드 블록과 diff 등 고정폭 텍스트에 적용됩니다. 시스템 글꼴을 고르거나 로컬 글꼴 파일(ttf / otf / woff / woff2)을 가져올 수 있으며, 전환 즉시 적용됩니다.",
+    "importField": "글꼴 가져오기",
+    "importButton": "글꼴 가져오기…",
+    "uiFont": "인터페이스 글꼴",
+    "codeFont": "코드 글꼴",
+    "defaultFont": "기본값",
+    "fontsLoading": "시스템 글꼴 읽는 중… 클릭하여 재시도",
+    "imported": "{{name}} (가져옴)"
+  },
+  "shortcuts": {
+    "title": "단축키",
+    "description": "키보드 단축키 목록입니다.",
+    "ctrlHint": "macOS에서는 ⌘가 Ctrl을 대체합니다",
+    "items": {
+      "search": "대화 전문 검색",
+      "quickOpen": "파일 빠른 열기",
+      "sideChat": "사이드 채팅",
+      "terminal": "터미널",
+      "send": "메시지 보내기",
+      "commit": "Git 변경 사항 커밋"
+    }
+  },
+  "memory": {
+    "extractionTitle": "자동 메모리 증류",
+    "extractionDesc": "각 턴이 끝나면 가벼운 백그라운드 요청이 새 대화를 훑어 오래 기억할 가치가 있는 내용(선호, 수정 요청, 프로젝트 결정)을 메모리에 자동 저장합니다. 끄면 수동 항목과 AI가 메모리 도구로 직접 쓴 내용만 남습니다.",
+    "extractionField": "턴 종료 후 자동 증류",
+    "extractionFailed": "설정 저장 실패",
+    "scope": {
+      "user": "개인 메모리",
+      "project": "프로젝트 메모리"
+    },
+    "descUser": "작업 공간을 넘어 유지되는 장기 메모리입니다. 선호하는 방식, 자주 쓰는 워크플로, 경험을 ~/.meowcode/memory/ 에 저장하고 새 대화가 시작될 때 색인을 자동으로 주입합니다. AI가 메모리 도구로 필요할 때 읽고 씁니다.",
+    "descProject": "현재 작업 공간 전용 메모리입니다. 프로젝트의 .meowcode/memory/ 에 저장되며 git에는 포함되지 않습니다.",
+    "descProjectNamed": "현재 작업 공간({{workspace}}) 전용 메모리입니다. 프로젝트의 .meowcode/memory/ 에 저장되며 git에는 포함되지 않습니다.",
+    "count_one": "메모리 {{count}}개 저장됨",
+    "count_other": "메모리 {{count}}개 저장됨",
+    "count_few": "메모리 {{count}}개 저장됨",
+    "count_many": "메모리 {{count}}개 저장됨",
+    "create": "새 메모리",
+    "empty": "아직 메모리가 없습니다. 대화에서 AI가 오래 기억할 만한 것을 배우면 자동으로 저장하며, 여기서 직접 만들 수도 있습니다.",
+    "clickToEdit": "클릭하여 편집",
+    "noDescription": "(설명 없음)",
+    "deleteAria": "{{name}} 삭제",
+    "confirmDeleteAria": "{{name}} 삭제 확정",
+    "editTitle": "{{scope}} 편집 · {{name}}",
+    "createTitle": "{{scope}} 새로 만들기",
+    "editorDesc": "Markdown 원문을 편집합니다. frontmatter의 description은 MEMORY.md 색인으로 들어가 새 대화부터 적용됩니다.",
+    "name": "이름",
+    "namePlaceholder": "kebab-case, 예: docker-cli",
+    "nameHint": "<이름>.md로 저장됩니다",
+    "nameRule": "이름은 소문자 kebab-case(영문, 숫자, 하이픈)이며 최대 64자입니다",
+    "saved": "{{scope}}「{{name}}」 저장 완료",
+    "deleted": "{{scope}}「{{name}}」 삭제 완료",
+    "loadFailed": "메모리를 불러오지 못했습니다",
+    "readFailed": "메모리를 읽지 못했습니다",
+    "saveFailed": "메모리를 저장하지 못했습니다",
+    "deleteFailed": "메모리를 삭제하지 못했습니다"
+  },
+  "archive": {
+    "section": "보관",
+    "desc": "보관한 대화는 대화 목록에 표시되지 않으며 언제든 복원할 수 있습니다. 보관하려면 목록에서 대화에 마우스를 올리고 오른쪽의 보관 아이콘을 누르세요. 삭제하면 대화 기록 자체가 지워지며 되돌릴 수 없습니다.",
+    "empty": "보관된 대화가 없습니다",
+    "item": "대화 · {{when}}",
+    "unknownTime": "시간 알 수 없음",
+    "deleteAll": "모두 삭제",
+    "confirmDeleteAll": "모두 삭제할까요?",
+    "deleteAria": "{{name}} 영구 삭제",
+    "confirmDeleteAria": "한 번 더 클릭하면 {{name}}이(가) 영구 삭제됩니다"
+  },
+  "about": {
+    "loading": "버전 정보 읽는 중…",
+    "version": "버전",
+    "newVersion": "새 버전 발견",
+    "checking": "확인 중…",
+    "check": "버전 확인",
+    "author": "작성자",
+    "website": "웹사이트",
+    "repo": "오픈소스 저장소",
+    "openInBrowser": "브라우저에서 열기",
+    "credits": "크레딧",
+    "sponsor": "후원",
+    "sponsorHint": "MeowCode가 도움이 되었다면 QR 코드를 스캔해 작성자를 응원해 주세요.",
+    "qrAlt": "{{name}} 결제 QR 코드",
+    "sponsors": {
+      "wechat": "위챗페이",
+      "alipay": "알리페이"
+    },
+    "upToDate": "이미 최신 버전입니다",
+    "checkFailed": "버전 확인 실패: {{error}}"
+  },
+  "actions": {
+    "add": "추가",
+    "cancel": "취소",
+    "confirmDelete": "삭제 확정",
+    "delete": "삭제",
+    "edit": "편집",
+    "restore": "복원",
+    "save": "저장",
+    "saving": "저장 중…"
+  },
+  "models": {
+    "section": "모델",
+    "desc": "여기서 모델 프로바이더를 추가하고 사용할 모델 이름을 입력하세요.",
+    "count_one": "설정된 모델 {{count}}개",
+    "count_other": "설정된 모델 {{count}}개",
+    "count_few": "설정된 모델 {{count}}개",
+    "count_many": "설정된 모델 {{count}}개",
+    "add": "모델 추가",
+    "empty": "아직 설정된 모델이 없습니다. 「모델 추가」를 눌러 시작하세요.",
+    "deleteTitle": "공급자 삭제",
+    "deleteMessage": "\"{{name}}\"을(를) 삭제할까요? 삭제 후 다시 설정해야 사용할 수 있습니다.",
+    "restartTitle": "저장하면 로컬 서비스가 재시작됩니다",
+    "restartMessage": "모델 변경은 로컬 agent 서비스를 재시작해야 적용되며 진행 중인 턴이 중단됩니다. 그래도 저장할까요?",
+    "restartConfirm": "저장",
+    "colModel": "모델",
+    "colProvider": "프로바이더",
+    "colActions": "작업",
+    "active": "현재",
+    "enableAria": "{{name}} 사용",
+    "levels": "추론 수준",
+    "levelRemoveAria": "{{level}} 제거",
+    "levelRemoveTitle": "이 수준 제거",
+    "levelsAuto": "비워 두면 모델 이름으로 자동 일치합니다(현재 {{levels}})",
+    "levelsManual": "직접 지정했습니다. 모든 수준을 비우면 모델 이름 자동 일치로 돌아갑니다.",
+    "modalityOptions": {
+      "text": "텍스트",
+      "image": "이미지",
+      "pdf": "PDF"
+    },
+    "ttlOptions": {
+      "fiveMinutes": "5분(기본값)",
+      "auto": "자동(대화 흐름에 맞춤)",
+      "oneHour": "1시간(Anthropic 장기 TTL)"
+    },
+    "summaryOptions": {
+      "none": "전송 안 함(토큰 절약)",
+      "auto": "자동",
+      "concise": "간결",
+      "detailed": "상세"
+    },
+    "compactionOptions": {
+      "auto": "자동(공식 엔드포인트)",
+      "on": "강제 사용(호환 게이트웨이)",
+      "off": "사용 안 함(로컬 요약만)"
+    },
+    "authOptions": {
+      "protocolDefault": "프로토콜 기본값(Anthropic x-api-key / OpenAI Bearer)",
+      "bearer": "Authorization: Bearer",
+      "azureKey": "api-key 헤더(Azure OpenAI)",
+      "bedrockKey": "Bedrock-API-Key(Amazon Bedrock)",
+      "none": "인증 헤더 없음(로컬 추론 / 헤더에 포함)"
+    },
+    "picker": {
+      "title": "모델 프로바이더 추가",
+      "desc": "프로바이더를 선택한 뒤 사용할 모델 이름을 입력하세요. API 형식은 나중에 언제든 바꿀 수 있습니다. 목록에 없다면 「사용자 지정 프로바이더」로 엔드포인트를 직접 입력하세요.",
+      "search": "검색",
+      "searchPlaceholder": "이름 또는 id로 검색, 예: deepseek",
+      "custom": "사용자 지정 프로바이더",
+      "customMeta": "엔드포인트와 키를 직접 입력",
+      "needEndpoint": "엔드포인트 입력 필요",
+      "noMatch": "일치하는 프로바이더가 없습니다 — 「사용자 지정 프로바이더」를 시도해 보세요"
+    },
+    "form": {
+      "addTitle": "모델 추가 · {{name}}",
+      "editTitle": "모델 편집",
+      "desc": "프로바이더는 선택되었으니 이제 모델 자체를 설정하세요. API 키는 이 기기에만 저장됩니다(Windows 자격 증명으로 암호화).",
+      "customProviderName": "사용자 지정 프로바이더",
+      "providerName": "프로바이더 이름",
+      "providerNamePlaceholder": "예: My Provider",
+      "providerNameHint": "모델 목록의 프로바이더 칸에 표시됩니다",
+      "provider": "프로바이더",
+      "apiFormat": "API 형식",
+      "apiFormatAuto": "요청 URL로 자동 인식했습니다. 직접 선택하면 자동 인식을 멈춥니다",
+      "apiFormatDesc": "어느 엔드포인트로 요청을 보내고 요청 본문을 어떻게 쓸지 정합니다. 요청 URL로 자동 인식됩니다",
+      "baseUrl": "요청 URL",
+      "baseUrlHint": "루트 URL을 입력하면 API 형식을 자동 인식하고, 경로는 선택한 형식에 맞춰 붙입니다",
+      "modelId": "모델 ID",
+      "modelIdPlaceholder": "예: deepseek-chat",
+      "modelIdHint": "프로바이더 문서에 적힌 모델 식별자로 필수입니다. 같은 모델 ID를 여러 개 설정할 수도 있습니다(URL이나 키를 달리).",
+      "displayName": "모델 표시 이름",
+      "displayNamePlaceholder": "비워 두면 모델 ID 표시",
+      "displayNameHint": "화면 표시에만 영향이 있으며 기존 모델 이름과 중복될 수 없습니다",
+      "apiKey": "API 키",
+      "apiKeySaved": "저장됨 — 비워 두면 변경하지 않습니다",
+      "contextWindow": "컨텍스트 창",
+      "contextWindowHint": "비워 두면 모델 이름으로 자동 감지합니다. 256K / 1M 표기 지원",
+      "maxOutput": "최대 출력",
+      "maxOutputHint": "비워 두면 모델 이름으로 자동 감지합니다. 한 번의 응답에서 만들 수 있는 토큰 수",
+      "modalities": "입력 모달리티",
+      "requiredTag": "(필수)",
+      "modalityHint": "이미지 지원은 모델 이름으로 자동 감지하고, PDF는 Anthropic / Responses 프로토콜에서만 가능합니다. 텍스트 모달리티는 반드시 남기세요.",
+      "advanced": "고급 설정",
+      "advancedHint": "추론 강도 / 캐시 TTL / 추론 수준 / 인증 및 요청 커스터마이징 — 비워 두면 기본값",
+      "reasoningEffort": "추론 강도",
+      "reasoningEffortPlaceholder": "비움 = 프로바이더 기본값",
+      "reasoningEffortHint": "reasoning_effort로 전송됩니다",
+      "thinkingBudget": "사고 예산",
+      "thinkingBudgetPlaceholder": "비움 = 추론 강도 수준을 따름",
+      "thinkingBudgetHint": "thinking.budget_tokens. 자동으로 max_tokens 이하로 조절됩니다",
+      "cacheTtl": "캐시 TTL",
+      "cacheTtlHint": "1h 쓰기는 요금이 2배입니다. 자동과 1h은 장기 TTL을 실제로 지원하는 엔드포인트에서만 적용되고 나머지는 5m로 돌아갑니다",
+      "reasoningSummary": "사고 요약",
+      "reasoningSummaryHint": "Responses 프로토콜 전용. 요약도 출력 토큰으로 과금됩니다",
+      "nativeCompaction": "서버 측 압축",
+      "nativeCompactionHint": "프로바이더가 기록을 압축하게 해 전체 요약 요청을 한 번 절약합니다",
+      "authStyle": "인증 방식",
+      "authStyleHint": "대부분의 프로바이더는 기본값을 두세요. Azure / Bedrock은 해당 항목을 골라야 합니다",
+      "extraHeaders": "추가 요청 헤더",
+      "extraHeadersHint": "한 줄에 하나씩 「이름: 값」. #으로 시작하는 줄은 주석입니다. 예: OpenRouter의 HTTP-Referer",
+      "extraBody": "추가 요청 본문",
+      "extraBodyHint": "JSON 객체를 요청 본문 최상위에 병합합니다. 예: Qwen의 {\"enable_thinking\": false}",
+      "models": "모델",
+      "addModel": "모델 ID 추가",
+      "fetchModels": "모델 목록 가져오기",
+      "fetching": "가져오는 중…",
+      "fetchTitle": "추가할 모델 선택",
+      "fetchHint": "체크한 모델만 위 목록에 추가됩니다.",
+      "fetchEmpty": "모델을 가져오지 못했습니다.",
+      "fetchFailed": "모델 목록을 가져오지 못했습니다: {{message}}",
+      "fetchAdded": "이미 추가됨",
+      "fetchAdd": "선택 항목 추가 ({{count}})",
+      "modelSettings": "모델 설정",
+      "modelSettingsDesc": "이 모델에만 적용됩니다. 엔드포인트·키·프로토콜은 위에서 설정합니다.",
+      "modelsRequired": "모델을 하나 이상 추가하세요.",
+      "contextDefault": "모델 기본값"
+    },
+    "error": {
+      "providerNameRequired": "프로바이더 이름을 입력하세요",
+      "modelRequired": "모델 ID를 입력하세요",
+      "duplicateName": "표시 이름 「{{name}}」이 이미 설정되어 있습니다",
+      "baseUrlRequired": "요청 URL을 입력하세요",
+      "contextFormat": "컨텍스트 창 형식이 올바르지 않습니다. 예: 128k 또는 1M",
+      "maxOutputFormat": "최대 출력 형식이 올바르지 않습니다. 예: 32k",
+      "extraBodyObject": "추가 요청 본문은 JSON 객체여야 합니다",
+      "extraBodyJson": "추가 요청 본문이 올바른 JSON이 아닙니다: {{message}}",
+      "headerLine": "헤더 형식이 올바르지 않습니다: {{line}}"
+    }
+  },
+  "island": {
+    "section": "AI 悬浮岛",
+    "field": "启用悬浮岛",
+    "desc": {
+      "on": "悬浮岛已开启：屏幕顶部居中显示所有运行中会话的状态，鼠标放上去可展开查看对话、直接输入或停止任务。",
+      "off": "开启后在屏幕顶部居中显示一枚胶囊，实时显示所有运行中会话的状态；鼠标放上去可展开成对话小窗。"
+    }
+  },
+  "hooks": {
+    "loading": "Hooks 설정을 불러오는 중…",
+    "error": "Hooks 설정을 불러오지 못했습니다: {{error}}",
+    "retry": "다시 시도",
+    "saving": "Agent 서비스를 재시작하여 Hooks 설정을 적용하는 중…",
+    "import": {
+      "section": "Claude Code Hooks 가져오기",
+      "description": "~/.claude/settings.json 및 워크스페이스 .claude 설정을 읽습니다. 워크스페이스 설정은 기본적으로 실행하지 않습니다.",
+      "master": "Hooks 사용",
+      "masterHint": {
+        "on": "Claude Code hook 설정을 불러왔습니다.",
+        "off": "사용 안 함: 설정은 읽기 전용으로 표시되며 실행되지 않습니다."
+      },
+      "workspace": "워크스페이스 .claude 설정 포함",
+      "workspaceHint": {
+        "on": "워크스페이스 .claude/settings*.json의 hooks가 실행됩니다.",
+        "off": "~/.claude 설정만 실행하고 워크스페이스 설정은 표시만 합니다."
+      },
+      "workspaceWarning": "워크스페이스 hooks는 저장소 파일에서 오며 악성 명령이 포함될 수 있습니다. 이 저장소를 신뢰할 때만 켜세요.",
+      "disabledNote": "Hooks가 비활성화되어 있습니다. 위 스위치를 켜야 명령이 실행됩니다."
+    },
+    "configured": {
+      "section": "구성된 Hooks",
+      "description": "읽기 전용 요약입니다. 편집하려면 설정 파일을 여세요.",
+      "empty": "구성된 Claude Code hooks가 없습니다.",
+      "eventCount": "명령 {{count}}개",
+      "matcher": "{{matcher}} 일치",
+      "timeout": "{{seconds}}초 시간 초과",
+      "layer": {
+        "user": "사용자",
+        "project": "워크스페이스",
+        "local": "워크스페이스 로컬"
+      },
+      "layerUnknown": "알 수 없는 경로",
+      "excluded": "실행 안 함",
+      "open": "편집용으로 열기",
+      "missing": "파일 없음",
+      "fileCount": "명령 {{count}}개",
+      "missingToast": "파일이 없습니다: {{path}}",
+      "openError": "파일을 열 수 없습니다: {{error}}",
+      "unsupported": "연결되지 않은 이벤트: {{events}}"
+    },
+    "runMode": {
+      "section": "Hooks 명령 실행 방식",
+      "description": {
+        "auto": "hook 명령을 자동 실행합니다. PreToolUse의 ask/deny는 계속 적용됩니다.",
+        "ask": "세션에서 각 hook 명령을 처음 실행하기 전에 확인합니다. 거부하면 해당 명령만 건너뜁니다."
+      },
+      "field": "실행 방식",
+      "options": {
+        "auto": "자동 실행",
+        "autoDesc": "추가 확인 없이 hook 설정을 따름",
+        "ask": "매번 묻기",
+        "askDesc": "세션마다 각 명령을 한 번 확인"
+      }
+    },
+    "confirm": {
+      "title": "Agent 서비스를 재시작할까요?",
+      "message": "실행 중인 턴이 있습니다. Hooks 설정을 저장하면 중단됩니다.",
+      "confirm": "저장 후 재시작"
+    }
+  },
+  "dataImport": {
+    "title": "데이터 가져오기",
+    "desc": "다른 앱에서 새 콘텐츠를 가져옵니다. 자동 동기화는 하지 않으며 원본 앱의 데이터를 변경하지 않습니다.",
+    "fromApps": "앱에서 가져오기",
+    "redetect": "다시 감지",
+    "loading": "가져올 수 있는 앱을 감지하는 중…",
+    "error": "감지 실패: {{error}}",
+    "retry": "재시도",
+    "app": {
+      "qoder": "Qoder CN IDE（Quest）",
+      "qoderintl": "Qoder (International)",
+      "workbuddy": "WorkBuddy",
+      "workbuddyai": "WorkBuddyAI",
+      "zcode": "ZCode",
+      "opencode": "OpenCode",
+      "dsh": "DeepSeek Harness",
+      "codex": "Codex"
+    },
+    "notDetected": "감지되지 않음",
+    "selected": "{{count}}개 선택됨",
+    "import": "데이터 가져오기",
+    "importing": "가져오는 중…",
+    "groups": {
+      "mcp": "MCP 커넥터",
+      "memory": "메모리",
+      "skills": "Skills",
+      "tasks": "대화 기록"
+    },
+    "groupEmpty": "없음",
+    "result": {
+      "imported": "{{count}}개 가져옴",
+      "skipped": "{{count}}개 이미 있음",
+      "failed": "{{count}}개 실패, 클릭하여 보기",
+      "mcpReloaded": "MCP 커넥터가 업데이트되고 다시 연결되었습니다"
+    },
+    "progress": "가져오는 중 {{done}}/{{total}}"
+  },
+  "rules": {
+    "importSection": "설정 가져오기",
+    "agents": {
+      "label": "컨텍스트에 AGENTS.md 포함",
+      "hint": "에이전트가 워크스페이스 루트의 AGENTS.md를 읽어 컨텍스트에 추가합니다."
+    },
+    "claude": {
+      "label": "컨텍스트에 CLAUDE.md 포함",
+      "hint": "에이전트가 워크스페이스 루트의 CLAUDE.md와 CLAUDE.local.md를 읽어 컨텍스트에 추가합니다."
+    },
+    "title": "규칙",
+    "hint": "채팅 중 에이전트가 따르는 규칙을 만들고 관리합니다.",
+    "refresh": "규칙 새로 고침",
+    "create": "만들기",
+    "empty": "아직 규칙이 없습니다",
+    "emptyHint": "만들기를 클릭하여 첫 규칙을 추가하세요",
+    "noWorkspace": "먼저 워크스페이스를 선택하세요",
+    "noWorkspaceHint": "규칙은 프로젝트의 .meowcode/rules 디렉터리에 저장됩니다.",
+    "clickToEdit": "이 규칙을 편집하려면 클릭하세요",
+    "deleteAria": "규칙 \"{{name}}\" 삭제",
+    "confirmDeleteAria": "규칙 \"{{name}}\" 삭제를 확인하려면 다시 클릭하세요",
+    "createTitle": "새 규칙",
+    "editTitle": "규칙 \"{{name}}\" 편집",
+    "editorDesc": "규칙은 프로젝트와 함께 시스템 프롬프트에 주입됩니다. Markdown을 지원합니다.",
+    "name": "규칙 이름",
+    "namePlaceholder": "예: code-style",
+    "nameHint": "소문자, 숫자, 하이픈 (예: code-style)",
+    "nameRule": "소문자, 숫자, 하이픈을 사용하고 하이픈으로 시작하거나 끝내지 마세요.",
+    "content": "규칙 내용",
+    "contentPlaceholder": "예: 모든 새 함수에는 JSDoc이 필요합니다. generated/는 편집하지 마세요.",
+    "loadFailed": "규칙을 불러오지 못했습니다",
+    "readFailed": "규칙을 읽지 못했습니다",
+    "saveFailed": "규칙을 저장하지 못했습니다",
+    "deleteFailed": "규칙을 삭제하지 못했습니다",
+    "saved": "규칙 \"{{name}}\" 저장됨",
+    "deleted": "규칙 \"{{name}}\" 삭제됨"
+  },
+  "worktree": {
+    "section": "Worktrees",
+    "fetch": {
+      "label": "생성 전 upstream 가져오기",
+      "hint": "worktree를 만들기 전에 upstream 업데이트를 가져옵니다."
+    },
+    "cleanup": {
+      "label": "오래된 worktree 자동 제거",
+      "hint": "대부분의 사용자에게 권장합니다. 오래된 worktree와 디스크 공간을 직접 관리하려는 경우에만 끄세요."
+    },
+    "maxKeep": {
+      "label": "Worktree 한도",
+      "hint": "한도를 초과하면 가장 오래된 worktree부터 자동 정리됩니다. 삭제 전에 Git 백업이 생성되므로 제거된 worktree를 복원할 수 있습니다."
+    }
+  },
+  "learning": {
+    "title": "자기 학습",
+    "desc": "매 턴이 끝나면 에이전트는 배운 내용을 재사용 가능한 스킬, 프로젝트 지침, 그리고 당신의 작업 방식에 대한 모델로 정리합니다. 무엇도 곧바로 신뢰하지 않습니다. 새 항목은 시험 기간으로 시작해 유용함을 입증해야 하고, 방해가 되면 스스로 물러납니다.",
+    "toggleField": "대화에서 학습",
+    "toggleFailed": "설정을 변경하지 못했습니다",
+    "budgetField": "오늘 호출",
+    "budgetValue": "{{date}}에 {{count}}회",
+    "skillsTitle": "학습한 스킬",
+    "skillsDesc": "에이전트가 스스로 작성한 절차입니다. SKILL.md 경로로 본문을 읽고, 이름과 설명으로 호출합니다.",
+    "skillsEmpty": "아직 배운 것이 없습니다. 절차가 성공하고 반복할 가치가 있을 때 나타납니다.",
+    "skillCount_one": "스킬 {{count}}개",
+    "skillCount_other": "스킬 {{count}}개",
+    "skillCount_few": "스킬 {{count}}개",
+    "skillCount_many": "스킬 {{count}}개",
+    "consolidate": "지금 정리",
+    "consolidated": "정리됨: {{count}}개 항목 갱신",
+    "consolidatedEmpty": "정리할 항목이 없습니다",
+    "consolidateFailed": "정리에 실패했습니다",
+    "statsHint": "도움 / 방해 — 호출된 횟수와 그 턴이 잘 끝났는지",
+    "rollbackAria": "{{name}}을(를) 이전 버전으로 되돌리기",
+    "reactivateAria": "{{name}}을(를) 시험 기간으로 되돌리기",
+    "deleteAria": "{{name}} 삭제",
+    "actionFailed": "작업이 반영되지 않았습니다",
+    "guidelinesTitle": "프로젝트 지침",
+    "guidelinesDesc": "트리거가 맞을 때만 나타나는 규칙입니다. 명령, 오류, 키워드, 파일 패턴.",
+    "guidelinesEmpty": "아직 지침이 없습니다.",
+    "profileTitle": "당신에 대해 아는 것",
+    "profileDesc": "소통 방식, 기대하는 엄격함, 부여한 자율성.",
+    "profileEmpty": "아직 없습니다. 반복된 증거로 천천히 쌓입니다.",
+    "status": {
+      "tentative": "시험 기간",
+      "active": "신뢰됨",
+      "retired": "은퇴"
+    },
+    "dimension": {
+      "communication": "소통",
+      "rigor": "엄격함",
+      "autonomy": "자율성",
+      "coding_style": "코딩 스타일",
+      "toolchain": "도구 체인",
+      "domain": "도메인"
+    },
+    "loadFailed": "학습 항목을 불러오지 못했습니다",
+    "clearField": "학습한 내용 모두 지우기",
+    "clearHint": "학습한 스킬, 지침, 프로필 특성, 결과 기록을 모두 삭제합니다. 이 프로젝트와 모든 프로젝트에 적용되며 되돌릴 수 없습니다.",
+    "clearAction": "모두 지우기",
+    "clearConfirm": "한 번 더 클릭하여 확인",
+    "cleared": "학습 디렉터리 {{scopes}}개를 비웠습니다",
+    "clearedNothing": "지울 항목이 없습니다",
+    "clearFailed": "지우지 못했습니다"
+  },
+  "general": {
+    "section": "일반",
+    "desc": "일상적인 동작 설정입니다. 변경은 즉시 적용됩니다.",
+    "notify": {
+      "field": "시스템 알림",
+      "desc": {
+        "on": "턴 완료, 확인 필요, 중단 시 창이 앞에 없으면 시스템 알림을 표시합니다(대화 제목과 응답 요약).",
+        "off": "시스템 알림을 표시하지 않습니다."
+      }
+    }
+  },
+  "proxy": {
+    "title": "네트워크 프록시",
+    "desc": "네트워크가 불안할 때 연결 방식을 바꿀 수 있습니다. 변경은 즉시 적용됩니다.",
+    "mode": {
+      "direct": "직접 연결",
+      "system": "시스템 따르기",
+      "manual": "수동 설정"
+    },
+    "urlLabel": "프록시 주소",
+    "urlHint": "예: http://127.0.0.1:7890 — 비워 두면 직접 연결합니다.",
+    "urlMissing": "주소가 없어 요청은 아직 직접 연결됩니다.",
+    "failed": "프록시 설정이 적용되지 않았습니다"
+  },
+  "rewind": {
+    "section": "세션 되돌리기",
+    "enabled": {
+      "label": "파일 스냅샷",
+      "hint": "매 턴 시작 시 체크포인트를 만들어 작성/수정한 파일을 대화와 함께 되돌릴 수 있습니다. 변경 후 앱 재시작 필요."
+    },
+    "keep": {
+      "label": "보관 스냅샷 수",
+      "hint": "세션별로 최근 N개 체크포인트의 스냅샷을 보관하고 오래된 것은 자동 정리."
+    },
+    "maxTotal": {
+      "label": "스냅샷 용량 상한",
+      "hint": "세션 스냅샷 디렉터리의 총 크기 상한. 초과 시 오래된 것부터 회수."
+    }
+  },
+  "sandbox": {
+    "title": "샌드박스",
+    "modeField": "샌드박스 모드",
+    "modeDesc": "Agent의 파일 시스템 접근 권한을 제어합니다.",
+    "modeFull": "전체 액세스",
+    "modeFullDesc": "Agent가 워크스페이스 밖의 파일도 읽고 쓸 수 있습니다.",
+    "modeWorkspace": "워크스페이스 쓰기",
+    "modeWorkspaceDesc": "명령은 워크스페이스와 추가 쓰기 가능 루트에만 쓸 수 있습니다.",
+    "deleteField": "파일 삭제 확인",
+    "deleteDesc": "워크스페이스 쓰기 모드에서만 적용됩니다. 전체 액세스에서는 삭제 확인을 기본적으로 건너뜁니다.",
+    "unsupported": "명령 샌드박스는 Windows에서만 사용할 수 있습니다.",
+    "riskTitle": "워크스페이스 쓰기로 전환할까요?",
+    "riskDoes": "사용하면 워크스페이스에 상주 ACL과 Low 무결성 레이블이 기록되고 run_command가 제한 토큰으로 실행됩니다.",
+    "riskDoesNot": "읽기, 네트워크, 파일 편집 도구는 제한하지 않습니다. 차단된 명령은 샌드박스 밖에서 한 번 재시도할지 별도로 묻습니다.",
+    "riskUndo": "전체 액세스로 돌아가면 샌드박스가 중지됩니다. 워크스페이스 ACL은 남지만 더 이상 사용되지 않습니다.",
+    "confirmEnable": "전환",
+    "cancel": "취소",
+    "enabled": "워크스페이스 쓰기로 전환했습니다(첫 권한 부여 {{ms}} ms)",
+    "saveFailed": "샌드박스 설정 저장 실패",
+    "loadFailed": "샌드박스 설정 읽기 실패"
+  }
+}

@@ -198,6 +198,23 @@
   border-color: var(--border-strong, var(--border));
 }
 
+/* 插话输入：单行起步，多行时最多 96px，Enter 发送 / Shift+Enter 换行 */
+.mc-subagent__input--steer {
+  height: auto;
+  min-height: 30px;
+  max-height: 96px;
+  padding: 6px 10px;
+  line-height: 1.4;
+  resize: none;
+}
+
+.mc-subagent__pending {
+  flex: none;
+  padding: 6px 12px 0;
+  color: var(--fg-subtlest);
+  font-size: var(--fs-xs);
+}
+
 .mc-subagent__send {
   display: inline-flex;
   flex: none;

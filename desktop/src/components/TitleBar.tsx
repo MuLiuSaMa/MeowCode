@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { LuCopy, LuMinus, LuSquare, LuX } from "react-icons/lu";
 import wordmarkBlackUrl from "../assets/wordmark-black.png";
 import wordmarkUrl from "../assets/wordmark.png";
@@ -9,6 +10,7 @@ import "./TitleBar.css";
 export function TitleBar({ forceDark = false }: { forceDark?: boolean }) {
   const [maximized, setMaximized] = useState(false);
   const { resolved } = useTheme();
+  const { t } = useTranslation("shell");
   // 浅色主题下白字标会看不见，换黑色字标（两份资源尺寸一致，2217×377）
   const wordmark = forceDark || resolved === "dark" ? wordmarkUrl : wordmarkBlackUrl;
 
@@ -45,8 +47,8 @@ export function TitleBar({ forceDark = false }: { forceDark?: boolean }) {
         <button
           type="button"
           className="mc-winbtn"
-          aria-label="最小化"
-          title="最小化"
+          aria-label={t("window.minimize")}
+          title={t("window.minimize")}
           onClick={() => void window.meow?.minimizeWindow?.()}
         >
           <LuMinus size={16} />
@@ -55,8 +57,8 @@ export function TitleBar({ forceDark = false }: { forceDark?: boolean }) {
           type="button"
           className="mc-winbtn"
           data-maximized={maximized}
-          aria-label={maximized ? "还原" : "最大化"}
-          title={maximized ? "还原" : "最大化"}
+          aria-label={maximized ? t("window.restore") : t("window.maximize")}
+          title={maximized ? t("window.restore") : t("window.maximize")}
           onClick={() => void window.meow?.toggleMaximizeWindow?.()}
         >
           {maximized ? <LuCopy size={14} /> : <LuSquare size={13} />}
@@ -64,8 +66,8 @@ export function TitleBar({ forceDark = false }: { forceDark?: boolean }) {
         <button
           type="button"
           className="mc-winbtn mc-winbtn--close"
-          aria-label="关闭"
-          title="关闭"
+          aria-label={t("window.close")}
+          title={t("window.close")}
           onClick={() => void window.meow?.closeWindow?.()}
         >
           <LuX size={16} />

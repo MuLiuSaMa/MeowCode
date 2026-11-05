@@ -156,6 +156,24 @@ describe("生命周期 hooks（P3）", () => {
     ).toBe(true);
   });
 
+  it("tool_call input transform 非法时拒绝执行（重校验）", async () => {
+    const registry = new PluginRegistry();
+    registry.addHook("broken", "tool_call", () => ({ input: {} }));
+    const { runtime } = await setup(registry);
+
+    mockToolRound("run_command", { command: "echo hi" });
+    await runtime.prompt("run it");
+
+    const messages = streamMock.mock.calls[1][0].messages as ChatMessage[];
+    expect(
+      messages.some(
+        (m) =>
+          m.role === "tool" &&
+          m.content.includes("Tool call rejected: hook returned invalid arguments"),
+      ),
+    ).toBe(true);
+  });
+
   it("tool_call input transform：execute 收到改写后的参数", async () => {
     const registry = new PluginRegistry();
     const execute = vi.fn(async (input: Record<string, unknown>) => ({
@@ -241,9 +259,188 @@ describe("生命周期 hooks（P3）", () => {
     expect(endEvent.status).toBe("completed");
   });
 
+  it("tool_call ask：full 模式也强制审批，hookReason 进入事件", async () => {
+    const registry = new PluginRegistry();
+    const execute = vi.fn(async () => ({ output: "ran", ok: true }));
+    registry.addTool("p1", makeTool("plugin_ask", { execute }));
+    registry.addHook("ask", "tool_call", () => ({ permission: "ask", reason: "confirm this" }));
+    const { runtime, events } = await setup(registry); // full
+
+    mockToolRound("plugin_ask", {});
+    const promptPromise = runtime.prompt("go");
+    await vi.waitFor(() => {
+      if (!events.some((e) => e.type === "approval_required" && e.tool === "plugin_ask")) {
+        throw new Error("no approval yet");
+      }
+    });
+    const approval = events.find(
+      (e) => e.type === "approval_required" && e.tool === "plugin_ask",
+    );
+    expect(
+      approval && approval.type === "approval_required" ? approval.hookReason : undefined,
+    ).toBe("confirm this");
+    runtime.respondToApproval("call-1", true);
+    await promptPromise;
+
+    expect(execute).toHaveBeenCalledTimes(1);
+    expect(events.some((e) => e.type === "approval_resolved" && e.by === "user")).toBe(true);
+  });
+
+  it("tool_call allow 不预批准：仍走人工审批", async () => {
+    const registry = new PluginRegistry();
+    const execute = vi.fn(async () => ({ output: "ran", ok: true }));
+    registry.addTool("p1", makeTool("plugin_allow", { execute, requiresApproval: true }));
+    registry.addHook("allow", "tool_call", () => ({ permission: "allow" }));
+    const { runtime, events } = await setup(registry);
+    await runtime.setApprovalMode("ask");
+
+    mockToolRound("plugin_allow", {});
+    const promptPromise = runtime.prompt("go");
+    await vi.waitFor(() => {
+      if (!events.some((e) => e.type === "approval_required" && e.tool === "plugin_allow")) {
+        throw new Error("no approval yet");
+      }
+    });
+    runtime.respondToApproval("call-1", true);
+    await promptPromise;
+    expect(execute).toHaveBeenCalledTimes(1);
+  });
+
+  it("PermissionRequest allow 自动应答审批，无需用户操作", async () => {
+    const registry = new PluginRegistry();
+    const execute = vi.fn(async () => ({ output: "ran", ok: true }));
+    registry.addTool("p1", makeTool("plugin_perm_allow", { execute, requiresApproval: true }));
+    registry.addHook("perm", "permission_request", () => ({ permission: "allow" }));
+    const { runtime, events } = await setup(registry);
+    await runtime.setApprovalMode("ask");
+
+    mockToolRound("plugin_perm_allow", {});
+    await runtime.prompt("go");
+
+    expect(execute).toHaveBeenCalledTimes(1);
+    const resolved = events.find((e) => e.type === "approval_resolved");
+    expect(resolved && resolved.type === "approval_resolved" && resolved.by).toBe("hook");
+    expect(resolved && resolved.type === "approval_resolved" && resolved.approved).toBe(true);
+  });
+
+  it("PermissionRequest deny 自动拒绝，工具不执行", async () => {
+    const registry = new PluginRegistry();
+    const execute = vi.fn(async () => ({ output: "should not run", ok: true }));
+    registry.addTool("p1", makeTool("plugin_perm_deny", { execute, requiresApproval: true }));
+    registry.addHook("perm", "permission_request", () => ({
+      permission: "deny",
+      reason: "not this one",
+    }));
+    const { runtime, events } = await setup(registry);
+    await runtime.setApprovalMode("ask");
+
+    mockToolRound("plugin_perm_deny", {});
+    await runtime.prompt("go");
+
+    expect(execute).not.toHaveBeenCalled();
+    const resolved = events.find((e) => e.type === "approval_resolved");
+    expect(resolved && resolved.type === "approval_resolved" && resolved.approved).toBe(false);
+    const messages = streamMock.mock.calls[1][0].messages as ChatMessage[];
+    expect(
+      messages.some(
+        (m) =>
+          m.role === "tool" && m.content.includes("Permission denied by hook: not this one"),
+      ),
+    ).toBe(true);
+  });
+
+  it("只读批处理同样经过 tool_call ask 审批", async () => {
+    const registry = new PluginRegistry();
+    registry.addHook("ask-read", "tool_call", (event) =>
+      event.tool === "list_dir"
+        ? { permission: "ask" as const, reason: "check listing" }
+        : undefined,
+    );
+    const { runtime, events } = await setup(registry); // full
+    mockToolRound("list_dir", {});
+    const promptPromise = runtime.prompt("list");
+    await vi.waitFor(() => {
+      if (!events.some((e) => e.type === "approval_required" && e.tool === "list_dir")) {
+        throw new Error("no read-only approval yet");
+      }
+    });
+    runtime.respondToApproval("call-1", true);
+    await promptPromise;
+    expect(events.some((e) => e.type === "tool_finished" && e.callId === "call-1")).toBe(true);
+  });
+
   it("无 plugins 时全部直通（缺省 null 不报错）", async () => {
     const { runtime } = await setup(null);
     streamMock.mockResolvedValueOnce({ message: { role: "assistant", content: "ok" } });
     await expect(runtime.prompt("plain")).resolves.toBeUndefined();
+  });
+});
+
+describe("工具执行事件（对应新增的 tool_execution_*）", () => {
+  it("被 tool_call block 的调用不会触发 tool_execution_start", async () => {
+    const registry = new PluginRegistry();
+    const calls: string[] = [];
+    registry.addHook("p1", "tool_call", () => {
+      calls.push("tool_call");
+      return { block: true, reason: "not allowed" };
+    });
+    registry.addHook("p1", "tool_execution_start", () => {
+      calls.push("tool_execution_start");
+    });
+    registry.addHook("p1", "tool_execution_end", () => {
+      calls.push("tool_execution_end");
+    });
+    const { runtime } = await setup(registry);
+
+    mockToolRound("write_file", { path: "a.txt", content: "x" });
+    await runtime.prompt("写个文件");
+
+    // 给 fire-and-forget 的观察类 hook 一点时间；真被拦下时不会有任何执行事件
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(calls).toEqual(["tool_call"]);
+  });
+
+  it("真正执行的调用两个执行事件都触发", async () => {
+    const registry = new PluginRegistry();
+    const calls: string[] = [];
+    registry.addHook("p1", "tool_call", () => {
+      calls.push("tool_call");
+    });
+    registry.addHook("p1", "tool_execution_start", () => {
+      calls.push("tool_execution_start");
+    });
+    registry.addHook("p1", "tool_execution_end", () => {
+      calls.push("tool_execution_end");
+    });
+    registry.addTool("p1", makeTool("plugin_echo"));
+    const { runtime } = await setup(registry);
+
+    mockToolRound("plugin_echo", { foo: "bar" });
+    await runtime.prompt("调一下插件工具");
+    await vi.waitFor(() => expect(calls).toContain("tool_execution_end"), { timeout: 2000 });
+
+    expect(calls).toContain("tool_call");
+    expect(calls).toContain("tool_execution_start");
+    expect(calls.indexOf("tool_execution_start")).toBeLessThan(calls.indexOf("tool_execution_end"));
+  });
+});
+
+describe("context_inject（对应新增的 context_inject）", () => {
+  it("注入内容进历史尾部而不是系统提示", async () => {
+    const registry = new PluginRegistry();
+    registry.addHook("p1", "context_inject", () => ({ notes: ["PLUGIN_INJECTED_NOTE"] }));
+    const { runtime } = await setup(registry);
+
+    streamMock.mockResolvedValueOnce({ message: { role: "assistant", content: "ok" } });
+    await runtime.prompt("hello");
+
+    const request = streamMock.mock.calls[0]?.[0] as { messages: ChatMessage[] } | undefined;
+    const messages = request?.messages ?? [];
+    // 系统提示（第一条）不能被污染：否则请求前缀变化、缓存整段作废
+    expect(String(messages[0]?.content)).not.toContain("PLUGIN_INJECTED_NOTE");
+    // 但内容必须出现在历史里（context_note 会以 user 消息参与请求）
+    const carrier = messages.filter((message) => String(message.content ?? "").includes("PLUGIN_INJECTED_NOTE"));
+    expect(carrier).toHaveLength(1);
+    expect(messages.indexOf(carrier[0]!)).toBeGreaterThan(0);
   });
 });

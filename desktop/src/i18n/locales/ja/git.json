@@ -1,0 +1,160 @@
+{
+  "nav": {
+    "heading": "ソース管理",
+    "ariaLabel": "ソース管理",
+    "viewAria": "ソース管理ビュー"
+  },
+  "group": {
+    "conflicted": "競合",
+    "staged": "ステージ済み",
+    "unstaged": "変更",
+    "empty": "なし",
+    "unstageAll": "すべてステージ解除",
+    "stageAll": "すべてステージ"
+  },
+  "list": {
+    "truncated": "全 {{total}} 件中、先頭 {{shown}} 件のみ表示中",
+    "truncatedStaged": "（残りは「すべてステージ解除」で処理してください）",
+    "truncatedUnstaged": "（残りは「すべてステージ」で処理するか、.gitignore に追加してください）"
+  },
+  "repo": {
+    "unavailable": "git が見つかりません。インストールして PATH に追加してください",
+    "notRepo": "現在のワークスペースは Git リポジトリではありません",
+    "reading": "リポジトリの状態を読み込み中…"
+  },
+  "repoHint": {
+    "unavailable": "git が見つかりません。Git をインストールし、ターミナルで `git --version` が通ることを確認してください。",
+    "notRepo": "現在のワークスペースは Git リポジトリではありません。ターミナルで `git init` を実行してから、ここで更新してください。",
+    "failed": "リポジトリの状態を読み取れません。"
+  },
+  "branch": {
+    "switch": "ブランチを切り替え",
+    "search": "ブランチを検索",
+    "listAria": "ブランチ一覧",
+    "loading": "ブランチを読み込み中…",
+    "noMatch": "一致するブランチがありません",
+    "stash": "切り替え前にローカルの変更を stash する",
+    "force": "強制切り替え（未コミットの変更を破棄）",
+    "newPlaceholder": "現在の HEAD から新しいブランチを作成（例: feature/login）",
+    "create": "作成して切り替え",
+    "close": "閉じる"
+  },
+  "conflict": {
+    "ours": "自分側",
+    "oursTitle": "自分側（ours）を採用",
+    "theirs": "相手側",
+    "theirsTitle": "相手側（theirs）を採用",
+    "mark": "解決済み",
+    "markTitle": "解決済みにする（内容は手動で処理済み）",
+    "resolveTitleOurs": "自分側のバージョンを採用",
+    "resolveTitleTheirs": "相手側のバージョンを採用",
+    "resolveTitleMark": "解決済みにする",
+    "resolveMessageMark": "競合したファイルを解決済みにします（内容は現在ディスク上にあるもののまま）。",
+    "resolveMessageReplace": "ファイルは選択した側のバージョンに置き換えられ、もう一方の内容は失われます。"
+  },
+  "file": {
+    "stage": "ステージ",
+    "unstage": "ステージ解除",
+    "discard": "変更を破棄"
+  },
+  "discard": {
+    "title": "変更を破棄",
+    "message": "これらのファイルの作業ツリーの変更は完全に破棄されます（ステージしていない変更は失われ、untracked ファイルは削除されます）。",
+    "confirm": "破棄"
+  },
+  "dialog": {
+    "cancel": "キャンセル",
+    "confirm": "確定",
+    "processing": "処理中…"
+  },
+  "footer": {
+    "changes_one": "{{count, number}} 件の変更",
+    "changes_other": "{{count, number}} 件の変更",
+    "changes_few": "{{count, number}} 件の変更",
+    "changes_many": "{{count, number}} 件の変更"
+  },
+  "action": {
+    "refresh": "更新",
+    "pull": "プル",
+    "push": "プッシュ",
+    "forcePush": "強制プッシュ",
+    "back": "戻る"
+  },
+  "pull": {
+    "title": "プル（--ff-only）",
+    "noUpstream": "このブランチには上流ブランチがありません"
+  },
+  "push": {
+    "detached": "detached HEAD からはプッシュできません",
+    "forceTitle": "強制プッシュ（--force-with-lease、2 回の確認が必要）",
+    "message": "{{branch}} を {{upstream}} にプッシュします。",
+    "messageNew": "{{branch}} を origin にプッシュし、上流ブランチを設定します。",
+    "forceWarning": "強制プッシュはローカルの履歴でリモートに存在する可能性のあるコミットを上書きします（--force-with-lease は他の誰もリモートを更新していない場合にのみ有効です）。通常、元に戻せません。",
+    "forceConfirm": "ローカルの {{branch}} でリモートの {{upstream}} を上書きしますか？",
+    "forceStep1": "強制プッシュ（1/2）",
+    "forceStep2": "強制プッシュ（2/2）",
+    "continue": "続行"
+  },
+  "upstream": {
+    "none": "上流ブランチがありません",
+    "short": "上流",
+    "ahead": "{{count, number}} 先行",
+    "behind": "{{count, number}} 遅れ"
+  },
+  "tab": {
+    "changes": "変更",
+    "history": "履歴"
+  },
+  "detail": {
+    "backTitle": "一覧に戻る",
+    "loading": "コミットの詳細を読み込み中…",
+    "mergeCommit": "マージコミット",
+    "moreFiles_one": "他 {{count, number}} 件のファイルは非表示",
+    "moreFiles_other": "他 {{count, number}} 件のファイルは非表示",
+    "moreFiles_few": "他 {{count, number}} 件のファイルは非表示",
+    "moreFiles_many": "他 {{count, number}} 件のファイルは非表示"
+  },
+  "diff": {
+    "loading": "diff を読み込み中…",
+    "binary": "バイナリファイルのため内容は表示しません",
+    "empty": "表示できる変更はありません",
+    "emptyCommit": "このコミットに表示できる変更はありません",
+    "truncated": "パッチが大きすぎるため切り詰めました",
+    "select": "ファイルを選択して変更を表示",
+    "selectFileHint": "左側でファイルを選択して変更を表示（ステージ済み/未ステージを分けて表示）",
+    "preparing": "diff を準備中…"
+  },
+  "commit": {
+    "placeholder": "コミットメッセージ（Ctrl+Enter でコミット）",
+    "placeholderEmpty": "先にファイルをステージしてからメッセージを入力",
+    "conflicts_one": "未解決の競合が {{count, number}} 件あります。解決するまでコミットできません",
+    "conflicts_other": "未解決の競合が {{count, number}} 件あります。解決するまでコミットできません",
+    "conflicts_few": "未解決の競合が {{count, number}} 件あります。解決するまでコミットできません",
+    "conflicts_many": "未解決の競合が {{count, number}} 件あります。解決するまでコミットできません",
+    "needsStaged": "ファイルをステージするとコミットできます",
+    "staged_one": "{{count, number}} 件のファイルをステージ済み",
+    "staged_other": "{{count, number}} 件のファイルをステージ済み",
+    "staged_few": "{{count, number}} 件のファイルをステージ済み",
+    "staged_many": "{{count, number}} 件のファイルをステージ済み",
+    "aiTitle": "ステージ済みの diff からコミットメッセージを生成",
+    "aiGenerate": "AI 生成",
+    "aiGenerating": "生成中…",
+    "submit": "コミット",
+    "committing": "コミット中…",
+    "emptyMessage": "コミットメッセージを入力してください",
+    "aiFailed": "AI 生成に失敗しました：{{message}}"
+  },
+  "history": {
+    "loading": "コミット履歴を読み込み中…",
+    "empty": "まだコミットがありません",
+    "loadMore": "さらに読み込む",
+    "loadingMore": "読み込み中…"
+  },
+  "workspace": {
+    "label": "ワークスペース：",
+    "none": "未選択"
+  },
+  "error": {
+    "close": "閉じる"
+  }
+}

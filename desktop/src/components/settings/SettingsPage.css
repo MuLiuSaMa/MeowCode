@@ -27,6 +27,11 @@
   flex-direction: column;
   gap: 2px;
 }
+.mc-settings__navdivider {
+  height: 1px;
+  margin: 6px 10px;
+  background: var(--border);
+}
 .mc-settings__navitem {
   display: flex;
   align-items: center;
@@ -55,6 +60,17 @@
 }
 .mc-settings__navitem > svg {
   flex-shrink: 0;
+}
+/* 实验性分区的导航标记：小、压暗、不抢标签的视觉重量 */
+.mc-settings__navbeta {
+  margin-left: auto;
+  padding: 0 5px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: 9px;
+  letter-spacing: 0.04em;
+  line-height: 15px;
+  color: var(--fg-subtlest);
 }
 .mc-settings__back {
   margin-top: auto;

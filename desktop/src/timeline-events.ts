@@ -99,7 +99,12 @@ export function applyTimelineEvent(
       );
       if (index >= 0) {
         const item = next[index] as TimelineTool;
-        next[index] = { ...item, output: event.output ?? "", truncated: event.truncated };
+        next[index] = {
+          ...item,
+          output: event.output ?? "",
+          truncated: event.truncated,
+          ...(event.spilled ? { spilled: event.spilled } : {}),
+        };
       }
       break;
     }

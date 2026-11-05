@@ -10,6 +10,7 @@
  * 时间线与输入框都要把这几行还原成卡片，所以规则只在这里定义一次：
  * 标记格式改动必须同步 `src/agent/file-mentions.ts` 与 `src/agent/runtime.ts`。
  */
+// i18n-allow-block-start 以下是消息首部协议标记与解析规则，必须与 src/agent 逐字一致，不翻译
 export const ATTACHMENT_PREFIX = "【附件】";
 export const SKILL_PREFIX = "【技能引用】";
 export const PLUGIN_PREFIX = "【插件引用】";
@@ -19,6 +20,7 @@ const ATTACHMENT_LINE = /^【附件】(.*?) · (.+)$/;
 const SKILL_LINE = /^【技能引用】(.+?) · ([^\n·]+)$/;
 const PLUGIN_LINE = /^【插件引用】(.+?) · ([^\n·]+)$/;
 const COMMAND_REF = /^【插件命令】(.*?)(?:\n|$)/;
+// i18n-allow-block-end
 
 export type AttachmentRef = { name: string; path: string };
 

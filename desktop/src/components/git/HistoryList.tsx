@@ -1,16 +1,8 @@
+import { useTranslation } from "react-i18next";
 import { LuGitCommitHorizontal } from "react-icons/lu";
 import type { GitCommit } from "../../api";
+import { formatRelative } from "../../i18n/format";
 import "./git.css";
-
-function relativeTime(seconds: number): string {
-  if (!seconds) return "";
-  const diff = Date.now() / 1000 - seconds;
-  if (diff < 60) return "刚刚";
-  if (diff < 3600) return `${Math.floor(diff / 60)} 分钟前`;
-  if (diff < 86_400) return `${Math.floor(diff / 3600)} 小时前`;
-  if (diff < 30 * 86_400) return `${Math.floor(diff / 86_400)} 天前`;
-  return new Date(seconds * 1000).toLocaleDateString();
-}
 
 /** 提交历史列表：点一行在右侧/上方看详情；底部「加载更多」分页。 */
 export function HistoryList({
@@ -28,11 +20,12 @@ export function HistoryList({
   onSelect: (sha: string) => void;
   onLoadMore: () => void;
 }) {
+  const { t } = useTranslation("git");
   if (!commits.length) {
     return (
       <div className="mc-git__placeholder">
         <LuGitCommitHorizontal size={16} />
-        {loading ? "正在读取提交历史…" : "还没有提交"}
+        {loading ? t("history.loading") : t("history.empty")}
       </div>
     );
   }
@@ -51,7 +44,8 @@ export function HistoryList({
           <span className="mc-git__commitmeta">
             <code className="mc-mono">{commit.short}</code>
             <span>{commit.author}</span>
-            <span>{relativeTime(commit.time)}</span>
+            {/* git log 的 time 是 unix 秒，formatRelative 收毫秒 */}
+            <span>{formatRelative(commit.time * 1000)}</span>
           </span>
         </button>
       ))}
@@ -62,7 +56,7 @@ export function HistoryList({
           disabled={loading}
           onClick={onLoadMore}
         >
-          {loading ? "加载中…" : "加载更多"}
+          {loading ? t("history.loadingMore") : t("history.loadMore")}
         </button>
       ) : null}
     </div>

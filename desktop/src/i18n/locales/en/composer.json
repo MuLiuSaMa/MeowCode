@@ -1,0 +1,213 @@
+{
+  "image": {
+    "readFailed": "Failed to read the image",
+    "unsupported": "Unsupported image format: {{type}}",
+    "tooLarge": "Image too large: {{name}} is still over 2 MB after compression. Crop it or lower the resolution first.",
+    "maxCount_one": "You can attach only {{count}} image per message",
+    "maxCount_few": "You can attach up to {{count}} images per message",
+    "maxCount_many": "You can attach up to {{count}} images per message",
+    "maxCount_other": "You can attach up to {{count}} images per message",
+    "onlyImages": "Only image files can be attached",
+    "fallbackName": "Image"
+  },
+  "file": {
+    "pathFailed": "Failed to read the file path: {{name}}",
+    "skipped": "Skipped empty file or folder: {{name}}"
+  },
+  "plugin": {
+    "loadFailed": "Failed to load: {{error}}",
+    "local": "Local plugin"
+  },
+  "permission": {
+    "title": "Tool permissions",
+    "readOnly": {
+      "label": "Read-only",
+      "desc": "Read files, search and browse, but never write, edit or run commands"
+    },
+    "ask": {
+      "label": "Ask every time",
+      "desc": "Ask for confirmation before writing or editing files or running commands"
+    },
+    "auto": {
+      "label": "Auto in workspace",
+      "desc": "Writes, edits and routine dev commands inside the workspace run automatically; credential access, download-and-run, system settings, publishing/deploying, destructive git or paths outside the workspace still ask first"
+    },
+    "full": {
+      "label": "Full access",
+      "desc": "Read and write files anywhere on this computer and run every tool automatically"
+    }
+  },
+  "slash": {
+    "plan": {
+      "label": "Plan mode",
+      "desc": "Read-only research; write the implementation plan to a doc under plans/ and wait for your approval"
+    },
+    "goal": {
+      "label": "Goal mode",
+      "desc": "Keep advancing toward the goal and track progress with update_plan"
+    },
+    "exit": "Exit {{mode}}",
+    "menuAria": "Commands",
+    "group": {
+      "mode": "Modes",
+      "command": "Commands",
+      "plugin": "Plugins",
+      "skill": "Skills"
+    }
+  },
+  "mode": {
+    "plan": "Plan mode",
+    "goal": "Goal mode",
+    "exitAria": "{{mode}}, click to exit",
+    "exitTitle": "Click to exit this mode"
+  },
+  "project": {
+    "menuAria": "Switch project",
+    "search": "Search projects",
+    "empty": "No matching projects",
+    "new": "New project",
+    "remove": "Remove from list",
+    "pickWorkspace": "Select workspace"
+  },
+  "mention": {
+    "aria": "Reference workspace files",
+    "back": "Go up one level",
+    "root": "Workspace root",
+    "refresh": "Refresh list",
+    "loadFailed": "Failed to load",
+    "loading": "Loading…",
+    "dirFailed": "Cannot read this folder",
+    "noMatch": "No matching files",
+    "emptyDir": "This folder is empty"
+  },
+  "queue": {
+    "recoveredAria": "Unsent messages from last time",
+    "recoveredHead": "Not sent before the last exit",
+    "sendAsNew": "Send as a new message",
+    "send": "Send",
+    "discardTitle": "Discard this message",
+    "discard": "Discard",
+    "pendingAria": "Queued messages",
+    "steerTitle": "Stop the current reply and send this message now",
+    "steer": "Steer now",
+    "removeTitle": "Remove from queue",
+    "remove": "Delete"
+  },
+  "plan": {
+    "answerAria": "Answer the question",
+    "answerSubMultiple": "Pick an answer or type below · moves to the next question automatically",
+    "answerSub": "Pick an answer or type below",
+    "answerPlaceholder": "Something else — press Enter for the next question",
+    "prev": "Previous",
+    "skipRest": "Skip the rest",
+    "unanswered": "(unanswered)",
+    "confirmAria": "Confirm plan",
+    "exit": "Exit plan mode",
+    "confirmTitle": "Proceed with this plan?",
+    "confirmSub": "Once confirmed, I will implement this plan and produce the output",
+    "start": "Start",
+    "adjustPlaceholder": "Adjust the plan — tell me what to change",
+    "sendAdjust": "Send adjustment",
+    "adjustPrompt": "Adjust the plan; the model keeps updating it after you send…"
+  },
+  "branch": {
+    "detached": "detached HEAD · click to switch branch",
+    "current": "Current branch {{name}} · click to switch",
+    "search": "Search branches",
+    "listAria": "Branch list",
+    "loading": "Loading branches…",
+    "noMatch": "No matching branches",
+    "empty": "This repository has no branches yet",
+    "stashSwitch": "Stash local changes and switch",
+    "openGit": "Open source control"
+  },
+  "worktree": {
+    "locked": "This session already runs in its own worktree",
+    "hint": "Start this conversation in a separate git worktree; uncommitted changes are not carried over"
+  },
+  "input": {
+    "placeholder": {
+      "setup": "Finish setup first",
+      "compacting": "Compacting the conversation history; you can send again when it finishes",
+      "streaming": "Type and press Enter to queue",
+      "default": "Type @ to reference project files; drop images or any file here, even outside the workspace"
+    },
+    "polishing": "Polishing"
+  },
+  "action": {
+    "more": "More actions",
+    "moreTitle": "Add attachments / switch mode",
+    "plusMenuAria": "Add, reference and commands",
+    "upload": "Upload attachment",
+    "plugins": "Plugins",
+    "pluginsCount": "Plugins ({{count}})",
+    "skills": "Skills",
+    "skillsCount": "Skills ({{count}})",
+    "installing": "Installing…",
+    "polish": "Polish prompt",
+    "send": "Send",
+    "stop": "Stop"
+  },
+  "attach": {
+    "listAria": "Images to send",
+    "removeImageAria": "Remove image",
+    "remove": "Remove"
+  },
+  "chip": {
+    "listAria": "Referenced skills, plugins and attachments",
+    "remove": "Remove {{name}}"
+  },
+  "agent": {
+    "title": "Main agent: {{name}}"
+  },
+  "polish": {
+    "discarded": "Your input changed, so the polished result was discarded.",
+    "failed": "Failed to polish the prompt: {{error}}"
+  },
+  "ctx": {
+    "title": "Context usage",
+    "close": "Close",
+    "used": "Used",
+    "windowUnset": "no window set",
+    "categories": {
+      "system": "System prompt",
+      "tools": "System tools",
+      "skills": "Skills ({{count}})",
+      "messages": "Messages",
+      "other": "Other"
+    },
+    "cache": {
+      "stateLabel": "Cache",
+      "stateWarm": "Warm",
+      "stateCold": "Cold",
+      "stateEvicted": "Evicted",
+      "stateUnsupported": "Unsupported",
+      "stateUnknown": "Unknown",
+      "roundLabel": "Latest",
+      "round": "read {{read}} · write {{write}}",
+      "busts": "Likely busts",
+      "bustTitle": "Read ~{{drop}} tokens less than the previous round: prefix rewritten or cache evicted",
+      "reasonPrefixChanged": "Prefix changed (tool catalog / system prompt rewrite)",
+      "reasonFirstRequest": "First request (cold start)",
+      "reasonIdleExceededTtl": "Idle beyond cache TTL",
+      "reasonNotReported": "Provider did not report cache details",
+      "reasonBelowGranularity": "Input below minimum cacheable length",
+      "reasonCacheMiss": "Cache miss"
+    },
+    "hint": "Compacting folds earlier turns into a summary; the history here and the session file stay complete.",
+    "compacting": "Compacting…",
+    "compact": "Compact context now"
+  },
+  "effort": {
+    "default": "Default",
+    "off": "Off",
+    "on": "On",
+    "minimal": "Minimal",
+    "low": "Low",
+    "medium": "Medium",
+    "high": "High",
+    "xhigh": "Extra high",
+    "max": "Max",
+    "ultra": "Ultra"
+  }
+}

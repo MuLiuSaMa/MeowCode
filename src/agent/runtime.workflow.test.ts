@@ -37,10 +37,6 @@ function call(id: string, name: string, args: Record<string, unknown>) {
   };
 }
 
-function toolResponse(id: string, content: string) {
-  return { role: "tool" as const, content, tool_call_id: id, name: "" };
-}
-
 function assistantText(content: string) {
   return { message: { role: "assistant" as const, content } };
 }
@@ -194,7 +190,7 @@ describe("治理层集成（goal 模式，T1 全流程）", () => {
     await runtime.newSession(workspace);
     await runtime.setApprovalMode("full");
     await runtime.setSessionMode("goal");
-    const events = collectEvents(runtime);
+    const _events = collectEvents(runtime);
     const streams: ChatMessage[][] = [];
 
     streamMock.mockImplementation(async ({ messages }: { messages: ChatMessage[] }) => {

@@ -8,6 +8,7 @@ import type {
   ApprovalMode,
   ChatMessage,
   ChatMessageWithRefs,
+  CheckpointSnapshotRef,
   CompactionPoint,
   DocumentRef,
   FileChangeEntry,
@@ -15,10 +16,13 @@ import type {
   NativeCompactionEntry,
   NativeCompactionPayload,
   PlanStep,
+  RewindEntry,
   SessionEntry,
   AgentRole,
+  SessionCheckpoint,
   SessionHeader,
   SessionSettings,
+  SessionWorktree,
   SubagentStatus,
   SubagentSummary,
   SubagentType,
@@ -37,8 +41,6 @@ type TurnStartEntry = Extract<SessionEntry, { type: "turn_start" }>;
 type TurnEndEntry = Extract<SessionEntry, { type: "turn_end" }>;
 type ApprovalRequestedEntry = Extract<SessionEntry, { type: "approval_requested" }>;
 type UsageEntry = Extract<SessionEntry, { type: "usage" }>;
-type MetricsEntry = Extract<SessionEntry, { type: "metrics" }>;
-type CompactionStartedEntry = Extract<SessionEntry, { type: "compaction_started" }>;
 
 type PartialCheckpoint = {
   turnId: string;
@@ -109,6 +111,9 @@ export class SessionStore {
       agentType?: SubagentType;
       parentCallId?: string;
       description?: string;
+      worktree?: SessionWorktree;
+      /** 导入场景：会话头用来源会话的原始时间，列表排序才符合时间线 */
+      createdAt?: Date;
     } = {},
   ): Promise<SessionStore> {
     const header: SessionHeader = {
@@ -116,7 +121,7 @@ export class SessionStore {
       version: 2,
       id: options.id ?? randomUUID(),
       cwd: path.resolve(cwd),
-      createdAt: new Date().toISOString(),
+      createdAt: (options.createdAt ?? new Date()).toISOString(),
       ...(options.parentSessionId ? { parentSessionId: options.parentSessionId } : {}),
       ...(options.rootSessionId
         ? { rootSessionId: options.rootSessionId }
@@ -127,6 +132,7 @@ export class SessionStore {
       ...(options.agentType ? { agentType: options.agentType } : {}),
       ...(options.parentCallId ? { parentCallId: options.parentCallId } : {}),
       ...(options.description ? { description: options.description } : {}),
+      ...(options.worktree ? { worktree: options.worktree } : {}),
     };
     const store = new SessionStore(filePath, [header]);
     await fs.mkdir(path.dirname(filePath), { recursive: true });
@@ -167,6 +173,12 @@ export class SessionStore {
     return header.cwd;
   }
 
+  get worktree(): SessionWorktree | undefined {
+    const header = this.entries[0];
+    if (header?.type !== "session") throw new Error("Session header is missing.");
+    return header.worktree;
+  }
+
   get createdAt(): string {
     const header = this.entries[0];
     if (header?.type !== "session") throw new Error("Session header is missing.");
@@ -203,6 +215,48 @@ export class SessionStore {
     return this.entries.filter(
       (entry): entry is FileChangeEntry => entry.type === "file_change",
     );
+  }
+
+  /** 快照目录归属会话 id：派生会话沿用源会话 owner 共享 blob；缺省 = 自己的 id。 */
+  get snapshotOwnerId(): string {
+    const header = this.entries[0];
+    if (header?.type !== "session") return this.id;
+    return header.snapshotOwnerId ?? header.id;
+  }
+
+  /** 所有检查点，按时间线位置；messageIndex 与 messagesForClient 对齐（分隔线定位）。 */
+  get checkpoints(): SessionCheckpoint[] {
+    const points: SessionCheckpoint[] = [];
+    let messageCount = 0;
+    for (const entry of this.entries) {
+      if (entry.type === "message") {
+        messageCount += 1;
+        continue;
+      }
+      if (entry.type !== "checkpoint") continue;
+      points.push({
+        id: entry.id,
+        timestamp: entry.timestamp,
+        ...(entry.label ? { label: entry.label } : {}),
+        auto: entry.auto,
+        ...(entry.turnId ? { turnId: entry.turnId } : {}),
+        fileChanges: entry.fileChanges,
+        messageIndex: messageCount,
+        ...(entry.snapshot ? { snapshot: entry.snapshot } : {}),
+        hasSnapshot: Boolean(entry.snapshot),
+        fileCount: entry.snapshot?.count ?? 0,
+      });
+    }
+    return points;
+  }
+
+  /** 最近一次回滚留痕（撤销回滚入口；每次回滚追加一条，取最后一条）。 */
+  get lastRewind(): RewindEntry | null {
+    for (let index = this.entries.length - 1; index >= 0; index -= 1) {
+      const entry = this.entries[index];
+      if (entry.type === "rewind") return entry;
+    }
+    return null;
   }
 
   // ---- 回合 / 队列 / 审批投影 ----
@@ -314,6 +368,8 @@ export class SessionStore {
       chat: empty(),
       title: empty(),
       compaction: empty(),
+      memory: empty(),
+      learning: empty(),
     };
     for (const entry of this.entries) {
       if (entry.type !== "usage") continue;
@@ -507,6 +563,7 @@ export class SessionStore {
     input: unknown;
     diff?: string;
     risk?: Extract<SessionEntry, { type: "approval_requested" }>["risk"];
+    sandboxEscape?: { command: string; detail: string };
   }): Promise<string> {
     const id = newEntryId();
     await this.appendEntry((parentId) => ({
@@ -526,7 +583,7 @@ export class SessionStore {
     approved: boolean,
     options: {
       turnId?: string;
-      reason?: "restored_denied" | "writable_root" | "plan_mode" | "stale" | "stale_rechecked";
+      reason?: Extract<SessionEntry, { type: "approval" }>["reason"];
     } = {},
   ): Promise<string> {
     const id = newEntryId();
@@ -619,6 +676,36 @@ export class SessionStore {
     return id;
   }
 
+  /**
+   * 落一条压缩质量观测：压缩后窗口期内重复读了哪些「压缩前已读过」的文件。
+   * 纯观测条目，不参与 effectiveMessages 回放。
+   */
+  async appendCompactionQuality(input: {
+    compactionId: string;
+    baselineCount: number;
+    rereadPaths: string[];
+    windowTurns: number;
+  }): Promise<string> {
+    const id = newEntryId();
+    await this.appendEntry((parentId) => ({
+      type: "compaction_quality",
+      id,
+      parentId,
+      timestamp: new Date().toISOString(),
+      ...input,
+    }));
+    return id;
+  }
+
+  /** 最近一条压缩质量观测；没有则返回 null。 */
+  get lastCompactionQuality(): Extract<SessionEntry, { type: "compaction_quality" }> | null {
+    for (let index = this.entries.length - 1; index >= 0; index -= 1) {
+      const entry = this.entries[index];
+      if (entry.type === "compaction_quality") return entry;
+    }
+    return null;
+  }
+
   async appendRecovery(actions: string[]): Promise<string> {
     const id = newEntryId();
     await this.appendEntry((parentId) => ({
@@ -658,6 +745,72 @@ export class SessionStore {
       path: filePath,
       operation,
       diff,
+    }));
+    return id;
+  }
+
+  /**
+   * 落一条检查点（纯元数据 + 可选文件快照引用；restore 时才截断复制建新会话）。
+   * 自动检查点在每个用户回合开始写入；手动检查点走 server 端点。
+   * buildSnapshot 在拿到 checkpointId 后落快照索引，返回引用一并写进 entry ——
+   * 顺序是先索引后 entry：entry 写失败只留孤儿索引（GC 回收），反序会留下指向
+   * 不存在文件的引用。不传 buildSnapshot = 纯对话检查点（旧形态，不可回滚代码）。
+   */
+  async appendCheckpoint(
+    input: {
+      label?: string;
+      auto: boolean;
+      turnId?: string;
+      fileChanges: string[];
+    },
+    buildSnapshot?: (checkpointId: string) => Promise<CheckpointSnapshotRef | null>,
+  ): Promise<SessionCheckpoint> {
+    const id = newEntryId();
+    const timestamp = new Date().toISOString();
+    const snapshot = buildSnapshot ? ((await buildSnapshot(id)) ?? undefined) : undefined;
+    await this.appendEntry((parentId) => ({
+      type: "checkpoint",
+      id,
+      parentId,
+      timestamp,
+      ...input,
+      ...(snapshot ? { snapshot } : {}),
+    }));
+    // 检查点条目在末尾：此前全部 message 条目就是它的时间线位置（与 checkpoints getter 同口径）
+    let messageIndex = 0;
+    for (const entry of this.entries) {
+      if (entry.type === "message") messageIndex += 1;
+    }
+    return {
+      id,
+      timestamp,
+      ...(input.label ? { label: input.label } : {}),
+      auto: input.auto,
+      ...(input.turnId ? { turnId: input.turnId } : {}),
+      fileChanges: input.fileChanges,
+      messageIndex,
+      ...(snapshot ? { snapshot } : {}),
+      hasSnapshot: Boolean(snapshot),
+      fileCount: snapshot?.count ?? 0,
+    };
+  }
+
+  /** 落一条回滚留痕（审计 + 撤销回滚入口；不参与消息重放与检查点计数）。 */
+  async appendRewind(input: {
+    checkpointId: string;
+    mode: "both" | "conversation" | "code";
+    journal: string;
+    derivedSessionId?: string;
+    sourceSessionId?: string;
+    fileCount: number;
+  }): Promise<string> {
+    const id = newEntryId();
+    await this.appendEntry((parentId) => ({
+      type: "rewind",
+      id,
+      parentId,
+      timestamp: new Date().toISOString(),
+      ...input,
     }));
     return id;
   }
@@ -791,7 +944,7 @@ export class SessionStore {
   /** 追加一条运行时上下文（如压缩后的计划快照 / @文件引用），按位置参与后续请求。 */
   async appendContextNote(
     content: string,
-    source: "plan" | "file" | "subagent" | "workflow" = "plan",
+    source: "plan" | "file" | "subagent" | "workflow" | "plugin" = "plan",
   ): Promise<string> {
     const id = newEntryId();
     await this.appendEntry((parentId) => ({
@@ -1433,6 +1586,8 @@ export type SessionSummary = {
   title: string | null;
   /** 会话里的消息条数；0 = 还没发过消息（新建后未使用的会话，列表里不显示） */
   messageCount: number;
+  /** 独立 worktree 元数据；侧栏归组与分支标识用 */
+  worktree?: SessionWorktree;
 };
 
 type IndexedSession = Omit<SessionSummary, "filePath"> & {
@@ -1513,6 +1668,7 @@ async function parseSessionSummary(
     createdAt: header.createdAt,
     title,
     messageCount,
+    ...(header.worktree ? { worktree: header.worktree } : {}),
   };
 }
 
@@ -1548,6 +1704,7 @@ export async function listSessions(sessionsDir: string): Promise<SessionSummary[
           createdAt: cached.createdAt,
           title: cached.title,
           messageCount: cached.messageCount,
+          ...(cached.worktree ? { worktree: cached.worktree } : {}),
         };
       } else {
         try {

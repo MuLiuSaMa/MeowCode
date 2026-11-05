@@ -27,7 +27,6 @@ export type RecoveryResult = {
   lastError: string | null;
 };
 
-type TurnStartEntry = Extract<SessionEntry, { type: "turn_start" }>;
 type CompactionStartedEntry = Extract<SessionEntry, { type: "compaction_started" }>;
 
 function entriesBetween(

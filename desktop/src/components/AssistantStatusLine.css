@@ -1,0 +1,61 @@
+.mc-statusline {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  max-width: 100%;
+  padding: 1px 0;
+  font-size: var(--fs-sm);
+  line-height: var(--lh-normal);
+  color: var(--fg-subtle);
+}
+.mc-statusline__logo {
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+.mc-statusline__text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mc-statusline__dots {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+.mc-statusline__dots i {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: currentColor;
+  animation: mc-statusline-bounce 1.2s var(--ease) infinite;
+}
+.mc-statusline__dots i:nth-child(2) {
+  animation-delay: 0.15s;
+}
+.mc-statusline__dots i:nth-child(3) {
+  animation-delay: 0.3s;
+}
+@keyframes mc-statusline-bounce {
+  0%,
+  60%,
+  100% {
+    transform: translateY(0);
+    opacity: 0.4;
+  }
+  30% {
+    transform: translateY(-4px);
+    opacity: 1;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mc-statusline__dots i {
+    animation: none;
+    opacity: 0.6;
+  }
+}

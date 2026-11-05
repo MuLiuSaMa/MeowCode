@@ -7,25 +7,41 @@ desktop/dist/
 desktop/release/
 desktop/renderer/
 desktop/.vite/
+*.tsbuildinfo
+/.tmp-*/
+/.tmp/
 *.local
 .env
 .env.*
 *.log
 
 # Reference repositories, never part of MeowCode source
+/cc-haha-main/
+/claude-code-main/
 /codex-main/
 /deepseek-harness-master/
 /opencode-2/
+/opencode-dev/
 /ZCode-main/
 /metis-main/
+/hermes-agent-main/
 /AllAgent.NET-main/
 /LanAgent-main/
+
+# 社区插件市场收录仓库（独立 GitCode 仓库 MeowCode-Plugins 的本地工作副本）
+/MeowCode-Plugins/
 
 # Local agent / editor state（本机 AI 工具的缓存与计划草稿，不进仓库）
 /.workbuddy/
 /.workbuddy-ai/
 /.trae/
 /.zcode/
+/.claude/
+/.codex/
+/.cursor/
+/.gemini/
+/.continue/
+/.aider*
 
 # 与 desktop/src/assets/fonts/MiSansVF.ttf 重复的 20MB 字体副本，构建不读它
 /MiSansVF.ttf
@@ -33,3 +49,6 @@ desktop/.vite/
 # OS/editor
 .DS_Store
 Thumbs.db
+
+# 市场构建的下载缓存（ZCode 官方插件 zip 等）
+/.cache/

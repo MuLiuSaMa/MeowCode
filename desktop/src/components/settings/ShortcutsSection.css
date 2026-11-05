@@ -1,0 +1,33 @@
+/* 设置页「快捷键」分页 */
+
+.mc-shortcuts__keys {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.mc-shortcuts__keywrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.mc-shortcuts__plus {
+  color: var(--fg-subtlest);
+  font-size: var(--fs-xs);
+}
+
+.mc-shortcuts__kbd {
+  display: inline-block;
+  min-width: 22px;
+  padding: 2px 7px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  corner-shape: superellipse(1.5);
+  background: var(--input-fill);
+  color: var(--fg);
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  line-height: 1.5;
+  text-align: center;
+}

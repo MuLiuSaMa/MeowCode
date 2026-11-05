@@ -1,0 +1,6 @@
+{
+  "description": "官方免 key 托管 MCP：网页抓取转 Markdown（scrape）、联网搜索（search）、文档解析（parse），零配置安装即用（托管端点限速）。",
+  "server": {
+    "url": "https://mcp.firecrawl.dev/v2/mcp"
+  }
+}

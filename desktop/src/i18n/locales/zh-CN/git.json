@@ -1,0 +1,160 @@
+{
+  "nav": {
+    "heading": "Git 管理",
+    "ariaLabel": "Git 管理",
+    "viewAria": "Git 管理视图"
+  },
+  "group": {
+    "conflicted": "冲突",
+    "staged": "已暂存",
+    "unstaged": "更改",
+    "empty": "暂无",
+    "unstageAll": "全部取消暂存",
+    "stageAll": "全部暂存"
+  },
+  "list": {
+    "truncated": "仅显示前 {{shown}} 个，共 {{total}} 个",
+    "truncatedStaged": "（其余请用「全部取消暂存」）",
+    "truncatedUnstaged": "（其余请用「全部暂存」，或把它们加进 .gitignore）"
+  },
+  "repo": {
+    "unavailable": "未检测到 git，请先安装并加入 PATH",
+    "notRepo": "当前工作区不是 Git 仓库",
+    "reading": "正在读取仓库状态…"
+  },
+  "repoHint": {
+    "unavailable": "未检测到 git：请安装 Git 并确认 `git --version` 在终端可用。",
+    "notRepo": "当前工作区不是 Git 仓库。在终端执行 `git init` 后回到这里刷新。",
+    "failed": "无法读取仓库状态。"
+  },
+  "branch": {
+    "switch": "切换分支",
+    "search": "搜索分支",
+    "listAria": "分支列表",
+    "loading": "正在读取分支…",
+    "noMatch": "没有匹配的分支",
+    "stash": "切换前贮藏本地改动",
+    "force": "强制切换（丢弃未提交的改动）",
+    "newPlaceholder": "基于当前 HEAD 新建分支，如 feature/login",
+    "create": "新建并切换",
+    "close": "关闭"
+  },
+  "conflict": {
+    "ours": "我方",
+    "oursTitle": "采用我方（ours）",
+    "theirs": "对方",
+    "theirsTitle": "采用对方（theirs）",
+    "mark": "已解决",
+    "markTitle": "标记为已解决（内容已手工处理）",
+    "resolveTitleOurs": "采用我方版本",
+    "resolveTitleTheirs": "采用对方版本",
+    "resolveTitleMark": "标记为已解决",
+    "resolveMessageMark": "会把该冲突文件标记为已解决（内容保持当前磁盘上的样子）。",
+    "resolveMessageReplace": "该文件会被直接替换为所选一侧的版本，另一侧的内容会丢失。"
+  },
+  "file": {
+    "stage": "暂存",
+    "unstage": "取消暂存",
+    "discard": "丢弃改动"
+  },
+  "discard": {
+    "title": "丢弃改动",
+    "message": "这些文件的工作区改动会被永久丢弃（未暂存的修改会消失，untracked 文件会被删除）。",
+    "confirm": "丢弃"
+  },
+  "dialog": {
+    "cancel": "取消",
+    "confirm": "确认",
+    "processing": "处理中…"
+  },
+  "footer": {
+    "changes_one": "{{count, number}} 个变更",
+    "changes_other": "{{count, number}} 个变更",
+    "changes_few": "{{count, number}} 个变更",
+    "changes_many": "{{count, number}} 个变更"
+  },
+  "action": {
+    "refresh": "刷新",
+    "pull": "拉取",
+    "push": "推送",
+    "forcePush": "强制推送",
+    "back": "返回"
+  },
+  "pull": {
+    "title": "拉取（--ff-only）",
+    "noUpstream": "当前分支没有上游"
+  },
+  "push": {
+    "detached": "detached HEAD 无法推送",
+    "forceTitle": "强制推送（--force-with-lease，需两次确认）",
+    "message": "把 {{branch}} 推送到 {{upstream}}。",
+    "messageNew": "把 {{branch}} 推送到 origin 并设置上游分支。",
+    "forceWarning": "强制推送会用本地历史覆盖远端可能已有的提交（--force-with-lease 仅在远端未被他人更新时生效）。这通常不可逆。",
+    "forceConfirm": "确认用本地 {{branch}} 覆盖远端 {{upstream}}？",
+    "forceStep1": "强制推送（1/2）",
+    "forceStep2": "强制推送（2/2）",
+    "continue": "继续"
+  },
+  "upstream": {
+    "none": "没有上游分支",
+    "short": "上游",
+    "ahead": "领先 {{count, number}}",
+    "behind": "落后 {{count, number}}"
+  },
+  "tab": {
+    "changes": "变更",
+    "history": "历史"
+  },
+  "detail": {
+    "backTitle": "返回列表",
+    "loading": "正在读取提交详情…",
+    "mergeCommit": "合并提交",
+    "moreFiles_one": "+{{count, number}} 个文件未列出",
+    "moreFiles_other": "+{{count, number}} 个文件未列出",
+    "moreFiles_few": "+{{count, number}} 个文件未列出",
+    "moreFiles_many": "+{{count, number}} 个文件未列出"
+  },
+  "diff": {
+    "loading": "正在读取 diff…",
+    "binary": "二进制文件，不展示内容",
+    "empty": "没有可显示的改动",
+    "emptyCommit": "这次提交没有可显示的改动",
+    "truncated": "补丁过大，已截断",
+    "select": "选择一个文件查看改动",
+    "selectFileHint": "在左侧选择文件查看改动（已暂存/未暂存分开显示）",
+    "preparing": "正在准备 diff…"
+  },
+  "commit": {
+    "placeholder": "提交信息（Ctrl+Enter 提交）",
+    "placeholderEmpty": "先暂存文件再写提交信息",
+    "conflicts_one": "有 {{count, number}} 个冲突待解决，解决后才能提交",
+    "conflicts_other": "有 {{count, number}} 个冲突待解决，解决后才能提交",
+    "conflicts_few": "有 {{count, number}} 个冲突待解决，解决后才能提交",
+    "conflicts_many": "有 {{count, number}} 个冲突待解决，解决后才能提交",
+    "needsStaged": "暂存文件后即可提交",
+    "staged_one": "{{count, number}} 个文件已暂存",
+    "staged_other": "{{count, number}} 个文件已暂存",
+    "staged_few": "{{count, number}} 个文件已暂存",
+    "staged_many": "{{count, number}} 个文件已暂存",
+    "aiTitle": "根据已暂存的 diff 生成提交信息",
+    "aiGenerate": "AI 生成",
+    "aiGenerating": "生成中…",
+    "submit": "提交",
+    "committing": "提交中…",
+    "emptyMessage": "提交信息不能为空",
+    "aiFailed": "AI 生成失败：{{message}}"
+  },
+  "history": {
+    "loading": "正在读取提交历史…",
+    "empty": "还没有提交",
+    "loadMore": "加载更多",
+    "loadingMore": "加载中…"
+  },
+  "workspace": {
+    "label": "工作区：",
+    "none": "未选择"
+  },
+  "error": {
+    "close": "关闭"
+  }
+}

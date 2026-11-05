@@ -1,0 +1,584 @@
+{
+  "language": {
+    "section": "言語",
+    "title": "表示言語",
+    "description": "MeowCode のインターフェース表示言語を選択します。再起動なしで即時に反映されます。",
+    "system": "システムに従う"
+  },
+  "speech": {
+    "section": "語り口",
+    "field": "返信の語り口",
+    "desc": {
+      "normal": "既定の口調：簡潔・直接的・専門的で、要点だけを伝えます。",
+      "tafei": "永雏塔菲（タフィー）の口調：自称タフィー、元気で甘えたな猫娘口調。文末に「喵（ミャオ）」を付け、たまに決めゼリフを使います。技術的な内容は正確なままです。",
+      "dazui": "大嘴：あー、この、この…ですね。1000万以内で最高の語り口。"
+    },
+    "options": {
+      "normal": "通常",
+      "tafei": "永雏塔菲",
+      "dazui": "大嘴"
+    }
+  },
+  "nav": {
+    "heading": "設定",
+    "ariaLabel": "設定の区分",
+    "back": "チャットに戻る"
+  },
+  "sections": {
+    "general": "一般",
+    "appearance": "外観",
+    "shortcuts": "ショートカット",
+    "models": "モデル",
+    "memory": "メモリ",
+    "archive": "アーカイブ",
+    "about": "情報",
+    "island": "AI 悬浮岛",
+    "hooks": "Hooks",
+    "dataImport": "データインポート",
+    "rules": "ルール",
+    "worktree": "Worktrees",
+    "learning": "自己学習",
+    "rewind": "セッション巻き戻し",
+    "sandbox": "サンドボックス"
+  },
+  "close": {
+    "section": "ウィンドウを閉じるときの動作",
+    "field": "ウィンドウを閉じるとき",
+    "desc": {
+      "ask": "閉じるとき毎回、トレイに隠すか終了するか確認します。",
+      "tray": "閉じるとシステムトレイに隠れ、MeowCode はバックグラウンドで動作し続けます。",
+      "quit": "閉じると MeowCode をすぐ終了します。"
+    },
+    "options": {
+      "ask": "毎回確認",
+      "tray": "トレイに隠す",
+      "quit": "すぐ終了"
+    }
+  },
+  "update": {
+    "section": "更新",
+    "field": "更新をバックグラウンドで取得",
+    "desc": {
+      "on": "起動時に新しいバージョンを見つけたら裏で自動的に取得し、完了後サイドバーの左下に再起動ボタンが表示されます。クリックでインストールできます。",
+      "off": "起動時の確認と通知だけを行い、取得とインストールは情報ページで手動で行います。"
+    }
+  },
+  "appearance": {
+    "themeSection": "テーマ",
+    "themeField": "外観テーマ",
+    "themeDesc": "「システムに従う」は Windows のライト / ダーク設定にリアルタイムで追従します。切り替えは即時反映され、再起動は不要です。",
+    "theme": {
+      "system": "システムに従う",
+      "light": "ライト",
+      "dark": "ダーク"
+    },
+    "fontSection": "フォント",
+    "fontDesc": "「画面フォント」はチャットやサイドバーなどの UI テキストに、「コードフォント」はコードブロックや diff などの等幅テキストに適用されます。システムフォントを選ぶか、ローカルのフォントファイル（ttf / otf / woff / woff2）をインポートできます。切り替えは即時反映されます。",
+    "importField": "フォントのインポート",
+    "importButton": "フォントをインポート…",
+    "uiFont": "画面フォント",
+    "codeFont": "コードフォント",
+    "defaultFont": "既定",
+    "fontsLoading": "システムフォントを読み込み中…クリックで再試行",
+    "imported": "{{name}}（インポート済み）"
+  },
+  "shortcuts": {
+    "title": "ショートカット",
+    "description": "キーボードショートカット一覧。",
+    "ctrlHint": "macOS では ⌘ が Ctrl の代わりに使えます",
+    "items": {
+      "search": "会話全文検索",
+      "quickOpen": "ファイルをクイックオープン",
+      "sideChat": "サイドチャット",
+      "terminal": "ターミナル",
+      "send": "メッセージを送信",
+      "commit": "Git の変更をコミット"
+    }
+  },
+  "memory": {
+    "extractionTitle": "自動メモリー蒸留",
+    "extractionDesc": "各ターン終了後、軽量なバックグラウンド要求で新しい会話を振り返り、長期的に覚える価値のあること（好み、訂正、プロジェクトの決定）を自動的にメモリーに保存します。オフにすると、手動作成と AI 自身のメモリーツールによる書き込みのみが残ります。",
+    "extractionField": "ターン終了後に自動蒸留",
+    "extractionFailed": "設定の保存に失敗しました",
+    "scope": {
+      "user": "個人メモリ",
+      "project": "プロジェクトメモリ"
+    },
+    "descUser": "ワークスペースをまたいで保持される長期メモリです。あなたの好み、よく使うワークフロー、経験を ~/.meowcode/memory/ に保存し、新しいチャットの開始時にインデックスを自動で注入します。AI はメモリツールを使って必要に応じて読み書きします。",
+    "descProject": "現在のワークスペース専用のメモリです。プロジェクトの .meowcode/memory/ に保存され、git には入りません。",
+    "descProjectNamed": "現在のワークスペース（{{workspace}}）専用のメモリです。プロジェクトの .meowcode/memory/ に保存され、git には入りません。",
+    "count_one": "メモリ {{count}} 件",
+    "count_other": "メモリ {{count}} 件",
+    "count_few": "メモリ {{count}} 件",
+    "count_many": "メモリ {{count}} 件",
+    "create": "新規メモリ",
+    "empty": "まだメモリがありません。チャットで AI が長く覚えておく価値のあることを学べば自動で保存されます。ここで手動で作ることもできます。",
+    "clickToEdit": "クリックして編集",
+    "noDescription": "（説明なし）",
+    "deleteAria": "{{name}}を削除",
+    "confirmDeleteAria": "{{name}}の削除を確定",
+    "editTitle": "{{scope}}を編集 · {{name}}",
+    "createTitle": "{{scope}}を新規作成",
+    "editorDesc": "Markdown の本文を編集します。frontmatter の description は MEMORY.md のインデックスに取り込まれ、新しいチャットから有効になります。",
+    "name": "名前",
+    "namePlaceholder": "kebab-case、例：docker-cli",
+    "nameHint": "<名前>.md として保存されます",
+    "nameRule": "名前は小文字の kebab-case（英数字とハイフン）で、最長 64 文字です",
+    "saved": "{{scope}}の「{{name}}」を保存しました",
+    "deleted": "{{scope}}の「{{name}}」を削除しました",
+    "loadFailed": "メモリを読み込めませんでした",
+    "readFailed": "メモリを取得できませんでした",
+    "saveFailed": "メモリを保存できませんでした",
+    "deleteFailed": "メモリを削除できませんでした"
+  },
+  "archive": {
+    "section": "アーカイブ",
+    "desc": "アーカイブしたチャットは一覧に表示されず、いつでも復元できます。アーカイブするには、一覧のチャットにマウスを合わせ、右側のアーカイブアイコンをクリックします。 削除すると会話記録そのものが消え、元に戻せません。",
+    "empty": "アーカイブされたチャットはありません",
+    "item": "チャット · {{when}}",
+    "unknownTime": "日時不明",
+    "deleteAll": "すべて削除",
+    "confirmDeleteAll": "すべて削除しますか？",
+    "deleteAria": "{{name}} を完全に削除",
+    "confirmDeleteAria": "もう一度クリックで {{name}} を完全に削除"
+  },
+  "about": {
+    "loading": "バージョン情報を読み込んでいます…",
+    "version": "バージョン",
+    "newVersion": "新バージョンがあります",
+    "checking": "確認中…",
+    "check": "バージョン確認",
+    "author": "作者",
+    "website": "公式サイト",
+    "repo": "オープンソースリポジトリ",
+    "openInBrowser": "ブラウザーで開く",
+    "credits": "クレジット",
+    "sponsor": "サポート",
+    "sponsorHint": "MeowCode が役に立っていたら、QR コードを読み取って作者を支援できます。",
+    "qrAlt": "{{name}}の支払い用 QR コード",
+    "sponsors": {
+      "wechat": "WeChat Pay",
+      "alipay": "Alipay"
+    },
+    "upToDate": "すでに最新バージョンです",
+    "checkFailed": "バージョン確認に失敗しました：{{error}}"
+  },
+  "actions": {
+    "add": "追加",
+    "cancel": "キャンセル",
+    "confirmDelete": "削除を確認",
+    "delete": "削除",
+    "edit": "編集",
+    "restore": "復元",
+    "save": "保存",
+    "saving": "保存中…"
+  },
+  "models": {
+    "section": "モデル",
+    "desc": "ここでモデルプロバイダーを追加し、使うモデル名を入力します。",
+    "count_one": "設定済みのモデル {{count}} 件",
+    "count_other": "設定済みのモデル {{count}} 件",
+    "count_few": "設定済みのモデル {{count}} 件",
+    "count_many": "設定済みのモデル {{count}} 件",
+    "add": "モデルを追加",
+    "empty": "まだモデルが設定されていません。「モデルを追加」から始めましょう。",
+    "deleteTitle": "プロバイダーを削除",
+    "deleteMessage": "「{{name}}」を削除しますか？削除後、再度設定しないと使用できません。",
+    "restartTitle": "保存するとローカルサービスが再起動します",
+    "restartMessage": "モデルの変更を反映するにはローカル agent サービスの再起動が必要で、実行中のターンは中断されます。保存しますか？",
+    "restartConfirm": "保存する",
+    "colModel": "モデル",
+    "colProvider": "プロバイダー",
+    "colActions": "操作",
+    "active": "現在",
+    "enableAria": "{{name}}を有効にする",
+    "levels": "推論レベル",
+    "levelRemoveAria": "{{level}}を削除",
+    "levelRemoveTitle": "このレベルを削除",
+    "levelsAuto": "空欄ならモデル名から自動判定します（現在 {{levels}}）",
+    "levelsManual": "手動で指定しています。すべてのレベルを空にすると、モデル名からの自動判定に戻ります。",
+    "modalityOptions": {
+      "text": "テキスト",
+      "image": "画像",
+      "pdf": "PDF"
+    },
+    "ttlOptions": {
+      "fiveMinutes": "5 分（既定）",
+      "auto": "自動（チャットの進行に合わせて）",
+      "oneHour": "1 時間（Anthropic の長期 TTL）"
+    },
+    "summaryOptions": {
+      "none": "送らない（トークン節約）",
+      "auto": "自動",
+      "concise": "簡潔",
+      "detailed": "詳細"
+    },
+    "compactionOptions": {
+      "auto": "自動（公式エンドポイントで有効）",
+      "on": "常にオン（互換ゲートウェイ）",
+      "off": "オフ（ローカルの要約のみ）"
+    },
+    "authOptions": {
+      "protocolDefault": "プロトコルの既定（Anthropic x-api-key / OpenAI Bearer）",
+      "bearer": "Authorization: Bearer",
+      "azureKey": "api-key ヘッダー（Azure OpenAI）",
+      "bedrockKey": "Bedrock-API-Key（Amazon Bedrock）",
+      "none": "認証ヘッダーを送らない（ローカル推論 / ヘッダー側で指定）"
+    },
+    "picker": {
+      "title": "モデルプロバイダーを追加",
+      "desc": "プロバイダーを選択したら、使うモデル名を入力してください。API 形式は後からいつでも切り替えできます。見つからない場合は「カスタムプロバイダー」でエンドポイントを手入力してください。",
+      "search": "検索",
+      "searchPlaceholder": "名前または id で検索（例：deepseek）",
+      "custom": "カスタムプロバイダー",
+      "customMeta": "エンドポイントとキーを手入力",
+      "needEndpoint": "エンドポイントの入力が必要",
+      "noMatch": "一致するプロバイダーがありません。「カスタムプロバイダー」をお試しください"
+    },
+    "form": {
+      "addTitle": "モデルを追加 · {{name}}",
+      "editTitle": "モデルを編集",
+      "desc": "プロバイダーは選択済みなので、モデル自体の設定を入力してください。API キーはこのマシン上にのみ保存されます（Windows の資格情報で暗号化）。",
+      "customProviderName": "カスタムプロバイダー",
+      "providerName": "プロバイダー名",
+      "providerNamePlaceholder": "例：My Provider",
+      "providerNameHint": "モデル一覧のプロバイダー列に表示されます",
+      "provider": "プロバイダー",
+      "apiFormat": "API 形式",
+      "apiFormatAuto": "リクエスト URL から自動判別しました。手動で選ぶと自動判別は止まります",
+      "apiFormatDesc": "どのエンドポイントに、どんなリクエストボディで送信するかを決めます。リクエスト URL から自動判別されます",
+      "baseUrl": "リクエスト URL",
+      "baseUrlHint": "ルート URL を入力すると API 形式を自動判別し、パスは選んだ形式に応じて補完されます",
+      "modelId": "モデル ID",
+      "modelIdPlaceholder": "例：deepseek-chat",
+      "modelIdHint": "プロバイダーのドキュメントに記載されたモデル識別子で、必須です。同じモデル ID を複数設定することもできます（URL やキーを変える）。",
+      "displayName": "モデルの表示名",
+      "displayNamePlaceholder": "空欄ならモデル ID を表示",
+      "displayNameHint": "画面の表示のみに影響します。既存のモデルと同じ名前にはできません",
+      "apiKey": "API キー",
+      "apiKeySaved": "保存済み — 空欄のままなら変更しません",
+      "contextWindow": "コンテキストウィンドウ",
+      "contextWindowHint": "空欄ならモデル名から自動判定します。256K / 1M の表記に対応",
+      "maxOutput": "最大出力",
+      "maxOutputHint": "空欄ならモデル名から自動判定します。1 回の返答で生成できるトークン数",
+      "modalities": "入力モダリティ",
+      "requiredTag": "（必須）",
+      "modalityHint": "画像対応はモデル名から自動判定します。PDF は Anthropic / Responses プロトコルでのみ扱えます。テキストモダリティは必ず残してください。",
+      "advanced": "高度な設定",
+      "advancedHint": "推論強度 / キャッシュ TTL / 推論レベル / 認証とリクエストのカスタマイズ — 未設定なら既定",
+      "reasoningEffort": "推論強度",
+      "reasoningEffortPlaceholder": "空欄 = プロバイダーの既定",
+      "reasoningEffortHint": "reasoning_effort として送信されます",
+      "thinkingBudget": "思考予算",
+      "thinkingBudgetPlaceholder": "空欄 = 推論強度のレベルに従う",
+      "thinkingBudgetHint": "thinking.budget_tokens。max_tokens を超えないよう自動的に調整されます",
+      "cacheTtl": "キャッシュ TTL",
+      "cacheTtlHint": "1h の書き込みは 2 倍の料金です。自動と 1h は、長期 TTL に対応していることを実測で確認したエンドポイントでのみ有効になり、それ以外は 5m に戻ります",
+      "reasoningSummary": "思考の要約",
+      "reasoningSummaryHint": "Responses プロトコルのみ。要約は出力トークンとして課金されます",
+      "nativeCompaction": "サーバー側の圧縮",
+      "nativeCompactionHint": "プロバイダーに履歴を圧縮させ、全文要約のリクエストを 1 回分節約します",
+      "authStyle": "認証方式",
+      "authStyleHint": "多くのプロバイダーは既定のままで構いません。Azure / Bedrock はそれぞれの項目を選んでください",
+      "extraHeaders": "追加のリクエストヘッダー",
+      "extraHeadersHint": "1 行に「名前: 値」を 1 つ。# で始まる行はコメントです。例：OpenRouter の HTTP-Referer",
+      "extraBody": "追加のリクエストボディ",
+      "extraBodyHint": "JSON オブジェクトをリクエストボディの最上位にマージします。例：Qwen の {\"enable_thinking\": false}",
+      "models": "モデル",
+      "addModel": "モデル ID を追加",
+      "fetchModels": "モデル一覧を取得",
+      "fetching": "取得中…",
+      "fetchTitle": "追加するモデルを選択",
+      "fetchHint": "チェックしたモデルだけが上の一覧に追加されます。",
+      "fetchEmpty": "モデルを取得できませんでした。",
+      "fetchFailed": "モデル一覧の取得に失敗しました：{{message}}",
+      "fetchAdded": "追加済み",
+      "fetchAdd": "選択を追加（{{count}}）",
+      "modelSettings": "モデル設定",
+      "modelSettingsDesc": "このモデルだけに適用されます。エンドポイント・キー・プロトコルは上部で設定します。",
+      "modelsRequired": "モデルを 1 つ以上追加してください。",
+      "contextDefault": "モデルの既定値"
+    },
+    "error": {
+      "providerNameRequired": "プロバイダー名を入力してください",
+      "modelRequired": "モデル ID を入力してください",
+      "duplicateName": "表示名「{{name}}」はすでに設定されています",
+      "baseUrlRequired": "リクエスト URL を入力してください",
+      "contextFormat": "コンテキストウィンドウの入力が正しくありません（例：128k または 1M）",
+      "maxOutputFormat": "最大出力の入力が正しくありません（例：32k）",
+      "extraBodyObject": "追加のリクエストボディは JSON オブジェクトにしてください",
+      "extraBodyJson": "追加のリクエストボディが有効な JSON ではありません：{{message}}",
+      "headerLine": "ヘッダーの形式が正しくありません：{{line}}"
+    }
+  },
+  "island": {
+    "section": "AI 悬浮岛",
+    "field": "启用悬浮岛",
+    "desc": {
+      "on": "悬浮岛已开启：屏幕顶部居中显示所有运行中会话的状态，鼠标放上去可展开查看对话、直接输入或停止任务。",
+      "off": "开启后在屏幕顶部居中显示一枚胶囊，实时显示所有运行中会话的状态；鼠标放上去可展开成对话小窗。"
+    }
+  },
+  "hooks": {
+    "loading": "Hooks 設定を読み込み中…",
+    "error": "Hooks 設定の読み込みに失敗しました：{{error}}",
+    "retry": "再試行",
+    "saving": "Agent サービスを再起動して Hooks 設定を適用しています…",
+    "import": {
+      "section": "Claude Code Hooks をインポート",
+      "description": "~/.claude/settings.json とワークスペースの .claude 設定を読み込みます。ワークスペース設定は既定では実行しません。",
+      "master": "Hooks を有効化",
+      "masterHint": {
+        "on": "Claude Code hook 設定を読み込み済みです。",
+        "off": "無効中：設定は読み取り専用で表示され、実行されません。"
+      },
+      "workspace": "ワークスペースの .claude 設定を含める",
+      "workspaceHint": {
+        "on": "ワークスペースの .claude/settings*.json の hooks を実行します。",
+        "off": "~/.claude 設定のみ実行し、ワークスペース設定は表示のみです。"
+      },
+      "workspaceWarning": "ワークスペースの hooks はリポジトリ内のファイル由来で、悪意あるコマンドが含まれる可能性があります。信頼できるリポジトリでのみ有効にしてください。",
+      "disabledNote": "Hooks は無効です。上のスイッチをオンにするとコマンドが実行されます。"
+    },
+    "configured": {
+      "section": "設定済みの Hooks",
+      "description": "読み取り専用の概要です。編集は設定ファイルを開いて行ってください。",
+      "empty": "Claude Code hooks は設定されていません。",
+      "eventCount": "{{count}} 件のコマンド",
+      "matcher": "{{matcher}} に一致",
+      "timeout": "タイムアウト {{seconds}} 秒",
+      "layer": {
+        "user": "ユーザー",
+        "project": "ワークスペース",
+        "local": "ワークスペース（ローカル）"
+      },
+      "layerUnknown": "不明なパス",
+      "excluded": "未実行",
+      "open": "編集用に開く",
+      "missing": "ファイルがありません",
+      "fileCount": "{{count}} 件のコマンド",
+      "missingToast": "ファイルがありません：{{path}}",
+      "openError": "ファイルを開けません：{{error}}",
+      "unsupported": "未対応イベント：{{events}}"
+    },
+    "runMode": {
+      "section": "Hooks コマンドの実行方法",
+      "description": {
+        "auto": "hook コマンドを自動実行します。PreToolUse の ask/deny は引き続き有効です。",
+        "ask": "セッション内で各 hook コマンドの初回実行前に確認します。拒否するとそのコマンドだけをスキップします。"
+      },
+      "field": "実行方法",
+      "options": {
+        "auto": "自動実行",
+        "autoDesc": "追加確認なしで hook 設定に従う",
+        "ask": "毎回確認",
+        "askDesc": "セッションごとに各コマンドを 1 回確認"
+      }
+    },
+    "confirm": {
+      "title": "Agent サービスを再起動しますか？",
+      "message": "実行中のターンがあります。Hooks 設定を保存すると中断されます。",
+      "confirm": "保存して再起動"
+    }
+  },
+  "dataImport": {
+    "title": "データインポート",
+    "desc": "他のアプリから新しい内容をインポートします。自動同期は行わず、元のアプリのデータも変更しません。",
+    "fromApps": "アプリからインポート",
+    "redetect": "再検出",
+    "loading": "インポート可能なアプリを検出中…",
+    "error": "検出に失敗しました：{{error}}",
+    "retry": "再試行",
+    "app": {
+      "qoder": "Qoder CN IDE（Quest）",
+      "qoderintl": "Qoder (International)",
+      "workbuddy": "WorkBuddy",
+      "workbuddyai": "WorkBuddyAI",
+      "zcode": "ZCode",
+      "opencode": "OpenCode",
+      "dsh": "DeepSeek Harness",
+      "codex": "Codex"
+    },
+    "notDetected": "未検出",
+    "selected": "{{count}} 項目を選択中",
+    "import": "データをインポート",
+    "importing": "インポート中…",
+    "groups": {
+      "mcp": "MCP コネクタ",
+      "memory": "メモリ",
+      "skills": "Skills",
+      "tasks": "会話履歴"
+    },
+    "groupEmpty": "なし",
+    "result": {
+      "imported": "{{count}} 件をインポートしました",
+      "skipped": "{{count}} 件は既に存在",
+      "failed": "{{count}} 件が失敗しました。クリックで表示",
+      "mcpReloaded": "MCP コネクタを更新して再接続しました"
+    },
+    "progress": "インポート中 {{done}}/{{total}}"
+  },
+  "rules": {
+    "importSection": "設定をインポート",
+    "agents": {
+      "label": "AGENTS.md をコンテキストに含める",
+      "hint": "エージェントはワークスペース直下の AGENTS.md を読み、コンテキストに追加します。"
+    },
+    "claude": {
+      "label": "CLAUDE.md をコンテキストに含める",
+      "hint": "エージェントはワークスペース直下の CLAUDE.md と CLAUDE.local.md を読み、コンテキストに追加します。"
+    },
+    "title": "ルール",
+    "hint": "チャット中にエージェントが従うルールを作成・管理します。",
+    "refresh": "ルールを更新",
+    "create": "作成",
+    "empty": "ルールはまだありません",
+    "emptyHint": "「作成」をクリックして最初のルールを追加",
+    "noWorkspace": "先にワークスペースを選択してください",
+    "noWorkspaceHint": "ルールはプロジェクトの .meowcode/rules ディレクトリに保存されます。",
+    "clickToEdit": "クリックしてこのルールを編集",
+    "deleteAria": "ルール「{{name}}」を削除",
+    "confirmDeleteAria": "ルール「{{name}}」の削除を確認するにはもう一度クリック",
+    "createTitle": "新しいルール",
+    "editTitle": "ルール「{{name}}」を編集",
+    "editorDesc": "ルールはプロジェクトとともにシステムプロンプトへ注入されます。Markdown に対応しています。",
+    "name": "ルール名",
+    "namePlaceholder": "例: code-style",
+    "nameHint": "小文字、数字、ハイフン（例: code-style）",
+    "nameRule": "小文字、数字、ハイフンを使用し、先頭と末尾にハイフンを付けないでください。",
+    "content": "ルール内容",
+    "contentPlaceholder": "例: 新しい関数には JSDoc を付ける。generated/ は編集しない。",
+    "loadFailed": "ルールを読み込めませんでした",
+    "readFailed": "ルールを読み取れませんでした",
+    "saveFailed": "ルールを保存できませんでした",
+    "deleteFailed": "ルールを削除できませんでした",
+    "saved": "ルール「{{name}}」を保存しました",
+    "deleted": "ルール「{{name}}」を削除しました"
+  },
+  "worktree": {
+    "section": "Worktrees",
+    "fetch": {
+      "label": "作成前に upstream を取得",
+      "hint": "worktree を作成する前に upstream の更新を取得します。"
+    },
+    "cleanup": {
+      "label": "古い worktree を自動削除",
+      "hint": "ほとんどのユーザーに推奨。古い worktree とディスク容量を自分で管理する場合のみオフにしてください。"
+    },
+    "maxKeep": {
+      "label": "Worktree の上限",
+      "hint": "上限を超えると古い worktree から自動的に整理されます。削除前に Git バックアップが作成されるため、削除した worktree は復元できます。"
+    }
+  },
+  "learning": {
+    "title": "自己学習",
+    "desc": "各ターン終了後、エージェントは学んだ内容を再利用可能なスキル、プロジェクトの指針、あなたの働き方のモデルとして蓄積します。すぐには信頼しません。新しい項目は試用期間から始まり、役立つことを示す必要があり、邪魔なら自動的に退役します。",
+    "toggleField": "会話から学習する",
+    "toggleFailed": "設定を変更できませんでした",
+    "budgetField": "本日の呼び出し",
+    "budgetValue": "{{date}} に {{count}} 回",
+    "skillsTitle": "学習したスキル",
+    "skillsDesc": "エージェントが自分のために書いた手順です。SKILL.md のパスから本文を読み、名前と説明で呼び出します。",
+    "skillsEmpty": "まだ何も学習していません。手順が成功し、繰り返す価値があると判断されたときに現れます。",
+    "skillCount_one": "{{count}} 件のスキル",
+    "skillCount_other": "{{count}} 件のスキル",
+    "skillCount_few": "{{count}} 件のスキル",
+    "skillCount_many": "{{count}} 件のスキル",
+    "consolidate": "今すぐ整理",
+    "consolidated": "整理しました：{{count}} 件を更新",
+    "consolidatedEmpty": "整理する項目はありません",
+    "consolidateFailed": "整理に失敗しました",
+    "statsHint": "貢献 / 阻害 — 呼び出された回数と、そのターンがうまくいったか",
+    "rollbackAria": "{{name}} を前の版に戻す",
+    "reactivateAria": "{{name}} を試用期間に戻す",
+    "deleteAria": "{{name}} を削除",
+    "actionFailed": "操作が反映されませんでした",
+    "guidelinesTitle": "プロジェクトの指針",
+    "guidelinesDesc": "トリガーが一致したときだけ現れるルールです。コマンド、エラー、キーワード、ファイルパターン。",
+    "guidelinesEmpty": "まだ指針はありません。",
+    "profileTitle": "あなたについて知っていること",
+    "profileDesc": "コミュニケーションの好み、求める厳密さ、与えている自律性。",
+    "profileEmpty": "まだありません。繰り返しの証拠からゆっくり育ちます。",
+    "status": {
+      "tentative": "試用期間",
+      "active": "信頼済み",
+      "retired": "退役"
+    },
+    "dimension": {
+      "communication": "コミュニケーション",
+      "rigor": "厳密さ",
+      "autonomy": "自律性",
+      "coding_style": "コーディング風格",
+      "toolchain": "ツールチェーン",
+      "domain": "領域"
+    },
+    "loadFailed": "学習項目を読み込めませんでした",
+    "clearField": "学習した内容をすべて消去",
+    "clearHint": "学習したスキル、指針、プロファイル特性、結果履歴をすべて削除します（このプロジェクトとプロジェクト横断の両方）。元に戻せません。",
+    "clearAction": "すべて消去",
+    "clearConfirm": "もう一度クリックで確定",
+    "cleared": "{{scopes}} 個の学習ディレクトリを空にしました",
+    "clearedNothing": "消去する項目はありません",
+    "clearFailed": "消去に失敗しました"
+  },
+  "general": {
+    "section": "一般",
+    "desc": "日常の動作に関する設定です。変更はすぐに反映されます。",
+    "notify": {
+      "field": "システム通知",
+      "desc": {
+        "on": "ターン完了・確認待ち・中断時に、ウィンドウが前面にない場合はシステム通知を表示します（会話タイトルと返信の要約）。",
+        "off": "システム通知を表示しません。"
+      }
+    }
+  },
+  "proxy": {
+    "title": "ネットワークプロキシ",
+    "desc": "ネットワーク不調時に接続方法を切り替えられます。変更はすぐ反映されます。",
+    "mode": {
+      "direct": "直接接続",
+      "system": "システムに従う",
+      "manual": "手動設定"
+    },
+    "urlLabel": "プロキシアドレス",
+    "urlHint": "例: http://127.0.0.1:7890。空欄なら直接接続のままです。",
+    "urlMissing": "アドレス未入力のため、当面は直接接続します。",
+    "failed": "プロキシ設定を反映できませんでした"
+  },
+  "rewind": {
+    "section": "セッション巻き戻し",
+    "enabled": {
+      "label": "ファイルスナップショット",
+      "hint": "毎ターン開始時にチェックポイントを取り、書き換えたファイルを会話と一緒に巻き戻せます。変更後はアプリの再起動で有効。"
+    },
+    "keep": {
+      "label": "保持するスナップショット数",
+      "hint": "セッションごとに最近 N 個のチェックポイントのスナップショットを保持し、古いものは自動整理。"
+    },
+    "maxTotal": {
+      "label": "スナップショット容量上限",
+      "hint": "セッションのスナップショット合計サイズ上限。超過すると古いものから回収。"
+    }
+  },
+  "sandbox": {
+    "title": "サンドボックス",
+    "modeField": "サンドボックスモード",
+    "modeDesc": "Agent のファイルシステムへのアクセス権限を制御します。",
+    "modeFull": "フルアクセス",
+    "modeFullDesc": "Agent はワークスペース外のファイルも読み書きできます。",
+    "modeWorkspace": "ワークスペース書き込み",
+    "modeWorkspaceDesc": "コマンドはワークスペースと追加の書き込み可能ルートにのみ書き込めます。",
+    "deleteField": "ファイル削除の確認",
+    "deleteDesc": "ワークスペース書き込みモードでのみ有効です。フルアクセスでは削除確認を既定でスキップします。",
+    "unsupported": "コマンドサンドボックスは Windows でのみ利用できます。",
+    "riskTitle": "ワークスペース書き込みに切り替えますか？",
+    "riskDoes": "有効にすると、ワークスペースに常駐 ACL と Low 整合性ラベルが書き込まれ、run_command が制限付きトークンで実行されます。",
+    "riskDoesNot": "読み取り・ネットワーク・ファイル編集ツールは制限しません。ブロックされたコマンドは、サンドボックス外で 1 回だけ再試行するか個別に確認します。",
+    "riskUndo": "フルアクセスに戻すとサンドボックスは停止します。ワークスペースの ACL は残りますが、使用されなくなります。",
+    "confirmEnable": "切り替える",
+    "cancel": "キャンセル",
+    "enabled": "ワークスペース書き込みに切り替えました（初回許可 {{ms}} ms）",
+    "saveFailed": "サンドボックス設定の保存に失敗しました",
+    "loadFailed": "サンドボックス設定の読み込みに失敗しました"
+  }
+}

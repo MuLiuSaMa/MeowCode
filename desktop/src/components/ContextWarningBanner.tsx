@@ -1,6 +1,8 @@
 import { useState } from "react";
+import { Trans, useTranslation } from "react-i18next";
 import { LuCircleAlert, LuShrink, LuX } from "react-icons/lu";
 import type { ContextUsage } from "../api";
+import { formatNumber } from "../i18n/format";
 import { formatTokenCount } from "./ContextMeter";
 import "./ContextWarningBanner.css";
 
@@ -24,6 +26,7 @@ export function ContextWarningBanner({
   onDismiss: () => void;
 }) {
   const [pending, setPending] = useState(false);
+  const { t } = useTranslation("shell");
   if (dismissed || compacting || !usage?.recommendedCompaction || !usage.contextWindow) {
     return null;
   }
@@ -47,11 +50,17 @@ export function ContextWarningBanner({
         <LuCircleAlert size={14} />
       </span>
       <span className="mc-ctxwarn__text">
-        上下文已用 <b>{percent}%</b>（{formatTokenCount(usage.usedTokens)} /{" "}
-        {formatTokenCount(contextWindow)}）。
-        {streaming
-          ? "本轮结束后可手动压缩，避免下一次请求溢出后自动压缩。"
-          : "建议手动压缩，避免下一次请求溢出后自动压缩。"}
+        <Trans
+          t={t}
+          i18nKey="contextWarning.usage"
+          values={{
+            percent: formatNumber(percent),
+            used: formatTokenCount(usage.usedTokens),
+            window: formatTokenCount(contextWindow),
+          }}
+          components={{ b: <b /> }}
+        />
+        {streaming ? t("contextWarning.hintStreaming") : t("contextWarning.hint")}
       </span>
       <button
         type="button"
@@ -60,13 +69,17 @@ export function ContextWarningBanner({
         onClick={() => void handleCompact()}
       >
         <LuShrink size={13} />
-        {pending ? "正在压缩…" : streaming ? "本轮结束后可压缩" : "立即压缩"}
+        {pending
+          ? t("contextWarning.compacting")
+          : streaming
+            ? t("contextWarning.compactAfterTurn")
+            : t("contextWarning.compactNow")}
       </button>
       <button
         type="button"
         className="mc-ctxwarn__dismiss"
-        aria-label="忽略压缩提示"
-        title="本次不再提示"
+        aria-label={t("contextWarning.dismissAria")}
+        title={t("contextWarning.dismissTitle")}
         onClick={onDismiss}
       >
         <LuX size={13} />

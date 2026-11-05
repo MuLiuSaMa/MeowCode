@@ -1,0 +1,334 @@
+/* AI 悬浮岛布局样式。
+   岛内对话气泡（.mc-userbubble）、助手正文（.mc-assistant）、工具行（.mc-toolrow）、
+   输入框（.mc-composer__input）、发送按钮（.mc-sendbtn）全部复用主窗口组件样式，
+   这里只负责：窗口内定位、胶囊→面板的形变动画、以及少量岛内布局。
+
+   形变动画原理：单个容器宽/高/圆角直接过渡（176×40 胶囊 → 460×640 面板），
+   内部内容固定为展开态尺寸，被容器 overflow:hidden 逐帧裁切揭示——
+   内容全程零回流，形变连续丝滑；正文再延迟一小段淡入上浮增加质感。 */
+
+:root[data-theme="dark"] {
+  --island-bg: rgba(21, 21, 24, 0.95);
+  --island-shadow: 0 10px 32px rgba(0, 0, 0, 0.42);
+}
+
+:root[data-theme="light"] {
+  --island-bg: rgba(246, 246, 249, 0.96);
+  --island-shadow: 0 10px 32px rgba(0, 0, 0, 0.16);
+}
+
+/* base.css 会把 body 画成实色（主窗口需要），岛是透明窗口必须压回：
+   本文件是最后一个引入的样式表，同等优先级下后者的 !important 生效 */
+html,
+body {
+  background: transparent !important;
+}
+
+.island-root {
+  position: fixed;
+  top: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  pointer-events: none;
+  font-family: var(--font-sans);
+  color: var(--fg);
+}
+
+/* 展开态的最终尺寸，胶囊与内容共用，保证形变期间内容不被重新布局 */
+.island {
+  --island-w: min(460px, calc(100vw - 16px));
+  --island-h: min(640px, calc(100vh - 20px));
+  --island-spring: cubic-bezier(0.3, 1.06, 0.35, 1);
+  /* 折叠 = 胶囊：左 Logo 右状态，点击展开（紧凑尺寸） */
+  pointer-events: auto;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: 150px;
+  height: 32px;
+  border-radius: 999px;
+  background: var(--island-bg);
+  border: 1px solid var(--border);
+  box-shadow: var(--island-shadow);
+  overflow: hidden;
+  cursor: pointer;
+  user-select: none;
+  /* 收起编排（展开的镜像）：内容先清场，先收高缩回短条，宽度与圆角最后收回胶囊 */
+  transition:
+    width 300ms var(--island-spring) 170ms,
+    height 280ms var(--island-spring) 0ms,
+    border-radius 260ms var(--island-spring) 170ms,
+    background-color 200ms var(--ease);
+}
+
+.island:hover {
+  border-color: var(--border-hover);
+}
+
+.island[data-expanded="true"] {
+  width: var(--island-w);
+  height: var(--island-h);
+  border-radius: var(--radius-2xl);
+  cursor: default;
+  /* 展开编排（NexBox/iOS 灵动岛式两段）：先横向拉开且圆角立刻收成矩形（不出现"气球"中间帧），
+     再向下生长出面板身体；轻微回弹让落地更顺滑 */
+  transition:
+    width 320ms var(--island-spring) 0ms,
+    height 380ms var(--island-spring) 140ms,
+    border-radius 240ms var(--island-spring) 0ms,
+    background-color 200ms var(--ease);
+}
+
+/* 拖放悬停：整岛描边高亮 */
+.island[data-drag="true"] {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft), var(--island-shadow);
+}
+
+/* ---- 顶部行：折叠态就是胶囊本体，展开后是面板标题行 ---- */
+
+.island-head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  height: 32px;
+  padding: 0 11px 0 6px;
+  border-bottom: 1px solid transparent;
+  transition: border-color 300ms var(--island-spring);
+}
+
+.island[data-expanded="true"] .island-head {
+  border-bottom-color: var(--border);
+}
+
+.island-pill__logo {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  border-radius: 6px;
+}
+
+.island-pill__status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium, 500);
+  color: var(--fg);
+  white-space: nowrap;
+}
+
+.island-pill__text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.island[data-expanded="true"] .island-pill__status {
+  font-size: var(--fs-base);
+}
+
+/* 待审批琥珀点 */
+.island-dot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #e8a33d;
+  box-shadow: 0 0 0 3px rgba(232, 163, 61, 0.18);
+}
+
+/* ---- 面板内容：固定展开态尺寸，形变期间只被裁切揭示，绝不回流 ---- */
+
+.island-rest {
+  position: absolute;
+  top: 33px;
+  left: 1px;
+  width: calc(var(--island-w) - 2px);
+  height: calc(var(--island-h) - 35px);
+  display: flex;
+  flex-direction: column;
+  opacity: 0;
+  transform: translateY(-10px);
+  pointer-events: none;
+  /* 收起时内容立刻退场，把舞台让给形变 */
+  transition: opacity 120ms var(--ease), transform 120ms var(--ease);
+}
+
+.island[data-expanded="true"] .island-rest {
+  opacity: 1;
+  transform: none;
+  pointer-events: auto;
+  /* 容器先横向拉开，身体开始向下生长时内容再浮入：延迟 200ms 错开节奏 */
+  transition: opacity 220ms var(--ease) 200ms, transform 280ms var(--island-spring) 200ms;
+}
+
+/* ---- 会话 chips：主窗口的 mc-skillchip 形状 ---- */
+
+.island-chips {
+  flex: none;
+  display: flex;
+  gap: 6px;
+  padding: 10px 12px 8px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.island-chips::-webkit-scrollbar {
+  display: none;
+}
+
+button.mc-skillchip.island-chip {
+  flex: none;
+  max-width: 190px;
+  cursor: pointer;
+  border: 1px solid transparent;
+}
+
+.island-chip[data-active="true"] {
+  border-color: var(--accent);
+}
+
+.island-chip__dot {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--fg-subtlest);
+}
+
+.island-chip[data-run="true"] .island-chip__dot {
+  background: var(--accent);
+  animation: island-pulse 1.1s ease-in-out infinite;
+}
+
+.island-chip[data-approval="true"] .island-chip__dot {
+  background: #e8a33d;
+  animation: none;
+}
+
+@keyframes island-pulse {
+  0%,
+  100% {
+    opacity: 0.4;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+/* ---- 对话流 ---- */
+
+.island-feed {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 2px 14px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.island-feed::-webkit-scrollbar {
+  width: 8px;
+}
+
+.island-feed::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 4px;
+}
+
+/* 岛里助手消息不带「MeowCode」标签行，正文排版（.mc-markdown）与主窗口完全同源，不做任何缩放 */
+
+.island-error {
+  align-self: stretch;
+  color: var(--danger);
+  font-size: var(--fs-xs);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  line-height: 1.5;
+}
+
+.island-empty {
+  margin: auto;
+  color: var(--fg-subtlest);
+  font-size: var(--fs-sm);
+}
+
+/* ---- 底部输入卡：主窗口 composer 同款（输入框 + 圆形发送按钮） ---- */
+
+.island-foot {
+  flex: none;
+  padding: 0 12px 12px;
+}
+
+.island-composer {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-2xl);
+  background: var(--bg-panel);
+  overflow: hidden;
+}
+
+/* 拖入的待发附件行：图片缩略图 + 附件 chip（主窗口 mc-attach/mc-skillchip 同款） */
+.island-attach {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px 0;
+}
+
+.island-attach .mc-skillchip {
+  max-width: 170px;
+}
+
+.island-attach__remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 16px;
+  height: 16px;
+  margin-left: 2px;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--fg-subtle);
+  cursor: pointer;
+}
+
+.island-attach__remove:hover {
+  color: var(--danger);
+}
+
+.island-composer .mc-composer__input {
+  min-height: 42px;
+  max-height: 120px;
+  padding: 10px 14px 2px;
+  font-size: var(--fs-sm);
+}
+
+.island-composer__actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  padding: 4px 8px 8px;
+}
+
+/* 附件按钮单独贴左下角，停止/发送/打开主窗口仍在右侧 */
+.island-composer__attach {
+  margin-right: auto;
+}
+
+.island-senderror {
+  padding: 6px 4px 0;
+  color: var(--danger);
+  font-size: var(--fs-xs);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

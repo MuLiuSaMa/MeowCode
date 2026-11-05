@@ -1,0 +1,57 @@
+{
+  "actions": {
+    "back": "Retour",
+    "next": "Continuer",
+    "skip": "Passer",
+    "later": "Configurer plus tard",
+    "connect": "Connecter",
+    "connecting": "Connexion…",
+    "start": "Commencer",
+    "finishing": "Finalisation…",
+    "close": "Fermer l’introduction"
+  },
+  "language": {
+    "title": "Choisir la langue",
+    "label": "Langue",
+    "previewLabel": "Aperçu de la langue",
+    "previewText": "Bonjour et bienvenue dans MeowCode.",
+    "systemMeta": "Langue du système · actuellement {{language}}",
+    "selectedMeta": "Langue de l’interface · {{language}}"
+  },
+  "theme": {
+    "title": "Choisir le thème",
+    "desc": "Appliqué immédiatement. Vous pourrez le modifier à tout moment dans Paramètres → Apparence.",
+    "options": {
+      "system": {
+        "label": "Système",
+        "desc": "Suit en temps réel le mode clair / sombre de Windows"
+      },
+      "light": {
+        "label": "Clair",
+        "desc": "Toujours utiliser l’interface claire"
+      },
+      "dark": {
+        "label": "Sombre",
+        "desc": "Toujours utiliser l’interface sombre"
+      }
+    }
+  },
+  "provider": {
+    "title": "Choisir un fournisseur d’IA",
+    "searchLabel": "Rechercher un fournisseur",
+    "searchPlaceholder": "Rechercher par nom ou id, par ex. deepseek",
+    "empty": "Aucun fournisseur correspondant — essayez « Fournisseur personnalisé »",
+    "customName": "Fournisseur personnalisé",
+    "customMeta": "Renseigner le point d’accès et la clé",
+    "needsEndpoint": "Point d’accès requis"
+  },
+  "connect": {
+    "title": "Connecter le fournisseur d’IA",
+    "saveFailed": "Échec de la connexion. Vérifiez la configuration et réessayez."
+  },
+  "finish": {
+    "title": "Tout est prêt",
+    "desc": "La configuration est terminée. Vous pouvez maintenant utiliser MeowCode.",
+    "noProvider": "Aucun modèle configuré — vous pourrez en ajouter plus tard dans Paramètres → Modèles."
+  }
+}

@@ -1,0 +1,186 @@
+{
+  "nav": {
+    "heading": "Agent 架构",
+    "agentListAria": "Agent 列表",
+    "mainAgentGroup": "主 Agent",
+    "subagentGroup": "子 Agent · {{name}}",
+    "subagentCount_one": "子 Agent {{count}} 个 · {{tagline}}",
+    "subagentCount_other": "子 Agent {{count}} 个 · {{tagline}}",
+    "subagentCount_few": "子 Agent {{count}} 个 · {{tagline}}",
+    "subagentCount_many": "子 Agent {{count}} 个 · {{tagline}}",
+    "addArchitecture": "新建自定义 Agent 架构",
+    "renameHint": "双击名称可改名",
+    "deleteAria": "删除「{{name}}」",
+    "currentBadge": "当前",
+    "profileDisabledBadge": "档位禁用",
+    "readOnlyBadge": "只读",
+    "customTagline": "自定义架构",
+    "loading": "正在加载 Agent…",
+    "emptySubagents": "该 Agent 未包含子 Agent"
+  },
+  "roles": {
+    "general": "通用",
+    "explore": "探索",
+    "planner": "规划",
+    "scoper": "范围界定",
+    "depthProber": "深挖",
+    "implementer": "实现",
+    "reviewer": "评审",
+    "verifier": "验证",
+    "freshVerifier": "独立复验",
+    "juror": "终审",
+    "sweeper": "收敛清扫",
+    "goalChecker": "目标核对",
+    "custom": "自定义"
+  },
+  "types": {
+    "agent": "Agent",
+    "tier": "层级",
+    "gate": "门禁",
+    "role": "子 Agent"
+  },
+  "nodeCard": {
+    "agent": "主 Agent",
+    "role": "子 Agent",
+    "gate": "门禁",
+    "tier": "层级",
+    "tierPassThrough": "层级 · 直通",
+    "agentTip": "主 Agent 是根 runtime，通过 task 派发子 Agent",
+    "roleTip": "子 Agent 会在 task 派发时实例化",
+    "gateTip": "门禁是一个检查点，由 gate→role 边指定关账子 Agent",
+    "tierTip": "任务层级，决定 admit 后走哪串门禁",
+    "terminalTierTip": "该层级没有门禁：admit 后直接完成"
+  },
+  "edge": {
+    "closeOut": "关账"
+  },
+  "select": {
+    "placeholder": "请选择"
+  },
+  "defaults": {
+    "standardAgent": "标准 Agent",
+    "mainAgent": "主 Agent",
+    "newTier": "新层级",
+    "newGate": "新门禁",
+    "customRoleDescription": "自定义子 Agent：工具白名单与系统提示词由该节点的属性面板覆盖"
+  },
+  "status": {
+    "loading": "加载中…",
+    "saving": "保存中…",
+    "saved": "已保存 — 治理 run 在下一次 admit 前装载新图",
+    "reset": "已重置为内置架构 — 保存后生效",
+    "connectTarget": "连线模式：点击目标节点",
+    "connectPickNode": "先选中一个节点，再点「连线」",
+    "dirty": "有未保存修改"
+  },
+  "toolbar": {
+    "addTier": "层级",
+    "addGate": "门禁",
+    "addRole": "子 Agent",
+    "connect": "连线",
+    "cancelConnect": "取消连线",
+    "connectTip": "点击起点节点，再点击终点节点连线",
+    "delete": "删除",
+    "deleteTip": "删除选中的节点或连线（节点删除会级联删除相连边）",
+    "fit": "适应画布",
+    "fitTip": "居中并缩放显示整张架构图",
+    "reset": "重置内置",
+    "save": "保存到工作区"
+  },
+  "canvas": {
+    "loading": "正在加载架构图…",
+    "legend": "拖动节点 · 空白处平移 · 滚轮缩放 | 主 Agent→子 Agent = task 派发，主 Agent→层级 = admit | tier→gate 序号 = 门禁顺序，gate→role = 关账"
+  },
+  "inspector": {
+    "ariaLabel": "节点属性",
+    "close": "关闭属性面板",
+    "edge": "连线",
+    "agentSubtitle": "主 Agent · {{id}}",
+    "tierSubtitle": "任务层级 · {{id}}",
+    "gateSubtitle": "质量门 · {{id}}",
+    "roleSubtitle": "子 Agent · {{role}}",
+    "roleSubtitleNumbered": "子 Agent · {{role}} #{{ordinal}}",
+    "edgeSubtitle": "连线 · {{type}}",
+    "deleteNode": "删除节点",
+    "deleteEdge": "删除连线"
+  },
+  "fields": {
+    "nodeName": "节点名称",
+    "nodeId": "节点 id",
+    "description": "职责说明",
+    "availableTools": "可用工具",
+    "selectAll": "全选",
+    "clearAll": "清空",
+    "restoreDefault": "恢复默认",
+    "restoreBuiltin": "恢复内置",
+    "systemPrompt": "系统提示词",
+    "agentPromptPlaceholder": "留空 = 使用当前档位的默认提示词",
+    "dispatch": "派发关系",
+    "dispatchHint": "在连线上改",
+    "roleType": "子 Agent 标识",
+    "displayName": "显示名",
+    "roleDescription": "子 Agent 职责简述",
+    "gateBindings": "门禁绑定",
+    "gateBindingsHint": "点选改绑",
+    "rolePromptPlaceholder": "留空使用内置提示词",
+    "gateName": "质量门名称",
+    "invariant": "判定不变量 / 验收标准",
+    "onFail": "失败策略",
+    "closer": "关账子 Agent",
+    "tierName": "层级名称",
+    "tierId": "层级 id（T0 / T1 / T2 才会被 admit 识别）",
+    "tierDescription": "层级说明",
+    "tierPrompt": "层级提示词（admit 时注入，可选）",
+    "tierPromptPlaceholder": "留空 = 不注入；填了会随 admit 报告一次性发给主 Agent",
+    "gateSequence": "门禁序列",
+    "gateSequenceHint": "点选增删",
+    "edgePath": "路径",
+    "edgeType": "类型",
+    "order": "序号 order（同层级内升序执行）"
+  },
+  "tools": {
+    "none": "无工具",
+    "allIncludingDynamic": "全量工具，另含 MCP / 浏览器动态工具",
+    "selectedCount_one": "已选 {{count}} 项",
+    "selectedCount_other": "已选 {{count}} 项",
+    "selectedCount_few": "已选 {{count}} 项",
+    "selectedCount_many": "已选 {{count}} 项",
+    "selectedFull": "已选全量工具",
+    "followProfile": "跟随当前档位",
+    "inheritedNote": "未覆盖时不额外限制，由档位决定",
+    "orchestrationNote": "task / admit 是编排通道，始终可用",
+    "explicitWhitelistNote": "显式白名单不含运行时注入的 MCP / 浏览器工具"
+  },
+  "registry": {
+    "unavailable": "注册表不可用",
+    "loading": "正在读取注册表…",
+    "unavailableRetry": "注册表不可用 — 重启应用或点上方重试",
+    "loadFailed": "子 Agent 注册表加载失败",
+    "loadFailedHint": "桌面端可能仍在运行旧的服务端构建；重启应用后重试。",
+    "retry": "重试"
+  },
+  "onFail": {
+    "rework": "返工（回跳到首道门禁）",
+    "loopTo": "loop-to:{{id}}（回跳到 {{id}}）",
+    "block": "block（直接阻塞 lane）"
+  },
+  "closer": {
+    "unbound": "未绑定（admit 会拒绝）"
+  },
+  "empty": {
+    "dispatchEdges": "还没有派发连线",
+    "gateNodes": "图中还没有门禁节点"
+  },
+  "tier": {
+    "executionOrder": "执行顺序：{{gates}}；顺序在连线上改 order。",
+    "passThrough": "无门禁 · 直通（admit 后直接完成）"
+  },
+  "notes": {
+    "agentPrompt": "输入框里预填的是当前档位的默认提示词；改完保存即生效。自定义内容是<strong>整体替换</strong>档位提示词，记得保留工具用法、路径规则等基础约定。",
+    "agentRoot": "主 Agent 是常驻根 runtime，不参与门禁；关账子 Agent 通过 tier→gate→role 链路关账。子 Agent 不能再派发。",
+    "rolePrompt": "留空回落内置提示词。只读子 Agent 的审批模式仍由注册表强制；关账子 Agent 需要保留 JSON 结果契约，否则 ChildResult 校验会失败。",
+    "gateBinding": "一道门禁只能有一个关账子 Agent，点选已绑定的会解除绑定。",
+    "gateEvidence": "证据由宿主实测：implementer 看文件改动，reviewer 看 critical findings，verifier 看命令退出码；绑给其他子 Agent 时只校验 completed + valid。门禁不采信模型自述。",
+    "edgeSemantics": "tier→gate 边决定门禁顺序；gate→role 边决定关账子 Agent；其他连线仅作说明。"
+  }
+}

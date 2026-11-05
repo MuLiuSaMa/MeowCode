@@ -1,0 +1,57 @@
+{
+  "actions": {
+    "back": "上一步",
+    "next": "繼續",
+    "skip": "略過",
+    "later": "稍後設定",
+    "connect": "完成接入",
+    "connecting": "正在接入…",
+    "start": "開始使用",
+    "finishing": "正在完成…",
+    "close": "關閉引導"
+  },
+  "language": {
+    "title": "選擇語言",
+    "label": "語言",
+    "previewLabel": "語言預覽",
+    "previewText": "你好，歡迎使用 MeowCode。",
+    "systemMeta": "跟隨系統 · 目前為 {{language}}",
+    "selectedMeta": "介面語言 · {{language}}"
+  },
+  "theme": {
+    "title": "選擇主題",
+    "desc": "選擇後立即生效，稍後也可以隨時在設定 → 外觀中變更。",
+    "options": {
+      "system": {
+        "label": "跟隨系統",
+        "desc": "即時跟隨 Windows 的淺色 / 深色設定"
+      },
+      "light": {
+        "label": "淺色",
+        "desc": "一律使用淺色介面"
+      },
+      "dark": {
+        "label": "深色",
+        "desc": "一律使用深色介面"
+      }
+    }
+  },
+  "provider": {
+    "title": "選擇 AI 服務商",
+    "searchLabel": "搜尋服務商",
+    "searchPlaceholder": "依名稱或 id 搜尋，例如 deepseek",
+    "empty": "沒有符合的服務商 —— 可以試試「自訂服務商」",
+    "customName": "自訂服務商",
+    "customMeta": "手動填寫端點與金鑰",
+    "needsEndpoint": "需填寫端點"
+  },
+  "connect": {
+    "title": "接入 AI 服務商",
+    "saveFailed": "接入失敗，請檢查設定後重試。"
+  },
+  "finish": {
+    "title": "準備就緒",
+    "desc": "設定已完成，現在可以開始使用 MeowCode 了。",
+    "noProvider": "尚未設定模型，可以稍後在設定 → 模型中新增。"
+  }
+}

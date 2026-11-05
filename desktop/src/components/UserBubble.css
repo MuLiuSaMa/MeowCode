@@ -1,6 +1,31 @@
 .mc-userrow {
   display: flex;
-  justify-content: flex-end;
+  flex-direction: column;
+  align-items: flex-end;
+}
+/* 回滚按钮：挂在用户气泡下方右侧，只显示图标，hover 行/聚焦时显现 */
+.mc-userbubble__rewind {
+  align-self: flex-end;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 3px;
+  margin-right: 2px;
+  padding: 3px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--muted, var(--fg));
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+.mc-userrow:hover .mc-userbubble__rewind,
+.mc-userbubble__rewind:focus-visible {
+  opacity: 1;
+}
+.mc-userbubble__rewind:hover {
+  color: var(--fg);
+  border-color: var(--border-strong, var(--border));
 }
 .mc-userbubble {
   max-width: 78%;

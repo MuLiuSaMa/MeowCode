@@ -1,0 +1,57 @@
+{
+  "actions": {
+    "back": "Voltar",
+    "next": "Continuar",
+    "skip": "Pular",
+    "later": "Configurar depois",
+    "connect": "Conectar",
+    "connecting": "Conectando…",
+    "start": "Começar",
+    "finishing": "Concluindo…",
+    "close": "Fechar a introdução"
+  },
+  "language": {
+    "title": "Escolher idioma",
+    "label": "Idioma",
+    "previewLabel": "Prévia do idioma",
+    "previewText": "Olá, boas-vindas ao MeowCode.",
+    "systemMeta": "Idioma do sistema · atualmente {{language}}",
+    "selectedMeta": "Idioma da interface · {{language}}"
+  },
+  "theme": {
+    "title": "Escolher tema",
+    "desc": "Aplicado na hora. Você pode alterá-lo a qualquer momento em Configurações → Aparência.",
+    "options": {
+      "system": {
+        "label": "Sistema",
+        "desc": "Segue em tempo real o modo claro / escuro do Windows"
+      },
+      "light": {
+        "label": "Claro",
+        "desc": "Usar sempre a interface clara"
+      },
+      "dark": {
+        "label": "Escuro",
+        "desc": "Usar sempre a interface escura"
+      }
+    }
+  },
+  "provider": {
+    "title": "Escolher provedor de IA",
+    "searchLabel": "Pesquisar provedores",
+    "searchPlaceholder": "Pesquise por nome ou id, por exemplo deepseek",
+    "empty": "Nenhum provedor corresponde — experimente \"Provedor personalizado\"",
+    "customName": "Provedor personalizado",
+    "customMeta": "Preencha o endpoint e a chave manualmente",
+    "needsEndpoint": "Endpoint obrigatório"
+  },
+  "connect": {
+    "title": "Conectar provedor de IA",
+    "saveFailed": "Falha na conexão. Verifique a configuração e tente novamente."
+  },
+  "finish": {
+    "title": "Tudo pronto",
+    "desc": "A configuração foi concluída. Agora você já pode usar o MeowCode.",
+    "noProvider": "Nenhum modelo configurado ainda — você pode adicionar um depois em Configurações → Modelos."
+  }
+}

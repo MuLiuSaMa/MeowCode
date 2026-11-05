@@ -1,0 +1,213 @@
+{
+  "image": {
+    "readFailed": "Impossible de lire l’image",
+    "unsupported": "Format d’image non pris en charge : {{type}}",
+    "tooLarge": "Image trop volumineuse : {{name}} dépasse encore 2 Mo après compression. Recadrez-la ou réduisez la résolution.",
+    "maxCount_one": "Un message ne peut contenir qu’une seule image",
+    "maxCount_few": "Un message peut contenir au plus {{count}} images",
+    "maxCount_many": "Un message peut contenir au plus {{count}} images",
+    "maxCount_other": "Un message peut contenir au plus {{count}} images",
+    "onlyImages": "Seuls les fichiers image peuvent être joints",
+    "fallbackName": "Image"
+  },
+  "file": {
+    "pathFailed": "Impossible de lire le chemin du fichier : {{name}}",
+    "skipped": "Fichier ou dossier vide ignoré : {{name}}"
+  },
+  "plugin": {
+    "loadFailed": "Échec du chargement : {{error}}",
+    "local": "Plugin local"
+  },
+  "permission": {
+    "title": "Autorisations des outils",
+    "readOnly": {
+      "label": "Lecture seule",
+      "desc": "Lecture des fichiers, recherche et navigation autorisées ; écriture, modification et exécution de commandes interdites"
+    },
+    "ask": {
+      "label": "Demander à chaque fois",
+      "desc": "Une confirmation est demandée avant d’écrire, de modifier un fichier ou d’exécuter une commande"
+    },
+    "auto": {
+      "label": "Auto dans l’espace de travail",
+      "desc": "Les écritures, modifications et commandes de développement courantes dans l’espace de travail s’exécutent automatiquement ; l’accès aux identifiants, le téléchargement-exécution, les réglages système, la publication/déploiement, les commandes git destructrices et les chemins extérieurs demandent toujours confirmation"
+    },
+    "full": {
+      "label": "Accès complet",
+      "desc": "Lire et écrire les fichiers partout sur cet ordinateur et exécuter tous les outils automatiquement"
+    }
+  },
+  "slash": {
+    "plan": {
+      "label": "Mode plan",
+      "desc": "Recherche en lecture seule ; rédige le plan de mise en œuvre dans un document sous plans/ et attend votre validation"
+    },
+    "goal": {
+      "label": "Mode objectif",
+      "desc": "Progresser en continu vers l’objectif et suivre l’avancement avec update_plan"
+    },
+    "exit": "Quitter {{mode}}",
+    "menuAria": "Commandes",
+    "group": {
+      "mode": "Modes",
+      "command": "Commandes",
+      "plugin": "Plugins",
+      "skill": "Compétences"
+    }
+  },
+  "mode": {
+    "plan": "Mode plan",
+    "goal": "Mode objectif",
+    "exitAria": "{{mode}}, cliquez pour quitter",
+    "exitTitle": "Cliquez pour quitter ce mode"
+  },
+  "project": {
+    "menuAria": "Changer de projet",
+    "search": "Rechercher des projets",
+    "empty": "Aucun projet correspondant",
+    "new": "Nouveau projet",
+    "remove": "Retirer de la liste",
+    "pickWorkspace": "Choisir un espace de travail"
+  },
+  "mention": {
+    "aria": "Référencer des fichiers de l’espace de travail",
+    "back": "Remonter d’un niveau",
+    "root": "Racine de l’espace de travail",
+    "refresh": "Actualiser la liste",
+    "loadFailed": "Échec de la lecture",
+    "loading": "Chargement…",
+    "dirFailed": "Impossible de lire ce dossier",
+    "noMatch": "Aucun fichier correspondant",
+    "emptyDir": "Ce dossier est vide"
+  },
+  "queue": {
+    "recoveredAria": "Messages non envoyés de la dernière fois",
+    "recoveredHead": "Non envoyé lors de la dernière fermeture",
+    "sendAsNew": "Envoyer comme nouveau message",
+    "send": "Envoyer",
+    "discardTitle": "Abandonner ce message",
+    "discard": "Abandonner",
+    "pendingAria": "Messages en file d’attente",
+    "steerTitle": "Interrompre la réponse en cours et envoyer ce message maintenant",
+    "steer": "Intervenir",
+    "removeTitle": "Retirer de la file d’attente",
+    "remove": "Supprimer"
+  },
+  "plan": {
+    "answerAria": "Répondre à la question",
+    "answerSubMultiple": "Choisissez une réponse ou saisissez-la ci-dessous · passe automatiquement à la question suivante",
+    "answerSub": "Choisissez une réponse ou saisissez-la ci-dessous",
+    "answerPlaceholder": "Autre chose — Entrée passe à la question suivante",
+    "prev": "Précédent",
+    "skipRest": "Passer le reste",
+    "unanswered": "(sans réponse)",
+    "confirmAria": "Confirmer le plan",
+    "exit": "Quitter le mode plan",
+    "confirmTitle": "Exécuter ce plan ?",
+    "confirmSub": "Après confirmation, j’exécuterai ce plan et produirai le résultat",
+    "start": "Commencer l’exécution",
+    "adjustPlaceholder": "Ajuster le plan — dites-moi quoi changer",
+    "sendAdjust": "Envoyer l’ajustement",
+    "adjustPrompt": "Ajustez le plan ; après l’envoi, le modèle continuera de le modifier…"
+  },
+  "branch": {
+    "detached": "detached HEAD · cliquez pour changer de branche",
+    "current": "Branche actuelle {{name}} · cliquez pour changer",
+    "search": "Rechercher des branches",
+    "listAria": "Liste des branches",
+    "loading": "Lecture des branches…",
+    "noMatch": "Aucune branche correspondante",
+    "empty": "Ce dépôt n’a pas encore de branche",
+    "stashSwitch": "Remiser les modifications locales et changer",
+    "openGit": "Ouvrir le contrôle de code source"
+  },
+  "worktree": {
+    "locked": "Cette session s’exécute déjà dans son propre worktree",
+    "hint": "Démarrer cette conversation dans un worktree Git séparé ; les modifications non validées ne sont pas reprises"
+  },
+  "input": {
+    "placeholder": {
+      "setup": "Terminez d’abord la configuration",
+      "compacting": "Compression de l’historique en cours ; vous pourrez envoyer ensuite",
+      "streaming": "Saisissez puis appuyez sur Entrée pour mettre en file d’attente",
+      "default": "Tapez @ pour référencer des fichiers du projet ; déposez des images ou n’importe quel fichier ici (même hors de l’espace de travail)"
+    },
+    "polishing": "Reformulation par l’IA"
+  },
+  "action": {
+    "more": "Plus d’actions",
+    "moreTitle": "Ajouter des pièces jointes / changer de mode",
+    "plusMenuAria": "Ajouter, référencer et commandes",
+    "upload": "Téléverser une pièce jointe",
+    "plugins": "Plugins",
+    "pluginsCount": "Plugins ({{count}})",
+    "skills": "Compétences",
+    "skillsCount": "Compétences ({{count}})",
+    "installing": "Installation…",
+    "polish": "Reformuler le prompt",
+    "send": "Envoyer",
+    "stop": "Arrêter"
+  },
+  "attach": {
+    "listAria": "Images à envoyer",
+    "removeImageAria": "Retirer l’image",
+    "remove": "Retirer"
+  },
+  "chip": {
+    "listAria": "Compétences, plugins et pièces jointes référencés",
+    "remove": "Retirer {{name}}"
+  },
+  "agent": {
+    "title": "Agent principal : {{name}}"
+  },
+  "polish": {
+    "discarded": "La saisie a changé, le résultat de la reformulation a été abandonné.",
+    "failed": "Échec de la reformulation du prompt : {{error}}"
+  },
+  "ctx": {
+    "title": "Utilisation du contexte",
+    "close": "Fermer",
+    "used": "Utilisé",
+    "windowUnset": "aucune fenêtre définie",
+    "categories": {
+      "system": "Prompt système",
+      "tools": "Outils système",
+      "skills": "Compétences ({{count}})",
+      "messages": "Messages",
+      "other": "Autres"
+    },
+    "hint": "La compression regroupe les échanges précédents dans un résumé ; l’historique affiché et le fichier de session restent intacts.",
+    "compacting": "Compression…",
+    "compact": "Compresser le contexte maintenant",
+    "cache": {
+      "stateLabel": "Cache",
+      "stateWarm": "Chaud",
+      "stateCold": "Froid",
+      "stateEvicted": "Évincée",
+      "stateUnsupported": "Non pris en charge",
+      "stateUnknown": "Inconnu",
+      "roundLabel": "Dernière",
+      "round": "lecture {{read}} · écriture {{write}}",
+      "busts": "Failles probables",
+      "bustTitle": "~{{drop}} jetons de moins lus que le tour précédent : préfixe réécrit ou cache évincée",
+      "reasonPrefixChanged": "Préfixe modifié (catalogue d'outils / prompt système réécrit)",
+      "reasonFirstRequest": "Première requête (démarrage à froid)",
+      "reasonIdleExceededTtl": "Inactif au-delà du TTL du cache",
+      "reasonNotReported": "Le fournisseur n'a pas rapporté de détails de cache",
+      "reasonBelowGranularity": "Entrée inférieure à la longueur minimale cachable",
+      "reasonCacheMiss": "Échec du cache"
+    }
+  },
+  "effort": {
+    "default": "Par défaut",
+    "off": "Désactivé",
+    "on": "Activé",
+    "minimal": "Minimal",
+    "low": "Faible",
+    "medium": "Moyen",
+    "high": "Élevé",
+    "xhigh": "Très élevé",
+    "max": "Maximal",
+    "ultra": "Ultra"
+  }
+}

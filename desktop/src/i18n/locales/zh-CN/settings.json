@@ -1,0 +1,584 @@
+{
+  "language": {
+    "section": "语言",
+    "title": "界面语言",
+    "description": "选择 MeowCode 界面的显示语言，切换后立即生效，无需重启。",
+    "system": "跟随系统"
+  },
+  "speech": {
+    "section": "语色",
+    "field": "回复语色",
+    "desc": {
+      "normal": "默认语气：简洁、直接、专业，只讲重点。",
+      "tafei": "永雏塔菲语气：自称塔菲，活泼软萌，句尾常带「喵」，偶尔用招牌台词；技术内容保持准确。",
+      "dazui": "大嘴：啊这个这个...是吧。1000万以内最好的语色。"
+    },
+    "options": {
+      "normal": "普通",
+      "tafei": "永雏塔菲",
+      "dazui": "大嘴"
+    }
+  },
+  "nav": {
+    "heading": "设置",
+    "ariaLabel": "设置分区",
+    "back": "返回对话"
+  },
+  "sections": {
+    "general": "通用",
+    "appearance": "外观",
+    "shortcuts": "快捷键",
+    "island": "AI 悬浮岛",
+    "worktree": "Worktrees",
+    "rules": "规则",
+    "models": "模型",
+    "memory": "记忆",
+    "archive": "归档",
+    "about": "关于",
+    "hooks": "Hooks",
+    "dataImport": "数据导入",
+    "learning": "自我学习",
+    "rewind": "会话回滚",
+    "sandbox": "沙箱"
+  },
+  "island": {
+    "section": "AI 悬浮岛",
+    "field": "启用悬浮岛",
+    "desc": {
+      "on": "悬浮岛已开启：屏幕顶部居中显示所有运行中会话的状态，鼠标放上去可展开查看对话、直接输入或停止任务。",
+      "off": "开启后在屏幕顶部居中显示一枚胶囊，实时显示所有运行中会话的状态；鼠标放上去可展开成对话小窗。"
+    }
+  },
+  "close": {
+    "section": "关闭方式",
+    "field": "关闭窗口时",
+    "desc": {
+      "ask": "每次关闭窗口时询问你要缩小到托盘还是直接退出。",
+      "tray": "关闭窗口时隐藏到系统托盘，MeowCode 继续在后台运行。",
+      "quit": "关闭窗口会直接退出 MeowCode。"
+    },
+    "options": {
+      "ask": "每次询问",
+      "tray": "缩小到托盘",
+      "quit": "直接关闭"
+    }
+  },
+  "update": {
+    "section": "更新",
+    "field": "静默下载更新",
+    "desc": {
+      "on": "启动检查到新版本时在后台自动下载，完成后导航栏左下角会出现重启按钮，点击即可安装。",
+      "off": "只在启动时静默检查新版本并提醒，下载与安装需要在关于页手动进行。"
+    }
+  },
+  "worktree": {
+    "section": "Worktrees",
+    "fetch": {
+      "label": "创建前获取上游更新",
+      "hint": "创建 Worktree 时，先获取上游更新。"
+    },
+    "cleanup": {
+      "label": "自动删除旧 Worktree",
+      "hint": "建议大多数用户启用。仅当你希望自行管理旧 Worktree 和磁盘用量时关闭。"
+    },
+    "maxKeep": {
+      "label": "自动删除数量限制",
+      "hint": "超过数量后，会从最旧的 Worktree 开始自动清理。删除前会创建 Git 备份，因此被清理的 Worktree 应始终可以恢复。"
+    }
+  },
+  "rules": {
+    "importSection": "导入设置",
+    "agents": {
+      "label": "将 AGENTS.md 包含在上下文中",
+      "hint": "智能体将读取根目录中的 AGENTS.md 文件并将其添加到上下文中。"
+    },
+    "claude": {
+      "label": "将 CLAUDE.md 包含在上下文中",
+      "hint": "智能体将读取根目录中的 CLAUDE.md 和 CLAUDE.local.md 文件并将其添加到上下文中。"
+    },
+    "title": "规则",
+    "hint": "创建并管理规则，在聊天过程中遵循这些规则。",
+    "refresh": "刷新规则",
+    "create": "创建",
+    "empty": "暂无规则",
+    "emptyHint": "点击新建以添加你的第一个规则",
+    "noWorkspace": "请先选择工作区",
+    "noWorkspaceHint": "规则保存在当前项目的 .meowcode/rules 目录中。",
+    "clickToEdit": "点击编辑规则",
+    "deleteAria": "删除规则「{{name}}」",
+    "confirmDeleteAria": "再次点击确认删除规则「{{name}}」",
+    "createTitle": "新建规则",
+    "editTitle": "编辑规则「{{name}}」",
+    "editorDesc": "规则会随项目一起注入系统提示词；支持 Markdown。",
+    "name": "规则名称",
+    "namePlaceholder": "例如 code-style",
+    "nameHint": "小写字母、数字和连字符，例如 code-style",
+    "nameRule": "名称只能包含小写字母、数字和连字符，且不能以连字符开头或结尾。",
+    "content": "规则内容",
+    "contentPlaceholder": "例如：所有新增函数必须写 JSDoc；不要修改 generated/ 目录。",
+    "loadFailed": "规则加载失败",
+    "readFailed": "规则读取失败",
+    "saveFailed": "规则保存失败",
+    "deleteFailed": "规则删除失败",
+    "saved": "已保存规则「{{name}}」",
+    "deleted": "已删除规则「{{name}}」"
+  },
+  "appearance": {
+    "themeSection": "主题",
+    "themeField": "外观主题",
+    "themeDesc": "「跟随系统」会实时跟随 Windows 的浅色 / 深色设置。切换后会立即生效，不需要重启。",
+    "theme": {
+      "system": "跟随系统",
+      "light": "浅色",
+      "dark": "深色"
+    },
+    "fontSection": "字体",
+    "fontDesc": "「界面字体」作用于聊天、侧栏等界面文字，「代码字体」作用于代码块、diff 等等宽文字。可选择系统字体或导入本地字体文件（ttf / otf / woff / woff2），切换立即生效。",
+    "importField": "导入字体",
+    "importButton": "导入字体…",
+    "uiFont": "界面字体",
+    "codeFont": "代码字体",
+    "defaultFont": "默认",
+    "fontsLoading": "系统字体读取中…点击重试",
+    "imported": "{{name}}（已导入）"
+  },
+  "shortcuts": {
+    "title": "快捷键",
+    "description": "键盘快捷键一览。",
+    "ctrlHint": "macOS 上以 ⌘ 取代 Ctrl",
+    "items": {
+      "search": "对话全文检索",
+      "quickOpen": "文件快开",
+      "sideChat": "侧边聊天",
+      "terminal": "终端",
+      "send": "发送消息",
+      "commit": "提交 Git 变更"
+    }
+  },
+  "memory": {
+    "extractionTitle": "自动蒸馏记忆",
+    "extractionDesc": "每个回合结束后，后台用一次轻量请求回顾新对话，把值得长期记住的事（偏好、纠正、项目决策）自动写进记忆。关闭后只保留手动新建与对话中 AI 的主动写入。",
+    "extractionField": "回合结束自动蒸馏",
+    "extractionFailed": "开关保存失败",
+    "scope": {
+      "user": "个人记忆",
+      "project": "项目记忆"
+    },
+    "descUser": "跨工作区保留的长期记忆：你的偏好、常用工作流、经验。存在 ~/.meowcode/memory/，新会话开始时索引自动注入，AI 用记忆工具按需读写。",
+    "descProject": "当前工作区专属的记忆，存在项目的 .meowcode/memory/（不进 git）。",
+    "descProjectNamed": "当前工作区（{{workspace}}）专属的记忆，存在项目的 .meowcode/memory/（不进 git）。",
+    "count_one": "已存 {{count}} 条",
+    "count_other": "已存 {{count}} 条",
+    "count_few": "已存 {{count}} 条",
+    "count_many": "已存 {{count}} 条",
+    "create": "新建记忆",
+    "empty": "还没有记忆 —— 对话中 AI 学到值得长期记住的事会自动存进来，也可以在这里手动新建。",
+    "clickToEdit": "点击编辑",
+    "noDescription": "（无描述）",
+    "deleteAria": "删除 {{name}}",
+    "confirmDeleteAria": "确认删除 {{name}}",
+    "editTitle": "编辑{{scope}} · {{name}}",
+    "createTitle": "新建{{scope}}",
+    "editorDesc": "编辑 Markdown 原文；frontmatter 里的 description 会进入 MEMORY.md 索引（新会话生效）。",
+    "name": "名称",
+    "namePlaceholder": "kebab-case，例如 docker-cli",
+    "nameHint": "将保存为 <名称>.md",
+    "nameRule": "名称为小写 kebab-case（字母、数字、连字符），最长 64 字符",
+    "saved": "已保存{{scope}}「{{name}}」",
+    "deleted": "已删除{{scope}}「{{name}}」",
+    "loadFailed": "记忆加载失败",
+    "readFailed": "记忆读取失败",
+    "saveFailed": "记忆保存失败",
+    "deleteFailed": "记忆删除失败"
+  },
+  "archive": {
+    "section": "归档",
+    "desc": "归档的会话不出现在聊天列表里，随时可以恢复。在聊天列表里把鼠标悬停到某条会话上，点右侧的归档图标即可归档。删除会同时删掉会话记录，无法恢复。",
+    "empty": "暂无归档会话",
+    "item": "会话 · {{when}}",
+    "unknownTime": "未知时间",
+    "deleteAll": "全部删除",
+    "confirmDeleteAll": "确认全部删除？",
+    "deleteAria": "永久删除 {{name}}",
+    "confirmDeleteAria": "再次点击永久删除 {{name}}"
+  },
+  "about": {
+    "loading": "正在读取版本信息…",
+    "version": "版本号",
+    "newVersion": "发现新版本",
+    "checking": "检查中…",
+    "check": "检查版本",
+    "author": "作者",
+    "website": "官网",
+    "repo": "开源仓库",
+    "openInBrowser": "用浏览器打开",
+    "credits": "鸣谢",
+    "sponsor": "赞助",
+    "sponsorHint": "如果 MeowCode 对你有帮助，欢迎扫码支持作者",
+    "qrAlt": "{{name}}赞助二维码",
+    "sponsors": {
+      "wechat": "微信支付",
+      "alipay": "支付宝"
+    },
+    "upToDate": "已是最新版本",
+    "checkFailed": "版本检查失败：{{error}}"
+  },
+  "actions": {
+    "add": "添加",
+    "cancel": "取消",
+    "confirmDelete": "确认删除",
+    "delete": "删除",
+    "edit": "编辑",
+    "restore": "恢复",
+    "save": "保存",
+    "saving": "保存中…"
+  },
+  "models": {
+    "section": "模型",
+    "desc": "在这里添加模型服务商，并填写你要使用的模型名称。",
+    "count_one": "已配置 {{count}} 个模型",
+    "count_other": "已配置 {{count}} 个模型",
+    "count_few": "已配置 {{count}} 个模型",
+    "count_many": "已配置 {{count}} 个模型",
+    "add": "添加模型",
+    "empty": "还没有配置任何模型。点击「添加模型」开始。",
+    "deleteTitle": "删除服务商",
+    "deleteMessage": "确定删除「{{name}}」吗？删除后需要重新配置才能使用。",
+    "restartTitle": "保存会重启本地服务",
+    "restartMessage": "模型改动需要重启本地 agent 服务才能生效，正在进行的回合会被中断。仍要保存吗？",
+    "restartConfirm": "仍要保存",
+    "colModel": "模型",
+    "colProvider": "服务商",
+    "colActions": "操作",
+    "active": "当前",
+    "enableAria": "启用 {{name}}",
+    "levels": "推理等级",
+    "levelRemoveAria": "移除 {{level}}",
+    "levelRemoveTitle": "移除这一档",
+    "levelsAuto": "留空则按模型名自动匹配（当前为 {{levels}}）",
+    "levelsManual": "已手动指定。清空所有档位可恢复按模型名自动匹配。",
+    "modalityOptions": {
+      "text": "文本",
+      "image": "图片",
+      "pdf": "PDF"
+    },
+    "ttlOptions": {
+      "fiveMinutes": "5 分钟（默认）",
+      "auto": "自动（按会话节奏）",
+      "oneHour": "1 小时（Anthropic 长 TTL）"
+    },
+    "summaryOptions": {
+      "none": "不下发（省 token）",
+      "auto": "自动",
+      "concise": "简略",
+      "detailed": "详细"
+    },
+    "compactionOptions": {
+      "auto": "自动（官方端点启用）",
+      "on": "强制开启（兼容网关）",
+      "off": "关闭（只用本地摘要）"
+    },
+    "authOptions": {
+      "protocolDefault": "协议默认（Anthropic x-api-key / OpenAI Bearer）",
+      "bearer": "Authorization: Bearer",
+      "azureKey": "api-key 头（Azure OpenAI）",
+      "bedrockKey": "Bedrock-API-Key（Amazon Bedrock）",
+      "none": "不带鉴权头（本地推理 / 头里自带）"
+    },
+    "picker": {
+      "title": "添加模型服务商",
+      "desc": "选择服务商后，再填写你要使用的模型名称；API 格式之后也能随时切换。没有找到？用「自定义服务商」手动填写端点。",
+      "search": "搜索",
+      "searchPlaceholder": "按名称或 id 搜索，例如 deepseek",
+      "custom": "自定义服务商",
+      "customMeta": "手动填写端点与密钥",
+      "needEndpoint": "需填写端点",
+      "noMatch": "没有匹配的服务商 —— 可以试试「自定义服务商」"
+    },
+    "form": {
+      "addTitle": "添加模型 · {{name}}",
+      "editTitle": "编辑模型",
+      "desc": "服务商已选好，下面填写模型本身的配置。API 密钥保存在本地（Windows 凭据加密），不会离开这台机器。",
+      "customProviderName": "自定义服务商",
+      "providerName": "服务商名称",
+      "providerNamePlaceholder": "例如 My Provider",
+      "providerNameHint": "显示在模型列表的服务商一栏",
+      "provider": "服务商",
+      "apiFormat": "API 格式",
+      "apiFormatAuto": "已按请求地址自动识别；手动选择后不再自动切换",
+      "apiFormatDesc": "决定请求打到哪个端点、请求体怎么写；会按请求地址自动识别",
+      "baseUrl": "请求地址",
+      "baseUrlHint": "填根地址后自动识别 API 格式；路径按所选格式自动追加",
+      "modelId": "模型 ID",
+      "modelIdPlaceholder": "例如 deepseek-chat",
+      "modelIdHint": "服务商文档里的模型标识，必填；同一个模型 ID 可以配多条（不同地址或密钥）",
+      "displayName": "模型显示名称",
+      "displayNamePlaceholder": "留空则显示模型 ID",
+      "displayNameHint": "只影响界面显示，但不能与已有模型重名",
+      "apiKey": "API 密钥",
+      "apiKeySaved": "已保存，留空则不修改",
+      "contextWindow": "上下文窗口",
+      "contextWindowHint": "留空则按模型名自动检测；支持 256K / 1M 写法",
+      "maxOutput": "最大输出",
+      "maxOutputHint": "留空则按模型名自动检测；单次回复最多产出多少 token",
+      "modalities": "输入模态",
+      "requiredTag": "（必选）",
+      "modalityHint": "图片能力会按模型名自动检测；PDF 仅 Anthropic / Responses 协议可承载。至少保留文本模态。",
+      "advanced": "高级设置",
+      "advancedHint": "思考强度 / 缓存 TTL / 思考档位 / 鉴权与请求定制 —— 不填走默认",
+      "reasoningEffort": "思考强度",
+      "reasoningEffortPlaceholder": "留空 = 服务商默认",
+      "reasoningEffortHint": "作为 reasoning_effort 下发",
+      "thinkingBudget": "思考预算",
+      "thinkingBudgetPlaceholder": "留空 = 按思考强度档位",
+      "thinkingBudgetHint": "thinking.budget_tokens；会自动压到 max_tokens 以下",
+      "cacheTtl": "缓存 TTL",
+      "cacheTtlHint": "1h 写入溢价 2×；自动与 1h 都只在实测支持长 TTL 的端点生效，其余回落 5m",
+      "reasoningSummary": "思考摘要",
+      "reasoningSummaryHint": "仅 Responses 协议；摘要按输出 token 计费",
+      "nativeCompaction": "服务端压缩",
+      "nativeCompactionHint": "让服务商压缩历史，省掉一次全量摘要请求",
+      "authStyle": "鉴权方式",
+      "authStyleHint": "大多数服务商保持默认即可；Azure / Bedrock 必须选对应项",
+      "extraHeaders": "额外请求头",
+      "extraHeadersHint": "每行一个「名称: 值」，# 开头为注释。如 OpenRouter 的 HTTP-Referer",
+      "extraBody": "额外请求体",
+      "extraBodyHint": "JSON 对象，展开合并进请求体顶层。如 Qwen 的 {\"enable_thinking\": false}",
+      "models": "模型",
+      "addModel": "添加模型ID",
+      "fetchModels": "获取模型列表",
+      "fetching": "获取中…",
+      "fetchTitle": "选择要添加的模型",
+      "fetchHint": "勾选后才会加入上方模型列表。",
+      "fetchEmpty": "没有拉到任何模型。",
+      "fetchFailed": "获取模型列表失败：{{message}}",
+      "fetchAdded": "已在列表",
+      "fetchAdd": "加入选中（{{count}}）",
+      "modelSettings": "模型设置",
+      "modelSettingsDesc": "只影响这一个模型；端点、密钥与协议在上方统一配置。",
+      "modelsRequired": "至少添加一个模型。",
+      "contextDefault": "按模型默认"
+    },
+    "error": {
+      "providerNameRequired": "服务商名称不能为空",
+      "modelRequired": "模型 ID 不能为空",
+      "duplicateName": "显示名称「{{name}}」已经配置过了",
+      "baseUrlRequired": "请求地址不能为空",
+      "contextFormat": "上下文窗口格式不正确，例如 128k 或 1M",
+      "maxOutputFormat": "最大输出格式不正确，例如 32k",
+      "extraBodyObject": "额外请求体必须是 JSON 对象",
+      "extraBodyJson": "额外请求体不是合法 JSON：{{message}}",
+      "headerLine": "请求头格式不正确：{{line}}"
+    }
+  },
+  "hooks": {
+    "loading": "正在读取 Hooks 配置…",
+    "error": "读取 Hooks 配置失败：{{error}}",
+    "retry": "重试",
+    "saving": "正在重启 Agent 服务并应用 Hooks 设置…",
+    "import": {
+      "section": "导入 Claude Code Hooks",
+      "description": "读取 ~/.claude/settings.json 与工作区 .claude 配置；工作区配置默认不执行。",
+      "master": "启用 Hooks",
+      "masterHint": {
+        "on": "已加载 Claude Code hook 配置。",
+        "off": "已停用：配置只读展示，不会执行。"
+      },
+      "workspace": "包含工作区 .claude 配置",
+      "workspaceHint": {
+        "on": "工作区 .claude/settings*.json 中的 hooks 会执行。",
+        "off": "只执行 ~/.claude 配置；工作区配置仅展示。"
+      },
+      "workspaceWarning": "工作区 hooks 来自当前仓库文件，可能被提交恶意命令。只在此仓库可信时开启。",
+      "disabledNote": "Hooks 已停用。打开上方开关后，命令才会执行。"
+    },
+    "configured": {
+      "section": "已配置的 Hooks",
+      "description": "只读摘要；编辑请打开对应配置文件。",
+      "empty": "当前没有配置任何 Claude Code hooks。",
+      "eventCount": "{{count}} 条命令",
+      "matcher": "匹配 {{matcher}}",
+      "timeout": "{{seconds}}s 超时",
+      "layer": {
+        "user": "用户",
+        "project": "工作区",
+        "local": "工作区本地"
+      },
+      "layerUnknown": "未知路径",
+      "excluded": "未执行",
+      "open": "打开编辑",
+      "missing": "文件不存在",
+      "fileCount": "{{count}} 条命令",
+      "missingToast": "文件不存在：{{path}}",
+      "openError": "无法打开文件：{{error}}",
+      "unsupported": "未桥接事件：{{events}}"
+    },
+    "runMode": {
+      "section": "Hooks 命令运行方式",
+      "description": {
+        "auto": "自动运行 hook 命令；PreToolUse 的 ask/deny 仍然生效。",
+        "ask": "每条 hook 命令在本会话首次运行时先询问；拒绝只跳过该条命令。"
+      },
+      "field": "运行方式",
+      "options": {
+        "auto": "自动运行",
+        "autoDesc": "不额外确认，按 hook 配置执行",
+        "ask": "每次询问",
+        "askDesc": "每会话每条命令确认一次"
+      }
+    },
+    "confirm": {
+      "title": "重启 Agent 服务？",
+      "message": "有回合正在运行，保存 Hooks 设置会中断它。",
+      "confirm": "保存并重启"
+    }
+  },
+  "dataImport": {
+    "title": "数据导入",
+    "desc": "从其他应用导入新增内容；不建立自动同步，也不改动来源应用的数据。",
+    "fromApps": "从应用导入",
+    "redetect": "重新检测",
+    "loading": "正在检测可导入的应用…",
+    "error": "检测失败：{{error}}",
+    "retry": "重试",
+    "app": {
+      "qoder": "Qoder CN IDE（Quest）",
+      "qoderintl": "Qoder (International)",
+      "workbuddy": "WorkBuddy",
+      "workbuddyai": "WorkBuddyAI",
+      "zcode": "ZCode",
+      "opencode": "OpenCode",
+      "dsh": "DeepSeek Harness",
+      "codex": "Codex"
+    },
+    "notDetected": "未检测到",
+    "selected": "已选择 {{count}} 项",
+    "import": "导入数据",
+    "importing": "导入中…",
+    "groups": {
+      "mcp": "MCP 连接器",
+      "memory": "记忆",
+      "skills": "Skills",
+      "tasks": "会话记录"
+    },
+    "groupEmpty": "无",
+    "result": {
+      "imported": "已导入 {{count}} 项",
+      "skipped": "已存在 {{count}} 项",
+      "failed": "{{count}} 项失败，点击查看",
+      "mcpReloaded": "MCP 连接器已更新并重连"
+    },
+    "progress": "导入中 {{done}}/{{total}}"
+  },
+  "learning": {
+    "title": "自我学习",
+    "desc": "每回合结束后，Agent 会把这次学到的东西沉淀成可复用的技能、项目经验和对你的工作习惯的理解。新条目不会立刻被信任：先进试用期，证明有用才转正，帮倒忙就自动退役。",
+    "toggleField": "从对话中学习",
+    "toggleFailed": "开关切换失败",
+    "budgetField": "今日调用",
+    "budgetValue": "{{date}} 已用 {{count}} 次",
+    "skillsTitle": "学到的技能",
+    "skillsDesc": "Agent 自己写的流程。按 SKILL.md 路径读取全文，靠名字和描述被召回。",
+    "skillsEmpty": "还没学到东西。某个流程成功且值得复用之后才会出现。",
+    "skillCount_one": "{{count}} 个技能",
+    "skillCount_other": "{{count}} 个技能",
+    "skillCount_few": "{{count}} 个技能",
+    "skillCount_many": "{{count}} 个技能",
+    "consolidate": "立即整理",
+    "consolidated": "已整理：更新 {{count}} 项",
+    "consolidatedEmpty": "没有可整理的内容",
+    "consolidateFailed": "整理失败",
+    "statsHint": "帮上忙 / 帮倒忙 —— 被召回的次数以及那次回合是否顺利",
+    "rollbackAria": "把 {{name}} 回滚到上一版",
+    "reactivateAria": "把 {{name}} 放回试用期",
+    "deleteAria": "删除 {{name}}",
+    "actionFailed": "操作未生效",
+    "guidelinesTitle": "项目经验",
+    "guidelinesDesc": "只在触发条件命中时才出现的规则 —— 命令、报错、关键词或文件模式。",
+    "guidelinesEmpty": "还没有项目经验。",
+    "profileTitle": "它对你的理解",
+    "profileDesc": "沟通风格、要求的严谨程度、给它的自主权。",
+    "profileEmpty": "还没有。这些要靠反复的证据慢慢积累。",
+    "status": {
+      "tentative": "试用期",
+      "active": "已转正",
+      "retired": "已退役"
+    },
+    "dimension": {
+      "communication": "沟通",
+      "rigor": "严谨",
+      "autonomy": "自主",
+      "coding_style": "编码风格",
+      "toolchain": "工具链",
+      "domain": "领域"
+    },
+    "loadFailed": "学习条目读取失败",
+    "clearField": "清除所有学到的",
+    "clearHint": "删除全部学到的技能、项目经验、用户特征与回合记录 —— 本项目与跨项目都清。不可撤销。",
+    "clearAction": "全部清除",
+    "clearConfirm": "再点一次确认",
+    "cleared": "已清空 {{scopes}} 个学习目录",
+    "clearedNothing": "没有可清除的内容",
+    "clearFailed": "清除失败"
+  },
+  "general": {
+    "section": "通用",
+    "desc": "日常行为偏好，修改后立即生效。",
+    "notify": {
+      "field": "系统通知",
+      "desc": {
+        "on": "回合结束、需要确认或被中断时，窗口不在前台就弹系统通知（显示会话标题与回复摘要）。",
+        "off": "关闭后不再弹任何系统通知。"
+      }
+    }
+  },
+  "proxy": {
+    "title": "网络代理",
+    "desc": "网络异常时可切换连接方式，修改后立即生效。",
+    "mode": {
+      "direct": "直接连接",
+      "system": "跟随系统",
+      "manual": "手动配置"
+    },
+    "urlLabel": "代理地址",
+    "urlHint": "例如 http://127.0.0.1:7890；留空则仍然直连。",
+    "urlMissing": "还没填地址，请求暂时走直连。",
+    "failed": "代理设置未生效"
+  },
+  "rewind": {
+    "section": "会话回滚",
+    "enabled": {
+      "label": "文件快照",
+      "hint": "每个回合开始自动打点，写/改过的文件可随对话一起回滚。改后重启应用生效。"
+    },
+    "keep": {
+      "label": "保留快照数",
+      "hint": "每会话保留最近 N 个检查点的文件快照，更早的自动清理。"
+    },
+    "maxTotal": {
+      "label": "快照容量上限",
+      "hint": "单个会话的快照目录总大小上限，超出后从最旧的快照开始回收。"
+    }
+  },
+  "sandbox": {
+    "title": "沙箱",
+    "modeField": "沙箱模式",
+    "modeDesc": "控制 Agent 对文件系统的访问权限。",
+    "modeFull": "完全访问",
+    "modeFullDesc": "Agent 可以读写工作区外的文件。",
+    "modeWorkspace": "工作区写入",
+    "modeWorkspaceDesc": "命令只能写工作区与额外可写根。",
+    "deleteField": "文件删除确认",
+    "deleteDesc": "仅在工作区写入模式下生效，完全访问模式下默认跳过删除确认。",
+    "unsupported": "当前系统不是 Windows，命令沙箱不可用。",
+    "riskTitle": "切换到工作区写入？",
+    "riskDoes": "开启后会在工作区写入常驻 ACL 和 Low 完整性标签，并让 run_command 在受限令牌下运行。",
+    "riskDoesNot": "它不限制读取与网络，也不约束文件编辑工具；被拦的命令会单独询问是否在沙箱外重试一次。",
+    "riskUndo": "切回完全访问即可停止沙箱；工作区上的 ACL 会保留但不再被使用。",
+    "confirmEnable": "切换",
+    "cancel": "取消",
+    "enabled": "已切换到工作区写入（首次授权 {{ms}} ms）",
+    "saveFailed": "保存沙箱设置失败",
+    "loadFailed": "读取沙箱设置失败"
+  }
+}

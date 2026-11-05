@@ -1,9 +1,12 @@
 import type {
   AppInfo,
+  CommunitySubmitPayload,
   GithubAuthStatus,
   GithubDevicePollResult,
   GithubDeviceStartResult,
   MeowEvent,
+  UpdateCheckResult,
+  UpdateProgress,
   OauthConnectPollResult,
   OauthConnectStartResult,
   OauthPlatform,
@@ -39,6 +42,8 @@ declare global {
       request(path: string, init?: RequestInit): Promise<unknown>;
     /** 会话落盘图片的绝对 URL（带 query token）；server 未就绪或非桌面环境返回 null */
     assetUrl?(file: string): string | null;
+      /** 插件自带面板的 URL（带 query token）；server 未就绪或非桌面环境返回 null（可重试） */
+      pluginUiUrl?(pluginId: string, entry?: string): Promise<string | null>;
       /** 窗口启用了系统亚克力背板：body/root 要画成透明才能露出毛玻璃 */
       readonly acrylic: boolean;
       /** 拖入/选中的本地文件 → 绝对路径（非 Electron 环境返回 null） */
@@ -47,6 +52,19 @@ declare global {
       saveSettings(settings: Settings): Promise<Settings>;
       /** 插件启停（写 settings.plugins 后重启 agent server 生效） */
       setPluginsState(payload: { disabled: string[] }): Promise<Settings>;
+      /** Claude Code hooks：启停/运行方式/工作区范围（重启 agent server 生效） */
+      saveHooksSettings(payload: {
+        enabled: boolean;
+        runMode: "auto" | "ask";
+        includeWorkspace: boolean;
+      }): Promise<Settings>;
+      /** 打开已知的 Claude Code hooks 配置文件（路径由主进程解析） */
+      openHooksFile(layer: "user" | "project" | "local"): Promise<{
+        ok: boolean;
+        path?: string;
+        missing?: boolean;
+        error?: string;
+      }>;
       /** GitHub MCP 的 OAuth 连接状态（不含 token） */
       githubAuthStatus(): Promise<GithubAuthStatus>;
       /** 开始 GitHub 设备流授权（返回一次性用户码） */
@@ -55,8 +73,10 @@ declare global {
       githubDevicePoll(flowId: string): Promise<GithubDevicePollResult>;
       /** 解除本机 GitHub 授权（清 token 并重载 MCP） */
       githubDisconnect(): Promise<{ auth: GithubAuthStatus; warning?: string }>;
-      /** 保存 Gitee/GitCode 手工 Token（校验通过后加密保存并热更新 MCP） */
+      /** 保存手工 Token（Gitee/GitCode PAT、Figma 访问令牌：校验通过后加密保存并热更新 MCP） */
       setMcpCredentials(payload: { env: Record<string, string> }): Promise<SetMcpCredentialsResult>;
+      /** 清除手工令牌（解除授权：删本机存储并热更新 MCP） */
+      clearMcpToken(payload: { name: string }): Promise<SetMcpCredentialsResult>;
       /** Gitee/GitCode OAuth 连接状态（不含 token/secret） */
       oauthStatus(): Promise<Record<OauthPlatform, OauthPlatformStatus>>;
       /** 保存平台的 OAuth 应用凭据（Client ID 留空=用内置应用；client secret 加密存本机） */
@@ -75,6 +95,19 @@ declare global {
       oauthConnectCancel(payload: { platform: OauthPlatform }): Promise<{ ok: boolean }>;
       /** 解除平台 OAuth（清 token 并重载 MCP；回退到手工 PAT） */
       oauthDisconnect(payload: { platform: OauthPlatform }): Promise<{ warning?: string }>;
+      /** 社区市场：当前 GitCode 社区登录名（未连接返回 loggedIn: false） */
+      communityUser(): Promise<{ loggedIn: boolean; login: string | null }>;
+      /** 社区市场：一键提交条目（fork → 分支 → 上传 → PR），返回 PR 链接 */
+      communitySubmit(payload: CommunitySubmitPayload): Promise<{ ok: boolean; prUrl?: string; message?: string }>;
+      /** 社区市场：发起删除自己的条目（生成删除 PR） */
+      communityDelete(payload: {
+        id: string;
+        type: "skill" | "plugin" | "mcp";
+        name: string;
+        author?: string;
+      }): Promise<{ ok: boolean; prUrl?: string; message?: string }>;
+      /** 订阅社区提交/删除的进度消息；返回取消订阅 */
+      onCommunityProgress(listener: (payload: { message: string }) => void): () => void;
       /** 窗口/页签/面板/草稿等界面状态（主进程防抖原子写） */
       getUiState(): Promise<UiState>;
       saveUiState(patch: UiStatePatch): Promise<{ ok: boolean }>;
@@ -85,6 +118,23 @@ declare global {
       saveProviderPrefs(prefs: {
         providers?: Array<{ id: string; reasoningEffort?: string }>;
         providerId?: string;
+        /** 回合后记忆蒸馏开关（实时生效走 /config/memory-extraction） */
+        memoryExtraction?: boolean;
+        /** 自我学习开关（实时生效走 /config/learning） */
+        selfLearning?: boolean;
+        /** 网络代理模式（实时生效走 /config/proxy） */
+        proxyMode?: "direct" | "system" | "manual";
+        /** manual 模式下的代理地址 */
+        proxyUrl?: string;
+        /** 命令沙箱设置（实时生效走 PUT /config/sandbox） */
+        sandbox?: {
+          enabled?: boolean;
+          mode?: "workspace-write";
+          writableRoots?: string[];
+          allowTemp?: boolean;
+          grantTimeoutMs?: number;
+          confirmDelete?: boolean;
+        };
       }): Promise<Settings>;
       onEvent(listener: (event: MeowEvent) => void): () => void;
       /** 模型规则：主进程定期从 ZCode 内置配置同步（档位 / 上下文 / 输出 / 图片输入） */
@@ -100,8 +150,54 @@ declare global {
 
       /** 轻量偏好：主题 / 关闭方式（只写盘，不重启 agent server；读取走 getSettings） */
       savePreferences(prefs: Partial<Preferences>): Promise<Preferences>;
+      /** 轻量偏好已保存的广播（悬浮岛据此跟随主题/语言；主窗口自身不依赖它） */
+      onPreferencesChanged(listener: (prefs: Settings) => void): () => void;
+
+      /** AI 悬浮岛：上报岛体交互矩形（视口坐标，展开=面板/折叠=胶囊），主进程轮询光标切换穿透 */
+      setIslandRect(rect: { x: number; y: number; width: number; height: number }): Promise<void>;
+      /** 主进程光标进出岛体的判定结果（穿透已同步切换）：false = 光标已离开岛体 */
+      onIslandCursor(listener: (inside: boolean) => void): () => void;
+      /** 点击胶囊 → 显示/聚焦主窗口 */
+      openMainFromIsland(): Promise<void>;
+      /** 岛内发出的 prompt 回报主进程广播（主窗口当前会话命中时补用户气泡） */
+      notifyIslandPrompt(payload: { sessionId: string; text: string }): Promise<void>;
+      /** 悬浮岛发出 prompt 的广播（仅主窗口消费） */
+      onIslandPromptSent(listener: (payload: { sessionId: string; text: string }) => void): () => void;
+      /** 已导入的自定义字体（外观设置用） */
+      listCustomFonts(): Promise<Array<{ family: string; url: string }>>;
+      /** 弹系统对话框选字体文件并导入；family 为导入后的展示名 */
+      importFont(): Promise<{ ok: boolean; canceled?: boolean; family?: string }>;
+      /** 删除已导入的自定义字体 */
+      removeCustomFont(family: string): Promise<{ ok: boolean }>;
+      /** 导出会话：主进程弹保存框 → 拉 server 内容 → 写盘；filePath 为最终落盘路径 */
+      exportSession(payload: {
+        filePath: string;
+        title?: string;
+        format?: "markdown" | "html" | "json";
+        includeThinking?: boolean;
+        includeTools?: boolean;
+        inlineImages?: boolean;
+      }): Promise<{ ok: boolean; canceled?: boolean; filePath?: string; bytes?: number; error?: string }>;
       /** 托盘菜单「设置…」触发，切到设置页 */
       onOpenSettings(listener: () => void): () => void;
+      /** 推送最近会话给托盘菜单（主进程只做展示与分发；列表或当前会话变化时调用） */
+      syncTraySessions(payload: {
+        sessions: Array<{
+          filePath: string;
+          title: string | null;
+          createdAt: string;
+          messageCount: number;
+        }>;
+        activeFilePath: string | null;
+        /** 当前会话 id：主进程据此判断「前台但看的是别的会话」时仍要弹通知 */
+        activeSessionId?: string | null;
+      }): Promise<{ ok: boolean }>;
+      /** 托盘里点了某个会话（主进程已把窗口唤到前台）：切过去 */
+      onTraySwitchSession(listener: (filePath: string) => void): () => void;
+      /** 托盘里点了「新对话」 */
+      onTrayNewSession(listener: () => void): () => void;
+      /** 订阅就绪握手：主进程把窗口加载期间排队的托盘动作补发过来 */
+      notifyTrayReady(): Promise<{ ok: boolean }>;
 
       /** 关闭确认（closeAction=ask）：主进程唤起自绘弹窗，选择回传主进程 */
       onCloseRequest(listener: () => void): () => void;
@@ -109,6 +205,14 @@ declare global {
 
       /** 应用信息（关于页） */
       getAppInfo(): Promise<AppInfo>;
+      /** 检查更新：主进程请求 GitCode releases 并比较版本 */
+      checkUpdate(): Promise<UpdateCheckResult>;
+      /** 下载更新包（主进程流式下载） */
+      downloadUpdate(payload: { url: string; fileName: string }): Promise<{ path: string; size: number }>;
+      /** 打开已下载的安装包 */
+      openInstaller(filePath: string): Promise<{ launched: boolean; quit: boolean }>;
+      /** 下载进度 */
+      onUpdateProgress(listener: (progress: UpdateProgress) => void): () => void;
 
       /** 在资源管理器中打开目录（项目行菜单），返回错误信息或 null */
       openPath(target: string): Promise<string | null>;

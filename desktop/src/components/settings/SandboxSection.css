@@ -1,0 +1,51 @@
+.mc-sandbox__loading {
+  display: flex;
+  justify-content: center;
+  padding: 24px 0;
+}
+
+/* 沙箱模式：紧凑的警告色选择器（截图规格），不带边框/底色 */
+.mc-sandbox__mode {
+  width: auto;
+}
+.mc-sandbox__mode .mc-customselect__button {
+  height: 28px;
+  padding: 0 4px 0 2px;
+  border-color: transparent;
+  background: transparent;
+  color: var(--warning, var(--accent, var(--fg)));
+  gap: 4px;
+}
+.mc-sandbox__mode .mc-customselect__button:hover,
+.mc-sandbox__mode[data-open="true"] .mc-customselect__button {
+  border-color: transparent;
+  background: color-mix(in srgb, var(--warning, var(--accent, var(--fg))) 8%, transparent);
+}
+.mc-sandbox__mode .mc-customselect__chevron {
+  color: inherit;
+}
+
+.mc-sandbox__note {
+  margin-top: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--fg-subtle);
+  font-size: var(--fs-sm);
+  line-height: 1.55;
+}
+
+.mc-sandbox__note p {
+  margin: 0;
+}
+
+.mc-sandbox__note p + p {
+  margin-top: 6px;
+}
+
+.mc-sandbox__warn {
+  margin: 0;
+  padding: 10px 18px 12px;
+  color: var(--fg-subtle);
+  font-size: var(--fs-sm);
+}

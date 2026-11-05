@@ -35,7 +35,7 @@ export class PluginRegistry {
 
   /** 工厂执行失败时回滚该插件的部分注册，避免半残插件留在运行时 */
   rollbackPlugin(id: string): void {
-    for (const [name, owner] of [...this.toolOwners]) {
+    for (const [name, owner] of this.toolOwners) {
       if (owner === id) {
         unregisterDynamicTool(name);
         this.toolOwners.delete(name);
@@ -45,7 +45,7 @@ export class PluginRegistry {
       const kept = list.filter((h) => h.pluginId !== id);
       if (kept.length !== list.length) this.hooks.set(event, kept);
     }
-    for (const [name, entry] of [...this.commands]) {
+    for (const [name, entry] of this.commands) {
       if (entry.pluginId === id) this.commands.delete(name);
     }
   }

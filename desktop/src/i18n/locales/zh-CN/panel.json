@@ -1,0 +1,176 @@
+{
+  "tabs": {
+    "home": "新标签页",
+    "workspace": "文件",
+    "review": "审阅",
+    "sidechat": "侧边聊天",
+    "terminal": "终端",
+    "plan": "计划",
+    "subagents": "子 Agent",
+    "subagent": "子 Agent"
+  },
+  "runStatus": {
+    "running": "运行中",
+    "completed": "已完成",
+    "failed": "失败",
+    "aborted": "已停止",
+    "interrupted": "已中断"
+  },
+  "laneStatus": {
+    "queued": "排队中",
+    "active": "进行中",
+    "done": "已完成",
+    "blocked": "已阻塞"
+  },
+  "home": {
+    "toolsSection": "工具",
+    "sessionSection": "会话信息",
+    "card": {
+      "workspace": "文件",
+      "search": "对话检索",
+      "sidechat": "侧边聊天",
+      "terminal": "终端",
+      "review": "审阅",
+      "subagents": "子 Agent"
+    },
+    "fileMenu": "文件菜单",
+    "quickOpen": "快速打开（Ctrl+P）",
+    "revealInExplorer": "在文件管理器中打开",
+    "field": {
+      "workspace": "工作区",
+      "provider": "服务商",
+      "model": "模型",
+      "sessionId": "会话 ID",
+      "toolCalls": "工具调用",
+      "uncachedInput": "未缓存输入",
+      "cacheRead": "缓存读取",
+      "cacheStatus": "缓存状态",
+      "cacheWrite": "缓存写入",
+      "output": "输出",
+      "cacheHitRate": "缓存命中率（会话）",
+      "speed": "生成速度",
+      "response": "响应时间",
+      "firstToken": "首字延迟"
+    },
+    "notReported": "未报告",
+    "cache": {
+      "localBreakpoint": "本地断点 · {{ttl}}",
+      "autoTtl": "自动（人 1h / 机器 5m）",
+      "serverManaged": "服务端托管",
+      "serverManagedUncontrolled": "服务端托管 · TTL/逐出不可控",
+      "notReported": "{{base}}（未报告）",
+      "miss": "{{base}}（未命中）",
+      "hitting": "{{base}}（命中中）"
+    },
+    "tokenValue": "{{value}} tok"
+  },
+  "subagent": {
+    "fallbackTitle": "子 Agent",
+    "background": "后台",
+    "stop": "停止这个子 Agent",
+    "readOnly": "只读执行",
+    "canContinue": "可继续对话",
+    "tokensIn": "入 {{tokens}}",
+    "tokensOut": "出 {{tokens}}",
+    "loadingTranscript": "正在加载转录…",
+    "emptyTranscript": "暂无转录",
+    "pendingSteers_one": "已插话，将在下一步生效（{{count}}）",
+    "pendingSteers_other": "已插话，将在下一步生效（{{count}}）",
+    "pendingSteers_few": "已插话，将在下一步生效（{{count}}）",
+    "pendingSteers_many": "已插话，将在下一步生效（{{count}}）",
+    "steerPlaceholderReadOnly": "插话给 {{role}}（下一步生效，只读）…",
+    "steerPlaceholder": "插话：下一步生效，不打断当前执行…",
+    "steer": "插话",
+    "steerTitle": "下一步生效",
+    "runningHint": "运行中，完成后可以继续对话",
+    "continuePlaceholderReadOnly": "继续让 {{role}} 执行（只读）…",
+    "continuePlaceholder": "继续让子 Agent 工作…",
+    "send": "发送"
+  },
+  "subagents": {
+    "emptyTitle": "当前会话还没有子 Agent",
+    "emptyHint": "主 Agent 派发 task 后会出现在这里",
+    "onlyCurrentSession": "仅显示当前会话的子 Agent",
+    "open": "打开子 Agent 转录",
+    "invalidFallback": "宿主校验未通过",
+    "invalidTooltip": "{{reason}}：{{summary}}",
+    "verified": "已核验",
+    "unverified": "校验未过",
+    "criticalFindings_one": "{{count}} 严重",
+    "criticalFindings_other": "{{count}} 严重",
+    "criticalFindings_few": "{{count}} 严重",
+    "criticalFindings_many": "{{count}} 严重"
+  },
+  "sidechat": {
+    "interruptedNotice": "上次生成被应用退出中断；已保留已生成的内容，可以继续对话。",
+    "generating": "生成中…",
+    "standalone": "独立会话 · 与主对话并行",
+    "initializing": "初始化…",
+    "newSession": "新会话",
+    "noModel": "未配置模型",
+    "planConfirmedWithPath": "计划已确认，请按 {{path}} 开始实施。",
+    "planConfirmed": "计划已确认，请开始实施。"
+  },
+  "browser": {
+    "back": "后退",
+    "forward": "前进",
+    "reload": "刷新",
+    "addressPlaceholder": "搜索或输入网址"
+  },
+  "filePreview": {
+    "copyPath": "复制路径",
+    "openInEditor": "在编辑器中打开",
+    "loading": "加载中…",
+    "truncated": "仅显示前 {{shown}} 行（共 {{total}} 行）"
+  },
+  "plan": {
+    "governance": "治理任务 · {{tier}}",
+    "allPassed": "全部通过",
+    "inProgress": "进行中",
+    "repairs": "返工 {{count}}/3",
+    "trivial": "T0 琐碎任务：无门禁，直接实现并验证。",
+    "emptyTitle": "还没有计划文档",
+    "emptyHint": "计划模式会用只读工具先调研，再把实施计划写到 plans/ 下，文档会显示在这里。",
+    "updating": "更新中",
+    "writing": "正在写入",
+    "reload": "重新读取",
+    "writingBody": "正在写入计划文档…",
+    "loadingBody": "正在读取计划文档…"
+  },
+  "quickOpen": {
+    "title": "快速打开",
+    "placeholder": "输入文件名或路径",
+    "failed": "文件列表读取失败，请重试",
+    "loading": "加载中…",
+    "noMatch": "没有匹配的文件",
+    "empty": "工作区里没有文件"
+  },
+  "review": {
+    "loading": "加载中…",
+    "changedFiles_one": "{{count}} 个文件有改动",
+    "changedFiles_other": "{{count}} 个文件有改动",
+    "changedFiles_few": "{{count}} 个文件有改动",
+    "changedFiles_many": "{{count}} 个文件有改动",
+    "refresh": "刷新",
+    "failed": "读取失败，稍后重试",
+    "empty": "本会话还没有文件改动",
+    "changeCount_one": "改动 {{count}} 次",
+    "changeCount_other": "改动 {{count}} 次",
+    "changeCount_few": "改动 {{count}} 次",
+    "changeCount_many": "改动 {{count}} 次",
+    "diffAria": "{{path}} 的改动"
+  },
+  "workspace": {
+    "loading": "加载中…",
+    "readFailed": "读取失败",
+    "truncated": "…共 {{total}} 项，仅显示前 {{shown}}",
+    "selectFile": "在右侧选择文件预览（文本 / 图片 / 视频 / 音频 / PDF）",
+    "resizeAria": "调整文件列表宽度",
+    "filterPlaceholder": "筛选文件…",
+    "searching": "搜索中…",
+    "noMatch": "没有匹配的文件"
+  },
+  "terminal": {
+    "exited": "[进程已退出]"
+  }
+}

@@ -203,7 +203,7 @@ describe("post-write verification loop", () => {
     const runtime = makeRuntime(sessionsDir);
     await runtime.newSession(workspace);
     runtime.setApprovalMode("full");
-    const events = collectEvents(runtime);
+    const _events = collectEvents(runtime);
     queueRunCommandResults([
       { ok: false, output: TSC_ERROR },
       { ok: false, output: TSC_ERROR },

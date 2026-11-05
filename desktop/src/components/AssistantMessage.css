@@ -4,35 +4,10 @@
   gap: 8px;
   max-width: 100%;
 }
-.mc-assistant__label {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-size: var(--fs-xs);
-  color: var(--fg-subtlest);
-  letter-spacing: 0.02em;
-}
-.mc-assistant__logo {
-  width: 14px;
-  height: 14px;
-  border-radius: 3px;
-  object-fit: contain;
-  flex-shrink: 0;
-}
 .mc-assistant__body {
   position: relative;
   color: var(--fg);
   font-size: var(--fs-base);
-}
-.mc-assistant__caret {
-  display: inline-block;
-  width: 7px;
-  height: 15px;
-  margin-left: 2px;
-  vertical-align: text-bottom;
-  border-radius: 1px;
-  background: var(--fg);
-  animation: mc-blink 1s steps(1, end) infinite;
 }
 
 /* ---- 思考过程：可折叠灰字块 ---- */

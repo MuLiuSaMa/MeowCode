@@ -1,7 +1,15 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
-import { anthropicTools, streamAnthropicMessages, toAnthropicMessages } from "./anthropic.js";
-import { BREAKPOINT_CAP, resolveCachePlan } from "./cache-profile.js";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  anthropicTools,
+  resetProviderDegradeMemoryForTests,
+  streamAnthropicMessages,
+  toAnthropicMessages,
+} from "./anthropic.js";
+import { BREAKPOINT_CAP, isOneShotRequest, resolveCachePlan, withoutCacheWrites } from "./cache-profile.js";
 import type { ChatMessage, ToolDefinition } from "./types.js";
+
+// 降级记忆（模块级 Set）跨用例存活：每个用例前归零，避免降级用例污染同 url 的后续用例
+beforeEach(() => resetProviderDegradeMemoryForTests());
 
 function sseResponse(chunks: object[]): Response {
   const encoder = new TextEncoder();
@@ -213,15 +221,15 @@ describe("streamAnthropicMessages cache usage", () => {
 });
 
 describe("Anthropic prompt caching", () => {
-  it("marks the stable system block, the last tool, and the last message as cacheable", () => {
+  it("marks the longest stable system block, the last tool, and the last message as cacheable", () => {
     const { system, messages } = toAnthropicMessages([
       { role: "system", content: "stable contract" },
       { role: "system", content: "Current task plan:\n1. [pending] A" },
       { role: "user", content: "hi" },
     ]);
-    // 双断点：稳定前缀与可变尾段各成一个缓存段，中段变化不冲掉前缀
+    // base 由 system[1] 的缓存块顺带覆盖，不再单独占一个断点
     expect(system).toEqual([
-      { type: "text", text: "stable contract", cache_control: { type: "ephemeral" } },
+      { type: "text", text: "stable contract" },
       { type: "text", text: "Current task plan:\n1. [pending] A", cache_control: { type: "ephemeral" } },
     ]);
     expect(messages.at(-1)).toEqual({
@@ -243,7 +251,7 @@ describe("Anthropic prompt caching", () => {
     expect(tools[1]).toMatchObject({ name: "grep", cache_control: { type: "ephemeral" } });
   });
 
-  it("marks the first and second system blocks (base + AGENTS.md); mode block stays uncached", () => {
+  it("marks the second system block (AGENTS.md); base is covered by it and mode stays uncached", () => {
     const { system } = toAnthropicMessages([
       { role: "system", content: "base prompt" },
       { role: "system", content: "project instructions" },
@@ -251,9 +259,10 @@ describe("Anthropic prompt caching", () => {
       { role: "user", content: "hi" },
     ]);
     expect(system).toHaveLength(3);
-    expect(system[0]).toHaveProperty("cache_control");
-    // AGENTS.md 是最长稳定段，必须命中断点；末条 mode 消息短且切换频繁，全价发送
+    // AGENTS.md 是最长稳定段，必须命中断点；它之前的 base 在同一缓存块内
+    expect(system[0]).not.toHaveProperty("cache_control");
     expect(system[1]).toHaveProperty("cache_control");
+    // 末条 mode 消息短且切换频繁，全价发送
     expect(system[2]).not.toHaveProperty("cache_control");
   });
 
@@ -485,6 +494,52 @@ describe("Anthropic extended thinking", () => {
     expect(result.message.tool_calls?.[0]?.id).toBe("t1");
   });
 
+  it("reports usage at message_start, before any thinking delta", async () => {
+    const order: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        sseResponse([
+          {
+            type: "message_start",
+            message: {
+              usage: {
+                input_tokens: 120,
+                cache_read_input_tokens: 900,
+                cache_creation_input_tokens: 30,
+              },
+            },
+          },
+          { type: "content_block_start", index: 0, content_block: { type: "thinking", thinking: "" } },
+          { type: "content_block_delta", index: 0, delta: { type: "thinking_delta", thinking: "hmm" } },
+          { type: "message_delta", delta: { stop_reason: "end_turn" }, usage: { output_tokens: 40 } },
+          { type: "message_stop" },
+        ]),
+      ),
+    );
+
+    const samples: Array<{ inputTokens?: number; outputTokens?: number; cacheReadTokens?: number; cacheWriteTokens?: number }> = [];
+    const result = await streamAnthropicMessages({
+      ...baseOptions(nativeUrl),
+      onThinking: () => order.push("thinking"),
+      onUsage: (usage) => {
+        order.push(`usage:${usage.outputTokens ?? 0}`);
+        samples.push({ ...usage });
+      },
+    });
+
+    // 第一件事就是输入/缓存到达（思考还没开始），输出此时还是 0
+    expect(order[0]).toBe("usage:0");
+    expect(samples[0]).toMatchObject({
+      inputTokens: 1050,
+      cacheReadTokens: 900,
+      cacheWriteTokens: 30,
+    });
+    // 结束前强冲一次：最后一次回调与返回值同值
+    expect(samples.at(-1)?.outputTokens).toBe(40);
+    expect(result.usage?.outputTokens).toBe(40);
+  });
+
   it("replays thinking blocks before text and tool_use", () => {
     const { messages } = toAnthropicMessages([
       { role: "user", content: "x" },
@@ -584,12 +639,15 @@ describe("toAnthropicMessages user images", () => {
     });
   });
 
-  it("keeps a plain string when the user message has no images", () => {
+  it("uses a stable content-block array for plain user text", () => {
     const { messages } = toAnthropicMessages([
       { role: "user", content: "hi" },
       { role: "assistant", content: "ok" },
     ]);
-    expect(messages[0].content).toBe("hi");
+    // 固定为数组：断点加/移时序列化形状不能变，否则前缀缓存在下一跳失效
+    const content = messages[0].content as Array<Record<string, unknown>>;
+    expect(Array.isArray(content)).toBe(true);
+    expect(content[0]).toMatchObject({ type: "text", text: "hi" });
   });
 });
 
@@ -618,6 +676,14 @@ describe("cache profile breakpoints", () => {
     { role: "user", content: "hello" },
     { role: "assistant", content: "hi" },
     { role: "user", content: "again" },
+    {
+      role: "assistant",
+      content: null,
+      tool_calls: [
+        { id: "call-1", type: "function", function: { name: "a", arguments: "{}" } },
+      ],
+    },
+    { role: "tool", content: "ok", tool_call_id: "call-1" },
   ];
   const tools: ToolDefinition[] = [
     { type: "function", function: { name: "a", description: "a", parameters: { type: "object", properties: {} } } },
@@ -677,6 +743,100 @@ describe("cache profile breakpoints", () => {
     walk(body);
     expect(tags).toHaveLength(BREAKPOINT_CAP);
     for (const tag of tags) expect(tag).toEqual({ type: "ephemeral", ttl: "1h" });
+  });
+
+  it("tags the snapshot anchor instead of the array tail", () => {
+    const plan = resolveCachePlan({
+      id: "p",
+      name: "p",
+      protocol: "anthropic-messages",
+      baseUrl: "https://api.anthropic.com",
+      model: "claude-sonnet-4-5",
+    });
+    // 追加工具后：断点留在快照末尾（index 0），新追加的 index 1 不打点
+    const appended = anthropicTools(tools, plan, 0);
+    expect(appended[0]).toHaveProperty("cache_control");
+    expect(appended[1]).not.toHaveProperty("cache_control");
+    // 越界锚点钳制到数组末尾
+    const clamped = anthropicTools(tools, plan, 99);
+    expect(clamped[1]).toHaveProperty("cache_control");
+    expect(anthropicTools([], plan, 0)).toEqual([]);
+  });
+
+  it("moves the tail write breakpoint before a trailing synthetic instruction", () => {
+    const plan = resolveCachePlan({
+      id: "p",
+      name: "p",
+      protocol: "anthropic-messages",
+      baseUrl: "https://api.anthropic.com",
+      model: "claude-sonnet-4-5",
+    });
+    const messages: ChatMessage[] = [
+      { role: "user", content: "do the thing" },
+      { role: "assistant", content: "on it" },
+      { role: "user", content: "COMPACTION INSTRUCTION" },
+    ];
+    const normal = toAnthropicMessages(messages, plan);
+    const skip = toAnthropicMessages(messages, plan, { skipTailCacheWrite: true });
+
+    // 正常路径：tail 断点落在最后一条（合成指令）上
+    const normalTail = normal.messages.at(-1)?.content as Array<Record<string, unknown>>;
+    expect(normalTail[0]).toHaveProperty("cache_control");
+
+    // 复用前缀路径：写入点前移到指令之前的真实消息，指令不再被计费
+    const skipTail = skip.messages.at(-1)?.content as Array<Record<string, unknown>>;
+    expect(skipTail[0]).not.toHaveProperty("cache_control");
+    expect(countCacheControl(skip.messages)).toBeGreaterThan(0);
+    // 原 anchor 位置（上一条真实 user）继续承载断点：复用前缀的意义就在这
+    expect((skip.messages[0].content as Array<Record<string, unknown>>)[0]).toHaveProperty(
+      "cache_control",
+    );
+  });
+});
+
+describe("one-shot request detection", () => {
+  const tool = (name: string): ToolDefinition => ({
+    type: "function",
+    function: { name, description: name, parameters: { type: "object", properties: {} } },
+  });
+
+  it("treats title/digest shapes as one-shot and drops every breakpoint", () => {
+    const plan = resolveCachePlan({
+      id: "p",
+      name: "p",
+      protocol: "anthropic-messages",
+      baseUrl: "https://api.anthropic.com",
+      model: "claude-sonnet-4-5",
+    });
+    const titleMessages: ChatMessage[] = [
+      { role: "system", content: "give me a title" },
+      { role: "user", content: "fix the parser" },
+    ];
+    const digestMessages: ChatMessage[] = [
+      { role: "system", content: "compress these tool outputs" },
+      { role: "user", content: "#1 read_file\nlots of text" },
+    ];
+    expect(isOneShotRequest(titleMessages, [])).toBe(true);
+    expect(isOneShotRequest(digestMessages, [])).toBe(true);
+    expect(withoutCacheWrites(plan).enabled).toBe(false);
+    const { system, messages } = toAnthropicMessages(titleMessages, withoutCacheWrites(plan));
+    expect(countCacheControl({ system, messages })).toBe(0);
+  });
+
+  it("does not treat prefix-reuse summaries as one-shot", () => {
+    const conversation: ChatMessage[] = [
+      { role: "user", content: "first" },
+      { role: "assistant", content: "ok" },
+      { role: "user", content: "second" },
+    ];
+    // 带工具目录 → 不是一次性
+    expect(isOneShotRequest(conversation, [tool("a")])).toBe(false);
+    // 无工具但多轮 user → 也不是
+    expect(isOneShotRequest(conversation, [])).toBe(false);
+    // 有 assistant/tool 轮 → 不是
+    expect(
+      isOneShotRequest([{ role: "user", content: "q" }, { role: "assistant", content: "a" }], []),
+    ).toBe(false);
   });
 });
 

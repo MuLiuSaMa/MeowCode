@@ -1,0 +1,176 @@
+{
+  "tabs": {
+    "home": "नया टैब",
+    "workspace": "फ़ाइलें",
+    "review": "समीक्षा",
+    "sidechat": "साइड चैट",
+    "terminal": "टर्मिनल",
+    "plan": "योजना",
+    "subagents": "सबएजेंट",
+    "subagent": "सबएजेंट"
+  },
+  "runStatus": {
+    "running": "चल रहा है",
+    "completed": "पूर्ण",
+    "failed": "विफल",
+    "aborted": "रोका गया",
+    "interrupted": "बाधित"
+  },
+  "laneStatus": {
+    "queued": "कतार में",
+    "active": "सक्रिय",
+    "done": "पूर्ण",
+    "blocked": "अवरुद्ध"
+  },
+  "home": {
+    "toolsSection": "टूल",
+    "sessionSection": "सत्र जानकारी",
+    "card": {
+      "workspace": "फ़ाइलें",
+      "search": "खोज",
+      "sidechat": "साइड चैट",
+      "terminal": "टर्मिनल",
+      "review": "समीक्षा",
+      "subagents": "सबएजेंट"
+    },
+    "fileMenu": "फ़ाइल मेन्यू",
+    "quickOpen": "त्वरित खोलें (Ctrl+P)",
+    "revealInExplorer": "फ़ाइल एक्सप्लोरर में खोलें",
+    "field": {
+      "workspace": "वर्कस्पेस",
+      "provider": "प्रदाता",
+      "model": "मॉडल",
+      "sessionId": "सत्र ID",
+      "toolCalls": "टूल कॉल",
+      "uncachedInput": "बिना कैश इनपुट",
+      "cacheRead": "कैश पढ़ना",
+      "cacheStatus": "कैश स्थिति",
+      "cacheWrite": "कैश लिखना",
+      "output": "आउटपुट",
+      "cacheHitRate": "कैश हिट दर (सत्र)",
+      "speed": "जनरेशन गति",
+      "response": "प्रतिक्रिया समय",
+      "firstToken": "पहले टोकन की देरी"
+    },
+    "notReported": "रिपोर्ट नहीं हुआ",
+    "cache": {
+      "localBreakpoint": "स्थानीय ब्रेकपॉइंट · {{ttl}}",
+      "autoTtl": "स्वतः (मनुष्य 1h / मशीन 5m)",
+      "serverManaged": "सर्वर द्वारा प्रबंधित",
+      "serverManagedUncontrolled": "सर्वर द्वारा प्रबंधित · TTL/निष्कासन नियंत्रणीय नहीं",
+      "notReported": "{{base}} (रिपोर्ट नहीं हुआ)",
+      "miss": "{{base}} (मिस)",
+      "hitting": "{{base}} (हिट हो रहा है)"
+    },
+    "tokenValue": "{{value}} tok"
+  },
+  "subagent": {
+    "fallbackTitle": "सबएजेंट",
+    "background": "बैकग्राउंड",
+    "stop": "इस सबएजेंट को रोकें",
+    "readOnly": "केवल पढ़ने योग्य",
+    "canContinue": "बातचीत जारी रख सकते हैं",
+    "tokensIn": "इनपुट {{tokens}}",
+    "tokensOut": "आउटपुट {{tokens}}",
+    "loadingTranscript": "ट्रांसक्रिप्ट लोड हो रहा है…",
+    "emptyTranscript": "अभी कोई ट्रांसक्रिप्ट नहीं",
+    "pendingSteers_one": "{{count}} संदेश जोड़ा गया, अगले चरण में लागू होगा",
+    "pendingSteers_other": "{{count}} संदेश जोड़े गए, अगले चरण में लागू होंगे",
+    "pendingSteers_few": "{{count}} संदेश जोड़े गए, अगले चरण में लागू होंगे",
+    "pendingSteers_many": "{{count}} संदेश जोड़े गए, अगले चरण में लागू होंगे",
+    "steerPlaceholderReadOnly": "{{role}} को संदेश (अगले चरण में लागू, केवल पढ़ने योग्य)…",
+    "steerPlaceholder": "संदेश: अगले चरण में लागू होगा, मौजूदा निष्पादन बाधित नहीं होगा…",
+    "steer": "संदेश",
+    "steerTitle": "अगले चरण में लागू",
+    "runningHint": "चल रहा है — पूरा होने पर बातचीत जारी रख सकते हैं",
+    "continuePlaceholderReadOnly": "{{role}} से जारी रखने को कहें (केवल पढ़ने योग्य)…",
+    "continuePlaceholder": "सबएजेंट से काम जारी रखने को कहें…",
+    "send": "भेजें"
+  },
+  "subagents": {
+    "emptyTitle": "इस सत्र में अभी कोई सबएजेंट नहीं",
+    "emptyHint": "मुख्य एजेंट द्वारा task भेजने पर वे यहाँ दिखेंगे",
+    "onlyCurrentSession": "केवल इस सत्र के सबएजेंट दिखाए जा रहे हैं",
+    "open": "सबएजेंट ट्रांसक्रिप्ट खोलें",
+    "invalidFallback": "होस्ट सत्यापन विफल",
+    "invalidTooltip": "{{reason}}: {{summary}}",
+    "verified": "सत्यापित",
+    "unverified": "असत्यापित",
+    "criticalFindings_one": "{{count}} गंभीर",
+    "criticalFindings_other": "{{count}} गंभीर",
+    "criticalFindings_few": "{{count}} गंभीर",
+    "criticalFindings_many": "{{count}} गंभीर"
+  },
+  "sidechat": {
+    "interruptedNotice": "पिछली जनरेशन ऐप बंद होने से बाधित हुई थी। बना हुआ कंटेंट सुरक्षित है, आप बातचीत जारी रख सकते हैं।",
+    "generating": "जनरेट हो रहा है…",
+    "standalone": "स्वतंत्र सत्र · मुख्य बातचीत के समानांतर",
+    "initializing": "प्रारंभ हो रहा है…",
+    "newSession": "नया सत्र",
+    "noModel": "कोई मॉडल कॉन्फ़िगर नहीं",
+    "planConfirmedWithPath": "योजना की पुष्टि हुई। {{path}} के अनुसार क्रियान्वयन शुरू करें।",
+    "planConfirmed": "योजना की पुष्टि हुई। क्रियान्वयन शुरू करें।"
+  },
+  "browser": {
+    "back": "पीछे",
+    "forward": "आगे",
+    "reload": "पुनः लोड करें",
+    "addressPlaceholder": "खोजें या URL डालें"
+  },
+  "filePreview": {
+    "copyPath": "पाथ कॉपी करें",
+    "openInEditor": "एडिटर में खोलें",
+    "loading": "लोड हो रहा है…",
+    "truncated": "केवल पहली {{shown}} पंक्तियाँ दिखाई जा रही हैं (कुल {{total}})"
+  },
+  "plan": {
+    "governance": "गवर्नेंस · {{tier}}",
+    "allPassed": "सभी पास",
+    "inProgress": "जारी है",
+    "repairs": "पुनः कार्य {{count}}/3",
+    "trivial": "T0 मामूली कार्य: कोई गेट नहीं, सीधे लागू करें और सत्यापित करें।",
+    "emptyTitle": "अभी कोई योजना दस्तावेज़ नहीं",
+    "emptyHint": "योजना मोड पहले केवल-पढ़ने वाले टूल से शोध करता है, फिर क्रियान्वयन योजना plans/ में लिखता है; दस्तावेज़ यहाँ दिखता है।",
+    "updating": "अपडेट हो रहा है",
+    "writing": "लिखा जा रहा है",
+    "reload": "दोबारा पढ़ें",
+    "writingBody": "योजना दस्तावेज़ लिखा जा रहा है…",
+    "loadingBody": "योजना दस्तावेज़ पढ़ा जा रहा है…"
+  },
+  "quickOpen": {
+    "title": "त्वरित खोलें",
+    "placeholder": "फ़ाइल नाम या पाथ डालें",
+    "failed": "फ़ाइल सूची पढ़ी नहीं जा सकी, कृपया पुनः प्रयास करें",
+    "loading": "लोड हो रहा है…",
+    "noMatch": "कोई मिलती फ़ाइल नहीं",
+    "empty": "वर्कस्पेस में कोई फ़ाइल नहीं"
+  },
+  "review": {
+    "loading": "लोड हो रहा है…",
+    "changedFiles_one": "{{count}} फ़ाइल में बदलाव",
+    "changedFiles_other": "{{count}} फ़ाइलों में बदलाव",
+    "changedFiles_few": "{{count}} फ़ाइलों में बदलाव",
+    "changedFiles_many": "{{count}} फ़ाइलों में बदलाव",
+    "refresh": "पुनः लोड करें",
+    "failed": "पढ़ने में विफल, कृपया बाद में पुनः प्रयास करें",
+    "empty": "इस सत्र में अभी कोई फ़ाइल बदलाव नहीं",
+    "changeCount_one": "{{count}} बार बदला",
+    "changeCount_other": "{{count}} बार बदला",
+    "changeCount_few": "{{count}} बार बदला",
+    "changeCount_many": "{{count}} बार बदला",
+    "diffAria": "{{path}} में बदलाव"
+  },
+  "workspace": {
+    "loading": "लोड हो रहा है…",
+    "readFailed": "पढ़ने में विफल",
+    "truncated": "…कुल {{total}} आइटम, केवल पहले {{shown}} दिखाए जा रहे हैं",
+    "selectFile": "प्रीव्यू के लिए दाईं ओर से फ़ाइल चुनें (टेक्स्ट / छवि / वीडियो / ऑडियो / PDF)",
+    "resizeAria": "फ़ाइल सूची की चौड़ाई बदलें",
+    "filterPlaceholder": "फ़ाइलें फ़िल्टर करें…",
+    "searching": "खोजा जा रहा है…",
+    "noMatch": "कोई मिलती फ़ाइल नहीं"
+  },
+  "terminal": {
+    "exited": "[प्रक्रिया समाप्त हुई]"
+  }
+}

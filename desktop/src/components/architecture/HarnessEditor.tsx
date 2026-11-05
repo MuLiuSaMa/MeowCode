@@ -1,4 +1,5 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Trans, useTranslation } from "react-i18next";
 import { createPortal } from "react-dom";
 import {
   LuBot,
@@ -20,7 +21,6 @@ import {
   fetchAgentDefinitions,
   fetchHarnessDetail,
   saveHarness,
-  type AgentProfileId,
   type AgentDefinitionInfo,
   type HarnessDocument,
   type HarnessEdge,
@@ -60,27 +60,31 @@ const ROLE_OPTIONS = [
   "custom",
 ];
 
-const ROLE_LABELS: Record<string, string> = {
-  general: "通用",
-  explore: "探索",
-  planner: "规划",
-  scoper: "范围界定",
-  "depth-prober": "深挖",
-  implementer: "实现",
-  reviewer: "评审",
-  verifier: "验证",
-  "fresh-verifier": "独立复验",
-  juror: "终审",
-  sweeper: "收敛清扫",
-  "goal-checker": "目标核对",
-  custom: "自定义",
+/**
+ * 角色标签与节点类型标签：表里只存词条 key。
+ * 模块顶层不能调 t()（import 期求值，切语言不刷新），标签一律在组件里查表。
+ */
+const ROLE_LABEL_KEYS: Record<string, string> = {
+  general: "roles.general",
+  explore: "roles.explore",
+  planner: "roles.planner",
+  scoper: "roles.scoper",
+  "depth-prober": "roles.depthProber",
+  implementer: "roles.implementer",
+  reviewer: "roles.reviewer",
+  verifier: "roles.verifier",
+  "fresh-verifier": "roles.freshVerifier",
+  juror: "roles.juror",
+  sweeper: "roles.sweeper",
+  "goal-checker": "roles.goalChecker",
+  custom: "roles.custom",
 };
 
-const TYPE_LABELS: Record<HarnessNodeType, string> = {
-  agent: "Agent",
-  tier: "层级",
-  gate: "门禁",
-  role: "子 Agent",
+const TYPE_LABEL_KEYS: Record<HarnessNodeType, string> = {
+  agent: "types.agent",
+  tier: "types.tier",
+  gate: "types.gate",
+  role: "types.role",
 };
 
 const TYPE_ICONS: Record<HarnessNodeType, typeof LuLayers> = {
@@ -211,6 +215,7 @@ const NodeCard = memo(
     terminalTier: boolean;
     displayName: string;
   }) {
+    const { t } = useTranslation("architecture");
     const Icon = TYPE_ICONS[node.type];
     const summary = nodeSummary(node);
     const onFail = node.type === "gate" ? (node.data as { onFail?: string }).onFail : undefined;
@@ -250,28 +255,28 @@ const NodeCard = memo(
               data-kind={node.type}
               title={
                 terminalTier
-                  ? "该层级没有门禁：admit 后直接完成"
+                  ? t("nodeCard.terminalTierTip")
                   : node.type === "agent"
-                    ? "主 Agent 是根 runtime，通过 task 派发子 Agent"
+                    ? t("nodeCard.agentTip")
                     : node.type === "gate"
-                      ? "门禁是一个检查点，由 gate→role 边指定关账子 Agent"
+                      ? t("nodeCard.gateTip")
                       : node.type === "role"
-                        ? "子 Agent 会在 task 派发时实例化"
-                        : "任务层级，决定 admit 后走哪串门禁"
+                        ? t("nodeCard.roleTip")
+                        : t("nodeCard.tierTip")
               }
             >
               {node.type === "agent"
-                ? "主 Agent"
+                ? t("nodeCard.agent")
                 : node.type === "role"
-                  ? "子 Agent"
+                  ? t("nodeCard.role")
                   : node.type === "gate"
-                    ? "门禁"
+                    ? t("nodeCard.gate")
                     : terminalTier
-                      ? "层级 · 直通"
-                      : "层级"}
+                      ? t("nodeCard.tierPassThrough")
+                      : t("nodeCard.tier")}
             </span>
           </span>
-          <span className="mc-harness__nodedesc">{summary || TYPE_LABELS[node.type]}</span>
+          <span className="mc-harness__nodedesc">{summary || t(TYPE_LABEL_KEYS[node.type])}</span>
           {onFail ? <span className="mc-harness__nodeonfail">{onFail}</span> : null}
         </span>
       </div>
@@ -309,6 +314,7 @@ const EdgeLine = memo(
     selected: boolean;
     onSelect: (id: string) => void;
   }) {
+    const { t } = useTranslation("architecture");
     const mid = (x1 + x2) / 2;
     const d = `M ${x1} ${y1} C ${mid} ${y1}, ${mid} ${y2}, ${x2 - 4} ${y2}`;
     return (
@@ -332,7 +338,8 @@ const EdgeLine = memo(
           edge.type === "agent-role" ||
           edge.type === "gate-role" ? (
           <text x={mid} y={(y1 + y2) / 2 - 6} className="mc-harness__edgelabel">
-            {edge.type === "agent-tier" ? "admit" : edge.type === "agent-role" ? "task" : "关账"}
+            {/* admit / task 是运行时通道名（协议标识符），不翻译 */}
+            {edge.type === "agent-tier" ? "admit" : edge.type === "agent-role" ? "task" : t("edge.closeOut")}
           </text>
         ) : null}
       </g>
@@ -356,8 +363,16 @@ export type HarnessAgentEntry = {
   count: number;
 };
 
-/** 左栏 Agent 列表的数据源：主 Agent + 所有角色实例（同类型按出现顺序编号）。 */
-function summarizeAgents(doc: HarnessDocument): HarnessAgentEntry[] {
+/**
+ * 左栏 Agent 列表的数据源：主 Agent + 所有角色实例（同类型按出现顺序编号）。
+ * 标签由调用方按当前语言解析后传入：节点自带的名字是用户数据，原样显示；
+ * 只有节点没写名字时才回落到产品预置的默认名。
+ */
+function summarizeAgents(
+  doc: HarnessDocument,
+  roleLabels: Record<string, string>,
+  mainAgentLabel: string,
+): HarnessAgentEntry[] {
   const roleCounts = new Map<string, number>();
   for (const node of doc.nodes) {
     if (node.type !== "role") continue;
@@ -372,7 +387,7 @@ function summarizeAgents(doc: HarnessDocument): HarnessAgentEntry[] {
         id: node.id,
         kind: "agent",
         roleType: "main",
-        label: node.data.name || "标准 Agent",
+        label: node.data.name || mainAgentLabel,
         ordinal: 1,
         count: 1,
       });
@@ -387,7 +402,7 @@ function summarizeAgents(doc: HarnessDocument): HarnessAgentEntry[] {
       id: node.id,
       kind: "role",
       roleType,
-      label: node.data.name || ROLE_LABELS[roleType] || roleType,
+      label: node.data.name || roleLabels[roleType] || roleType,
       ordinal,
       count,
     });
@@ -402,13 +417,14 @@ function HarnessSelect({
   value,
   options,
   onChange,
-  placeholder = "请选择",
+  placeholder,
 }: {
   value: string;
   options: SelectOption[];
   onChange: (value: string) => void;
   placeholder?: string;
 }) {
+  const { t } = useTranslation("architecture");
   const [open, setOpen] = useState(false);
   const [menu, setMenu] = useState<{ top: number; left: number; width: number } | null>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -473,7 +489,7 @@ function HarnessSelect({
         onClick={() => setOpen((current) => !current)}
       >
         <span className="mc-harness__selectvalue" data-placeholder={!selected}>
-          {selected?.label ?? placeholder}
+          {selected?.label ?? placeholder ?? t("select.placeholder")}
         </span>
         <LuChevronDown size={14} className="mc-harness__selectchevron" />
       </button>
@@ -535,6 +551,15 @@ export function HarnessEditor({
   /** 画布上改了主 Agent 名字：回传左栏，让列表项立刻改名 */
   onArchitectureRename?: (name: string) => void;
 }) {
+  const { t } = useTranslation("architecture");
+  /** 角色标签按当前语言解析（表里只存 key）；同时供「改名跟随」的默认值比较使用。 */
+  const roleLabels = useMemo(
+    () =>
+      Object.fromEntries(
+        Object.entries(ROLE_LABEL_KEYS).map(([roleType, key]) => [roleType, t(key)]),
+      ) as Record<string, string>,
+    [t],
+  );
   const [doc, setDoc] = useState<HarnessDocument | null>(null);
   /** 该架构对应的档位默认提示词：主 Agent 节点没写提示词时用它预填输入框 */
   const [defaultAgentPrompt, setDefaultAgentPrompt] = useState("");
@@ -550,7 +575,8 @@ export function HarnessEditor({
     : "";
   const [selection, setSelection] = useState<Selection>(null);
   const [connectFrom, setConnectFrom] = useState<string | null>(null);
-  const [status, setStatus] = useState<string>("");
+  /** 状态条里存词条 key，不存文本：切语言后不会残留旧语言的提示。 */
+  const [statusKey, setStatusKey] = useState<string>("");
   const [error, setError] = useState<string>("");
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
@@ -626,7 +652,7 @@ export function HarnessEditor({
 
   const load = useCallback(() => {
     setError("");
-    setStatus("加载中…");
+    setStatusKey("status.loading");
     void fetchHarnessDetail(workspace, profile)
       .then(({ document, agentPrompt }) => {
         setDoc(document);
@@ -641,7 +667,7 @@ export function HarnessEditor({
         });
         setConnectFrom(null);
         setDirty(false);
-        setStatus("");
+        setStatusKey("");
         // 换图时让画布平滑过渡到新布局，而不是瞬间跳变
         setFitAnimating(true);
         requestAnimationFrame(() => fitToNodes(document.nodes));
@@ -652,7 +678,7 @@ export function HarnessEditor({
         }, 280);
       })
       .catch((cause: unknown) => {
-        setStatus("");
+        setStatusKey("");
         setError(cause instanceof Error ? cause.message : String(cause));
       });
   }, [workspace, profile, fitToNodes]);
@@ -727,17 +753,17 @@ export function HarnessEditor({
       data: {
         name:
           type === "agent"
-            ? "主 Agent"
+            ? t("defaults.mainAgent")
             : type === "tier"
-              ? "新层级"
+              ? t("defaults.newTier")
               : type === "gate"
-                ? "新门禁"
-                : "自定义",
+                ? t("defaults.newGate")
+                : t("roles.custom"),
         ...(type === "gate" ? { invariant: "" } : {}),
         ...(type === "agent" ? { description: "" } : {}),
         ...(type === "role"
           ? {
-              description: "自定义子 Agent：工具白名单与系统提示词由该节点的属性面板覆盖",
+              description: t("defaults.customRoleDescription"),
               role: "custom",
             }
           : {}),
@@ -987,21 +1013,21 @@ export function HarnessEditor({
     if (!doc) return;
     setSaving(true);
     setError("");
-    setStatus("保存中…");
+    setStatusKey("status.saving");
     void saveHarness(workspace, profile, doc)
       .then(() => {
         setDirty(false);
-        setStatus("已保存 — 治理 run 在下一次 admit 前装载新图");
+        setStatusKey("status.saved");
       })
       .catch((cause: unknown) => {
-        setStatus("");
+        setStatusKey("");
         setError(cause instanceof Error ? cause.message : String(cause));
       })
       .finally(() => setSaving(false));
   };
 
   const reset = useCallback(() => {
-    setStatus("");
+    setStatusKey("");
     setError("");
     // 内置种子由服务端提供（与运行时的图同源），避免编辑器里再维护一份副本
     void fetchHarnessDetail(workspace, profile, { seed: true })
@@ -1012,7 +1038,7 @@ export function HarnessEditor({
         onRoleSelect?.(null);
         setConnectFrom(null);
         setDirty(true);
-        setStatus("已重置为内置架构 — 保存后生效");
+        setStatusKey("status.reset");
         requestAnimationFrame(() => fitToNodes(seed.nodes));
       })
       .catch((cause: unknown) => {
@@ -1045,7 +1071,10 @@ export function HarnessEditor({
     setSelection({ kind: "node", id: target.id });
   }, [selectedAgent, doc, selection, nodeById]);
 
-  const agentEntries = useMemo(() => (doc ? summarizeAgents(doc) : []), [doc]);
+  const agentEntries = useMemo(
+    () => (doc ? summarizeAgents(doc, roleLabels, t("defaults.standardAgent")) : []),
+    [doc, roleLabels, t],
+  );
   const roleOrdinalById = useMemo(
     () =>
       new Map(
@@ -1078,7 +1107,6 @@ export function HarnessEditor({
       ),
     [registry],
   );
-  const registryTools = registry?.tools ?? [];
   const selectedRoleDefinition =
     selectedNode?.type === "role"
       ? definitionByName.get(roleTypeOf(selectedNode))
@@ -1151,17 +1179,16 @@ export function HarnessEditor({
     selectedNode?.type === "role" &&
     explicitRoleTools === null &&
     selectedRoleDefinition?.tools === null;
-  const roleToolCount = roleToolsAreFull ? "全量" : String(effectiveRoleTools.length);
   const roleToolSummary =
     explicitRoleTools !== null
-      ? effectiveRoleTools.join(", ") || "无工具"
+      ? effectiveRoleTools.join(", ") || t("tools.none")
       : roleToolsAreFull
-        ? "全量工具，另含 MCP / 浏览器动态工具"
+        ? t("tools.allIncludingDynamic")
         : selectedRoleDefinition
-          ? effectiveRoleTools.join(", ") || "无工具"
+          ? effectiveRoleTools.join(", ") || t("tools.none")
           : registryState === "error"
-            ? "注册表不可用"
-            : "正在读取注册表…";
+            ? t("registry.unavailable")
+            : t("registry.loading");
   const rolePromptOverridden =
     selectedNode?.type === "role" && typeof selectedNode.data.systemPrompt === "string";
 
@@ -1178,21 +1205,22 @@ export function HarnessEditor({
               : ""
           }`
         : selectedNode.id
-    : "连线";
+    : t("inspector.edge");
   const inspectorSubtitle = selectedNode
     ? selectedNode.type === "agent"
-      ? `主 Agent · ${selectedNode.id}`
+      ? t("inspector.agentSubtitle", { id: selectedNode.id })
       : selectedNode.type === "tier"
-        ? `任务层级 · ${selectedNode.id}`
+        ? t("inspector.tierSubtitle", { id: selectedNode.id })
         : selectedNode.type === "gate"
-          ? `质量门 · ${selectedNode.id}`
-          : `子 Agent · ${roleTypeOf(selectedNode)}${
-              (roleOrdinalById.get(selectedNode.id)?.count ?? 1) > 1
-                ? ` #${roleOrdinalById.get(selectedNode.id)?.ordinal}`
-                : ""
-            }`
+          ? t("inspector.gateSubtitle", { id: selectedNode.id })
+          : selectedRoleInfo && selectedRoleInfo.count > 1
+            ? t("inspector.roleSubtitleNumbered", {
+                role: roleTypeOf(selectedNode),
+                ordinal: selectedRoleInfo.ordinal,
+              })
+            : t("inspector.roleSubtitle", { role: roleTypeOf(selectedNode) })
     : selectedEdge
-      ? `连线 · ${selectedEdge.type ?? "flow"}`
+      ? t("inspector.edgeSubtitle", { type: selectedEdge.type ?? "flow" })
       : "";
 
   /** 编辑节点 data 字段（name / invariant / onFail 等） */
@@ -1223,8 +1251,8 @@ export function HarnessEditor({
     const currentType = roleTypeOf(selectedNode);
     if (next === currentType) return;
     const patch: Record<string, unknown> = { role: next };
-    if (!selectedNode.data.name || selectedNode.data.name === ROLE_LABELS[currentType]) {
-      patch.name = ROLE_LABELS[next] ?? next;
+    if (!selectedNode.data.name || selectedNode.data.name === roleLabels[currentType]) {
+      patch.name = roleLabels[next] ?? next;
     }
     updateNode(selectedNode.id, patch);
   };
@@ -1355,40 +1383,43 @@ export function HarnessEditor({
     <div className="mc-harness">
       <div className="mc-harness__toolbar">
         <button type="button" className="mc-harness__btn" onClick={() => addNode("tier")}>
-          <LuPlus size={13} /> 层级
+          <LuPlus size={13} /> {t("toolbar.addTier")}
         </button>
         <button type="button" className="mc-harness__btn" onClick={() => addNode("gate")}>
-          <LuPlus size={13} /> 门禁
+          <LuPlus size={13} /> {t("toolbar.addGate")}
         </button>
         <button type="button" className="mc-harness__btn" onClick={() => addNode("role")}>
-          <LuPlus size={13} /> 子 Agent
+          <LuPlus size={13} /> {t("toolbar.addRole")}
         </button>
         <span className="mc-harness__sep" />
         <button
           type="button"
           className="mc-harness__btn"
           data-active={connectFrom !== null}
-          title="点击起点节点，再点击终点节点连线"
+          title={t("toolbar.connectTip")}
           onClick={() => {
             setConnectFrom(connectFrom ? null : (selection?.kind === "node" ? selection.id : null));
             if (connectFrom === null) {
-              setStatus(selection?.kind === "node" ? "连线模式：点击目标节点" : "先选中一个节点，再点「连线」");
+              // 两种提示是两个独立词条，不塞进插值
+              setStatusKey(
+                selection?.kind === "node" ? "status.connectTarget" : "status.connectPickNode",
+              );
             } else {
-              setStatus("");
+              setStatusKey("");
             }
           }}
         >
           {connectFrom ? <LuUnlink size={13} /> : <LuLink2 size={13} />}
-          {connectFrom ? "取消连线" : "连线"}
+          {t(connectFrom ? "toolbar.cancelConnect" : "toolbar.connect")}
         </button>
         <button
           type="button"
           className="mc-harness__btn"
           disabled={!selection}
           onClick={deleteSelection}
-          title="删除选中的节点或连线（节点删除会级联删除相连边）"
+          title={t("toolbar.deleteTip")}
         >
-          <LuTrash2 size={13} /> 删除
+          <LuTrash2 size={13} /> {t("toolbar.delete")}
         </button>
         <span className="mc-harness__sep" />
         <button
@@ -1396,14 +1427,14 @@ export function HarnessEditor({
           className="mc-harness__btn"
           disabled={!doc}
           onClick={() => doc && fitToNodes(doc.nodes)}
-          title="居中并缩放显示整张架构图"
+          title={t("toolbar.fitTip")}
         >
-          <LuMaximize size={13} /> 适应画布
+          <LuMaximize size={13} /> {t("toolbar.fit")}
         </button>
         <span className="mc-harness__zoom">{Math.round(viewport.zoom * 100)}%</span>
         <span className="mc-harness__sep" />
         <button type="button" className="mc-harness__btn" onClick={reset}>
-          <LuRotateCcw size={13} /> 重置内置
+          <LuRotateCcw size={13} /> {t("toolbar.reset")}
         </button>
         <button
           type="button"
@@ -1412,10 +1443,12 @@ export function HarnessEditor({
           data-dirty={dirty}
           onClick={save}
         >
-          <LuSave size={13} /> 保存到工作区
+          <LuSave size={13} /> {t("toolbar.save")}
         </button>
-        {status ? <span className="mc-harness__status">{status}</span> : null}
-        {dirty && !status ? <span className="mc-harness__status">有未保存修改</span> : null}
+        {statusKey ? <span className="mc-harness__status">{t(statusKey)}</span> : null}
+        {dirty && !statusKey ? (
+          <span className="mc-harness__status">{t("status.dirty")}</span>
+        ) : null}
       </div>
       {error ? <p className="mc-harness__error">{error}</p> : null}
       <div className="mc-harness__main">
@@ -1432,7 +1465,7 @@ export function HarnessEditor({
           onPointerCancel={onPointerUp}
         >
           {!doc ? (
-            <p className="mc-harness__hint">正在加载架构图…</p>
+            <p className="mc-harness__hint">{t("canvas.loading")}</p>
           ) : (
             <>
               {/* 拖拽预览层：视口大小，只画正在拖的那几条线，避免整块大 SVG 重绘 */}
@@ -1501,14 +1534,11 @@ export function HarnessEditor({
             </>
           )}
           {doc ? (
-            <p className="mc-harness__legend">
-              拖动节点 · 空白处平移 · 滚轮缩放　|　主 Agent→子 Agent = task 派发，主 Agent→层级 =
-              admit　|　tier→gate 序号 = 门禁顺序，gate→role = 关账
-            </p>
+            <p className="mc-harness__legend">{t("canvas.legend")}</p>
           ) : null}
         </div>
         {selection ? (
-          <aside className="mc-harness__inspector" aria-label="节点属性">
+          <aside className="mc-harness__inspector" aria-label={t("inspector.ariaLabel")}>
             <header className="mc-harness__inspecthead">
               <span className="mc-harness__inspecticon">
                 <InspectorIcon size={16} />
@@ -1524,7 +1554,7 @@ export function HarnessEditor({
                   setSelection(null);
                   onRoleSelect?.(null);
                 }}
-                aria-label="关闭属性面板"
+                aria-label={t("inspector.close")}
               >
                 <LuX size={15} />
               </button>
@@ -1535,7 +1565,7 @@ export function HarnessEditor({
                 {selectedNode.type === "agent" ? (
                   <>
                     <label className="mc-harness__field">
-                      节点名称
+                      {t("fields.nodeName")}
                       <input
                         value={
                           isCustomArchitecture && resolvedArchitectureName
@@ -1548,14 +1578,14 @@ export function HarnessEditor({
                       />
                     </label>
                     <label className="mc-harness__field">
-                      节点 id
+                      {t("fields.nodeId")}
                       <input
                         value={selectedNode.id}
                         onChange={(event) => renameNode(selectedNode.id, event.target.value)}
                       />
                     </label>
                     <label className="mc-harness__field">
-                      职责说明
+                      {t("fields.description")}
                       <textarea
                         rows={4}
                         value={selectedNode.data.description ?? ""}
@@ -1566,28 +1596,28 @@ export function HarnessEditor({
                     </label>
                     <div className="mc-harness__field">
                       <span className="mc-harness__fieldhead">
-                        可用工具
+                        {t("fields.availableTools")}
                         <span className="mc-harness__fieldactions">
                           <button
                             type="button"
                             onClick={() => setAgentTools(allAgentTools)}
                             disabled={!allAgentTools.length}
                           >
-                            全选
+                            {t("fields.selectAll")}
                           </button>
                           <button
                             type="button"
                             onClick={() => setAgentTools([])}
                             disabled={!allAgentTools.length}
                           >
-                            清空
+                            {t("fields.clearAll")}
                           </button>
                           <button
                             type="button"
                             onClick={() => setAgentTools(undefined)}
                             disabled={!agentToolsOverridden}
                           >
-                            恢复默认
+                            {t("fields.restoreDefault")}
                           </button>
                         </span>
                       </span>
@@ -1609,37 +1639,39 @@ export function HarnessEditor({
                       ) : (
                         <span className="mc-harness__emptyfact">
                           {registryState === "error"
-                            ? "注册表不可用 — 重启应用或点上方重试"
-                            : "正在读取注册表…"}
+                            ? t("registry.unavailableRetry")
+                            : t("registry.loading")}
                         </span>
                       )}
                       <p className="mc-harness__toolsmeta">
-                        {agentToolsOverridden ? `已选 ${effectiveAgentTools.length} 项` : "跟随当前档位"}
+                        {agentToolsOverridden
+                          ? t("tools.selectedCount", { count: effectiveAgentTools.length })
+                          : t("tools.followProfile")}
                         <span>
                           {agentToolsOverridden
-                            ? effectiveAgentTools.join(", ") || "无工具"
-                            : "未覆盖时不额外限制，由档位决定"}
+                            ? effectiveAgentTools.join(", ") || t("tools.none")
+                            : t("tools.inheritedNote")}
                         </span>
-                        <span>task / admit 是编排通道，始终可用</span>
+                        <span>{t("tools.orchestrationNote")}</span>
                       </p>
                     </div>
                     <div className="mc-harness__field">
                       <span className="mc-harness__fieldhead">
-                        系统提示词
+                        {t("fields.systemPrompt")}
                         <span className="mc-harness__fieldactions">
                           <button
                             type="button"
                             onClick={() => updateNode(selectedNode.id, { systemPrompt: undefined })}
                             disabled={!agentPromptOverridden}
                           >
-                            恢复默认
+                            {t("fields.restoreDefault")}
                           </button>
                         </span>
                       </span>
                       <textarea
                         className="mc-harness__prompt"
                         rows={10}
-                        placeholder="留空 = 使用当前档位的默认提示词"
+                        placeholder={t("fields.agentPromptPlaceholder")}
                         // 未覆盖时预填档位默认提示词，可以直接在上面改
                         value={selectedNode.data.systemPrompt ?? defaultAgentPrompt}
                         onChange={(event) =>
@@ -1647,14 +1679,16 @@ export function HarnessEditor({
                         }
                       />
                       <p className="mc-harness__note">
-                        输入框里预填的是当前档位的默认提示词；改完保存即生效。
-                        自定义内容是<strong>整体替换</strong>档位提示词，记得保留工具用法、路径规则等基础约定。
+                        <Trans
+                          i18nKey="architecture:notes.agentPrompt"
+                          components={{ strong: <strong /> }}
+                        />
                       </p>
                     </div>
                     <div className="mc-harness__field">
                       <span className="mc-harness__fieldhead">
-                        派发关系
-                        <span className="mc-harness__fieldactions">在连线上改</span>
+                        {t("fields.dispatch")}
+                        <span className="mc-harness__fieldactions">{t("fields.dispatchHint")}</span>
                       </span>
                       {selectedAgentTargets.length ? (
                         <div className="mc-harness__toolgrid">
@@ -1664,37 +1698,33 @@ export function HarnessEditor({
                               data-on="true"
                               key={`${target.kind}-${target.id}`}
                             >
+                              {/* admit / task 是编排通道名，target.id 是节点 id：都是数据，原样显示 */}
                               {target.kind === "agent-tier" ? "admit" : "task"} {target.id}
                             </span>
                           ))}
                         </div>
                       ) : (
-                        <span className="mc-harness__emptyfact">还没有派发连线</span>
+                        <span className="mc-harness__emptyfact">{t("empty.dispatchEdges")}</span>
                       )}
                     </div>
-                    <p className="mc-harness__note">
-                      主 Agent 是常驻根 runtime，不参与门禁；关账子 Agent 通过 tier→gate→role
-                      链路关账。子 Agent 不能再派发。
-                    </p>
+                    <p className="mc-harness__note">{t("notes.agentRoot")}</p>
                   </>
                 ) : selectedNode.type === "role" ? (
                   <>
                     {registryState === "error" ? (
                       <div className="mc-harness__registry-error">
                         <div>
-                          <strong>子 Agent 注册表加载失败</strong>
+                          <strong>{t("registry.loadFailed")}</strong>
                           <code>{registryError}</code>
-                          <p>
-                            桌面端可能仍在运行旧的服务端构建；重启应用后重试。
-                          </p>
+                          <p>{t("registry.loadFailedHint")}</p>
                         </div>
                         <button type="button" onClick={loadRegistry}>
-                          重试
+                          {t("registry.retry")}
                         </button>
                       </div>
                     ) : null}
                     <label className="mc-harness__field">
-                      子 Agent 标识
+                      {t("fields.roleType")}
                       <HarnessSelect
                         value={roleTypeOf(selectedNode)}
                         onChange={changeRoleType}
@@ -1702,7 +1732,7 @@ export function HarnessEditor({
                       />
                     </label>
                     <label className="mc-harness__field">
-                      显示名
+                      {t("fields.displayName")}
                       <input
                         value={selectedNode.data.name ?? ""}
                         onChange={(event) =>
@@ -1711,7 +1741,7 @@ export function HarnessEditor({
                       />
                     </label>
                     <label className="mc-harness__field">
-                      子 Agent 职责简述
+                      {t("fields.roleDescription")}
                       <textarea
                         rows={3}
                         value={selectedNode.data.description ?? ""}
@@ -1722,28 +1752,28 @@ export function HarnessEditor({
                     </label>
                     <div className="mc-harness__field">
                       <span className="mc-harness__fieldhead">
-                        可用工具
+                        {t("fields.availableTools")}
                         <span className="mc-harness__fieldactions">
                           <button
                             type="button"
                             onClick={() => setRoleTools(visibleTools)}
                             disabled={!selectedRoleDefinition}
                           >
-                            全选
+                            {t("fields.selectAll")}
                           </button>
                           <button
                             type="button"
                             onClick={() => setRoleTools([])}
                             disabled={!selectedRoleDefinition}
                           >
-                            清空
+                            {t("fields.clearAll")}
                           </button>
                           <button
                             type="button"
                             onClick={() => setRoleTools(undefined)}
                             disabled={!roleToolsOverridden}
                           >
-                            恢复内置
+                            {t("fields.restoreBuiltin")}
                           </button>
                         </span>
                       </span>
@@ -1765,22 +1795,24 @@ export function HarnessEditor({
                       ) : (
                         <span className="mc-harness__emptyfact">
                           {registryState === "error"
-                            ? "注册表不可用 — 重启应用或点上方重试"
-                            : "正在读取注册表…"}
+                            ? t("registry.unavailableRetry")
+                            : t("registry.loading")}
                         </span>
                       )}
                       <p className="mc-harness__toolsmeta">
-                        已选 {roleToolCount} 项
+                        {roleToolsAreFull
+                          ? t("tools.selectedFull")
+                          : t("tools.selectedCount", { count: effectiveRoleTools.length })}
                         <span>{roleToolSummary}</span>
                         {roleToolsOverridden ? (
-                          <span>显式白名单不含运行时注入的 MCP / 浏览器工具</span>
+                          <span>{t("tools.explicitWhitelistNote")}</span>
                         ) : null}
                       </p>
                     </div>
                     <div className="mc-harness__field">
                       <span className="mc-harness__fieldhead">
-                        门禁绑定
-                        <span className="mc-harness__fieldactions">点选改绑</span>
+                        {t("fields.gateBindings")}
+                        <span className="mc-harness__fieldactions">{t("fields.gateBindingsHint")}</span>
                       </span>
                       {gateIds.length ? (
                         <div className="mc-harness__toolgrid">
@@ -1797,15 +1829,13 @@ export function HarnessEditor({
                           ))}
                         </div>
                       ) : (
-                        <span className="mc-harness__emptyfact">图中还没有门禁节点</span>
+                        <span className="mc-harness__emptyfact">{t("empty.gateNodes")}</span>
                       )}
-                      <p className="mc-harness__note">
-                        一道门禁只能有一个关账子 Agent，点选已绑定的会解除绑定。
-                      </p>
+                      <p className="mc-harness__note">{t("notes.gateBinding")}</p>
                     </div>
                     <label className="mc-harness__field">
                       <span className="mc-harness__fieldhead">
-                        系统提示词
+                        {t("fields.systemPrompt")}
                         <span className="mc-harness__fieldactions">
                           <button
                             type="button"
@@ -1814,14 +1844,14 @@ export function HarnessEditor({
                             }
                             disabled={!rolePromptOverridden}
                           >
-                            恢复内置
+                            {t("fields.restoreBuiltin")}
                           </button>
                         </span>
                       </span>
                       <textarea
                         className="mc-harness__prompt"
                         rows={10}
-                        placeholder="留空使用内置提示词"
+                        placeholder={t("fields.rolePromptPlaceholder")}
                         value={
                           selectedNode.data.systemPrompt ??
                           selectedRoleDefinition?.systemPrompt ??
@@ -1832,15 +1862,12 @@ export function HarnessEditor({
                         }
                       />
                     </label>
-                    <p className="mc-harness__note">
-                      留空回落内置提示词。只读子 Agent 的审批模式仍由注册表强制；关账子 Agent 需要保留
-                      JSON 结果契约，否则 ChildResult 校验会失败。
-                    </p>
+                    <p className="mc-harness__note">{t("notes.rolePrompt")}</p>
                   </>
                 ) : selectedNode.type === "gate" ? (
                   <>
                     <label className="mc-harness__field">
-                      质量门名称
+                      {t("fields.gateName")}
                       <input
                         value={selectedNode.data.name ?? ""}
                         onChange={(event) =>
@@ -1849,7 +1876,7 @@ export function HarnessEditor({
                       />
                     </label>
                     <label className="mc-harness__field">
-                      判定不变量 / 验收标准
+                      {t("fields.invariant")}
                       <textarea
                         rows={4}
                         value={selectedNode.data.invariant ?? ""}
@@ -1859,31 +1886,31 @@ export function HarnessEditor({
                       />
                     </label>
                     <label className="mc-harness__field">
-                      失败策略
+                      {t("fields.onFail")}
                       <HarnessSelect
                         value={selectedNode.data.onFail ?? ""}
                         onChange={(value) =>
                           updateNode(selectedNode.id, { onFail: value })
                         }
                         options={[
-                          { value: "", label: "返工（回跳到首道门禁）" },
+                          { value: "", label: t("onFail.rework") },
                           ...gateIds
                             .filter((id) => id !== selectedNode.id)
                             .map((id) => ({
                               value: `loop-to:${id}`,
-                              label: `loop-to:${id}（回跳到 ${id}）`,
+                              label: t("onFail.loopTo", { id }),
                             })),
-                          { value: "block", label: "block（直接阻塞 lane）" },
+                          { value: "block", label: t("onFail.block") },
                         ]}
                       />
                     </label>
                     <label className="mc-harness__field">
-                      关账子 Agent
+                      {t("fields.closer")}
                       <HarnessSelect
                         value={selectedGateCloser ?? ""}
                         onChange={(value) => setGateCloser(selectedNode.id, value)}
                         options={[
-                          { value: "", label: "未绑定（admit 会拒绝）" },
+                          { value: "", label: t("closer.unbound") },
                           ...(doc?.nodes ?? [])
                             .filter((node) => node.type === "role")
                             .map((node) => {
@@ -1903,16 +1930,12 @@ export function HarnessEditor({
                         ]}
                       />
                     </label>
-                    <p className="mc-harness__note">
-                      证据由宿主实测：implementer 看文件改动，reviewer 看 critical findings，
-                      verifier 看命令退出码；绑给其他子 Agent 时只校验 completed + valid。
-                      门禁不采信模型自述。
-                    </p>
+                    <p className="mc-harness__note">{t("notes.gateEvidence")}</p>
                   </>
                 ) : (
                   <>
                     <label className="mc-harness__field">
-                      层级名称
+                      {t("fields.tierName")}
                       <input
                         value={selectedNode.data.name ?? ""}
                         onChange={(event) =>
@@ -1921,14 +1944,14 @@ export function HarnessEditor({
                       />
                     </label>
                     <label className="mc-harness__field">
-                      层级 id（T0 / T1 / T2 才会被 admit 识别）
+                      {t("fields.tierId")}
                       <input
                         value={selectedNode.id}
                         onChange={(event) => renameNode(selectedNode.id, event.target.value)}
                       />
                     </label>
                     <label className="mc-harness__field">
-                      层级说明
+                      {t("fields.tierDescription")}
                       <textarea
                         rows={3}
                         value={selectedNode.data.description ?? ""}
@@ -1937,10 +1960,21 @@ export function HarnessEditor({
                         }
                       />
                     </label>
+                    <label className="mc-harness__field">
+                      {t("fields.tierPrompt")}
+                      <textarea
+                        rows={3}
+                        placeholder={t("fields.tierPromptPlaceholder")}
+                        value={selectedNode.data.instructions ?? ""}
+                        onChange={(event) =>
+                          updateNode(selectedNode.id, { instructions: event.target.value })
+                        }
+                      />
+                    </label>
                     <div className="mc-harness__field">
                       <span className="mc-harness__fieldhead">
-                        门禁序列
-                        <span className="mc-harness__fieldactions">点选增删</span>
+                        {t("fields.gateSequence")}
+                        <span className="mc-harness__fieldactions">{t("fields.gateSequenceHint")}</span>
                       </span>
                       {gateIds.length ? (
                         <div className="mc-harness__toolgrid">
@@ -1957,12 +1991,14 @@ export function HarnessEditor({
                           ))}
                         </div>
                       ) : (
-                        <span className="mc-harness__emptyfact">图中还没有门禁节点</span>
+                        <span className="mc-harness__emptyfact">{t("empty.gateNodes")}</span>
                       )}
                       <p className="mc-harness__note">
                         {selectedTierGates.length
-                          ? `执行顺序：${selectedTierGates.map((gate) => gate.id).join(" → ")}；顺序在连线上改 order。`
-                          : "无门禁 · 直通（admit 后直接完成）"}
+                          ? t("tier.executionOrder", {
+                              gates: selectedTierGates.map((gate) => gate.id).join(" → "),
+                            })
+                          : t("tier.passThrough")}
                       </p>
                     </div>
                   </>
@@ -1971,18 +2007,18 @@ export function HarnessEditor({
             ) : selectedEdge ? (
               <div className="mc-harness__inspectbody">
                 <div className="mc-harness__factrow">
-                  <span>路径</span>
+                  <span>{t("fields.edgePath")}</span>
                   <code>
                     {selectedEdge.source} → {selectedEdge.target}
                   </code>
                 </div>
                 <div className="mc-harness__factrow">
-                  <span>类型</span>
+                  <span>{t("fields.edgeType")}</span>
                   <code>{selectedEdge.type ?? "flow"}</code>
                 </div>
                 {selectedEdge.type === "tier-gate" ? (
                   <label className="mc-harness__field">
-                    序号 order（同层级内升序执行）
+                    {t("fields.order")}
                     <input
                       type="number"
                       min={1}
@@ -2000,16 +2036,14 @@ export function HarnessEditor({
                     />
                   </label>
                 ) : null}
-                <p className="mc-harness__note">
-                  tier→gate 边决定门禁顺序；gate→role 边决定关账子 Agent；其他连线仅作说明。
-                </p>
+                <p className="mc-harness__note">{t("notes.edgeSemantics")}</p>
               </div>
             ) : null}
 
             <footer className="mc-harness__inspectfoot">
               <button type="button" className="mc-harness__delete" onClick={deleteSelection}>
                 <LuTrash2 size={13} />
-                {selectedNode ? "删除节点" : "删除连线"}
+                {t(selectedNode ? "inspector.deleteNode" : "inspector.deleteEdge")}
               </button>
             </footer>
           </aside>

@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import "./CompactionBanner.css";
 
 /**
@@ -17,7 +18,15 @@ export function CompactionBanner({
   failed?: boolean;
   note: string | null;
 }) {
+  const { t } = useTranslation("shell");
   if (!compacting && !interrupted && !failed && !note) return null;
+  const label = compacting
+    ? t("compaction.compacting")
+    : interrupted
+      ? t("compaction.interrupted")
+      : failed
+        ? t("compaction.failed")
+        : t("compaction.done");
   return (
     <div
       className="mc-compaction"
@@ -27,15 +36,7 @@ export function CompactionBanner({
       title={!compacting && note ? note : undefined}
     >
       <span className="mc-compaction__rule" aria-hidden="true" />
-      <span className="mc-compaction__text">
-        {compacting
-          ? "正在压缩对话历史…"
-          : interrupted
-            ? "上次压缩被应用退出中断"
-            : failed
-              ? "上次压缩失败，历史未压缩"
-              : "已压缩对话历史，早期消息以摘要形式保留"}
-      </span>
+      <span className="mc-compaction__text">{label}</span>
       <span className="mc-compaction__rule" aria-hidden="true" />
     </div>
   );

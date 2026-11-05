@@ -4,6 +4,7 @@ packages:
 allowBuilds:
   electron-winstaller: true
   esbuild: true
+  koffi: true
   node-pty: set this to true or false
 
 onlyBuiltDependencies:
@@ -11,4 +12,9 @@ onlyBuiltDependencies:
   - electron
   - electron-winstaller
   - electron-builder
+  - koffi
   - node-pty
+
+# electron / electron-builder 二进制下载镜像（pnpm ≥10 的 npm 配置放这里，npm 不会对未知键告警）
+electron_mirror: https://npmmirror.com/mirrors/electron/
+electron_builder_binaries_mirror: https://npmmirror.com/mirrors/electron-builder-binaries/

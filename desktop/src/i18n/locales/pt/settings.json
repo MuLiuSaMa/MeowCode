@@ -1,0 +1,584 @@
+{
+  "language": {
+    "section": "Idioma",
+    "title": "Idioma da interface",
+    "description": "Escolha o idioma da interface do MeowCode. A alteração é aplicada imediatamente, sem reiniciar.",
+    "system": "Idioma do sistema"
+  },
+  "speech": {
+    "section": "Tom",
+    "field": "Tom da resposta",
+    "desc": {
+      "normal": "Tom padrão: conciso, direto e profissional — apenas o essencial.",
+      "tafei": "Tom da Taffy: uma persona de garota-gato brincalhona que termina as frases com “miao” (喵) e às vezes usa sua frase de assinatura; o conteúdo técnico continua preciso.",
+      "dazui": "Dazui: ah, isto, isto… né? O melhor tom por menos de dez milhões."
+    },
+    "options": {
+      "normal": "Normal",
+      "tafei": "永雏塔菲",
+      "dazui": "大嘴"
+    }
+  },
+  "nav": {
+    "heading": "Configurações",
+    "ariaLabel": "Seções das configurações",
+    "back": "Voltar ao chat"
+  },
+  "sections": {
+    "general": "Geral",
+    "appearance": "Aparência",
+    "shortcuts": "Atalhos",
+    "models": "Modelos",
+    "memory": "Memória",
+    "archive": "Arquivo",
+    "about": "Sobre",
+    "island": "AI 悬浮岛",
+    "hooks": "Hooks",
+    "dataImport": "Importar dados",
+    "rules": "Regras",
+    "worktree": "Worktrees",
+    "learning": "Aprendizado autônomo",
+    "rewind": "Reversão de sessão",
+    "sandbox": "Sandbox"
+  },
+  "close": {
+    "section": "Fechamento da janela",
+    "field": "Ao fechar a janela",
+    "desc": {
+      "ask": "Perguntar a cada vez se recolhe para a bandeja ou encerra.",
+      "tray": "Ao fechar, a janela fica oculta na bandeja do sistema e o MeowCode continua em segundo plano.",
+      "quit": "Fechar a janela encerra o MeowCode imediatamente."
+    },
+    "options": {
+      "ask": "Perguntar",
+      "tray": "Recolher",
+      "quit": "Encerrar"
+    }
+  },
+  "update": {
+    "section": "Atualizações",
+    "field": "Baixar atualizações em segundo plano",
+    "desc": {
+      "on": "Ao iniciar, a nova versão é baixada em segundo plano. Depois aparece um botão de reinício no canto inferior esquerdo da barra lateral — clique para instalar.",
+      "off": "Apenas verificar e avisar ao iniciar; baixar e instalar continua manual na página Sobre."
+    }
+  },
+  "appearance": {
+    "themeSection": "Tema",
+    "themeField": "Tema de cores",
+    "themeDesc": "\"Sistema\" acompanha em tempo real a configuração clara / escura do Windows. A mudança vale na hora, sem reiniciar.",
+    "theme": {
+      "system": "Sistema",
+      "light": "Claro",
+      "dark": "Escuro"
+    },
+    "fontSection": "Fontes",
+    "fontDesc": "A \"fonte da interface\" se aplica ao chat, à barra lateral e a outros textos; a \"fonte do código\" se aplica a blocos de código, diffs e outros textos monoespaçados. Escolha uma fonte do sistema ou importe um arquivo local (ttf / otf / woff / woff2). A mudança vale na hora.",
+    "importField": "Importar fonte",
+    "importButton": "Importar fonte…",
+    "uiFont": "Fonte da interface",
+    "codeFont": "Fonte do código",
+    "defaultFont": "Padrão",
+    "fontsLoading": "Lendo as fontes do sistema… clique para tentar de novo",
+    "imported": "{{name}} (importada)"
+  },
+  "shortcuts": {
+    "title": "Atalhos",
+    "description": "Lista de atalhos de teclado.",
+    "ctrlHint": "No macOS, ⌘ substitui o Ctrl",
+    "items": {
+      "search": "Pesquisa em todas as conversas",
+      "quickOpen": "Abertura rápida de arquivos",
+      "sideChat": "Chat lateral",
+      "terminal": "Terminal",
+      "send": "Enviar mensagem",
+      "commit": "Confirmar alterações do Git"
+    }
+  },
+  "memory": {
+    "extractionTitle": "Destilação automática de memória",
+    "extractionDesc": "Após cada turno, uma requisição leve em segundo plano revisa a nova conversa e guarda na memória o que vale a pena lembrar a longo prazo (preferências, correções, decisões do projeto). Desligada, restam apenas as entradas manuais e o que a própria IA escrever com as ferramentas de memória.",
+    "extractionField": "Destilar memória ao fim de cada turno",
+    "extractionFailed": "Falha ao salvar a opção",
+    "scope": {
+      "user": "Memória pessoal",
+      "project": "Memória do projeto"
+    },
+    "descUser": "Memória de longo prazo mantida entre espaços de trabalho: suas preferências, fluxos recorrentes e experiências. Ela fica em ~/.meowcode/memory/; o índice é injetado no início de cada chat novo e a IA lê e escreve o que precisa com as ferramentas de memória.",
+    "descProject": "Memória exclusiva do espaço de trabalho atual, salva em .meowcode/memory/ do projeto (fora do git).",
+    "descProjectNamed": "Memória exclusiva do espaço de trabalho atual ({{workspace}}), salva em .meowcode/memory/ do projeto (fora do git).",
+    "count_one": "{{count}} memória salva",
+    "count_other": "{{count}} memórias salvas",
+    "count_few": "{{count}} memórias salvas",
+    "count_many": "{{count}} memórias salvas",
+    "create": "Nova memória",
+    "empty": "Ainda não há memórias: quando a IA aprende algo que vale guardar durante um chat, ela salva aqui; você também pode criar entradas manualmente.",
+    "clickToEdit": "Clique para editar",
+    "noDescription": "(sem descrição)",
+    "deleteAria": "Excluir {{name}}",
+    "confirmDeleteAria": "Confirmar a exclusão de {{name}}",
+    "editTitle": "{{scope}} · Editar {{name}}",
+    "createTitle": "{{scope}} · Nova memória",
+    "editorDesc": "Edite o texto Markdown original; a descrição no frontmatter entra no índice MEMORY.md e vale para chats novos.",
+    "name": "Nome",
+    "namePlaceholder": "kebab-case, por exemplo docker-cli",
+    "nameHint": "Será salvo como <nome>.md",
+    "nameRule": "O nome usa kebab-case minúsculo (letras, números, hífens), com no máximo 64 caracteres",
+    "saved": "{{scope}}: \"{{name}}\" salva",
+    "deleted": "{{scope}}: \"{{name}}\" excluída",
+    "loadFailed": "Não foi possível carregar a memória",
+    "readFailed": "Não foi possível ler a memória",
+    "saveFailed": "Não foi possível salvar a memória",
+    "deleteFailed": "Não foi possível excluir a memória"
+  },
+  "archive": {
+    "section": "Arquivo",
+    "desc": "Chats arquivados não aparecem na lista e podem ser restaurados a qualquer momento. Para arquivar, passe o mouse sobre um chat na lista e clique no ícone de arquivar à direita. Apagar remove o próprio histórico e não pode ser desfeito.",
+    "empty": "Nenhum chat arquivado",
+    "item": "Chat · {{when}}",
+    "unknownTime": "hora desconhecida",
+    "deleteAll": "Apagar tudo",
+    "confirmDeleteAll": "Apagar tudo?",
+    "deleteAria": "Apagar {{name}} definitivamente",
+    "confirmDeleteAria": "Clique de novo para apagar {{name}} definitivamente"
+  },
+  "about": {
+    "loading": "Lendo as informações de versão…",
+    "version": "Versão",
+    "newVersion": "Nova versão disponível",
+    "checking": "Verificando…",
+    "check": "Verificar versão",
+    "author": "Autor",
+    "website": "Site",
+    "repo": "Repositório",
+    "openInBrowser": "Abrir no navegador",
+    "credits": "Créditos",
+    "sponsor": "Apoiar",
+    "sponsorHint": "Se o MeowCode é útil para você, apoie o autor lendo o QR code.",
+    "qrAlt": "QR code de pagamento do {{name}}",
+    "sponsors": {
+      "wechat": "WeChat Pay",
+      "alipay": "Alipay"
+    },
+    "upToDate": "Você já está na versão mais recente",
+    "checkFailed": "Falha ao verificar a versão: {{error}}"
+  },
+  "actions": {
+    "add": "Adicionar",
+    "cancel": "Cancelar",
+    "confirmDelete": "Confirmar exclusão",
+    "delete": "Excluir",
+    "edit": "Editar",
+    "restore": "Restaurar",
+    "save": "Salvar",
+    "saving": "Salvando…"
+  },
+  "models": {
+    "section": "Modelos",
+    "desc": "Adicione aqui os provedores de modelos e informe o nome do modelo que você usa.",
+    "count_one": "{{count}} modelo configurado",
+    "count_other": "{{count}} modelos configurados",
+    "count_few": "{{count}} modelos configurados",
+    "count_many": "{{count}} modelos configurados",
+    "add": "Adicionar modelo",
+    "empty": "Nenhum modelo configurado ainda. Comece em \"Adicionar modelo\".",
+    "deleteTitle": "Excluir provedor",
+    "deleteMessage": "Excluir \"{{name}}\"? Será preciso configurá-lo novamente para poder usá-lo.",
+    "restartTitle": "Salvar reinicia o serviço local",
+    "restartMessage": "Alterações de modelos reiniciam o serviço agent local e interrompem o turno em andamento. Salvar mesmo assim?",
+    "restartConfirm": "Salvar mesmo assim",
+    "colModel": "Modelo",
+    "colProvider": "Provedor",
+    "colActions": "Ações",
+    "active": "Atual",
+    "enableAria": "Ativar {{name}}",
+    "levels": "Níveis de raciocínio",
+    "levelRemoveAria": "Remover {{level}}",
+    "levelRemoveTitle": "Remover este nível",
+    "levelsAuto": "Deixe em branco para deduzir do nome do modelo (atualmente {{levels}})",
+    "levelsManual": "Definido manualmente. Esvazie todos os níveis para voltar à dedução pelo nome do modelo.",
+    "modalityOptions": {
+      "text": "Texto",
+      "image": "Imagem",
+      "pdf": "PDF"
+    },
+    "ttlOptions": {
+      "fiveMinutes": "5 minutos (padrão)",
+      "auto": "Automático (acompanha o ritmo do chat)",
+      "oneHour": "1 hora (TTL longo da Anthropic)"
+    },
+    "summaryOptions": {
+      "none": "Não enviar (economiza tokens)",
+      "auto": "Automático",
+      "concise": "Conciso",
+      "detailed": "Detalhado"
+    },
+    "compactionOptions": {
+      "auto": "Automático (endpoints oficiais)",
+      "on": "Sempre ativado (gateways compatíveis)",
+      "off": "Desativado (só resumos locais)"
+    },
+    "authOptions": {
+      "protocolDefault": "Padrão do protocolo (Anthropic x-api-key / OpenAI Bearer)",
+      "bearer": "Authorization: Bearer",
+      "azureKey": "Cabeçalho api-key (Azure OpenAI)",
+      "bedrockKey": "Bedrock-API-Key (Amazon Bedrock)",
+      "none": "Sem cabeçalho de autenticação (inferência local / já nos cabeçalhos)"
+    },
+    "picker": {
+      "title": "Adicionar provedor de modelos",
+      "desc": "Escolha o provedor e informe o nome do modelo; o formato da API pode ser trocado depois. Não encontrou? Use \"Provedor personalizado\" e preencha o endpoint.",
+      "search": "Pesquisar",
+      "searchPlaceholder": "Pesquise por nome ou id, por exemplo deepseek",
+      "custom": "Provedor personalizado",
+      "customMeta": "Preencha o endpoint e a chave manualmente",
+      "needEndpoint": "Endpoint obrigatório",
+      "noMatch": "Nenhum provedor corresponde — experimente \"Provedor personalizado\""
+    },
+    "form": {
+      "addTitle": "Adicionar modelo · {{name}}",
+      "editTitle": "Editar modelo",
+      "desc": "O provedor já está escolhido — agora configure o próprio modelo. As chaves de API ficam neste computador (criptografadas com as credenciais do Windows).",
+      "customProviderName": "Provedor personalizado",
+      "providerName": "Nome do provedor",
+      "providerNamePlaceholder": "Por exemplo, My Provider",
+      "providerNameHint": "Aparece na coluna Provedor da lista de modelos",
+      "provider": "Provedor",
+      "apiFormat": "Formato da API",
+      "apiFormatAuto": "Detectado pela URL da solicitação; escolher manualmente desativa a detecção",
+      "apiFormatDesc": "Define para qual endpoint a requisição vai e como o corpo é montado; é detectado pela URL",
+      "baseUrl": "URL da solicitação",
+      "baseUrlHint": "Informe a URL raiz e o formato da API é detectado; o caminho é acrescentado conforme o formato",
+      "modelId": "ID do modelo",
+      "modelIdPlaceholder": "Por exemplo, deepseek-chat",
+      "modelIdHint": "O identificador de modelo da documentação do provedor, obrigatório. O mesmo ID pode ser configurado mais de uma vez (com outra URL ou chave).",
+      "displayName": "Nome de exibição do modelo",
+      "displayNamePlaceholder": "Em branco = mostrar o ID do modelo",
+      "displayNameHint": "Muda apenas a exibição e não pode repetir um modelo já existente",
+      "apiKey": "Chave de API",
+      "apiKeySaved": "Salva — deixe em branco para manter",
+      "contextWindow": "Janela de contexto",
+      "contextWindowHint": "Se em branco, é deduzida do nome do modelo; aceita a notação 256K / 1M",
+      "maxOutput": "Saída máxima",
+      "maxOutputHint": "Se em branco, é deduzida do nome do modelo: quantos tokens uma resposta pode gerar",
+      "modalities": "Modalidades de entrada",
+      "requiredTag": " (obrigatório)",
+      "modalityHint": "O suporte a imagem é deduzido do nome do modelo; PDF só circula pelos protocolos Anthropic / Responses. Mantenha ao menos a modalidade de texto.",
+      "advanced": "Configurações avançadas",
+      "advancedHint": "Esforço de raciocínio / TTL do cache / níveis de raciocínio / autenticação e personalização da requisição — em branco usa o padrão",
+      "reasoningEffort": "Esforço de raciocínio",
+      "reasoningEffortPlaceholder": "Em branco = padrão do provedor",
+      "reasoningEffortHint": "Enviado como reasoning_effort",
+      "thinkingBudget": "Orçamento de pensamento",
+      "thinkingBudgetPlaceholder": "Em branco = segue o esforço de raciocínio",
+      "thinkingBudgetHint": "thinking.budget_tokens; é ajustado automaticamente para ficar abaixo de max_tokens",
+      "cacheTtl": "TTL do cache",
+      "cacheTtlHint": "Escritas de 1 h custam o dobro; \"Automático\" e 1 h só valem em endpoints com TTL longo comprovado, o resto volta para 5 m",
+      "reasoningSummary": "Resumo do raciocínio",
+      "reasoningSummaryHint": "Só no protocolo Responses; os resumos são cobrados como saída",
+      "nativeCompaction": "Compactação no servidor",
+      "nativeCompactionHint": "Deixe o provedor compactar o histórico e economize uma requisição de resumo completo",
+      "authStyle": "Método de autenticação",
+      "authStyleHint": "Para a maioria dos provedores o padrão basta; Azure / Bedrock exigem a opção própria",
+      "extraHeaders": "Cabeçalhos extras",
+      "extraHeadersHint": "Um \"nome: valor\" por linha; linhas com # são comentários. Por exemplo o HTTP-Referer do OpenRouter",
+      "extraBody": "Corpo da requisição extra",
+      "extraBodyHint": "Objeto JSON mesclado no nível superior do corpo. Por exemplo {\"enable_thinking\": false} no Qwen",
+      "models": "Modelos",
+      "addModel": "Adicionar ID do modelo",
+      "fetchModels": "Buscar lista de modelos",
+      "fetching": "Buscando…",
+      "fetchTitle": "Selecionar modelos para adicionar",
+      "fetchHint": "Apenas os modelos marcados são adicionados à lista acima.",
+      "fetchEmpty": "Nenhum modelo retornado.",
+      "fetchFailed": "Falha ao buscar a lista de modelos: {{message}}",
+      "fetchAdded": "Já adicionado",
+      "fetchAdd": "Adicionar seleção ({{count}})",
+      "modelSettings": "Configurações do modelo",
+      "modelSettingsDesc": "Aplica-se apenas a este modelo; URL, chave e protocolo são definidos acima.",
+      "modelsRequired": "Adicione pelo menos um modelo.",
+      "contextDefault": "Padrão do modelo"
+    },
+    "error": {
+      "providerNameRequired": "O nome do provedor não pode ficar vazio",
+      "modelRequired": "O ID do modelo não pode ficar vazio",
+      "duplicateName": "O nome de exibição \"{{name}}\" já está configurado",
+      "baseUrlRequired": "A URL da solicitação não pode ficar vazia",
+      "contextFormat": "Formato de janela de contexto inválido; use algo como 128k ou 1M",
+      "maxOutputFormat": "Formato de saída máxima inválido; use algo como 32k",
+      "extraBodyObject": "O corpo extra da requisição deve ser um objeto JSON",
+      "extraBodyJson": "O corpo extra da requisição não é um JSON válido: {{message}}",
+      "headerLine": "Linha de cabeçalho inválida: {{line}}"
+    }
+  },
+  "island": {
+    "section": "AI 悬浮岛",
+    "field": "启用悬浮岛",
+    "desc": {
+      "on": "悬浮岛已开启：屏幕顶部居中显示所有运行中会话的状态，鼠标放上去可展开查看对话、直接输入或停止任务。",
+      "off": "开启后在屏幕顶部居中显示一枚胶囊，实时显示所有运行中会话的状态；鼠标放上去可展开成对话小窗。"
+    }
+  },
+  "hooks": {
+    "loading": "Carregando a configuração de hooks…",
+    "error": "Falha ao carregar a configuração de hooks: {{error}}",
+    "retry": "Tentar novamente",
+    "saving": "Reiniciando o serviço Agent para aplicar os hooks…",
+    "import": {
+      "section": "Importar hooks do Claude Code",
+      "description": "Lê ~/.claude/settings.json e as configurações .claude do workspace. As configurações do workspace não são executadas por padrão.",
+      "master": "Ativar hooks",
+      "masterHint": {
+        "on": "A configuração de hooks do Claude Code foi carregada.",
+        "off": "Desativado: a configuração é exibida apenas para leitura e não será executada."
+      },
+      "workspace": "Incluir configuração .claude do workspace",
+      "workspaceHint": {
+        "on": "Os hooks em .claude/settings*.json do workspace serão executados.",
+        "off": "Apenas a configuração ~/.claude é executada; a do workspace é apenas exibida."
+      },
+      "workspaceWarning": "Os hooks do workspace vêm de arquivos do repositório e podem conter comandos maliciosos. Ative apenas se confiar neste repositório.",
+      "disabledNote": "Os hooks estão desativados. Ative o interruptor acima para executar comandos."
+    },
+    "configured": {
+      "section": "Hooks configurados",
+      "description": "Resumo somente leitura. Abra o arquivo de configuração para editar.",
+      "empty": "Nenhum hook do Claude Code está configurado.",
+      "eventCount": "{{count}} comando(s)",
+      "matcher": "corresponde a {{matcher}}",
+      "timeout": "tempo limite de {{seconds}}s",
+      "layer": {
+        "user": "Usuário",
+        "project": "Workspace",
+        "local": "Workspace local"
+      },
+      "layerUnknown": "Caminho desconhecido",
+      "excluded": "Não executado",
+      "open": "Abrir para editar",
+      "missing": "Arquivo não encontrado",
+      "fileCount": "{{count}} comando(s)",
+      "missingToast": "Arquivo não encontrado: {{path}}",
+      "openError": "Não foi possível abrir o arquivo: {{error}}",
+      "unsupported": "Eventos não conectados: {{events}}"
+    },
+    "runMode": {
+      "section": "Modo de execução dos comandos de hook",
+      "description": {
+        "auto": "Executar comandos de hook automaticamente; `ask`/`deny` do PreToolUse continuam valendo.",
+        "ask": "Perguntar antes da primeira execução de cada comando de hook em uma sessão; recusar apenas ignora esse comando."
+      },
+      "field": "Modo de execução",
+      "options": {
+        "auto": "Executar automaticamente",
+        "autoDesc": "Sem confirmação extra; seguir a configuração do hook",
+        "ask": "Perguntar sempre",
+        "askDesc": "Confirmar cada comando uma vez por sessão"
+      }
+    },
+    "confirm": {
+      "title": "Reiniciar o serviço Agent?",
+      "message": "Há um turno em execução. Salvar as configurações de hooks irá interrompê-lo.",
+      "confirm": "Salvar e reiniciar"
+    }
+  },
+  "dataImport": {
+    "title": "Importar dados",
+    "desc": "Importe conteúdo novo de outros aplicativos; sem sincronização automática e sem alterar os dados de origem.",
+    "fromApps": "Importar de aplicativos",
+    "redetect": "Detectar novamente",
+    "loading": "Detectando aplicativos importáveis…",
+    "error": "Falha na detecção: {{error}}",
+    "retry": "Tentar novamente",
+    "app": {
+      "qoder": "Qoder CN IDE (Quest)",
+      "qoderintl": "Qoder (International)",
+      "workbuddy": "WorkBuddy",
+      "workbuddyai": "WorkBuddyAI",
+      "zcode": "ZCode",
+      "opencode": "OpenCode",
+      "dsh": "DeepSeek Harness",
+      "codex": "Codex"
+    },
+    "notDetected": "Não detectado",
+    "selected": "{{count}} selecionados",
+    "import": "Importar dados",
+    "importing": "Importando…",
+    "groups": {
+      "mcp": "Conectores MCP",
+      "memory": "Memória",
+      "skills": "Skills",
+      "tasks": "Conversas"
+    },
+    "groupEmpty": "Nenhum",
+    "result": {
+      "imported": "{{count}} importados",
+      "skipped": "{{count}} já presentes",
+      "failed": "{{count}} falharam, clique para ver",
+      "mcpReloaded": "Conectores MCP atualizados e reconectados"
+    },
+    "progress": "Importando {{done}}/{{total}}"
+  },
+  "rules": {
+    "importSection": "Importar configurações",
+    "agents": {
+      "label": "Incluir AGENTS.md no contexto",
+      "hint": "O agente lê AGENTS.md na raiz do workspace e o adiciona ao contexto."
+    },
+    "claude": {
+      "label": "Incluir CLAUDE.md no contexto",
+      "hint": "O agente lê CLAUDE.md e CLAUDE.local.md na raiz do workspace e os adiciona ao contexto."
+    },
+    "title": "Regras",
+    "hint": "Crie e gerencie regras que o agente segue durante o chat.",
+    "refresh": "Atualizar regras",
+    "create": "Criar",
+    "empty": "Ainda não há regras",
+    "emptyHint": "Clique em Criar para adicionar sua primeira regra",
+    "noWorkspace": "Selecione um workspace primeiro",
+    "noWorkspaceHint": "As regras são armazenadas no diretório .meowcode/rules do projeto.",
+    "clickToEdit": "Clique para editar esta regra",
+    "deleteAria": "Excluir a regra \"{{name}}\"",
+    "confirmDeleteAria": "Clique novamente para confirmar a exclusão da regra \"{{name}}\"",
+    "createTitle": "Nova regra",
+    "editTitle": "Editar a regra \"{{name}}\"",
+    "editorDesc": "As regras são injetadas no prompt do sistema com o projeto. Markdown é suportado.",
+    "name": "Nome da regra",
+    "namePlaceholder": "ex.: code-style",
+    "nameHint": "Letras minúsculas, dígitos e hífens, ex.: code-style",
+    "nameRule": "Use letras minúsculas, dígitos e hífens; não comece nem termine com hífen.",
+    "content": "Conteúdo da regra",
+    "contentPlaceholder": "ex.: toda nova função precisa de JSDoc; não edite generated/.",
+    "loadFailed": "Falha ao carregar as regras",
+    "readFailed": "Falha ao ler a regra",
+    "saveFailed": "Falha ao salvar a regra",
+    "deleteFailed": "Falha ao excluir a regra",
+    "saved": "Regra \"{{name}}\" salva",
+    "deleted": "Regra \"{{name}}\" excluída"
+  },
+  "worktree": {
+    "section": "Worktrees",
+    "fetch": {
+      "label": "Buscar upstream antes de criar",
+      "hint": "Buscar atualizações do upstream antes de criar um worktree."
+    },
+    "cleanup": {
+      "label": "Remover worktrees antigos automaticamente",
+      "hint": "Recomendado para a maioria dos usuários. Desative apenas se quiser gerenciar worktrees antigos e o espaço em disco sozinho."
+    },
+    "maxKeep": {
+      "label": "Limite de worktrees",
+      "hint": "Ao ultrapassar o limite, os worktrees mais antigos são limpos automaticamente. Um backup Git é criado antes da exclusão, então os worktrees removidos podem ser restaurados."
+    }
+  },
+  "learning": {
+    "title": "Aprendizado autônomo",
+    "desc": "Ao fim de cada turno, o agente destila o que aprendeu em habilidades reutilizáveis, diretrizes do projeto e um modelo de como você trabalha. Nada é aceito de imediato: itens novos entram em observação, precisam provar utilidade e se retiram quando atrapalham.",
+    "toggleField": "Aprender com as conversas",
+    "toggleFailed": "Não foi possível alterar a opção",
+    "budgetField": "Chamadas hoje",
+    "budgetValue": "{{count}} em {{date}}",
+    "skillsTitle": "Habilidades aprendidas",
+    "skillsDesc": "Procedimentos que o agente escreveu para si. Lê-se pelo caminho do SKILL.md; são lembrados por nome e descrição.",
+    "skillsEmpty": "Nada aprendido ainda. Surgem quando um procedimento dá certo e vale repetir.",
+    "skillCount_one": "{{count}} habilidade",
+    "skillCount_other": "{{count}} habilidades",
+    "skillCount_few": "{{count}} habilidades",
+    "skillCount_many": "{{count}} habilidades",
+    "consolidate": "Consolidar agora",
+    "consolidated": "Consolidado: {{count}} item(ns) atualizado(s)",
+    "consolidatedEmpty": "Nada a consolidar",
+    "consolidateFailed": "A consolidação falhou",
+    "statsHint": "ajudou / atrapalhou — quantas vezes foi lembrado e se o turno correu bem",
+    "rollbackAria": "Reverter {{name}} para a versão anterior",
+    "reactivateAria": "Devolver {{name}} à observação",
+    "deleteAria": "Excluir {{name}}",
+    "actionFailed": "A ação não foi aplicada",
+    "guidelinesTitle": "Diretrizes do projeto",
+    "guidelinesDesc": "Regras que só aparecem quando o gatilho corresponde: comando, erro, palavra-chave ou padrão de arquivo.",
+    "guidelinesEmpty": "Nenhuma diretriz ainda.",
+    "profileTitle": "O que ele sabe sobre você",
+    "profileDesc": "Estilo de comunicação, rigor esperado, autonomia concedida.",
+    "profileEmpty": "Nada ainda. Isso cresce devagar, com evidência repetida.",
+    "status": {
+      "tentative": "em observação",
+      "active": "confiável",
+      "retired": "aposentado"
+    },
+    "dimension": {
+      "communication": "comunicação",
+      "rigor": "rigor",
+      "autonomy": "autonomia",
+      "coding_style": "estilo de código",
+      "toolchain": "ferramentas",
+      "domain": "domínio"
+    },
+    "loadFailed": "Não foi possível carregar os itens aprendidos",
+    "clearField": "Apagar tudo o que foi aprendido",
+    "clearHint": "Exclui todas as habilidades, diretrizes, traços de perfil e o histórico de resultados, neste projeto e entre projetos. Não pode ser desfeito.",
+    "clearAction": "Apagar tudo",
+    "clearConfirm": "Clique de novo para confirmar",
+    "cleared": "{{scopes}} diretórios de aprendizado esvaziados",
+    "clearedNothing": "Nada a apagar",
+    "clearFailed": "Não foi possível apagar"
+  },
+  "general": {
+    "section": "Geral",
+    "desc": "Comportamento do dia a dia. As mudanças valem na hora.",
+    "notify": {
+      "field": "Notificações do sistema",
+      "desc": {
+        "on": "Se a janela estiver em segundo plano, mostrar uma notificação ao concluir um turno, pedir confirmação ou ser interrompido (título da conversa e resumo da resposta).",
+        "off": "Nenhuma notificação do sistema será mostrada."
+      }
+    }
+  },
+  "proxy": {
+    "title": "Proxy de rede",
+    "desc": "Troque o modo de conexão quando a rede falhar. Vale na hora.",
+    "mode": {
+      "direct": "Conexão direta",
+      "system": "Seguir o sistema",
+      "manual": "Manual"
+    },
+    "urlLabel": "Endereço do proxy",
+    "urlHint": "Por exemplo http://127.0.0.1:7890; deixe vazio para conectar direto.",
+    "urlMissing": "Sem endereço ainda: as requisições seguem diretas.",
+    "failed": "Não foi possível aplicar o proxy"
+  },
+  "rewind": {
+    "section": "Reversão de sessão",
+    "enabled": {
+      "label": "Instantâneos de arquivos",
+      "hint": "Um ponto de controle é criado no início de cada turno; arquivos escritos podem ser revertidos junto com a conversa. Reinicie o app após alterar."
+    },
+    "keep": {
+      "label": "Instantâneos mantidos",
+      "hint": "Mantém instantâneos dos últimos N pontos de controle por sessão; os mais antigos são limpos."
+    },
+    "maxTotal": {
+      "label": "Limite de tamanho",
+      "hint": "Limite total do diretório de instantâneos de uma sessão; os mais antigos são recuperados primeiro."
+    }
+  },
+  "sandbox": {
+    "title": "Sandbox",
+    "modeField": "Modo da sandbox",
+    "modeDesc": "Controla o acesso do Agent ao sistema de arquivos.",
+    "modeFull": "Acesso total",
+    "modeFullDesc": "O Agent pode ler e gravar arquivos fora do workspace.",
+    "modeWorkspace": "Gravação no workspace",
+    "modeWorkspaceDesc": "Os comandos só podem gravar no workspace e nas raízes graváveis extras.",
+    "deleteField": "Confirmação de exclusão",
+    "deleteDesc": "Aplica-se apenas no modo de gravação no workspace; o acesso total ignora a confirmação de exclusão por padrão.",
+    "unsupported": "A sandbox de comandos só está disponível no Windows.",
+    "riskTitle": "Mudar para gravação no workspace?",
+    "riskDoes": "Ao ativar, uma ACL permanente e um rótulo de integridade Low são gravados no workspace, e run_command passa a rodar com token restrito.",
+    "riskDoesNot": "Ele não limita leitura, rede nem ferramentas de edição. Um comando bloqueado pergunta separadamente se deve ser repetido uma vez fora da sandbox.",
+    "riskUndo": "Volte para acesso total para parar a sandbox; a ACL do workspace permanece, mas deixa de ser usada.",
+    "confirmEnable": "Mudar",
+    "cancel": "Cancelar",
+    "enabled": "Mudado para gravação no workspace (primeira autorização {{ms}} ms)",
+    "saveFailed": "Falha ao salvar as configurações da sandbox",
+    "loadFailed": "Falha ao carregar as configurações da sandbox"
+  }
+}

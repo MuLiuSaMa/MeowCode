@@ -1,0 +1,160 @@
+{
+  "nav": {
+    "heading": "Source Control",
+    "ariaLabel": "Source Control",
+    "viewAria": "Source control view"
+  },
+  "group": {
+    "conflicted": "Conflicts",
+    "staged": "Staged",
+    "unstaged": "Changes",
+    "empty": "None",
+    "unstageAll": "Unstage All",
+    "stageAll": "Stage All"
+  },
+  "list": {
+    "truncated": "Showing the first {{shown}} of {{total}}",
+    "truncatedStaged": " (use “Unstage All” for the rest)",
+    "truncatedUnstaged": " (use “Stage All” for the rest, or add them to .gitignore)"
+  },
+  "repo": {
+    "unavailable": "Git not found. Install it and add it to PATH.",
+    "notRepo": "This workspace is not a Git repository",
+    "reading": "Reading repository status…"
+  },
+  "repoHint": {
+    "unavailable": "Git not found: install Git and make sure `git --version` works in your terminal.",
+    "notRepo": "This workspace is not a Git repository. Run `git init` in your terminal, then refresh here.",
+    "failed": "Could not read the repository status."
+  },
+  "branch": {
+    "switch": "Switch Branch",
+    "search": "Search branches",
+    "listAria": "Branch list",
+    "loading": "Reading branches…",
+    "noMatch": "No matching branches",
+    "stash": "Stash local changes before switching",
+    "force": "Force switch (discard uncommitted changes)",
+    "newPlaceholder": "Create a branch from the current HEAD, e.g. feature/login",
+    "create": "Create and Switch",
+    "close": "Close"
+  },
+  "conflict": {
+    "ours": "Ours",
+    "oursTitle": "Take ours",
+    "theirs": "Theirs",
+    "theirsTitle": "Take theirs",
+    "mark": "Resolved",
+    "markTitle": "Mark as resolved (content already handled manually)",
+    "resolveTitleOurs": "Take our version",
+    "resolveTitleTheirs": "Take their version",
+    "resolveTitleMark": "Mark as resolved",
+    "resolveMessageMark": "The conflicted file will be marked as resolved and keeps its current content on disk.",
+    "resolveMessageReplace": "The file will be replaced with the selected side; the content of the other side will be lost."
+  },
+  "file": {
+    "stage": "Stage",
+    "unstage": "Unstage",
+    "discard": "Discard changes"
+  },
+  "discard": {
+    "title": "Discard changes",
+    "message": "Working tree changes in these files will be permanently discarded (unstaged edits are lost and untracked files are deleted).",
+    "confirm": "Discard"
+  },
+  "dialog": {
+    "cancel": "Cancel",
+    "confirm": "Confirm",
+    "processing": "Working…"
+  },
+  "footer": {
+    "changes_one": "{{count, number}} change",
+    "changes_other": "{{count, number}} changes",
+    "changes_few": "{{count, number}} changes",
+    "changes_many": "{{count, number}} changes"
+  },
+  "action": {
+    "refresh": "Refresh",
+    "pull": "Pull",
+    "push": "Push",
+    "forcePush": "Force Push",
+    "back": "Back"
+  },
+  "pull": {
+    "title": "Pull (--ff-only)",
+    "noUpstream": "This branch has no upstream"
+  },
+  "push": {
+    "detached": "Cannot push from a detached HEAD",
+    "forceTitle": "Force push (--force-with-lease, two confirmations required)",
+    "message": "Push {{branch}} to {{upstream}}.",
+    "messageNew": "Push {{branch}} to origin and set the upstream branch.",
+    "forceWarning": "Force pushing overwrites commits that may exist on the remote with your local history (--force-with-lease only protects you if nobody else has updated the remote). This is usually irreversible.",
+    "forceConfirm": "Overwrite remote {{upstream}} with local {{branch}}?",
+    "forceStep1": "Force push (1/2)",
+    "forceStep2": "Force push (2/2)",
+    "continue": "Continue"
+  },
+  "upstream": {
+    "none": "No upstream branch",
+    "short": "upstream",
+    "ahead": "{{count, number}} ahead",
+    "behind": "{{count, number}} behind"
+  },
+  "tab": {
+    "changes": "Changes",
+    "history": "History"
+  },
+  "detail": {
+    "backTitle": "Back to list",
+    "loading": "Reading commit details…",
+    "mergeCommit": "Merge commit",
+    "moreFiles_one": "+{{count, number}} file not listed",
+    "moreFiles_other": "+{{count, number}} files not listed",
+    "moreFiles_few": "+{{count, number}} files not listed",
+    "moreFiles_many": "+{{count, number}} files not listed"
+  },
+  "diff": {
+    "loading": "Reading diff…",
+    "binary": "Binary file, contents not shown",
+    "empty": "No changes to show",
+    "emptyCommit": "This commit has no changes to show",
+    "truncated": "Patch too large, truncated",
+    "select": "Select a file to view changes",
+    "selectFileHint": "Select a file on the left to view changes (staged and unstaged are shown separately)",
+    "preparing": "Preparing diff…"
+  },
+  "commit": {
+    "placeholder": "Commit message (Ctrl+Enter to commit)",
+    "placeholderEmpty": "Stage files first, then write a commit message",
+    "conflicts_one": "{{count, number}} conflict must be resolved before committing",
+    "conflicts_other": "{{count, number}} conflicts must be resolved before committing",
+    "conflicts_few": "{{count, number}} conflicts must be resolved before committing",
+    "conflicts_many": "{{count, number}} conflicts must be resolved before committing",
+    "needsStaged": "Stage files to enable committing",
+    "staged_one": "{{count, number}} file staged",
+    "staged_other": "{{count, number}} files staged",
+    "staged_few": "{{count, number}} files staged",
+    "staged_many": "{{count, number}} files staged",
+    "aiTitle": "Generate a commit message from the staged diff",
+    "aiGenerate": "AI Generate",
+    "aiGenerating": "Generating…",
+    "submit": "Commit",
+    "committing": "Committing…",
+    "emptyMessage": "Commit message cannot be empty",
+    "aiFailed": "AI generation failed: {{message}}"
+  },
+  "history": {
+    "loading": "Reading commit history…",
+    "empty": "No commits yet",
+    "loadMore": "Load more",
+    "loadingMore": "Loading…"
+  },
+  "workspace": {
+    "label": "Workspace:",
+    "none": "Not selected"
+  },
+  "error": {
+    "close": "Close"
+  }
+}

@@ -14,28 +14,37 @@
  * 所以只有按模型给出真实支持的档位，用户选的东西才等于真正发出去的东西。
  */
 
+import i18n from "i18next";
+import type { TFunction } from "i18next";
 import { remoteReasoningValues } from "./modelProfiles";
 
-/** 档位值 → 中文标签（与 ZCode 的文案表一致）。 */
-const LEVEL_LABELS: Record<string, string> = {
-  "": "默认",
-  disabled: "关闭",
-  off: "关闭",
-  none: "关闭",
-  enabled: "开启",
-  minimal: "极低",
-  low: "低",
-  medium: "中",
-  high: "高",
-  xhigh: "极高",
-  max: "最高",
-  ultra: "极致",
+/** 档位值 → composer ns 的 key（与 ZCode 的文案表一致）。表里只存 key，禁止在模块顶层取译文。 */
+const LEVEL_KEYS: Record<string, string> = {
+  "": "effort.default",
+  disabled: "effort.off",
+  off: "effort.off",
+  none: "effort.off",
+  enabled: "effort.on",
+  minimal: "effort.minimal",
+  low: "effort.low",
+  medium: "effort.medium",
+  high: "effort.high",
+  xhigh: "effort.xhigh",
+  max: "effort.max",
+  ultra: "effort.ultra",
 };
 
 export type EffortLevel = { value: string; label: string };
 
-export function levelLabel(value: string): string {
-  return LEVEL_LABELS[value] ?? value;
+/**
+ * 档位标签。传了组件的 `t` 就走它（随语言刷新）；没传时按当前界面语言现取，
+ * 这样 `effortLevelsFrom*` 的老调用点不必逐个改签名。
+ */
+export function levelLabel(value: string, t?: TFunction): string {
+  const key = LEVEL_KEYS[value];
+  if (!key) return value;
+  if (t) return t(key);
+  return i18n.t(key, { ns: "composer" });
 }
 
 export function toEffortLevel(value: string): EffortLevel {

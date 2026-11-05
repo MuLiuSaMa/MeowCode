@@ -1,12 +1,12 @@
 import { promises as fs } from "node:fs";
-import { randomUUID } from "node:crypto";
+import { persistToolOutput } from "./tool-output.js";
+import { createHash, randomUUID } from "node:crypto";
 import os from "node:os";
 import path from "node:path";
-import { assessCommandRisk } from "./command-risk.js";
+import { assessCommandRisk, isFileDeletionCommand } from "./command-risk.js";
 import {
   COMPACTION_KEEP_RECENT_TOKENS,
   createCompactionSummary,
-  isContextOverflow,
   summarizeToolOutputs,
 } from "./compaction.js";
 import { previewDiff, renderDiff } from "./diff.js";
@@ -18,19 +18,38 @@ import {
   referenceLabel,
   stripReferenceHeader,
 } from "./file-mentions.js";
-import { loadWorkspaceInstructions } from "./instructions.js";
+import {
+  loadWorkspaceInstructionsDetail,
+  type InstructionSettings,
+} from "./instructions.js";
+import {
+  applyMemoryOps,
+  collectManifest,
+  formatMemoryNotice,
+  generateMemoryOps,
+  hasNewUserMessage,
+  lastRealUserMessageIndex,
+  serializeMessages,
+  wroteMemoryDirectly,
+} from "./memory-extraction.js";
 import { isAbortError } from "./http.js";
-import { resolveOutputBudget } from "./output-budget.js";
+import { LearningController, type LearningSnapshot } from "./learning/index.js";
+import { formatLearningNotice } from "./learning/recall.js";
+import { createTurnTrace, recordToolCall, type TurnTrace } from "./learning/signals.js";
 import { canReplayNativeCompaction, nativeCompactionMode, requestNativeCompaction } from "./native-compaction.js";
 import { multiEditPaths, readMultiEditGroups } from "./multi-edit.js";
 import { displayPath, isWithinWorkspace, resolveToolPath, resolveWithinWorkspace } from "./paths.js";
 import { captureVersion } from "./read-state.js";
+import { LoopGuard } from "./loop-guard.js";
 import { SessionStore, listSessions, sessionFileName, type SessionSummary } from "./session-store.js";
+import { SnapshotStore, type SnapshotTarget } from "./snapshot-store.js";
 import { recoverSession } from "./session-recovery.js";
 import {
   executeTool,
   isDynamicToolRequiringApproval,
   listDynamicToolDefinitions,
+  dynamicToolDefinitionsTrimmed,
+  dynamicToolsVersion,
   toolDefinitions,
   admitToolDefinition,
   truncateOutput,
@@ -38,38 +57,56 @@ import {
   type ToolRunOptions,
 } from "./tools.js";
 import type { PluginRegistry } from "../plugins/registry.js";
+import type {
+  HookCommandApprovalRequest,
+  PluginHookContext,
+  PluginHookEventMap,
+  PluginHookName,
+  PluginHookScope,
+} from "../plugins/types.js";
 import { runHook } from "../plugins/hooks.js";
-import { loadVerifyConfig, runVerification } from "./verify.js";
+import { loadVerifyConfig, parseTscErrors, runVerification } from "./verify.js";
+import { getLspManager } from "../lsp/manager.js";
+import { formatLspFeedback } from "../lsp/format.js";
 import { type BrowserHostClient } from "./browser-host.js";
 import { browserToolDefinitions, executeBrowserTool, isBrowserTool } from "./browser-tools.js";
 import { streamChatCompletion } from "./provider.js";
-import { sessionAffinityKey, resolveCachePlan } from "./cache-profile.js";
+import {
+  sessionAffinityKey,
+  resolveCachePlan,
+  supportsChatPromptCacheKey,
+} from "./cache-profile.js";
+import { classifyCache, type CacheState } from "./cache-diagnostics.js";
+import { createToolCatalog, reconcileToolCatalog, type ToolCatalog } from "./tool-catalog.js";
 import { failoverReason, planFallbacks } from "./provider-fallback.js";
 import { boostEffort } from "./thinking-budget.js";
-import { projectForRequest } from "./request-projection.js";
+import { projectForMainPath, projectForRequest } from "./request-projection.js";
 import { toResponsesInput } from "./responses.js";
-import type { ToolCallProgress } from "./tool-progress.js";
+import { normalizeSpeechStyle, readSpeechStyleFromEnv, speechStylePrompt, type SpeechStyle } from "./speech-style.js";
 import { generateSessionTitle } from "./title-generator.js";
 import { generateCommitMessage, type CommitContext } from "./commit-message.js";
+import { polishPrompt } from "./prompt-polish.js";
 import {
+  breakdownMessages,
   collectOldToolOutputs,
   clampOutputTokens,
+  compactionTriggerTokens,
   estimateContextTokens,
   estimateMessagesTokens,
-  estimateRequestInputTokens,
   estimateTokens,
   estimateToolDefinitionsTokens,
-  repairToolPairs,
   shouldRecommendCompaction,
   shrinkToolOutputs,
   trimMessages,
   type ContextUsageAnchor,
+  type MessageBreakdown,
 } from "./context.js";
 import {
   READ_ONLY_PARALLEL_TOOLS,
   runAgentLoop,
   type AgentLoopHost,
   type AgentLoopHooks,
+  type AgentStreamOptions,
   type ToolResultMessage,
 } from "./agent-loop.js";
 import { AGENT_ROLE_HINTS, definitionFor, isAgentRole } from "./agent-definition.js";
@@ -101,27 +138,36 @@ import {
   type ApprovalModeInput,
   type ChatMessage,
   type CommandRisk,
+  type CommandRiskCategory,
   type MeowEvent,
   type NativeCompactionPayload,
   type PendingApproval,
   type PlanStep,
   type ProviderConfig,
+  type TokenUsage,
+  type SessionCheckpoint,
   type SessionMode,
+  type SessionWorktree,
   type SubagentStatus,
   type SubagentType,
   type ToolCall,
+  type ToolCatalogReason,
   type ToolDefinition,
   type ToolDocument,
   type ToolImage,
+  type ToolResult,
   type TurnStatus,
   type UsageSummary,
 } from "./types.js";
+import type { SandboxDenial } from "./sandbox/types.js";
+import { getSandboxSettings } from "./sandbox/policy.js";
 
 export type { ApprovalMode, SessionMode } from "./types.js";
 
 export { BASE_SYSTEM_PROMPT };
 
 const PLAN_CONTEXT_PREFIX = "Runtime context: current task plan";
+const MODE_NOTE_PREFIX = "Runtime context: [mode]";
 const SUBAGENT_PARENT_GOAL_MAX_CHARS = 1500;
 
 /** 计划快照文本：工具结果与压缩后的上下文 note 共用同一渲染。 */
@@ -134,6 +180,13 @@ function renderPlan(plan: { steps: PlanStep[]; explanation?: string }): string {
 function clipText(text: string, max: number): string {
   const trimmed = text.trim();
   return trimmed.length > max ? `${trimmed.slice(0, max)}…` : trimmed;
+}
+
+/** 插件 payload 的 input 统一成对象：非对象一律给空对象，插件侧不必再判空。 */
+function hookInput(input: unknown): Record<string, unknown> {
+  return input && typeof input === "object" && !Array.isArray(input)
+    ? (input as Record<string, unknown>)
+    : {};
 }
 
 function lastUserMessage(session: SessionStore): string | undefined {
@@ -176,9 +229,13 @@ export { MAX_SUBAGENTS_PER_TURN } from "./agent-profiles.js";
 /** 宿主续命上限：治理 run 活跃而模型停止回答时，最多强制继续 2 次。 */
 export const MAX_WORKFLOW_CONTINUATIONS = 2;
 
+/** 子 Agent 运行中插话：队列上限与单条长度上限（防刷屏/注入超长文本）。 */
+export const MAX_PENDING_STEERS = 8;
+const MAX_STEER_CHARS = 4000;
+
 /**
- * 计划模式指令：追加在稳定前缀之后（第三/第四条 system 消息），
- * 因为会话模式在回合间变化，放在末尾才不会破坏可缓存前缀。
+ * 计划模式指令：走 in-history 尾注（ensureModeContext），会话中途切换模式只追加
+ * 一条 user 注记，请求前缀（system 段 + 已有历史）保持字节不变，缓存不失效。
  */
 const PLAN_MODE_PROMPT = `Plan mode is active for this session.
 Research first with read-only tools (list_dir, read_file, glob, grep, browser reads). Do not run commands.
@@ -220,55 +277,13 @@ function isLocalBrowserUrl(url: string): boolean {
   }
 }
 
-// READ_ONLY_PARALLEL_TOOLS / PRUNE_TRIGGER_RATIO / clampOutputTokens /
-// estimateRequestInputTokens 已随薄循环抽到 agent-loop.ts 与 context.ts（循环与宿主共用）
+// READ_ONLY_PARALLEL_TOOLS / clampOutputTokens / estimateRequestInputTokens
+// 已随薄循环抽到 agent-loop.ts 与 context.ts（循环与宿主共用）
 
 /**
- * 循环检测（P1-2）：同一回合内「参数完全相同 且 输出逐字节相同」的连续工具调用。
- * 双条件缺一不可 —— edit 之后用相同参数重读同一文件是合法流程（文件变了输出就变，
- * 不会计数）；只有确定性工具返回相同输出时，重复调用才是零信息浪费。
- * 阈值参考 dsh repeat-tool-reminder 的 3/5/8 分级。
+ * 循环检测（P1-2）：同一回合内「参数完全相同 且 输出逐字节相同」的连续工具调用，
+ * 状态与阈值见 loop-guard.ts（3/5/8 分级，参考 dsh repeat-tool-reminder）。
  */
-const LOOP_REMIND_AT = 3;
-const LOOP_WARN_AT = 5;
-const LOOP_BLOCK_AT = 8;
-
-type LoopState = { key: string; outputHash: string; count: number };
-
-/** 稳定 JSON 序列化：键排序后拼接，避免模型换键序导致判重失效。 */
-function stableJson(value: unknown): string {
-  if (value === null || typeof value !== "object") return JSON.stringify(value) ?? "null";
-  if (Array.isArray(value)) return `[${value.map(stableJson).join(",")}]`;
-  const entries = Object.entries(value as Record<string, unknown>)
-    .filter(([, item]) => item !== undefined)
-    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
-  return `{${entries.map(([field, item]) => `${JSON.stringify(field)}:${stableJson(item)}`).join(",")}}`;
-}
-
-/** Windows 路径大小写不敏感；其余平台按原样比较。 */
-function sameFilePath(left: string, right: string): boolean {
-  const a = path.resolve(left);
-  const b = path.resolve(right);
-  return process.platform === "win32" ? a.toLowerCase() === b.toLowerCase() : a === b;
-}
-
-/** FNV-1a 指纹：循环状态里不存全文，只存 32 位哈希。 */
-function outputFingerprint(text: string): string {
-  let hash = 0x811c9dc5;
-  for (let index = 0; index < text.length; index += 1) {
-    hash ^= text.charCodeAt(index);
-    hash = Math.imul(hash, 0x01000193);
-  }
-  return (hash >>> 0).toString(16);
-}
-
-const LOOP_REMINDER_3 =
-  "[meowcode] Note: this exact call (same tool and arguments) has already returned an identical result 3 times in a row. The output is deterministic — repeating it adds nothing. Change the arguments or move on.";
-const LOOP_REMINDER_5 =
-  "[meowcode] Warning: 5th identical call in a row with identical output. You are in a loop. Use a different tool, different arguments, or summarize what you have and continue the task.";
-const loopBlockedOutput = (tool: string, count: number): string =>
-  `Blocked: ${tool} has been called with identical arguments and returned identical output ${count} times in a row. Repeating it is wasteful and it will not be executed again. Change the arguments (different offset/pattern/path) or take a different approach.`;
-
 type ToolArgumentSpec = { required: string[]; nonEmpty: string[] };
 
 type LiveSubagent = {
@@ -388,14 +403,59 @@ function validateToolArguments(
  * 工具审批模式（粒度由粗到细）：
  *  - "read-only"：只读，写/改/命令一律拒绝
  *  - "ask"：每次写/改/命令都弹审批（旧版 "default" 的语义）
- *  - "auto"：可写根（工作区）内的写/改自动批准，越界与命令仍弹审批（codex 式）
+ *  - "auto"：可写根（工作区）内的写/改、常规开发命令自动批准；凭据读取、下载执行、
+ *    系统设置、发布部署、破坏性 git、工作区外路径与其它高危特征仍弹审批（启发式护栏）
  *  - "full"：全部工具自动放行，并允许工作区外的绝对路径
  * 审批模式按会话持久化；旧会话里存的 "default" 读出来归一到 "ask"。
  */
 export { isApprovalMode, normalizeApprovalMode, isSessionMode, normalizeSessionMode };
 
-/** 只有写类工具参与"可写根自动批准"；命令没有沙箱兜底，永远需要人确认。 */
+/** 只有写类工具参与"可写根"判定；命令走独立的高危判定，见 autoApprovalReason。 */
 const WRITABLE_ROOT_TOOLS = new Set(["write_file", "edit_file", "multi_edit"]);
+
+/**
+ * auto 模式下这次调用能否自动批准，以及归到哪一类留痕原因。
+ * 命令没有路径可校验，改用 assessCommandRisk 的启发式护栏：命中即仍要人确认。
+ * 这不是沙箱；真正的执行边界在 run_code 隔离与 full 模式的显式授权上。
+ */
+/**
+ * 命令风险按类别独立授权（codex AskForApproval::Granular 同款策略对象）：
+ * "ask" = auto 模式也必须弹审批；"auto" = 可自动放行。
+ * 默认全 ask —— 与既往一刀切行为完全一致；将来设置页暴露「XX 类自动放行」时改这张表。
+ */
+const COMMAND_RISK_POLICY: Record<CommandRiskCategory, "ask" | "auto"> = {
+  disk_system: "ask",
+  recursive_delete: "ask",
+  credential_access: "ask",
+  env_dump: "ask",
+  remote_exec: "ask",
+  inline_exec: "ask",
+  system_config: "ask",
+  privilege_escalation: "ask",
+  process_kill: "ask",
+  destructive_git: "ask",
+  publish_deploy: "ask",
+};
+
+function autoApprovalReason(
+  tool: string,
+  writableTarget: boolean,
+  commandRisk?: CommandRisk,
+): "writable_root" | "low_risk_command" | null {
+  if (tool === "run_command") {
+    if (!commandRisk) return "low_risk_command";
+    return commandRisk.categories.some((category) => COMMAND_RISK_POLICY[category] === "ask")
+      ? null
+      : "low_risk_command";
+  }
+  return writableTarget ? "writable_root" : null;
+}
+
+/** 「文件删除确认」只在工作区写入沙箱模式下生效；完全访问模式跳过。 */
+function shouldConfirmFileDelete(): boolean {
+  const settings = getSandboxSettings();
+  return settings.enabled && settings.confirmDelete;
+}
 
 /** 写类工具涉及的所有路径：multi_edit 可跨文件，必须逐个判定。 */
 function writablePaths(tool: string, input: unknown): string[] {
@@ -480,42 +540,108 @@ type WarmupCompaction = {
 };
 
 /**
- * 后台预热触发的占用区间：达到窗口 80% 开始预生成摘要；
+ * 后台预热触发的占用区间：达到软阈值开始预生成摘要；
  * 已过 95% 说明下一轮请求大概率直接溢出，预热来不及，留给前台压缩处理。
  * 参考 codex 的 async_compaction_threshold_percent 与 token_limit_reached 短路。
+ *
+ * 阈值本身由 compactionTriggerTokens 计算：在比值之外还要减掉输出预留 + headroom
+ * （开源同类都这么做），否则小窗口上 80% 就已经没有输出的余地。
  */
 const COMPACTION_WARMUP_RATIO = 0.8;
+/** 总量硬闸：按窗口比值算，不随预留口径移动（codex 的全窗守卫同款纪律）。 */
 const COMPACTION_WARMUP_MAX_RATIO = 0.95;
 
 /**
- * 主动压缩档阈值：占用过 85% 就在回合间隙收一轮上下文，不等溢出。
+ * 主动压缩档阈值：占用过软阈值就在回合间隙收一轮上下文，不等溢出。
  * 参考 codex 的三层触发链（采样前预压缩 / 90% 阈值 / 手动）——溢出才压缩
  * 的体验是突然卡住一拍，主动档让压缩发生在回合之间，模型无感。
  */
 const COMPACTION_PROACTIVE_RATIO = 0.85;
 
-/** 上下文占用的分类明细（token 数），三项之和恒等于 usedTokens。 */
+/**
+ * 压缩质量观测窗口：压缩后多少回合内重复读「压缩前已读过」的文件算摘要漏了上下文。
+ * 5 轮足够覆盖「重新探索」的典型节奏，又不会把无关的后续工作算进来。
+ */
+const COMPACTION_QUALITY_WINDOW_TURNS = 5;
+
+/**
+ * 缓存保活间隔：Anthropic 5m TTL 过期前重放一次前缀（295s 留 5s 余量）。
+ * 参考 aider 的 warm_cache（295s 周期、max_tokens=1）；本地六个参考项目都没有
+ * 保活实现，只有 hermes 用「按请求来源选 TTL」替代。
+ */
+const CACHE_KEEPALIVE_DELAY_MS = 290_000;
+/** 连续保活上限：约 1.5 小时空档覆盖；再往后多半是人真的走了，省钱要紧。 */
+const CACHE_KEEPALIVE_MAX_PINGS = 18;
+
+/**
+ * 空闲压缩：1h TTL 的会话空到 ~54min 缓存已死（CC v2.1.299 的 idle compaction ~54min
+ * 同思路）。占用过 60% 就趁「反正要冷」后台预热压缩，把重写搭在本来就要失效的便车上。
+ */
+const IDLE_COMPACTION_DELAY_MS = 54 * 60_000;
+const IDLE_COMPACTION_MIN_RATIO = 0.6;
+
+/**
+ * 本地摘要连续失败上限：超过就不再尝试，直接走零模型兜底。
+ * 每次失败都要把整段历史发给模型，撞三次墙的代价比丢一次历史更高。
+ * 参考 ZCode 的 MAX_CONSECUTIVE_AUTOCOMPACT_FAILURES。
+ */
+const COMPACTION_FAILURE_LIMIT = 3;
+const SHRINK_SPILL_MAP_MAX = 400;
+
+/**
+ * 零模型兜底的替代摘要：不生成摘要，只丢最旧的整单元历史。
+ * 模型必须知道「历史是被丢弃而不是被总结」，否则会以为自己漏读了什么。
+ */
+const HISTORY_DROPPED_SUMMARY =
+  "[meowcode] Earlier history was dropped without a summary because the context window was exhausted. The plan snapshot and the touched-file list below are current; re-read any file you need instead of assuming what it contains.";
+
+/**
+ * Code Mode 的取舍以开源共识为准（2026-10-30 复核后回滚了「摘只读工具定义」的做法）：
+ *  - OpenCode：read/grep/glob/write/edit/shell/question/subagent 等内置工具全部
+ *    `codemode: false` 留在原生目录，只有 MCP 等第三方工具折进 execute 沙箱
+ *    （tool/plugin/*.ts 的 options；tool/AGENTS.md:33 的规则原文）。
+ *  - Hermes：`_core_tool_names()` 注释「Names that never defer by default」——
+ *    核心工具默认永不推迟，tool_search 只覆盖 MCP 与非核心会话面。
+ *  - Codex：`ToolExposure::Deferred` 定义在 mcp_tool_exposure.rs，同样只针对 MCP。
+ *  - DSH：PTC 全量折叠存在但 bundle 里 `disabled: true`。
+ * 即：内置读写/搜索是模型的反射动作，留在原生目录；折叠预算花在第三方目录膨胀上。
+ * 沙箱里保留 meow.listDir/readMany/grep/glob 供批处理，与原生工具并存，不二选一。
+ */
+
+/** 上下文占用的分类明细（token 数），五项之和恒等于 usedTokens。 */
 export type ContextBreakdown = {
   /** 系统提示词（稳定前缀） */
   system: number;
   /** 工具定义 */
   tools: number;
+  /** 技能索引（含 always 技能的全文） */
+  skills: number;
   /** 对话消息 */
   messages: number;
+  /** 项目规则 / 记忆等其余注入 */
+  other: number;
 };
 
-/** 估算三部分之和 → 按比例摊分到真实总量；舍入误差补进最大一项，保证加总一致。 */
+const BREAKDOWN_KEYS = ["system", "tools", "skills", "messages", "other"] as const;
+const EMPTY_BREAKDOWN: ContextBreakdown = {
+  system: 0,
+  tools: 0,
+  skills: 0,
+  messages: 0,
+  other: 0,
+};
+
+/** 估算各项之和 → 按比例摊分到真实总量；舍入误差补进最大一项，保证加总一致。 */
 function allocateByRatio(parts: ContextBreakdown, total: number): ContextBreakdown {
-  const sum = parts.system + parts.tools + parts.messages;
-  if (sum <= 0 || total <= 0) return { system: 0, tools: 0, messages: 0 };
-  const scaled: ContextBreakdown = {
-    system: Math.round((parts.system / sum) * total),
-    tools: Math.round((parts.tools / sum) * total),
-    messages: Math.round((parts.messages / sum) * total),
-  };
-  const diff = total - (scaled.system + scaled.tools + scaled.messages);
+  const sum = BREAKDOWN_KEYS.reduce((acc, key) => acc + parts[key], 0);
+  if (sum <= 0 || total <= 0) return { ...EMPTY_BREAKDOWN };
+  const scaled: ContextBreakdown = { ...EMPTY_BREAKDOWN };
+  for (const key of BREAKDOWN_KEYS) {
+    scaled[key] = Math.round((parts[key] / sum) * total);
+  }
+  const diff = total - BREAKDOWN_KEYS.reduce((acc, key) => acc + scaled[key], 0);
   if (diff !== 0) {
-    const key = (["system", "tools", "messages"] as const).reduce((a, b) => (scaled[a] >= scaled[b] ? a : b));
+    const key = BREAKDOWN_KEYS.reduce((a, b) => (scaled[a] >= scaled[b] ? a : b));
     scaled[key] = Math.max(0, scaled[key] + diff);
   }
   return scaled;
@@ -585,12 +711,58 @@ async function buildFileChangeDiff(
   return renderDiff(capture.target, capture.before ?? "", after);
 }
 
+/**
+ * 回合后记忆蒸馏的环境默认值：桌面端经 MEOWCODE_MEMORY_EXTRACTION 传入
+ * settings.json 的开关；测试环境在 vitest.setup.ts 里统一置 0。
+ */
+function readMemoryExtractionEnvDefault(): boolean {
+  const raw = process.env.MEOWCODE_MEMORY_EXTRACTION;
+  if (raw === undefined || raw.trim() === "") return true;
+  const normalized = raw.trim().toLowerCase();
+  return normalized !== "0" && normalized !== "false";
+}
+
+/** 会话回滚（文件快照）的 env 默认值：桌面端经 MEOWCODE_REWIND* 传入；默认开启。 */
+function readRewindEnvDefaults(): { enabled: boolean; maxBlobBytes?: number; keepCheckpoints?: number } {
+  const raw = process.env.MEOWCODE_REWIND;
+  const enabled = raw === undefined || raw.trim() === "" ? true : raw.trim().toLowerCase() !== "0" && raw.trim().toLowerCase() !== "false";
+  const maxMb = Number(process.env.MEOWCODE_REWIND_MAX_MB);
+  const keep = Number(process.env.MEOWCODE_REWIND_KEEP);
+  return {
+    enabled,
+    ...(Number.isFinite(maxMb) && maxMb > 0
+      ? { maxBlobBytes: Math.max(64 * 1024, Math.round(maxMb * 1024 * 1024)) }
+      : {}),
+    ...(Number.isFinite(keep) && keep > 0 ? { keepCheckpoints: Math.round(keep) } : {}),
+  };
+}
+
+/** 自我学习开关的 env 初值：**默认关闭**（实验性能力，需用户显式开启）。 */
+function readLearningEnvDefault(): boolean {  const raw = process.env.MEOWCODE_SELF_LEARNING;
+  if (raw === undefined || raw.trim() === "") return false;
+  const normalized = raw.trim().toLowerCase();
+  return normalized === "1" || normalized === "true" || normalized === "on";
+}
+
+type ApprovalBy = "user" | "hook" | "abort";
+
+type ApprovalHandle = {
+  wait: Promise<boolean>;
+  /** 返回 false 表示已被更早的结算（用户/hook/中止）抢先，本次不生效 */
+  settle: (approved: boolean, by?: ApprovalBy) => boolean;
+};
+
 export class AgentRuntime {
   private providers: ProviderConfig[];
   private providerId: string;
   private sessionsDir: string;
   /** 用户主目录：全局技能索引扫描根（~/.meowcode/skills）；测试注入临时目录隔离真实环境 */
   private homeDir: string;
+  /**
+   * shrink 前已落盘的旧工具输出（callId → 相对路径）：摘录替换后全文仍可 read_file 找回。
+   * 只在首次遇到时写盘，之后复用路径，避免每轮请求重复落盘同一份内容。
+   */
+  private shrinkSpills = new Map<string, string>();
   private currentSession: SessionStore | null = null;
   private turnAbort: AbortController | null = null;
   /** 正在执行的回合属于哪个会话；切换会话时前端据此恢复 streaming 状态 */
@@ -607,8 +779,42 @@ export class AgentRuntime {
    * 上下文占用 = 锚点 + 之后新增消息的估算；比每次整段重算字符估算准得多。
    */
   private usageAnchor: ContextUsageAnchor | null = null;
+  /**
+   * 当前进行中的模型调用 id。流中实时 usage 与最终真值共用它，前端按 id 替换样本；
+   * 重试/中止时发 retracted 撤回，避免统计虚高。
+   */
+  private pendingUsageRoundId: string | null = null;
+
+  /** 流中实时样本：只发事件，不落盘、不动 usageAnchor（这些仍归 recordUsage）。 */
+  private emitUsageSample(session: SessionStore, roundId: string, usage: TokenUsage): void {
+    this.emit({ type: "usage", sessionId: session.id, roundId, ...usage });
+  }
+
+  /** 放弃上一轮未提交的样本（模型重试、回合被中止）。 */
+  private retractPendingUsage(session: SessionStore): void {
+    if (!this.pendingUsageRoundId) return;
+    this.emit({
+      type: "usage",
+      sessionId: session.id,
+      roundId: this.pendingUsageRoundId,
+      retracted: true,
+    });
+    this.pendingUsageRoundId = null;
+  }
   /** 服务端原生压缩连续失败次数：达上限后本运行时不再尝试，直接走本地摘要。 */
   private nativeCompactionFailures = 0;
+  /** 本地摘要连续失败次数：到上限后不再尝试模型摘要，直接走零模型兜底。 */
+  private localCompactionFailures = 0;
+  /**
+   * 压缩质量观测：压缩后窗口期内重复读了哪些「压缩前已读过」的文件。
+   * 只观测，不影响任何请求组装。
+   */
+  private compactionQuality: {
+    compactionId: string;
+    paths: Set<string>;
+    hits: string[];
+    turnsLeft: number;
+  } | null = null;
   /** run_code 宿主桥的内部调用序号：只用于审批记录与日志的 callId */
   private bridgeCallSeq = 0;
   private approvalMode: ApprovalMode = "auto";
@@ -625,7 +831,10 @@ export class AgentRuntime {
    * 提示词/工具白名单仍按 agentProfile 走。
    */
   private harnessArchitecture: string | null = null;
-  private pendingApprovals = new Map<string, (approved: boolean) => void>();
+  private pendingApprovals = new Map<
+    string,
+    { details: PendingApproval; resolve: (approved: boolean) => void; settled: boolean }
+  >();
 
   /** ask_user 虚拟工具：挂起中的澄清问题（callId → resolver），回答文本作为工具结果 */
   private pendingAsks = new Map<string, (answers: string[]) => void>();
@@ -634,8 +843,6 @@ export class AgentRuntime {
     sessionId: string;
     questions: Array<{ question: string; options: string[] }>;
   } | null = null;
-  /** 正在等待确认的审批详情；切回会话时由 /session 回放 */
-  private pendingApprovalDetails: PendingApproval | null = null;
   /** 最近一次回合失败原因（按 runtime/会话保留，切回时展示） */
   private lastErrorMessage: string | null = null;
   private compactingSession = false;
@@ -674,17 +881,8 @@ export class AgentRuntime {
       requestSig: string;
     }
   >();
-  /**
-   * 循环检测状态（P1-2）：按会话记录最近一次工具调用的参数键/输出指纹/连续次数。
-   * 每回合开始时重置 —— 跨回合的相同调用多是用户再次要求，不算循环。
-   */
-  private loopStates = new Map<string, LoopState>();
-  /**
-   * 本进程内 read_file 结果对应的文件版本（callId → file + version）。
-   * 「重复读短路」用它判断文件在读取之后有没有被写/改；进程重启后为空，
-   * 宁可退回完整读取，也不拿旧内容误 stub。
-   */
-  private readVersions = new Map<string, { file: string; version: string }>();
+  /** 循环守卫（loop-guard.ts）：循环判重 + 重复读短路的全部状态 */
+  private readonly loopGuard = new LoopGuard();
   /**
    * 后台预热压缩（codex 式 speculative compaction）：真实用量达到窗口阈值就在后台
    * 预生成摘要，溢出/需要压缩时直接采用 —— 摘要请求不再阻塞当前回合。
@@ -713,10 +911,19 @@ export class AgentRuntime {
   private listeners = new Set<(event: MeowEvent) => void>();
   /** 当前工作区的 AGENTS.md 内容（每轮重新读取，内容变化时下一轮生效） */
   private instructions: string | undefined;
+  /** AGENTS.md / CLAUDE.md 读取开关：设置页切换后实时生效 */
+  private instructionSettings: InstructionSettings = {};
+  /** instructions 里技能索引的大小与数量：上下文来源归因用 */
+  private instructionSkills: { tokens: number; count: number } = { tokens: 0, count: 0 };
   /** 桌面端内嵌浏览器桥；无桌面环境（测试 / CLI）时为 null，浏览器工具不注册 */
   private browserHost: BrowserHostClient | null;
   /** 子 Agent 开关：side 聊天与子 Agent 自身关闭，避免嵌套派发 */
   private enableTaskTool: boolean;
+  /**
+   * 会话节奏（缓存 TTL 的 auto 判据）：主会话/side 是 interactive，
+   * 子代理与后台批量是 machine。整个会话恒定，绝不中途改——改 TTL 会让断点块失配。
+   */
+  private sessionPace: "interactive" | "machine";
   private systemPrompt: string;
   /** 调用方显式传了 systemPrompt：此时档位提示词不覆盖它（子 Agent / side 聊天 / 测试） */
   private customSystemPrompt: boolean;
@@ -730,6 +937,8 @@ export class AgentRuntime {
   private allowedTools: Set<string> | null;
   /** 插件注册表（server 启动时注入；null = 未启用插件系统，hook 直通） */
   private plugins: PluginRegistry | null;
+  /** 子 Agent 标识：hook payload 的 agent_id/agent_type 与 SubagentStop 判定 */
+  private readonly hookScope: PluginHookScope | null;
   /** Explore 子 Agent 不注入 AGENTS.md，减少上下文 */
   private injectInstructions: boolean;
   /** 正在运行的子 Agent（agentId → 子 runtime） */
@@ -738,8 +947,56 @@ export class AgentRuntime {
   private subagentsStartedThisTurn = 0;
   /** 当前回合已回灌的验证失败反馈次数：硬上限防"写→验证失败→修"无限循环 */
   private verifyFailuresThisTurn = 0;
+  /** 当前回合已回灌的 LSP 诊断次数（与 verify 分开计数） */
+  private lspFeedbackThisTurn = 0;
+  /** 子 Agent 运行中用户插话：下一个安全步骤注入（不打断当前工具/流） */
+  private pendingSteers: Array<{ id: string; text: string }> = [];
+  /** 当前回合内真实改动过的文件（宿主观测）：审阅面板与快照归因用 */
+  private turnFileChanges = new Set<string>();
+  /** 文件快照开关与参数（会话回滚）；关闭时所有打点 no-op，checkpoint 不带 snapshot */
+  private readonly snapshotOptions: {
+    enabled: boolean;
+    maxBlobBytes?: number;
+    keepCheckpoints?: number;
+  };
+  /** 快照存储实例（ownerId → store；派生会话共享源 owner） */
+  private readonly snapshotStores = new Map<string, SnapshotStore>();
   /** 有后台子 Agent 时暂缓标题生成，等它们结束后再补 */
   private pendingTitle: { session: SessionStore; text: string } | null = null;
+  /** 回合后自动蒸馏开关（ZCode 同款）：server 的 /config/memory-extraction 可实时切换 */
+  memoryExtraction = true;
+  /** 用户可见回复的语色：server 的 /config/speech-style 可实时切换；子 Agent 不生效 */
+  speechStyle: SpeechStyle = "normal";
+  /** 蒸馏一次只跑一个：请求在途时的新增量并入下回合（游标已推进到当次快照末尾） */
+  private memoryExtractionBusy = false;
+  /** 蒸馏成功后的下回合通知（绑定会话：切换会话即丢弃，避免跨会话误注入） */
+  private memoryNoticePending: { sessionId: string; text: string } | null = null;
+  /** 每会话蒸馏游标（messages 下标）：进程内存级，重启后从最后一个用户回合重计 */
+  private memoryCursors = new Map<string, number>();
+  /**
+   * 自我学习（观察 → 学习 → 召回 → 评估）：server 的 /config/learning 可实时切换。
+   * 与 memoryExtraction 是两条独立通道 —— 记忆存「事实」，学习存「怎么做」。
+   *
+   * 用 getter/setter 而不是裸字段：开关必须同步到 LearningController，
+   * 否则「关掉了」但控制器里仍认为开启，子 Agent 也会跟着学。
+   */
+  private learningEnabled = true;
+  get learning(): boolean {
+    return this.learningEnabled;
+  }
+  set learning(value: boolean) {
+    this.learningEnabled = value;
+    this.learningController?.setEnabled(value);
+  }
+  private learningController: LearningController;
+  /** 本回合的工具/命令轨迹；afterToolCall 逐次填充，回合末交给学习层。 */
+  private learningTrace: TurnTrace | null = null;
+  /** 本回合的召回归因上下文（turnIndex / 命中条目 / 是否对照组）。 */
+  private turnLearning: { turnIndex: number; recalledIds: string[]; holdout: boolean } | null = null;
+  /** 学习产出后的下回合通知（绑定会话，切走即丢弃）。 */
+  private learningNoticePending: { sessionId: string; text: string } | null = null;
+  /** tool_finished 的 ok 快照：afterToolCall 只拿得到结果消息，拿不到成功标志。 */
+  private toolOutcomes = new Map<string, boolean>();
   /** 正在创建、尚未进入 liveSubagents 的子 Agent；用于并发上限的同步占位 */
   private startingSubagents = 0;
 
@@ -747,6 +1004,30 @@ export class AgentRuntime {
   private mutatedPaths = new Map<string, Set<string>>();
   /** 动态工具 schema 超预算只提示一次，避免每轮刷日志 */
   private dynamicToolBudgetWarned = false;
+  /** MCP 工具注册完成只等一次：就绪前不发首个模型请求，避免工具中途追加整段重算 */
+  private mcpWaited = false;
+  /** AGENTS.md 会话级快照：每个会话只读一次，中途修改不生效（重开会话重新加载） */
+  private instructionsSessionId: string | null = null;
+  /** MCP 就绪信号：由 server 注入 plugins.mcpReady；缺省跳过等待 */
+  private readonly mcpReady: Promise<void> | null;
+  /** 会话级工具目录快照：新增立即追加，删除/改写延后到缓存安全边界 */
+  private toolCatalog: ToolCatalog | null = null;
+  /** 原始工具表缓存：只有目录输入（动态版本 / 档位 / provider 等）变化才重建 */
+  private rawToolsCache: { key: string; tools: ToolDefinition[] } | null = null;
+  /** 每个 provider 上一次请求的前缀指纹与时间：缓存诊断用 */
+  private providerRequestMeta = new Map<string, { key: string; at: number }>();
+  /** 本次请求的前缀信息（stream 前置记录，recordUsage 消费） */
+  private currentRequest: {
+    providerId: string;
+    key: string;
+    samePrefix: boolean;
+    hadPrevious: boolean;
+    idleMs: number;
+  } | null = null;
+  /** 每个会话+provider 已提示过的缓存状态，避免重复提醒 */
+  private emittedCacheStates = new Map<string, CacheState>();
+  /** 最近一次前缀变化原因（工具追加 / instructions 变化） */
+  private lastPrefixChangeReason: string | null = null;
 
   constructor(options: {
     providers: ProviderConfig[];
@@ -757,9 +1038,15 @@ export class AgentRuntime {
     workspace?: string;
     browserHost?: BrowserHostClient | null;
     enableTaskTool?: boolean;
+    /**
+     * 缓存 TTL 的 auto 判据：人驱动的会话用 "interactive"，子代理/后台批量用
+     * "machine"。缺省 "interactive"。
+     */
+    sessionPace?: "interactive" | "machine";
     systemPrompt?: string;
     allowedTools?: Iterable<string>;
     injectInstructions?: boolean;
+    instructionSettings?: InstructionSettings;
     /**
      * 实验开关（默认全关）：
      * - midstreamToolExec = 流中参数闭合即提前执行只读工具
@@ -773,6 +1060,23 @@ export class AgentRuntime {
     };
     /** 插件注册表（server 级单例）：null/缺省 = 未启用插件系统，hook 直通、无动态工具 */
     plugins?: PluginRegistry | null;
+    /** 子 Agent 的 hook 作用域（根 runtime 不传；rootSessionId 缺省取当前会话） */
+    hookScope?: {
+      rootSessionId?: string;
+      agentId?: string;
+      agentType?: string;
+      parentSessionId?: string;
+    };
+    /** MCP 就绪信号（plugins.mcpReady）：首个模型请求前等它（≤10s），避免工具中途追加整段重算 */
+    mcpReady?: Promise<void> | null;
+    /** 回合后自动蒸馏（记忆）：缺省开启；server 从设置/env 传入初始值 */
+    memoryExtraction?: boolean;
+    /** 会话回滚的文件快照（缺省按 MEOWCODE_REWIND* env，默认开启）；关闭后打点 no-op */
+    snapshots?: { enabled?: boolean; maxBlobBytes?: number; keepCheckpoints?: number };
+    /** 自我学习（技能/经验/用户模型）：缺省开启；server 从设置/env 传入 */
+    learning?: boolean;
+    /** 用户可见回复的语色：缺省普通；server 从设置/env 传入并支持热更新 */
+    speechStyle?: SpeechStyle;
     /**
      * 治理模式（metis 式 admission 门禁）：off = 完全关闭；goal = 仅 goal 模式
      * 强制先 admit 再变更（默认）；always = 所有会话模式都强制。
@@ -790,12 +1094,35 @@ export class AgentRuntime {
     this.homeDir = options.homeDir ?? os.homedir();
     this.browserHost = options.browserHost ?? null;
     this.enableTaskTool = options.enableTaskTool ?? true;
+    this.sessionPace = options.sessionPace ?? "interactive";
     this.systemPrompt = options.systemPrompt ?? BASE_SYSTEM_PROMPT;
     this.customSystemPrompt = options.systemPrompt !== undefined;
     this.allowedTools = options.allowedTools ? new Set(options.allowedTools) : null;
     this.injectInstructions = options.injectInstructions ?? true;
+    this.instructionSettings = options.instructionSettings ?? {};
     this.experimental = options.experimental ?? null;
     this.plugins = options.plugins ?? null;
+    this.hookScope = options.hookScope ?? null;
+    this.mcpReady = options.mcpReady ?? null;
+    this.memoryExtraction = options.memoryExtraction ?? readMemoryExtractionEnvDefault();
+    const envRewind = readRewindEnvDefaults();
+    this.snapshotOptions = {
+      enabled: options.snapshots?.enabled ?? envRewind.enabled,
+      ...(options.snapshots?.maxBlobBytes ?? envRewind.maxBlobBytes
+        ? { maxBlobBytes: options.snapshots?.maxBlobBytes ?? envRewind.maxBlobBytes }
+        : {}),
+      ...(options.snapshots?.keepCheckpoints ?? envRewind.keepCheckpoints
+        ? { keepCheckpoints: options.snapshots?.keepCheckpoints ?? envRewind.keepCheckpoints }
+        : {}),
+    };
+    this.learningEnabled = options.learning ?? readLearningEnvDefault();
+    this.learningController = new LearningController({
+      workspace: options.workspace ?? process.cwd(),
+      homeDir: this.homeDir,
+      config: { enabled: this.learningEnabled },
+      onProgress: (event) => this.emit({ type: "learning_progress", ...event }),
+    });
+    this.speechStyle = normalizeSpeechStyle(options.speechStyle ?? readSpeechStyleFromEnv());
     this.governance = options.governance ?? "goal";
     this.onFileChange = options.onFileChange;
   }
@@ -871,6 +1198,41 @@ export class AgentRuntime {
     return files;
   }
 
+  /** 登记审批并广播；hook 审批不进会话历史（kind!=="tool"）。 */
+  private registerApproval(details: PendingApproval): ApprovalHandle {
+    let resolveWait: (approved: boolean) => void = () => {};
+    const wait = new Promise<boolean>((resolve) => {
+      resolveWait = resolve;
+    });
+    this.pendingApprovals.set(details.callId, {
+      details,
+      resolve: resolveWait,
+      settled: false,
+    });
+    this.emit({ type: "approval_required", ...details });
+    return {
+      wait,
+      settle: (approved, by = "user") => this.settleApproval(details.callId, approved, by),
+    };
+  }
+
+  /** 结算一条审批：只生效一次，并广播 approval_resolved 用于关闭弹窗。 */
+  private settleApproval(callId: string, approved: boolean, by: ApprovalBy): boolean {
+    const entry = this.pendingApprovals.get(callId);
+    if (!entry || entry.settled) return false;
+    entry.settled = true;
+    this.pendingApprovals.delete(callId);
+    this.emit({
+      type: "approval_resolved",
+      sessionId: entry.details.sessionId,
+      callId,
+      approved,
+      by,
+    });
+    entry.resolve(approved);
+    return true;
+  }
+
   /** 发审批并等待；stale=true 表示"文件已变化、预览已重算"的二次确认。 */
   private async awaitApproval(
     session: SessionStore,
@@ -881,6 +1243,7 @@ export class AgentRuntime {
     risk: CommandRisk | undefined,
     turnId: string | null,
     stale: boolean,
+    hookReason?: string,
   ): Promise<boolean> {
     if (turnId) {
       await session.appendApprovalRequested({
@@ -893,35 +1256,389 @@ export class AgentRuntime {
       });
       await session.flush();
     }
-    this.pendingApprovalDetails = {
-      callId: call.id,
-      sessionId: session.id,
-      tool,
-      input,
-      ...(diff ? { diff } : {}),
-      ...(risk ? { risk } : {}),
-      ...(stale ? { stale: true } : {}),
-    };
-    this.emit({
-      type: "approval_required",
-      sessionId: session.id,
-      callId: call.id,
-      tool,
-      input,
-      ...(diff ? { diff } : {}),
-      ...(risk ? { risk } : {}),
-      ...(stale ? { stale: true } : {}),
-    });
     if (this.turnAbort?.signal.aborted) return false;
-    const approved = await new Promise<boolean>((resolve) => {
-      this.pendingApprovals.set(call.id, resolve);
+    const handle = this.registerApproval({
+      callId: call.id,
+      sessionId: session.id,
+      tool,
+      input,
+      ...(diff ? { diff } : {}),
+      ...(risk ? { risk } : {}),
+      ...(stale ? { stale: true } : {}),
+      ...(hookReason ? { hookReason } : {}),
     });
-    if (this.pendingApprovalDetails?.callId === call.id) this.pendingApprovalDetails = null;
+    return handle.wait;
+  }
+
+  /**
+   * 人工审批 + PermissionRequest hook 并行：弹窗先发，hook 先答则关闭弹窗；
+   * 用户先答则中止 hook，迟到结果丢弃。stale 二次确认不走这里。
+   */
+  private async awaitApprovalWithPermissionHooks(
+    session: SessionStore,
+    call: ToolCall,
+    tool: string,
+    input: unknown,
+    diff: string | undefined,
+    risk: CommandRisk | undefined,
+    turnId: string | null,
+    hookReason?: string,
+  ): Promise<{ approved: boolean; byHook: boolean; reason?: string }> {
+    if (turnId) {
+      await session.appendApprovalRequested({
+        turnId,
+        callId: call.id,
+        tool,
+        input,
+        ...(diff ? { diff } : {}),
+        ...(risk ? { risk } : {}),
+      });
+      await session.flush();
+    }
+    if (this.turnAbort?.signal.aborted) return { approved: false, byHook: false };
+    const handle = this.registerApproval({
+      callId: call.id,
+      sessionId: session.id,
+      tool,
+      input,
+      ...(diff ? { diff } : {}),
+      ...(risk ? { risk } : {}),
+      ...(hookReason ? { hookReason } : {}),
+    });
+    if (!this.plugins?.hasHooks("permission_request")) {
+      return { approved: await handle.wait, byHook: false };
+    }
+
+    const hookAbort = new AbortController();
+    const hookSignal = this.combineSignals(this.turnAbort?.signal, hookAbort.signal);
+    const hookRun = runHook(
+      this.plugins,
+      "permission_request",
+      {
+        hook: "permission_request",
+        sessionId: session.id,
+        callId: call.id,
+        tool,
+        input: input as Record<string, unknown>,
+        ...this.hookScopeFields(session),
+      },
+      this.hookContext(session, hookSignal),
+    )
+      .then((result) => ({ source: "hook" as const, result }))
+      .catch(() => ({ source: "hook" as const, result: undefined }));
+    const userRun = handle.wait.then((approved) => ({ source: "user" as const, approved }));
+
+    const first = await Promise.race([hookRun, userRun]);
+    if (first.source === "user") {
+      hookAbort.abort();
+      return { approved: first.approved, byHook: false };
+    }
+    if (first.result?.permission === "allow" || first.result?.permission === "deny") {
+      const approved = first.result.permission === "allow";
+      if (handle.settle(approved, "hook")) {
+        return {
+          approved,
+          byHook: true,
+          ...(first.result.reason ? { reason: first.result.reason } : {}),
+        };
+      }
+      // 用户抢先结算：以用户为准
+      return { approved: await handle.wait, byHook: false };
+    }
+    // hook 没有决定：继续等用户
+    return { approved: await handle.wait, byHook: false };
+  }
+
+  /**
+   * 沙箱拒绝后的唯一一次「沙箱外重试」审批。
+   * 刻意不使用 PermissionRequest hook：hook 只能放行普通工具审批，
+   * 不能替用户决定「出沙箱」。
+   */
+  private async awaitSandboxEscape(
+    session: SessionStore,
+    escapeCallId: string,
+    tool: string,
+    input: unknown,
+    denial: SandboxDenial,
+    turnId: string | null,
+  ): Promise<boolean> {
+    const sandboxEscape = {
+      command: String((input as { command?: unknown } | null)?.command ?? ""),
+      detail: denial.evidence,
+    };
+    if (turnId) {
+      await session.appendApprovalRequested({
+        turnId,
+        callId: escapeCallId,
+        tool,
+        input,
+        sandboxEscape,
+      });
+      await session.flush();
+    }
+    if (this.turnAbort?.signal.aborted) return false;
+    const handle = this.registerApproval({
+      callId: escapeCallId,
+      sessionId: session.id,
+      tool,
+      input,
+      sandboxEscape,
+    });
+    return handle.wait;
+  }
+
+  /**
+   * 沙箱拒绝 → 一次审批 → 沙箱外重试。只重试一次，不递归；
+   * approvalMode=full 也照常弹（沙箱与审批模式正交）。
+   */
+  private async runToolWithSandboxEscape(
+    session: SessionStore,
+    call: ToolCall,
+    tool: string,
+    input: unknown,
+    turnId: string | null,
+    run: (sandbox: "enforce" | "bypass") => Promise<ToolResult>,
+  ): Promise<ToolResult> {
+    const first = await run("enforce");
+    if (!first.sandboxDenial || first.sandboxDenial.kind === "unknown_denied") return first;
+    const escapeCallId = `${call.id}:outside`;
+    const approved = await this.awaitSandboxEscape(
+      session,
+      escapeCallId,
+      tool,
+      input,
+      first.sandboxDenial,
+      turnId,
+    );
+    if (!approved) {
+      await session.appendApproval(escapeCallId, tool, input, false, {
+        ...(turnId ? { turnId } : {}),
+        reason: "sandbox_denied",
+      });
+      return first;
+    }
+    const retried = await run("bypass");
+    await session.appendApproval(escapeCallId, tool, input, retried.ok, {
+      ...(turnId ? { turnId } : {}),
+      reason: "sandbox_escape",
+    });
+    return {
+      ...retried,
+      output: `[sandbox] The first attempt was blocked; retried without the sandbox after user approval.\n${retried.output}`,
+    };
+  }
+
+  /** 每次询问模式：hook 命令运行前的审批（合成 kind=hook，不进会话历史）。 */
+  private async requestHookCommandApproval(
+    session: SessionStore,
+    request: HookCommandApprovalRequest,
+    signal?: AbortSignal,
+  ): Promise<boolean> {
+    if (signal?.aborted) return false;
+    const handle = this.registerApproval({
+      callId: `hook_${randomUUID()}`,
+      sessionId: session.id,
+      tool: "hook",
+      input: {},
+      kind: "hook",
+      command: request.command,
+      hookEvent: request.event,
+      ...(request.matcher ? { matcher: request.matcher } : {}),
+      ...(request.source ? { source: request.source } : {}),
+    });
+    if (!signal) return handle.wait;
+    let onAbort: (() => void) | undefined;
+    const aborted = new Promise<boolean>((resolve) => {
+      onAbort = () => resolve(false);
+      signal.addEventListener("abort", onAbort, { once: true });
+    });
+    const approved = await Promise.race([handle.wait, aborted]);
+    if (onAbort) signal.removeEventListener("abort", onAbort);
+    if (!approved) handle.settle(false, "abort");
     return approved;
   }
 
-  /** 工具列表：桌面端注入了浏览器桥才挂 browser_* 工具；子 Agent / side 不挂 task。 */
+  /** PreToolUse ask 的统一落地：审批 + 记录；返回拒绝时的工具结果文案。 */
+  private async approveHookAsk(
+    session: SessionStore,
+    call: ToolCall,
+    tool: string,
+    input: unknown,
+    turnId: string | null,
+    hookReason: string | undefined,
+  ): Promise<{ approved: boolean; output?: string }> {
+    const decision = await this.awaitApprovalWithPermissionHooks(
+      session,
+      call,
+      tool,
+      input,
+      undefined,
+      undefined,
+      turnId,
+      hookReason,
+    );
+    await session.appendApproval(call.id, tool, input, decision.approved, {
+      ...(turnId ? { turnId } : {}),
+      ...(decision.byHook ? { reason: "permission_request_hook" } : {}),
+    });
+    if (decision.approved) return { approved: true };
+    return {
+      approved: false,
+      output: decision.byHook
+        ? `Permission denied by hook: ${decision.reason ?? "PermissionRequest hook"}`
+        : "User denied this tool call.",
+    };
+  }
+
+  private combineSignals(...signals: Array<AbortSignal | undefined>): AbortSignal | undefined {
+    const active = signals.filter((signal): signal is AbortSignal => Boolean(signal));
+    if (active.length === 0) return undefined;
+    if (active.length === 1) return active[0];
+    const controller = new AbortController();
+    for (const signal of active) {
+      if (signal.aborted) {
+        controller.abort();
+        break;
+      }
+      signal.addEventListener("abort", () => controller.abort(), { once: true });
+    }
+    return controller.signal;
+  }
+
+  private hookContext(session: SessionStore, signal?: AbortSignal): PluginHookContext {
+    return {
+      ...(signal ? { signal } : {}),
+      permissionMode: this.turnApprovalMode ?? this.approvalMode,
+      chatMode: this.turnChatMode ?? this.chatMode,
+      requestApproval: (request) => this.requestHookCommandApproval(session, request, signal),
+    };
+  }
+
+  private hookScopeFields(session: SessionStore): PluginHookScope {
+    return {
+      rootSessionId: this.hookScope?.rootSessionId ?? session.id,
+      ...(this.hookScope?.agentId ? { agentId: this.hookScope.agentId } : {}),
+      ...(this.hookScope?.agentType ? { agentType: this.hookScope.agentType } : {}),
+      ...(this.hookScope?.parentSessionId
+        ? { parentSessionId: this.hookScope.parentSessionId }
+        : {}),
+    };
+  }
+
+  /**
+   * 观察类 hook：无阻断语义，await 保证事件顺序可预测。
+   * 先 hasHooks 判空 —— 没有插件订阅时零开销，这是高频事件（每轮 / 每个工具）的前提。
+   */
+  private async emitHook<N extends PluginHookName>(
+    name: N,
+    event: PluginHookEventMap[N],
+    session?: SessionStore,
+    signal?: AbortSignal,
+  ): Promise<void> {
+    if (!this.plugins?.hasHooks(name)) return;
+    try {
+      await runHook(
+        this.plugins,
+        name,
+        event,
+        session ? this.hookContext(session, signal) : undefined,
+      );
+    } catch {
+      // 观察类 hook 的异常不应影响回合；runHook 内部已记录，这里再兜一层
+    }
+  }
+
+  /** 高频观察类 hook（tool_execution_* / assistant_message_*）：不等待，避免拖慢主流程。 */
+  private fireHook<N extends PluginHookName>(
+    name: N,
+    event: PluginHookEventMap[N],
+    session?: SessionStore,
+    signal?: AbortSignal,
+  ): void {
+    if (!this.plugins?.hasHooks(name)) return;
+    void runHook(this.plugins, name, event, session ? this.hookContext(session, signal) : undefined).catch(
+      () => undefined,
+    );
+  }
+
+  /** activeProvider 的非抛错版本：切换"之前"可能还没有可用 provider。 */
+  private activeProviderOrNull(): ProviderConfig | null {
+    try {
+      return this.activeProvider();
+    } catch {
+      return null;
+    }
+  }
+
+  /** 模型切换通知（用户切换 / 故障转移共用）。 */
+  private notifyModelSwitch(
+    before: ProviderConfig | null,
+    after: { providerId?: string; model?: string },
+    source: "user" | "fallback" | "restore",
+  ): void {
+    const session = this.currentSession;
+    if (!session) return;
+    this.fireHook(
+      "model_switch",
+      {
+        hook: "model_switch",
+        ...this.hookScopeFields(session),
+        sessionId: session.id,
+        from: before ? { providerId: before.id, model: before.model } : {},
+        to: after,
+        source,
+      },
+      session,
+    );
+  }
+
+  /** tool_result hook：统一 output/ok 改写，所有工具分支共用。 */
+  private async applyToolResultHook(
+    session: SessionStore,
+    callId: string,
+    tool: string,
+    input: unknown,
+    result: ToolResult,
+  ): Promise<ToolResult> {
+    const hook = await runHook(
+      this.plugins,
+      "tool_result",
+      {
+        hook: "tool_result",
+        sessionId: session.id,
+        callId,
+        tool,
+        input:
+          input && typeof input === "object" && !Array.isArray(input)
+            ? (input as Record<string, unknown>)
+            : {},
+        output: result.output,
+        ok: result.ok,
+        ...(result.truncated !== undefined ? { truncated: result.truncated } : {}),
+        ...this.hookScopeFields(session),
+      },
+      this.hookContext(session, this.turnAbort?.signal),
+    );
+    if (!hook) return result;
+    return {
+      ...result,
+      ...(typeof hook.output === "string" ? { output: hook.output } : {}),
+      ...(typeof hook.ok === "boolean" ? { ok: hook.ok } : {}),
+    };
+  }
+
+  /** 工具列表：会话快照优先（新增追加、删除/改写延后到缓存安全边界）。 */
   private get activeTools(): ToolDefinition[] {
+    return this.ensureToolCatalog().tools;
+  }
+
+  /** Anthropic tools 断点锚点：目录快照末尾；追加工具后旧断点位置不动。 */
+  private toolCacheAnchor(): number {
+    return this.ensureToolCatalog().anchorIndex;
+  }
+
+  /** 原始工具表：桌面端注入了浏览器桥才挂 browser_* 工具；子 Agent / side 不挂 task。 */
+  private computeTools(): ToolDefinition[] {
     let base = this.enableTaskTool
       ? toolDefinitions
       : toolDefinitions.filter((definition) => definition.function.name !== "task");
@@ -952,16 +1669,61 @@ export class AgentRuntime {
     const pluginTools = listDynamicToolDefinitions().filter((definition) =>
       this.toolAllowed(definition.function.name),
     );
-    // MCP schema 会随每次请求发送；超过 ~16k tokens 说明该关掉一些 server。
-    // 这里只提示不截断 inputSchema（截断会让工具调用直接坏掉）。
-    const dynamicTokens = estimateToolDefinitionsTokens(pluginTools);
-    if (dynamicTokens > 16_000 && !this.dynamicToolBudgetWarned) {
+    // 动态工具 schema 已按 8k 预算裁剪（保名字、按档砍描述）；仍被裁剪说明 server 太多，
+    // 提示用户关掉不用的 —— 再往下砍就要丢语义了。
+    if (dynamicToolDefinitionsTrimmed() && !this.dynamicToolBudgetWarned) {
       this.dynamicToolBudgetWarned = true;
       console.error(
-        `[meowcode] dynamic tool schemas are ~${dynamicTokens} tokens; disable unused MCP servers to reduce context`,
+        "[meowcode] dynamic tool schemas exceeded the 8k budget; overflow tools are deferred (call tool_search to surface them) — disable unused MCP servers to reduce the split",
       );
     }
-    return [...(this.browserHost ? [...base, ...browser] : base), ...pluginTools];
+    const combined = this.browserHost ? [...base, ...browser] : base;
+    return [...combined, ...pluginTools];
+  }
+
+  /** 原始工具表的重建键：任一输入变化（MCP 增删、档位、provider 列表）才重算。 */
+  private rawToolsKey(): string {
+    return [
+      dynamicToolsVersion(),
+      this.agentProfile,
+      this.enableTaskTool ? 1 : 0,
+      this.browserHost ? 1 : 0,
+      this.governance,
+      this.allowedTools ? [...this.allowedTools].sort().join(",") : "",
+      this.providers
+        .map((provider) => `${provider.id}:${provider.model}:${provider.enabled === false ? 0 : 1}`)
+        .join(","),
+    ].join("|");
+  }
+
+  /** 取会话工具目录；新增立即追加，删除/改写保留旧字节并等边界。 */
+  private ensureToolCatalog(): ToolCatalog {
+    const key = this.rawToolsKey();
+    if (!this.rawToolsCache || this.rawToolsCache.key !== key) {
+      this.rawToolsCache = { key, tools: this.computeTools() };
+    }
+    if (!this.toolCatalog) {
+      this.toolCatalog = createToolCatalog(this.rawToolsCache.tools);
+      return this.toolCatalog;
+    }
+    const { catalog, appliedAdditions } = reconcileToolCatalog(
+      this.toolCatalog,
+      this.rawToolsCache.tools,
+    );
+    this.toolCatalog = catalog;
+    if (appliedAdditions.length) this.lastPrefixChangeReason = "tools_added";
+    return catalog;
+  }
+
+  /**
+   * 在缓存安全边界重建工具目录（新会话 / 压缩完成 / 切档 / 插件重载）：
+   * 应用所有延后的删除与改写。显式边界意味着允许一次前缀重写。
+   */
+  rebuildToolCatalog(reason: ToolCatalogReason): void {
+    const tools = this.computeTools();
+    this.rawToolsCache = { key: this.rawToolsKey(), tools };
+    this.toolCatalog = createToolCatalog(tools);
+    this.lastPrefixChangeReason = reason;
   }
 
   /** 把可选 provider / 思考强度写进 task 工具描述，让主模型能按子任务选择更快的模型。 */
@@ -1018,6 +1780,15 @@ export class AgentRuntime {
   }
 
   emit(event: MeowEvent): void {
+    // 学习层需要「这次工具到底成没成」，而 afterToolCall 钩子只拿得到结果消息。
+    // tool_finished 是唯一同时携带 callId 与 ok 的地方，在这里留一份短命副本。
+    if (event.type === "tool_finished") {
+      this.toolOutcomes.set(event.callId, event.ok);
+      if (this.toolOutcomes.size > 256) {
+        const oldest = this.toolOutcomes.keys().next().value;
+        if (oldest !== undefined) this.toolOutcomes.delete(oldest);
+      }
+    }
     for (const listener of this.listeners) listener(event);
   }  get providersConfig(): ProviderConfig[] {
     return this.providers;
@@ -1037,7 +1808,9 @@ export class AgentRuntime {
   }
 
   get pendingApproval(): PendingApproval | null {
-    return this.pendingApprovalDetails;
+    const entries = [...this.pendingApprovals.values()];
+    const hook = entries.find((entry) => entry.details.kind === "hook");
+    return hook?.details ?? entries[0]?.details ?? null;
   }
 
   /** 正在运行的子 Agent id（会话快照据此区分 running / interrupted）。 */
@@ -1051,18 +1824,22 @@ export class AgentRuntime {
 
   /** 当前 runtime 自己 + 所有活跃子 Agent 的待审批（子审批记在父会话上）。 */
   get pendingApprovalList(): PendingApproval[] {
-    const list: PendingApproval[] = [];
-    if (this.pendingApprovalDetails) list.push({ ...this.pendingApprovalDetails });
+    const list: PendingApproval[] = [...this.pendingApprovals.values()]
+      .sort(
+        (a, b) =>
+          (a.details.kind === "hook" ? 0 : 1) - (b.details.kind === "hook" ? 0 : 1),
+      )
+      .map((entry) => ({ ...entry.details }));
     for (const [agentId, live] of this.liveSubagents) {
-      const pending = live.runtime.pendingApproval;
-      if (!pending) continue;
-      list.push({
-        ...pending,
-        sessionId: live.parentSessionId,
-        parentSessionId: live.parentSessionId,
-        agentId,
-        agentDescription: live.description,
-      });
+      for (const pending of live.runtime.pendingApprovalList) {
+        list.push({
+          ...pending,
+          sessionId: live.parentSessionId,
+          parentSessionId: live.parentSessionId,
+          agentId,
+          agentDescription: live.description,
+        });
+      }
     }
     return list;
   }
@@ -1124,13 +1901,16 @@ export class AgentRuntime {
     }
   }
 
-  async newSession(cwd?: string): Promise<SessionHeaderLike> {
+  async newSession(
+    cwd?: string,
+    options: { worktree?: SessionWorktree } = {},
+  ): Promise<SessionHeaderLike> {
     const workspace = path.resolve(cwd ?? this.currentSession?.cwd ?? process.cwd());
     let filePath = path.join(this.sessionsDir, sessionFileName(workspace, new Date()));
     let session: SessionStore;
     for (let attempt = 0; ; attempt += 1) {
       try {
-        session = await SessionStore.create(filePath, workspace);
+        session = await SessionStore.create(filePath, workspace, options);
         break;
       } catch (error) {
         // 毫秒级撞名（双击/双窗口）：换唯一后缀重试，绝不覆盖已有文件
@@ -1146,6 +1926,14 @@ export class AgentRuntime {
     }
     this.currentSession = session;
     this.usageAnchor = null;
+    this.cancelIdleTimers(); // 换会话：旧保活计时器作废
+    // 新会话 = 缓存本来就是冷的：工具目录整体重建，顺带应用所有延后的删除/改写。
+    this.toolCatalog = null;
+    this.rawToolsCache = null;
+    this.emittedCacheStates.clear();
+    this.providerRequestMeta.clear();
+    this.currentRequest = null;
+    this.lastPrefixChangeReason = null;
     this.cancelWarmupCompaction();
     this.warmupFailures = 0;
     this.approvalMode = "auto";
@@ -1156,24 +1944,36 @@ export class AgentRuntime {
     this.agentProfile = "standard";
     this.harnessArchitecture = null;
     this.promptQueue = [];
+    this.pendingSteers = [];
     this.lastErrorMessage = null;
     this.compactingSession = false;
     this.currentTurnId = null;
     this.partialDraft = null;
-    this.readVersions.clear();
+    this.loopGuard.clearReadVersions();
+    // 压缩基线与熔断计数都是「当前会话」的状态：切走必须清掉，
+    // 否则会把 compaction_quality 写进新会话，或让新会话继承旧会话的熔断。
+    this.compactionQuality = null;
+    this.localCompactionFailures = 0;
     this.dynamicToolBudgetWarned = false;
     await this.refreshInstructions(session);
     // 插件 hook：session_start（观察）
-    await runHook(this.plugins, "session_start", {
-      hook: "session_start",
-      sessionId: session.id,
-      cwd: session.cwd,
-    });
+    await runHook(
+      this.plugins,
+      "session_start",
+      {
+        hook: "session_start",
+        sessionId: session.id,
+        cwd: session.cwd,
+        ...this.hookScopeFields(session),
+      },
+      this.hookContext(session),
+    );
     return {
       id: session.id,
       cwd: session.cwd,
       filePath: session.filePath,
       messages: session.messages,
+      ...(session.worktree ? { worktree: session.worktree } : {}),
     };
   }
 
@@ -1181,21 +1981,48 @@ export class AgentRuntime {
     const session = await SessionStore.load(filePath);
     const previous = this.currentSession;
     await this.clearQueuedPrompts("discarded");
+    // 切走旧会话：先通知观察者，再释放文件句柄
+    if (previous && previous !== session) {
+      await this.emitHook(
+        "session_end",
+        {
+          hook: "session_end",
+          ...this.hookScopeFields(previous),
+          sessionId: previous.id,
+          cwd: previous.cwd,
+          reason: "switch",
+        },
+        previous,
+      );
+    }
     // 正在跑的回合仍持有旧 store：等它自然结束，不能在这里关闭句柄
     if (previous && previous !== session && this.runningSessionId !== previous.id) {
       await previous.close().catch(() => undefined);
     }
     this.currentSession = session;
     this.usageAnchor = null;
+    this.cancelIdleTimers(); // 换会话：旧保活计时器作废
+    // 新会话 = 缓存本来就是冷的：工具目录整体重建，顺带应用所有延后的删除/改写。
+    this.toolCatalog = null;
+    this.rawToolsCache = null;
+    this.emittedCacheStates.clear();
+    this.providerRequestMeta.clear();
+    this.currentRequest = null;
+    this.lastPrefixChangeReason = null;
     this.cancelWarmupCompaction();
     this.warmupFailures = 0;
     this.approvalMode = "auto";
     this.promptQueue = [];
+    this.pendingSteers = [];
     this.lastErrorMessage = null;
     this.compactingSession = false;
     this.currentTurnId = null;
     this.partialDraft = null;
-    this.readVersions.clear();
+    this.loopGuard.clearReadVersions();
+    // 压缩基线与熔断计数都是「当前会话」的状态：切走必须清掉，
+    // 否则会把 compaction_quality 写进新会话，或让新会话继承旧会话的熔断。
+    this.compactionQuality = null;
+    this.localCompactionFailures = 0;
     this.dynamicToolBudgetWarned = false;
     // 关闭上次进程退出时留下的孤儿回合，并恢复会话级审批模式/用量
     const recovery = await recoverSession(session);
@@ -1210,38 +2037,52 @@ export class AgentRuntime {
     this.syncNativeReplay();
     await this.refreshInstructions(session);
     // 插件 hook：session_start（观察，切换/恢复会话同样触发）
-    await runHook(this.plugins, "session_start", {
-      hook: "session_start",
-      sessionId: session.id,
-      cwd: session.cwd,
-    });
+    await runHook(
+      this.plugins,
+      "session_start",
+      {
+        hook: "session_start",
+        sessionId: session.id,
+        cwd: session.cwd,
+        ...this.hookScopeFields(session),
+      },
+      this.hookContext(session),
+    );
     return {
       id: session.id,
       cwd: session.cwd,
       filePath: session.filePath,
       messages: session.messages,
+      ...(session.worktree ? { worktree: session.worktree } : {}),
     };
   }
 
   async setModel(providerId: string, modelId: string): Promise<void> {
     const provider = this.providers.find((item) => item.id === providerId);
     if (!provider) throw new Error(`Unknown provider: ${providerId}`);
+    const before = this.activeProviderOrNull();
     provider.model = modelId;
     this.providerId = providerId;
     this.usageAnchor = null; // 换模型后旧用量不再代表当前上下文
     this.syncNativeReplay();
     this.cancelWarmupCompaction();
+    this.cancelIdleTimers(); // 换模型 = 换缓存分片，旧保活计划作废
     await this.persistSessionSettings().catch(() => undefined);
+    this.notifyModelSwitch(before, { providerId, model: modelId }, "user");
   }
 
   /** 只切换当前激活的服务商（不改它的模型 id）。 */
   setActiveProvider(providerId: string): void {
     const provider = this.providers.find((item) => item.id === providerId);
     if (!provider) throw new Error(`Unknown provider: ${providerId}`);
+    if (provider.enabled === false) throw new Error(`Provider is disabled: ${providerId}`);
+    const before = this.activeProviderOrNull();
     this.providerId = providerId;
     this.usageAnchor = null; // 换模型后旧用量不再代表当前上下文
     this.syncNativeReplay();
     this.cancelWarmupCompaction();
+    this.cancelIdleTimers(); // 换端点 = 换缓存分片，旧保活计划作废
+    this.notifyModelSwitch(before, { providerId, model: provider.model }, "user");
   }
 
   /**
@@ -1264,9 +2105,12 @@ export class AgentRuntime {
       : false;
   }
 
-  /** 当前激活的服务商 id，供 /config/providers 回给前端；未配置模型时为空，不抛错。 */
+  /** 当前激活的服务商 id（跳过被停用的），供 /config/providers 回给前端；未配置模型时为空，不抛错。 */
   get activeProviderId(): string {
-    const active = this.providers.find((item) => item.id === this.providerId) ?? this.providers[0];
+    const active =
+      this.providers.find((item) => item.id === this.providerId && item.enabled !== false) ??
+      this.providers.find((item) => item.enabled !== false) ??
+      this.providers[0];
     return active?.id ?? "";
   }
 
@@ -1326,12 +2170,9 @@ export class AgentRuntime {
     });
   }
 
-  respondToApproval(callId: string, approved: boolean): boolean {    const resolver = this.pendingApprovals.get(callId);
-    if (resolver) {
-      this.pendingApprovals.delete(callId);
-      if (this.pendingApprovalDetails?.callId === callId) this.pendingApprovalDetails = null;
-      resolver(approved);
-      return true;
+  respondToApproval(callId: string, approved: boolean): boolean {
+    if (this.pendingApprovals.has(callId)) {
+      return this.settleApproval(callId, approved, "user");
     }
     for (const live of this.liveSubagents.values()) {
       if (live.runtime.respondToApproval(callId, approved)) return true;
@@ -1373,6 +2214,8 @@ export class AgentRuntime {
     const session = this.currentSession;
     if (!session) return;
     await session.appendSessionSettings({ mode: normalized }).catch(() => undefined);
+    // 模式指令是 in-history 尾注：切换即追加，先于用户的下一条消息落盘（runTurn 只兜底压缩后重挂）
+    await this.ensureModeContext(session).catch(() => undefined);
     this.emit({ type: "session_mode", sessionId: session.id, mode: normalized });
   }
 
@@ -1397,6 +2240,8 @@ export class AgentRuntime {
     this.emit({ type: "agent_profile", sessionId: session.id, profile: normalized });
     // 每个档位一张独立架构图：切档后重新装载（治理 run 活跃时保持旧快照，下一轮生效）
     this.refreshHarness();
+    // 切档是显式行为：工具白名单整体变化，直接重建目录（允许一次前缀重写）。
+    this.rebuildToolCatalog("profile");
   }
 
   get currentAgentProfile(): AgentProfileId {
@@ -1446,9 +2291,9 @@ export class AgentRuntime {
 
   /** 审批/ask_user 的 Promise 不响应 AbortSignal：停止/插话前必须先结算，否则 runTurn 永远退不出。 */
   private settlePendingApprovals(): void {
-    for (const resolver of this.pendingApprovals.values()) resolver(false);
-    this.pendingApprovals.clear();
-    this.pendingApprovalDetails = null;
+    for (const callId of this.pendingApprovals.keys()) {
+      this.settleApproval(callId, false, "abort");
+    }
     for (const resolver of this.pendingAsks.values()) resolver([]);
     this.pendingAsks.clear();
     this.pendingAskDetails = null;
@@ -1482,17 +2327,60 @@ export class AgentRuntime {
   abort(): void {
     void this.clearQueuedPrompts("aborted");
     this.cancelWarmupCompaction();
+    this.cancelIdleTimers();
     this.settlePendingApprovals();
     this.abortSubagents();
     this.turnAbort?.abort();
+    const session = this.currentSession;
+    if (session) {
+      // 同步方法里发不了 await：观察类 hook 用投递模式，尽力而为
+      this.fireHook(
+        "interrupt",
+        {
+          hook: "interrupt",
+          ...this.hookScopeFields(session),
+          sessionId: session.id,
+          reason: "user_abort",
+          source: "user",
+          ...(this.currentTurnId ? { turnId: this.currentTurnId } : {}),
+        },
+        session,
+      );
+    }
   }
 
   /** 应用/server 关停：中止回合但保留排队消息，下次启动作为“待发送”恢复。 */
   shutdown(): void {
     this.shuttingDown = true;
+    this.cancelIdleTimers();
     this.settlePendingApprovals();
     this.abortSubagents(true);
     this.turnAbort?.abort();
+    const session = this.currentSession;
+    if (session) {
+      this.fireHook(
+        "interrupt",
+        {
+          hook: "interrupt",
+          ...this.hookScopeFields(session),
+          sessionId: session.id,
+          reason: "shutdown",
+          source: "system",
+        },
+        session,
+      );
+      this.fireHook(
+        "session_end",
+        {
+          hook: "session_end",
+          ...this.hookScopeFields(session),
+          sessionId: session.id,
+          cwd: session.cwd,
+          reason: "shutdown",
+        },
+        session,
+      );
+    }
   }
 
   /** 用户丢弃一条恢复出来的待发送消息。 */
@@ -1524,7 +2412,7 @@ export class AgentRuntime {
       await this.refreshInstructions(session);
       const messages: ChatMessage[] = [
         ...this.systemMessages(),
-        ...projectForRequest(session.effectiveMessages, provider),
+        ...session.effectiveMessages,
       ];
       await this.performCompaction(session, provider, messages);
     } finally {
@@ -1543,6 +2431,10 @@ export class AgentRuntime {
     usedTokens: number;
     source: "usage" | "estimate";
     breakdown: ContextBreakdown;
+    /** 发现的技能数量（用于「Skill（N个）」标签） */
+    skillCount: number;
+    /** 对话消息的细分归因（纯估算，不受 usage 锚点摊分影响） */
+    messageDetail: MessageBreakdown | null;
     recommendedCompaction: boolean;
   } {
     let contextWindow: number | null = null;
@@ -1559,18 +2451,26 @@ export class AgentRuntime {
         contextWindow,
         usedTokens: 0,
         source: "estimate",
-        breakdown: { system: 0, tools: 0, messages: 0 },
+        breakdown: { ...EMPTY_BREAKDOWN },
+        skillCount: 0,
+        messageDetail: null,
         recommendedCompaction: false,
       };
     }
-    const effective = projectForRequest(session.effectiveMessages, provider);
+    // 正常请求不发投影版本：占用估算也必须按实际发送的完整历史计算，
+    // 否则旧图片/thinking 不计入窗口，80%/85% 阈值会晚触发。
+    const effective = session.effectiveMessages;
+    const instructionTokens = this.instructions ? estimateTokens(this.instructions) : 0;
+    // 技能索引包含在 instructions 里：单独拎出来归因，其余规则/记忆算「其他」
+    const skillTokens = Math.min(instructionTokens, this.instructionSkills.tokens);
     const estimated: ContextBreakdown = {
-      system:
-        estimateTokens(this.effectiveSystemPrompt) +
-        (this.instructions ? estimateTokens(this.instructions) : 0),
+      system: estimateTokens(this.effectiveSystemPrompt),
       tools: estimateToolDefinitionsTokens(this.activeTools),
+      skills: skillTokens,
       messages: estimateMessagesTokens(effective),
+      other: Math.max(0, instructionTokens - skillTokens),
     };
+    const messageDetail = breakdownMessages(effective);
     // 锚点按「请求覆盖到的有效消息数」定位，能精确算出之后新增了多少（工具结果/新回合）
     const anchored = estimateContextTokens(effective, this.usageAnchor);
     if (anchored.source === "usage") {
@@ -1579,81 +2479,136 @@ export class AgentRuntime {
         usedTokens: anchored.tokens,
         source: "usage",
         breakdown: allocateByRatio(estimated, anchored.tokens),
-        recommendedCompaction: shouldRecommendCompaction(anchored.tokens, contextWindow),
+        skillCount: this.instructionSkills.count,
+        messageDetail,
+        recommendedCompaction: shouldRecommendCompaction(
+          anchored.tokens,
+          contextWindow,
+          provider?.maxTokens,
+        ),
       };
     }
-    const usedTokens = estimated.system + estimated.tools + estimated.messages;
+    const usedTokens = BREAKDOWN_KEYS.reduce((acc, key) => acc + estimated[key], 0);
     return {
       contextWindow,
       usedTokens,
       source: "estimate",
       breakdown: estimated,
-      recommendedCompaction: shouldRecommendCompaction(usedTokens, contextWindow),
+      skillCount: this.instructionSkills.count,
+      messageDetail,
+      recommendedCompaction: shouldRecommendCompaction(usedTokens, contextWindow, provider?.maxTokens),
     };
   }
 
-  /** 每回合开始时清空循环检测状态：跨回合的相同调用不算循环。 */
+  /** 每回合开始时清空循环检测状态：跨回合的相同调用不算循环。（状态在 loop-guard.ts） */
   private resetLoopState(sessionId: string): void {
-    this.loopStates.delete(sessionId);
+    this.loopGuard.reset(sessionId);
   }
 
   /** 执行前检查：连续 8 次零信息重复直接拒绝执行 —— 省掉执行本身与整轮上下文重发。 */
   private loopBlockFor(session: SessionStore, tool: string, input: unknown): string | null {
-    const state = this.loopStates.get(session.id);
-    if (!state || state.count < LOOP_BLOCK_AT) return null;
-    const key = `${tool}:${stableJson(input)}`;
-    return state.key === key ? loopBlockedOutput(tool, state.count) : null;
+    return this.loopGuard.blockFor(session.id, tool, input);
   }
 
-  /**
-   * 执行后登记：参数键与输出指纹都相同才累计。返回要附加到工具结果的提醒
-   * （未达阈值返回空串）。占位符/错误结果同样计数 —— 反复同参数失败也是循环。
-   */
+  /** 执行后登记循环计数，返回要附加到工具结果的提醒（未达阈值返回空串）。 */
   private noteLoopResult(session: SessionStore, tool: string, input: unknown, output: string): string {
-    const key = `${tool}:${stableJson(input)}`;
-    const fingerprint = outputFingerprint(output);
-    const state = this.loopStates.get(session.id);
-    if (state && state.key === key && state.outputHash === fingerprint) {
-      state.count += 1;
-      if (state.count >= LOOP_BLOCK_AT) return loopBlockedOutput(tool, state.count);
-      if (state.count >= LOOP_WARN_AT) return LOOP_REMINDER_5;
-      if (state.count >= LOOP_REMIND_AT) return LOOP_REMINDER_3;
-      return "";
-    }
-    this.loopStates.set(session.id, { key, outputHash: fingerprint, count: 1 });
-    return "";
+    return this.loopGuard.noteResult(session.id, tool, input, output);
   }
 
-  /** 读取成功后登记文件版本，供后续同区间重复读短路；进程重启后 map 为空即自动失效。 */
-  private async rememberReadVersion(
+  /** 读取成功后登记「看过这一版、这一段」，供后续读区间短路。 */
+  private async rememberReadRange(
     session: SessionStore,
     callId: string,
     input: unknown,
+    range: { start: number; end: number; total: number } | undefined,
     allowOutsideWorkspace: boolean,
   ): Promise<void> {
-    const args = (input ?? {}) as Record<string, unknown>;
-    const target = typeof args.path === "string" ? args.path.trim() : "";
-    if (!target) return;
+    await this.loopGuard.rememberReadRange(
+      session.cwd,
+      callId,
+      input,
+      range,
+      allowOutsideWorkspace,
+    );
+    const target = (input as { path?: unknown } | null)?.path;
+    if (typeof target === "string") this.noteReread(session.cwd, target);
+  }
+
+  /** 批量读逐文件登记：read_many 一次调用会返回多个文件的区间。 */
+  private async rememberReadRangeAt(
+    session: SessionStore,
+    callId: string,
+    target: string,
+    range: { start: number; end: number; total: number },
+    allowOutsideWorkspace: boolean,
+  ): Promise<void> {
+    await this.loopGuard.rememberReadRangeAt(
+      session.cwd,
+      callId,
+      target,
+      range,
+      allowOutsideWorkspace,
+    );
+    this.noteReread(session.cwd, target);
+  }
+
+  /** 压缩基线用的路径键：相对工作区、win32 小写、正斜杠。 */
+  private qualityPathKey(cwd: string, target: string): string {
+    const resolved = path.resolve(cwd, target);
+    const relative = path.relative(cwd, resolved) || resolved;
+    const normalized = relative.split(path.sep).join("/");
+    return process.platform === "win32" ? normalized.toLowerCase() : normalized;
+  }
+
+  /** 读取成功后记录「压缩后又读了压缩前已碰过的文件」——摘要漏上下文的唯一信号。 */
+  private noteReread(cwd: string, target: string): void {
+    const quality = this.compactionQuality;
+    if (!quality || !target) return;
+    const key = this.qualityPathKey(cwd, target);
+    if (!quality.paths.has(key) || quality.hits.includes(key)) return;
+    quality.hits.push(key);
+  }
+
+  /** 从 read_file 的调用参数里取目标路径并计入观测（read_many 走逐文件登记）。 */
+  private noteReadTarget(session: SessionStore, tool: string, input: unknown): void {
+    if (tool !== "read_file") return;
+    const target = (input as { path?: unknown } | null)?.path;
+    if (typeof target === "string") this.noteReread(session.cwd, target);
+  }
+
+  /** 回合末推进观测窗口；归零时落一条条目并广播。失败只影响观测，不影响回合。 */
+  private async tickCompactionQuality(session: SessionStore): Promise<void> {
+    const quality = this.compactionQuality;
+    if (!quality) return;
+    quality.turnsLeft -= 1;
+    if (quality.turnsLeft > 0) return;
+    this.compactionQuality = null;
     try {
-      const file = await resolveToolPath(session.cwd, target, allowOutsideWorkspace);
-      const version = await captureVersion(file);
-      if (version === "absent") return;
-      this.readVersions.set(callId, { file, version });
-      // 长会话里读很多文件：只保留最近 256 条，超出的按插入顺序淘汰
-      if (this.readVersions.size > 256) {
-        const oldest = this.readVersions.keys().next().value;
-        if (oldest) this.readVersions.delete(oldest);
-      }
-    } catch {
-      // 路径解析失败不影响读取结果
+      await session.appendCompactionQuality({
+        compactionId: quality.compactionId,
+        baselineCount: quality.paths.size,
+        rereadPaths: quality.hits,
+        windowTurns: COMPACTION_QUALITY_WINDOW_TURNS,
+      });
+      await session.flush().catch(() => undefined);
+      this.emit({
+        type: "compaction_quality",
+        sessionId: session.id,
+        compactionId: quality.compactionId,
+        baselineCount: quality.paths.size,
+        rereadPaths: quality.hits,
+        windowTurns: COMPACTION_QUALITY_WINDOW_TURNS,
+      });
+    } catch (error) {
+      console.error(
+        `[meowcode] failed to journal compaction quality: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
     }
   }
 
-  /**
-   * 同路径、同 offset/limit 的重复读短路（参考 ZCode 的 "file unchanged since your
-   * last Read"）：只有“上一次结果仍在上下文里逐字可见”且“文件版本没变”时才 stub。
-   * 编辑/写入会改变版本；外部改动也会改变版本；进程重启后没有版本记录，直接退回完整读取。
-   */
+  /** 请求区间已被之前读取完整覆盖时返回占位（文件版本未变且旧结果仍可见）。 */
   private async repeatedReadStub(
     session: SessionStore,
     messages: ChatMessage[],
@@ -1661,61 +2616,27 @@ export class AgentRuntime {
     input: unknown,
     allowOutsideWorkspace: boolean,
   ): Promise<string | null> {
-    if (call.function.name !== "read_file") return null;
-    const args = (input ?? {}) as Record<string, unknown>;
-    const target = typeof args.path === "string" ? args.path.trim() : "";
-    if (!target) return null;
-    const offset = args.offset === undefined ? "" : String(args.offset);
-    const limit = args.limit === undefined ? "" : String(args.limit);
+    return this.loopGuard.repeatedReadStub(session.cwd, messages, call, input, allowOutsideWorkspace);
+  }
 
-    const callArgs = new Map<string, Record<string, unknown>>();
-    for (const message of messages) {
-      if (message.role !== "assistant" || !message.tool_calls?.length) continue;
-      for (const item of message.tool_calls) {
-        try {
-          const parsed = JSON.parse(item.function.arguments) as unknown;
-          if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-            callArgs.set(item.id, parsed as Record<string, unknown>);
-          }
-        } catch {
-          // 参数不是合法 JSON 的历史记录跳过
-        }
-      }
-    }
-
-    // 从最新往回找同路径、同区间的 read_file 结果
-    for (let index = messages.length - 1; index >= 0; index -= 1) {
-      const message = messages[index];
-      if (message.role !== "tool" || message.name !== "read_file") continue;
-      const prior = callArgs.get(message.tool_call_id);
-      if (!prior) continue;
-      const priorPath = typeof prior.path === "string" ? prior.path.trim() : "";
-      if (!priorPath || !sameFilePath(priorPath, target)) continue;
-      const priorOffset = prior.offset === undefined ? "" : String(prior.offset);
-      const priorLimit = prior.limit === undefined ? "" : String(prior.limit);
-      if (priorOffset !== offset || priorLimit !== limit) continue;
-      // 已被淘汰/摘要的结果不能再让模型“参考上一条”
-      if (
-        !message.content ||
-        message.content.startsWith("[read_file output elided") ||
-        message.content.startsWith("[summarized]")
-      ) {
-        continue;
-      }
-      const recorded = this.readVersions.get(message.tool_call_id);
-      if (!recorded) continue;
-      let file: string;
-      try {
-        file = await resolveToolPath(session.cwd, target, allowOutsideWorkspace);
-      } catch {
-        return null;
-      }
-      if (!sameFilePath(file, recorded.file)) continue;
-      const current = await captureVersion(file);
-      if (current === "absent" || current !== recorded.version) return null;
-      return `Unchanged since your last read of ${target} (same offset/limit). Refer to that earlier tool result instead; use a different offset/limit if you need another part.`;
-    }
-    return null;
+  /**
+   * 部分覆盖：只保留未读过的尾部，把已读的前缀换成一行说明。
+   * 先执行后裁剪 —— 执行便宜，重复正文才是成本。
+   */
+  private async trimCoveredRead(
+    session: SessionStore,
+    messages: ChatMessage[],
+    input: unknown,
+    output: string,
+    allowOutsideWorkspace: boolean,
+  ): Promise<string | null> {
+    return this.loopGuard.trimCoveredReadPrefix(
+      session.cwd,
+      messages,
+      input,
+      output,
+      allowOutsideWorkspace,
+    );
   }
 
   /**
@@ -1732,9 +2653,31 @@ export class AgentRuntime {
         ? `Context usage: ${usage.usedTokens} tokens used of ${window} (${percent}% used, ${remaining} remaining)`
         : `Context usage: ${usage.usedTokens} tokens used (context window unknown)`;
     const source = usage.source === "usage" ? " [provider-reported]" : " [estimated]";
+    const detail = usage.messageDetail;
+    // 细分类只报占比最高的几项：看板要回答的是「谁在吃」，不是给全量账本。
+    const topBuckets = detail
+      ? [
+          ...detail.toolResults.slice(0, 3).map((item) => ({ label: `${item.name} output`, tokens: item.tokens })),
+          { label: "assistant text", tokens: detail.assistantText },
+          { label: "user text", tokens: detail.userText },
+          { label: "injected context", tokens: detail.injected },
+          { label: "media", tokens: detail.media },
+          { label: "tool call args", tokens: detail.other },
+        ]
+          .filter((item) => item.tokens > 0)
+          .sort((a, b) => b.tokens - a.tokens)
+          .slice(0, 4)
+      : [];
     return [
       `${head}${source}`,
-      `Breakdown: system ${usage.breakdown.system}, tool schemas ${usage.breakdown.tools}, conversation ${usage.breakdown.messages} (estimated).`,
+      `Breakdown: system ${usage.breakdown.system}, tool schemas ${usage.breakdown.tools}, skills ${usage.breakdown.skills}, conversation ${usage.breakdown.messages}, other ${usage.breakdown.other} (estimated).`,
+      ...(detail && topBuckets.length
+        ? [
+            `Largest in conversation (estimated tokens): ${topBuckets
+              .map((item) => `${item.label} ${item.tokens}`)
+              .join(", ")}.`,
+          ]
+        : []),
       usage.recommendedCompaction
         ? "Recommendation: past 85% of the window. Finish the current step, avoid bulk reads, and wrap up or start a new session; older tool results are compacted automatically on overflow."
         : "Recommendation: enough headroom for now.",
@@ -1742,19 +2685,24 @@ export class AgentRuntime {
   }
 
   /**
-   * 缓存策略（P0-3/P1-4）：Responses 协议的 prompt_cache_key 亲和值由 sessionId+用途
-   * 派生，会话内稳定；Anthropic 的断点位置/TTL 由 cache-profile 在序列化时决定，
-   * 这里不需要往 provider 上塞东西。
-   * 只在 openai-responses 注入 —— chat completions 的未知字段会被部分严格网关拒绝，
-   * 且 OpenAI/DeepSeek 的 chat 路径本来就是自动前缀缓存。
+   * 缓存策略（P0-3/P1-4）：给每个请求的 provider 盖两项会话级章——
+   *  - pace：会话节奏，`cacheTtl: "auto"` 的判据（人驱动 vs 子代理/批量）。
+   *    **必须在会话开始就定死且整个会话恒定**：TTL 是断点字段的一部分，
+   *    中途改会让那个块及之后的整段前缀失配。
+   *  - promptCacheKey：OpenAI 系的亲和值，由 sessionId + 用途派生。
+   * 亲和键注入 openai-responses（全端点）与 chat-completions 的官方主机——
+   * 第三方网关对未知字段会 400，chat 路径由协议层的 omit 降级记忆兜住
+   * （400 一次即永久跳过该字段）。DeepSeek 等 OpenAI 系自带 IP/前缀分片，不注入。
    */
   private applyCachePolicy(
     provider: ProviderConfig,
     sessionId: string,
     purpose = "main",
   ): ProviderConfig {
-    if (resolveCachePlan(provider).protocol !== "openai-responses") return provider;
-    return { ...provider, promptCacheKey: sessionAffinityKey(sessionId, purpose) };
+    const paced: ProviderConfig = { ...provider, pace: this.sessionPace };
+    const protocol = resolveCachePlan(provider).protocol;
+    if (protocol !== "openai-responses" && !supportsChatPromptCacheKey(provider)) return paced;
+    return { ...paced, promptCacheKey: sessionAffinityKey(sessionId, purpose) };
   }
 
   async prompt(
@@ -1819,6 +2767,21 @@ export class AgentRuntime {
     this.settlePendingApprovals();
     this.abortSubagents();
     this.turnAbort.abort();
+    const session = this.currentSession;
+    if (session) {
+      this.fireHook(
+        "interrupt",
+        {
+          hook: "interrupt",
+          ...this.hookScopeFields(session),
+          sessionId: session.id,
+          reason: "steer",
+          source: "user",
+          ...(this.currentTurnId ? { turnId: this.currentTurnId } : {}),
+        },
+        session,
+      );
+    }
   }
 
   /** 每个模型轮次开始时重置半截回答检查点。 */
@@ -1897,6 +2860,7 @@ export class AgentRuntime {
     // 先置位再 await：避免运行中的第二个 prompt 在 appendMessage 窗口里并发开跑
     this.turnAbort = new AbortController();
     this.runningSessionId = session.id;
+    this.cancelIdleTimers(); // 用户回来了：让位（保留保活刷新到的热缓存）
     this.turnApprovalMode = this.approvalMode;
     this.turnChatMode = this.chatMode;
     this.lastErrorMessage = null;
@@ -1906,20 +2870,37 @@ export class AgentRuntime {
     this.partialDraft = null;
     this.subagentsStartedThisTurn = 0;
     this.verifyFailuresThisTurn = 0;
+    this.lspFeedbackThisTurn = 0;
+    this.turnFileChanges.clear();
+    // 学习轨迹：本回合的工具/命令成败，回合末交给学习层做门禁与归因
+    this.learningTrace = createTurnTrace();
+    this.learningTrace.userTexts.push(text);
+    this.turnLearning = null;
     const provider = this.activeProvider();
     let status: TurnStatus = "completed";
     let errorMessage: string | undefined;
     try {
       // 插件 hook：prompt_submit（可 block / 改写文本）。改写后的文本参与落盘与请求；
       // blocked → 落盘用户消息后直接给一条 assistant 说明，回合正常收尾。
-      const submitted = await runHook(this.plugins, "prompt_submit", {
-        hook: "prompt_submit",
-        sessionId: session.id,
-        text,
-      });
+      const submitted = await runHook(
+        this.plugins,
+        "prompt_submit",
+        {
+          hook: "prompt_submit",
+          sessionId: session.id,
+          text,
+          ...this.hookScopeFields(session),
+        },
+        this.hookContext(session, this.turnAbort?.signal),
+      );
       if (typeof submitted?.text === "string") text = submitted.text;
+      if (this.learningTrace) this.learningTrace.userTexts = [text];
       // 技能引用回合不受会话权限模式影响：技能里的写文件/命令直接执行，回合结束自动恢复原模式
       if (hasSkillReference(text)) this.turnApprovalMode = "full";
+      // 本回合的可回滚点（对应用户消息之前的状态）：必须打在 turn_start 之前 ——
+      // 若打在之后，回滚派生的会话会带一个孤立 turn_start，switchSession 的崩溃
+      // 恢复会把它重放成一条假用户消息并报「上次生成被中断」，回滚结果直接被污染。
+      const turnCheckpoint = await this.writeTurnCheckpoint(session, turnId, text);
       await session.appendTurnStart({
         turnId,
         ...(queuedId ? { queueId: queuedId } : { text }),
@@ -1938,7 +2919,20 @@ export class AgentRuntime {
         type: "message_start",
         sessionId: session.id,
         ...(queuedId ? { queuedId } : {}),
+        // 悬浮岛等订阅方没有乐观追加（排队消息也一样），靠文本补用户气泡
+        text,
       });
+      if (turnCheckpoint) {
+        // 流式回退入口：前端乐观追加的用户气泡靠这条事件补挂 checkpointId
+        this.emit({
+          type: "checkpoint_created",
+          sessionId: session.id,
+          checkpointId: turnCheckpoint.id,
+          turnId,
+          hasSnapshot: turnCheckpoint.hasSnapshot,
+          ...(turnCheckpoint.label ? { label: turnCheckpoint.label } : {}),
+        });
+      }
       if (submitted?.block) {
         const reason = submitted.reason
           ? `Prompt blocked by plugin: ${submitted.reason}`
@@ -1950,12 +2944,18 @@ export class AgentRuntime {
         return;
       }
       // 插件 hook：turn_start（观察）
-      await runHook(this.plugins, "turn_start", {
-        hook: "turn_start",
-        sessionId: session.id,
-        turnId,
-        text,
-      });
+      await this.emitHook(
+        "turn_start",
+        {
+          hook: "turn_start",
+          ...this.hookScopeFields(session),
+          sessionId: session.id,
+          turnId,
+          text,
+        },
+        session,
+        this.turnAbort?.signal,
+      );
       // @文件引用：内容作为上下文条目参与本轮请求，不显示在聊天时间线。
       // 预算跟随模型窗口；已注入过的文件只留占位，避免多轮重复烧 token。
       try {
@@ -1972,20 +2972,88 @@ export class AgentRuntime {
       } catch {
         // 引用读取失败不应打断回合
       }
+      // 蒸馏通知（ZCode consumePendingProjectMemoryUpdate 同款）：随下一条用户
+      // 请求注入 in-history 说明（context_note 不上聊天时间线）。绑定会话：
+      // 切走即丢弃，跨会话的旧通知只会误导模型。
+      if (this.learningNoticePending) {
+        const learningNotice = this.learningNoticePending;
+        this.learningNoticePending = null;
+        if (learningNotice.sessionId === session.id) {
+          try {
+            await session.appendContextNote(learningNotice.text, "file");
+            await session.flush();
+          } catch {
+            // 注入失败不打断回合
+          }
+        }
+      }
+      if (this.memoryNoticePending) {
+        const notice = this.memoryNoticePending;
+        this.memoryNoticePending = null;
+        if (notice.sessionId === session.id) {
+          try {
+            await session.appendContextNote(notice.text, "file");
+            await session.flush();
+          } catch {
+            // 注入失败不打断回合
+          }
+        }
+      }
       // 新的用户请求 = 新任务：上一条已完成的治理 run 清空，门禁重新武装。
-      // 架构图快照按 run 冻结（metis 同款）：只在空闲时装载当前档位的架构图。
+      // 架构图会话级快照：每会话只装载一次（外部改动必须经 PUT /harness 显式重载，
+      // 每 prompt 静默重读会让 system[0] 字节漂移、整段缓存失效——AGENTS.md 同纪律）。
       // 治理关闭时也要装载：角色节点的工具/提示词覆盖与治理无关。
       if (this.enableTaskTool && !this.workflow.active) {
-        try {
-          this.workflow.setHarness(
-            await loadHarnessDocument(session.cwd, this.currentHarnessArchitecture),
-          );
-        } catch {
-          // 读取失败保持当前图
+        const needsLoad =
+          this.harnessSnapshotSessionId !== session.id || this.harnessNoticePending;
+        if (needsLoad) {
+          try {
+            const doc = await loadHarnessDocument(session.cwd, this.currentHarnessArchitecture);
+            const noticeDue = this.harnessNoticePending;
+            this.workflow.setHarness(doc);
+            this.harnessSnapshotSessionId = session.id;
+            this.harnessNoticePending = false;
+            if (noticeDue) {
+              // opencode 同款：变更不悄悄换前缀，in-history 提醒随历史落盘、成为后续回合的稳定前缀
+              await session.appendContextNote(
+                "Runtime context: the harness architecture document was updated; the refreshed workflow map applies from this turn.",
+                "file",
+              );
+              await session.flush();
+            }
+          } catch {
+            // 读取失败保持当前图
+          }
         }
       }
       if (this.workflow.state?.completed) this.workflow.reset();
       this.mutationsSincePlanCheck = 0;
+      // 插件 hook：context_inject（往历史尾部追加上下文）。
+      // 只走 context_note，不进系统提示 —— 否则请求前缀一变，prompt cache 整段作废。
+      const injected = await runHook(
+        this.plugins,
+        "context_inject",
+        {
+          hook: "context_inject",
+          ...this.hookScopeFields(session),
+          sessionId: session.id,
+          turnId,
+          text,
+          phase: "turn_start",
+        },
+        this.hookContext(session, this.turnAbort?.signal),
+      );
+      for (const note of injected?.notes ?? []) {
+        try {
+          await session.appendContextNote(note, "plugin");
+          await session.flush();
+        } catch {
+          // 注入失败不打断回合
+        }
+      }
+      // 学习召回：按 trigger 命中历史经验，追加到历史尾部（不动 system[1]，缓存安全）。
+      // 放在 runTurn 之前、且每个用户回合只调一次 —— 续命循环复用同一批召回。
+      await this.beginLearningTurn(session, text);
       await this.runTurn(session);
       // 宿主续命循环（metis _unfinishedPerformanceContinuation）：治理 run 仍活跃
       // 而模型停止了回答 → 注入 frontier 强制继续，最多 2 次；谎报完成不许蒙混过关
@@ -2011,19 +3079,24 @@ export class AgentRuntime {
           status,
           ...(errorMessage ? { error: errorMessage } : {}),
         });
+        // 压缩质量观测窗口按回合推进（纯观测，失败不影响收尾）
+        await this.tickCompactionQuality(session);
+        this.turnFileChanges.clear();
         await session.flush();
       } catch {
         // 落盘失败也必须发出 turn_complete，否则前端一直显示生成中
       }
+      // 收尾时仍未提交的实时样本（中止/报错）作废
+      this.retractPendingUsage(session);
       this.turnAbort = null;
       this.runningSessionId = null;
       this.turnApprovalMode = null;
       this.turnChatMode = null;
       this.currentTurnId = null;
       this.partialDraft = null;
-      for (const resolver of this.pendingApprovals.values()) resolver(false);
-      this.pendingApprovals.clear();
-      this.pendingApprovalDetails = null;
+      for (const callId of this.pendingApprovals.keys()) {
+        this.settleApproval(callId, false, "abort");
+      }
       for (const resolver of this.pendingAsks.values()) resolver([]);
       this.pendingAsks.clear();
       this.pendingAskDetails = null;
@@ -2039,7 +3112,14 @@ export class AgentRuntime {
       } catch {
         // 收尾阶段的 hook 异常一律吞掉
       }
-      this.emit({ type: "turn_complete", sessionId: session.id });
+      this.emit({ type: "turn_complete", sessionId: session.id, status });
+      // 回合结束 = 蒸馏时机（ZCode turn.completed 同款）：只分析本轮增量
+      this.scheduleMemoryExtraction(session, status);
+      // 回合结束 = 学习时机：先落 outcome + 归因，再判断值不值得调用学习器
+      this.finishLearningTurn(session, status);
+      // 回合结束 = 前缀刚写入缓存：安排保活（5m TTL 空档）与空闲压缩（1h TTL 长空档）
+      this.scheduleCacheKeepalive(session);
+      this.scheduleIdleCompaction(session);
       // 标题生成放在回合结束后；后台子 Agent 还在跑时先不抢 provider 并发，
       // 等它们结束后再补。
       if (!session.hasTitle) {
@@ -2050,6 +3130,25 @@ export class AgentRuntime {
         else this.spawnTitleGeneration(session, titleSource);
       }
     }
+  }
+
+  /**
+   * stage 1 免模型压缩：先把将被摘录的旧工具输出补落盘（每条只写一次盘），
+   * 再让 shrinkToolOutputs 在摘录标注里带上 locator —— 被裁掉的全文仍可 read_file 找回。
+   */
+  private async shrinkWithSpill(
+    session: SessionStore,
+    messages: ChatMessage[],
+  ): Promise<{ messages: ChatMessage[]; changed: boolean }> {
+    if (this.shrinkSpills.size < SHRINK_SPILL_MAP_MAX) {
+      for (const ref of collectOldToolOutputs(messages)) {
+        if (this.shrinkSpills.has(ref.callId)) continue;
+        const saved = await persistToolOutput(session.cwd, ref.tool, ref.content).catch(() => null);
+        if (saved) this.shrinkSpills.set(ref.callId, saved);
+        if (this.shrinkSpills.size >= SHRINK_SPILL_MAP_MAX) break;
+      }
+    }
+    return shrinkToolOutputs(messages, this.shrinkSpills.size ? { spilled: this.shrinkSpills } : {});
   }
 
   /** 若之前因后台子 Agent 暂缓了标题生成，现在没有 live 子 Agent 时补上。 */
@@ -2096,9 +3195,229 @@ export class AgentRuntime {
       });
   }
 
+  /** 蒸馏请求超时：后台增强不阻塞关停，超时即放弃本轮增量 */
+  private static readonly MEMORY_EXTRACTION_TIMEOUT_MS = 120_000;
+
+  /**
+   * 回合结束后调度记忆蒸馏（ZCode scheduleProjectMemoryExtraction 同款）。
+   * 门槛：总开关开、回合正常完成、游标以来有新的真实用户消息、模型本回合
+   * 没直接写过记忆（写了就不必再蒸馏，ZCode direct-memory-write 同款）。
+   * 静默运行：失败不影响对话，成功有变更时挂一条下回合注入的 [memory] 通知。
+   */
+  private scheduleMemoryExtraction(session: SessionStore, status: string): void {
+    if (!this.memoryExtraction) return;
+    if (status !== "completed" || this.memoryExtractionBusy) return;
+    const messages = session.messages;
+    let cursor = this.memoryCursors.get(session.id) ?? -1;
+    if (cursor < 0 || cursor > messages.length) {
+      // 未知游标（新会话/进程重启/压缩收缩）：以最后一个用户回合为增量
+      cursor = lastRealUserMessageIndex(messages);
+      if (cursor < 0) return;
+    }
+    if (!hasNewUserMessage(messages, cursor)) return;
+    // 游标先推进再发请求：在途期间的新消息并入下回合，同一增量绝不蒸馏两次
+    this.memoryCursors.set(session.id, messages.length);
+    if (wroteMemoryDirectly(messages, cursor)) return;
+    const transcript = serializeMessages(messages.slice(cursor));
+    if (!transcript.trim()) return;
+    const workspace = session.cwd;
+    if (!workspace) return;
+    const provider = this.activeProvider();
+    this.asyncTasks += 1;
+    this.memoryExtractionBusy = true;
+    void (async () => {
+      const manifest = await collectManifest(workspace, this.homeDir);
+      const ops = await generateMemoryOps({
+        provider: this.applyCachePolicy(provider, session.id, "memory"),
+        transcript,
+        manifest,
+        today: new Date().toISOString().slice(0, 10),
+        signal: AbortSignal.timeout(AgentRuntime.MEMORY_EXTRACTION_TIMEOUT_MS),
+        onUsage: (usage) => {
+          void session
+            .appendUsage({
+              ...usage,
+              source: "memory",
+              providerId: provider.id,
+              model: provider.model,
+            })
+            .catch(() => undefined);
+        },
+      });
+      if (!ops.length) return;
+      const result = await applyMemoryOps(ops, workspace, this.homeDir);
+      const notice = formatMemoryNotice(result);
+      if (notice) {
+        // 期间切走会话就丢弃：通知绑定产生它的会话，跨会话注入会误导模型
+        if (this.currentSession === session) {
+          this.memoryNoticePending = { sessionId: session.id, text: notice };
+        }
+      }
+    })()
+      .catch(() => undefined) // 蒸馏失败不值得打扰用户（与标题生成同纪律）
+      .finally(() => {
+        this.memoryExtractionBusy = false;
+        this.asyncTasks = Math.max(0, this.asyncTasks - 1);
+      });
+  }
+
+  // -------------------------------------------------------------------------
+  // 自我学习（观察 → 学习 → 召回 → 评估）
+  // -------------------------------------------------------------------------
+
+  /** 学习请求超时：后台增强不阻塞关停，超时即放弃本回合增量。 */
+  private static readonly LEARNING_TIMEOUT_MS = 90_000;
+
+  /**
+   * 回合开始：归因上一轮（用户是否在纠正）+ 按 trigger 召回经验。
+   * 召回注记走 appendContextNote 追加到历史尾部 —— 绝不改 system[1]，
+   * 否则整段 prompt cache 每回合作废（见 refreshInstructions 的注释）。
+   */
+  private async beginLearningTurn(session: SessionStore, text: string): Promise<void> {
+    this.learningController.setWorkspace(session.cwd);
+    try {
+      const result = await this.learningController.beginTurn(session.id, text, {
+        text,
+        commands: [],
+        errors: [],
+      });
+      this.turnLearning = {
+        turnIndex: result.turnIndex,
+        recalledIds: result.recalledIds,
+        holdout: result.holdout,
+      };
+      if (result.note) {
+        await session.appendContextNote(result.note, "file");
+        await session.flush();
+      }
+    } catch {
+      // 召回失败不打断回合
+      this.turnLearning = null;
+    }
+  }
+
+  /** 回合结束：落 outcome + 归因 helped/hurt，然后决定要不要调用学习器。 */
+  private finishLearningTurn(session: SessionStore, status: TurnStatus): void {
+    const trace = this.learningTrace;
+    const turn = this.turnLearning;
+    this.learningTrace = null;
+    this.turnLearning = null;
+    if (!trace || !turn || !this.learning) return;
+
+    const normalized: "completed" | "error" | "aborted" =
+      status === "completed" ? "completed" : status === "aborted" ? "aborted" : "error";
+
+    this.asyncTasks += 1;
+    void (async () => {
+      await this.learningController
+        .endTurn({
+          sessionId: session.id,
+          turnIndex: turn.turnIndex,
+          status: normalized,
+          trace,
+          recalledIds: turn.recalledIds,
+          holdout: turn.holdout,
+        })
+        .catch(() => undefined);
+      if (normalized !== "completed") return;
+      await this.scheduleTurnLearning(session, trace);
+    })().finally(() => {
+      this.asyncTasks = Math.max(0, this.asyncTasks - 1);
+    });
+  }
+
+  /**
+   * 回合级学习调度。门禁全部在 LearningController 里：开关 → 单飞 → 配额 →
+   * 零 token 信号。无信号的回合连模型都不会调用，这是成本可控的前提。
+   */
+  private async scheduleTurnLearning(session: SessionStore, trace: TurnTrace): Promise<void> {
+    if (!this.learning || this.learningController.busy) return;
+    const provider = this.activeProvider();
+    try {
+      const result = await this.learningController.learnFromTurn({
+        sessionId: session.id,
+        messages: session.messages,
+        trace,
+        provider: this.applyCachePolicy(provider, session.id, "learning"),
+        signal: AbortSignal.timeout(AgentRuntime.LEARNING_TIMEOUT_MS),
+        onUsage: (usage) => {
+          void session
+            .appendUsage({
+              ...usage,
+              source: "learning",
+              providerId: provider.id,
+              model: provider.model,
+            })
+            .catch(() => undefined);
+        },
+      });
+      if (!result?.applied.length) return;
+      const notice = formatLearningNotice(result);
+      // 期间切走会话就丢弃：通知绑定产生它的会话
+      if (notice && this.currentSession === session) {
+        this.learningNoticePending = { sessionId: session.id, text: notice };
+      }
+    } catch {
+      // 学习失败不值得打扰用户（与记忆蒸馏同纪律）
+    }
+  }
+
+  /** 会话级整理：合并近义经验、蒸技能。由切会话或设置页按钮触发。 */
+  async consolidateLearning(session?: SessionStore): Promise<{ applied: string[] }> {
+    const target = session ?? this.currentSession;
+    if (!target || !this.learning) return { applied: [] };
+    this.learningController.setWorkspace(target.cwd);
+    const provider = this.activeProvider();
+    const result = await this.learningController
+      .consolidate({
+        sessionId: target.id,
+        messages: target.messages,
+        provider: this.applyCachePolicy(provider, target.id, "learning"),
+        signal: AbortSignal.timeout(AgentRuntime.LEARNING_TIMEOUT_MS * 2),
+        onUsage: (usage) => {
+          void target
+            .appendUsage({
+              ...usage,
+              source: "learning",
+              providerId: provider.id,
+              model: provider.model,
+            })
+            .catch(() => undefined);
+        },
+      })
+      .catch(() => null);
+    return { applied: result?.applied ?? [] };
+  }
+
+  /** 设置页读取：用户模型 / 经验 / 技能 / 账本 / 审计。 */
+  async learningSnapshot(): Promise<LearningSnapshot> {
+    const session = this.currentSession;
+    if (session) this.learningController.setWorkspace(session.cwd);
+    return this.learningController.snapshot();
+  }
+
+  /** 设置页操作：删除 / 重新启用 / 回滚一个学习技能。 */
+  async manageLearnedSkill(
+    action: "delete" | "reactivate" | "rollback",
+    scope: "user" | "project",
+    name: string,
+  ): Promise<boolean> {
+    const session = this.currentSession;
+    if (session) this.learningController.setWorkspace(session.cwd);
+    if (action === "delete") return this.learningController.removeSkill(scope, name);
+    if (action === "reactivate") return this.learningController.reactivateSkill(scope, name);
+    return this.learningController.rollbackSkill(scope, name);
+  }
+
+  /** 设置页操作：清除所有学到的（不可撤销）。 */
+  async clearLearning(): Promise<{ cleared: string[] }> {
+    const session = this.currentSession;
+    if (session) this.learningController.setWorkspace(session.cwd);
+    return this.learningController.clearAll();
+  }
+
   /**
    * 用当前模型生成 commit message（Git 面板的「AI 生成」按钮）。
-   *
    * 与标题生成同构：复用当前 provider、绑定会话缓存亲和、不写会话、不计 usage
    * （避免为了一行文案动 UsageSource 与统计 UI）。失败直接抛错，由前端降级为手写。
    */
@@ -2117,6 +3436,23 @@ export class AgentRuntime {
     });
   }
 
+  /**
+   * 用当前模型美化用户草稿提示词（输入框的「美化提示词」按钮）。
+   *
+   * 与 commit-message 同构：不写会话、不计 usage；无会话时跳过缓存亲和。
+   */
+  async polishPrompt(text: string, options: { signal?: AbortSignal } = {}): Promise<string> {
+    const session = this.currentSession;
+    const provider = this.activeProvider();
+    return polishPrompt({
+      provider: session
+        ? this.applyCachePolicy(provider, session.id, "polish")
+        : provider,
+      text,
+      ...(options.signal ? { signal: options.signal } : {}),
+    });
+  }
+
   /** 用户手动改名（会话列表暂未提供入口，接口先备好）。 */
   async renameSession(title: string): Promise<string> {
     const session = this.currentSession;
@@ -2125,15 +3461,88 @@ export class AgentRuntime {
     if (!trimmed) throw new Error("Title must not be empty.");
     await session.appendTitle(trimmed);
     this.emit({ type: "session_title", sessionId: session.id, title: trimmed });
+    await this.emitHook(
+      "session_info_changed",
+      {
+        hook: "session_info_changed",
+        ...this.hookScopeFields(session),
+        sessionId: session.id,
+        title: trimmed,
+      },
+      session,
+    );
     return trimmed;
+  }
+
+  /** 会话的快照存储（按快照目录 owner 缓存）；快照关闭时返回 null（打点全部 no-op）。 */
+  private snapshotFor(session: SessionStore): SnapshotStore | null {
+    if (!this.snapshotOptions.enabled) return null;
+    const ownerId = session.snapshotOwnerId;
+    let store = this.snapshotStores.get(ownerId);
+    if (!store) {
+      store = new SnapshotStore({
+        dir: path.join(this.sessionsDir, "snapshots", ownerId),
+        cwd: session.cwd,
+        ...(this.snapshotOptions.maxBlobBytes
+          ? { maxBlobBytes: this.snapshotOptions.maxBlobBytes }
+          : {}),
+        ...(this.snapshotOptions.keepCheckpoints
+          ? { keepCheckpoints: this.snapshotOptions.keepCheckpoints }
+          : {}),
+      });
+      this.snapshotStores.set(ownerId, store);
+    }
+    return store;
+  }
+
+  /** 回滚引擎用：取会话的快照存储（与打点共用同一实例，内存 state 才一致）。 */
+  snapshotStoreOf(session: SessionStore): SnapshotStore | null {
+    return this.snapshotFor(session);
+  }
+
+  /**
+   * 回合开始的自动检查点：对应用户这条消息之前的状态，任意用户消息都能作为回滚目标。
+   * 与上一条检查点落在同一位置且 2s 内时跳过（手动点后立刻发消息不重复打）。
+   */
+  private async writeTurnCheckpoint(session: SessionStore, turnId: string, text: string): Promise<SessionCheckpoint | null> {
+    const store = this.snapshotFor(session);
+    const messageCount = session.messages.length;
+    const last = session.checkpoints.at(-1);
+    if (last && last.messageIndex === messageCount && Date.now() - Date.parse(last.timestamp) < 2_000) {
+      return null;
+    }
+    const label = text.replace(/\s+/g, " ").trim().slice(0, 40);
+    return session.appendCheckpoint(
+      { auto: true, turnId, ...(label ? { label } : {}), fileChanges: [] },
+      // 快照关闭时仍是有效的对话回滚点，只是没有文件快照（hasSnapshot=false）
+      store ? (checkpointId) => store.checkpoint(checkpointId) : undefined,
+    );
+  }
+
+  /** 手动检查点：记录当前对话位置与文件快照，供之后恢复（截断分支出新会话）。 */
+  async createCheckpoint(label?: string): Promise<SessionCheckpoint> {
+    const session = this.currentSession;
+    if (!session) throw new Error("No active session.");
+    const trimmed = label?.trim();
+    const store = this.snapshotFor(session);
+    return session.appendCheckpoint(
+      {
+        ...(trimmed ? { label: trimmed.slice(0, 100) } : {}),
+        auto: false,
+        fileChanges: [],
+      },
+      store ? (checkpointId) => store.checkpoint(checkpointId) : undefined,
+    );
   }
 
   private async runTurn(session: SessionStore): Promise<void> {
     const provider = this.activeProvider();
     // 原生压缩点的加密 item 与端点/模型绑定：每回合开始先判定能否重放
     this.syncNativeReplay();
+    await this.awaitMcpReadyOnce();
     await this.refreshInstructions(session);
     await this.ensurePlanContext(session);
+    await this.ensureModeContext(session);
     // 每回合重置循环检测：跨回合的相同调用多是用户再次要求，不算循环
     this.resetLoopState(session.id);
     // 薄循环/厚宿主：轮次迭代在 agent-loop.ts，这里把 runtime 能力按接口交出去
@@ -2159,6 +3568,30 @@ export class AgentRuntime {
       .catch(() => undefined);
     await session.flush().catch(() => undefined);
     return true;
+  }
+
+  /**
+   * 请求前置记录：工具 + system 的前缀指纹、是否与上一次相同、距上次请求的空闲。
+   * 只记主循环请求；标题/压缩等辅助请求不走这里，不会污染诊断。
+   */
+  private noteRequestStart(options: AgentStreamOptions): void {
+    const systemText = options.messages
+      .filter((message) => message.role === "system" && message.content)
+      .map((message) => message.content)
+      .join("\n");
+    const systemHash = createHash("sha1").update(systemText).digest("hex").slice(0, 16);
+    const key = `${this.ensureToolCatalog().fingerprint}|${systemHash}`;
+    const providerId = options.provider.id;
+    const previous = this.providerRequestMeta.get(providerId);
+    const now = Date.now();
+    this.currentRequest = {
+      providerId,
+      key,
+      samePrefix: previous?.key === key,
+      hadPrevious: previous !== undefined,
+      idleMs: previous ? now - previous.at : 0,
+    };
+    this.providerRequestMeta.set(providerId, { key, at: now });
   }
 
   /**
@@ -2188,9 +3621,13 @@ export class AgentRuntime {
 
     return {
       initialMessages: () => {
+        // 主路径滞回投影：旧截图/扫描件总量越过 8MiB 触发线才裁到 4MiB（opencode 同款）。
+        // 切点单调、两次裁剪之间前缀字节零变化；未变化的沿用原对象引用，增量链不受影响。
+        // thinking 不投影：它的「保留最近 1 回合」边界每轮移动，逐轮投影等于每轮自爆缓存。
+        const history = projectForMainPath(session.effectiveMessages);
         const messages: ChatMessage[] = [
           ...this.systemMessages(),
-          ...projectForRequest(session.effectiveMessages, turnProvider),
+          ...history,
         ];
         // 治理 run 活跃时在尾部注入 frontier 提醒（ephemeral：不落盘，随回合结束消失）
         const frontier = this.workflow.frontier();
@@ -2201,6 +3638,7 @@ export class AgentRuntime {
       },
       provider: () => turnProvider,
       tools: () => this.activeTools,
+      toolCacheAnchor: () => this.toolCacheAnchor(),
       usageAnchor: () => this.usageAnchor,
       aborted: () => this.turnAbort?.signal.aborted === true,
       abortSignal: () => this.turnAbort?.signal,
@@ -2239,6 +3677,11 @@ export class AgentRuntime {
           to: next.id,
           reason,
         });
+        this.notifyModelSwitch(
+          from,
+          { providerId: next.id, model: next.model },
+          "fallback",
+        );
         return next;
       },
       resolveRequestProvider: ({ messages, maxTokens }) => {
@@ -2290,6 +3733,17 @@ export class AgentRuntime {
       onRoundStart: async () => {
         await this.startPartialRound(session);
         this.earlyToolRuns.clear();
+        this.fireHook(
+          "assistant_message_start",
+          {
+            hook: "assistant_message_start",
+            ...this.hookScopeFields(session),
+            sessionId: session.id,
+            ...(this.currentTurnId ? { turnId: this.currentTurnId } : {}),
+          },
+          session,
+          this.turnAbort?.signal,
+        );
       },
       onDelta: (delta) => {
         this.appendPartialDelta("content", delta);
@@ -2312,11 +3766,75 @@ export class AgentRuntime {
       },
       // 流中提前执行（实验开关 midstreamToolExec）：startEarlyToolRun 内部自检开关
       onToolCallComplete: (call, messages) => this.startEarlyToolRun(session, call, messages),
-      stream: (options) => streamChatCompletion(options),
+      stream: async (options) => {
+        this.noteRequestStart(options);
+        // 新一轮模型调用：上一轮没等到 recordUsage 的样本作废（agent-loop 内部重试会走到这里）
+        this.retractPendingUsage(session);
+        const roundId = randomUUID();
+        this.pendingUsageRoundId = roundId;
+        // 插件 hook：before_provider_request（语义层改写，三套协议共用这一处）
+        let requestOptions = options;
+        if (this.plugins?.hasHooks("before_provider_request")) {
+          try {
+            const hook = await runHook(
+              this.plugins,
+              "before_provider_request",
+              {
+                hook: "before_provider_request",
+                ...this.hookScopeFields(session),
+                sessionId: session.id,
+                providerId: options.provider.id,
+                model: options.provider.model,
+                protocol: options.provider.protocol ?? "openai-chat-completions",
+                messages: options.messages,
+                toolNames: options.tools.map((tool) => tool.function.name),
+                ...(options.provider.maxTokens ? { maxTokens: options.provider.maxTokens } : {}),
+              },
+              this.hookContext(session, this.turnAbort?.signal),
+            );
+            if (hook) {
+              requestOptions = {
+                ...options,
+                ...(hook.messages ? { messages: hook.messages } : {}),
+                ...(hook.tools ? { tools: hook.tools as typeof options.tools } : {}),
+                ...(hook.extraBody || options.provider.extraBody
+                  ? {
+                      provider: {
+                        ...options.provider,
+                        extraBody: { ...options.provider.extraBody, ...hook.extraBody },
+                      },
+                    }
+                  : {}),
+              };
+            }
+          } catch {
+            // 改写失败按原请求走，宁可少一个 hook 也不能打断请求
+          }
+        }
+        return streamChatCompletion({
+          ...requestOptions,
+          onUsage: (usage) => this.emitUsageSample(session, roundId, usage),
+        });
+      },
       persistAssistantMessage: async (message) => {
         await session.appendMessage(message);
         await session.flush();
         await this.finishPartialRound(session);
+        const text = typeof message.content === "string" ? message.content : "";
+        this.fireHook(
+          "assistant_message_end",
+          {
+            hook: "assistant_message_end",
+            ...this.hookScopeFields(session),
+            sessionId: session.id,
+            ...(this.currentTurnId ? { turnId: this.currentTurnId } : {}),
+            text,
+            toolCallCount:
+              message.role === "assistant" ? (message.tool_calls?.length ?? 0) : 0,
+          },
+          session,
+          this.turnAbort?.signal,
+        );
       },
 
       recordUsage: async (usage) => {
@@ -2344,9 +3862,52 @@ export class AgentRuntime {
             model: turnProvider.model,
           });
         }
+        // 前缀缓存诊断：区分「我们自己改了前缀 / 服务端逐出 / 服务商未报告或不支持」。
+        let cacheState: CacheState | undefined;
+        let cacheReason: string | undefined;
+        const request = this.currentRequest;
+        if (request && request.providerId === turnProvider.id && usage.inputTokens !== undefined) {
+          const plan = resolveCachePlan(turnProvider);
+          const result = classifyCache({
+            protocol: plan.protocol,
+            // 用解析后的实际 TTL（auto 已按节奏与端点白名单定档），而不是用户配置原文
+            ...(plan.enabled ? { cacheTtl: plan.ttl } : {}),
+            ...(usage.cacheReadTokens !== undefined
+              ? { cacheReadTokens: usage.cacheReadTokens }
+              : {}),
+            ...(usage.cacheWriteTokens !== undefined
+              ? { cacheWriteTokens: usage.cacheWriteTokens }
+              : {}),
+            inputTokens: usage.inputTokens,
+            prefixChanged: request.hadPrevious && !request.samePrefix,
+            hadSamePrefixBefore: request.samePrefix,
+            idleMs: request.idleMs,
+          });
+          cacheState = result.state;
+          if (request.hadPrevious && !request.samePrefix) {
+            cacheReason = this.lastPrefixChangeReason ?? result.reason;
+            this.lastPrefixChangeReason = null;
+          }
+          const stateKey = `${session.id}:${turnProvider.id}`;
+          if (this.emittedCacheStates.get(stateKey) !== result.state) {
+            this.emittedCacheStates.set(stateKey, result.state);
+            cacheReason = cacheReason ?? result.reason;
+            if (result.state === "evicted" || result.state === "unsupported") {
+              console.warn(
+                `[meowcode] cache ${result.state} (${turnProvider.name}/${turnProvider.model}): ${
+                  result.reason ?? "no cached tokens"
+                }`,
+              );
+            }
+          }
+        }
         this.emit({
           type: "usage",
           sessionId: session.id,
+          roundId: this.pendingUsageRoundId ?? randomUUID(),
+          final: true,
+          // 前端 cache-bust 检测按模型分基线：换模型后的读数跌落不算失配
+          model: turnProvider.model,
           inputTokens: usage.inputTokens,
           outputTokens: usage.outputTokens,
           ...(usage.cacheReadTokens !== undefined
@@ -2355,7 +3916,10 @@ export class AgentRuntime {
           ...(usage.cacheWriteTokens !== undefined
             ? { cacheWriteTokens: usage.cacheWriteTokens }
             : {}),
+          ...(cacheState ? { cacheState } : {}),
+          ...(cacheReason ? { cacheReason } : {}),
         });
+        this.pendingUsageRoundId = null;
         // 真实用量过阈值：后台预热压缩（codex PostTurn 阶段），不阻塞当前回合
         if (usage.inputTokens && this.currentSession?.id === session.id) {
           this.maybeStartCompactionWarmup(session, turnProvider);
@@ -2384,6 +3948,7 @@ export class AgentRuntime {
         await this.pushToolMessage(session, messages, message);
       },
       earlyRun: (callId) => this.earlyToolRuns.get(callId),
+      pushUserMessage: (messages, content) => this.pushUserMessage(session, messages, content),
       onToolBlocked: (call, message) => {
         // 门禁拦截也要有完整 UI 事件（与插件 block 的形态一致）
         this.emit({
@@ -2427,27 +3992,139 @@ export class AgentRuntime {
   }
 
   /**
-   * 重新装载工作区架构图（PUT /harness 后由 server 调用）：
+   * 重新装载工作区架构图（PUT /harness / 切档 / 切图后由 runtime 调用）：
    * 异步、只在空闲时装载 —— 活跃 run 的快照冻结，不中途换图（metis 同款）。
+   *
+   * `notice = true`（PUT /harness 保存了文档内容）时，装载成功后标记待提醒：
+   * 下一回合在历史尾部追加一条 in-history 说明——架构文档变了但前缀不动声色地
+   * 换掉，模型会把「没被告知的上下文漂移」当成事实变化（opencode 的合成消息同款）。
    */
-  refreshHarness(): void {
+  refreshHarness(notice = false): void {
     if (!this.enableTaskTool) return;
     const session = this.currentSession;
-    if (!session || this.workflow.active) return;
+    if (!session) return;
+    if (notice) this.harnessNoticePending = true;
+    if (this.workflow.active) return;
     void loadHarnessDocument(session.cwd, this.currentHarnessArchitecture)
-      .then((doc) => this.workflow.setHarness(doc))
+      .then((doc) => {
+        this.workflow.setHarness(doc);
+        this.harnessSnapshotSessionId = session.id;
+        this.harnessNoticePending = false;
+      })
       .catch(() => undefined);
   }
 
+  /** 架构图会话级快照：每会话只装载一次；外部改动经 PUT /harness 显式重载（AGENTS.md 同纪律）。 */
+  private harnessSnapshotSessionId: string | null = null;
+  private harnessNoticePending = false;
+
   /**
-   * 治理 hooks（只在根 runtime 生效；子 Agent 的 enableTaskTool=false 天然跳过）：
+   * 治理 hooks（根 runtime 还额外注册治理门禁；子 Agent 始终注册 turn_stop 与 steer）：
    * - beforeToolCall：admit 之前拦截变更类工具（含 task 派发）
    * - afterToolCall：根侧文件改动即 T1 G4 证据；计数未更新清单的变更
-   * - prepareNextTurn：run 活跃注入 frontier；连续 8 次变更没 update_plan 则 nudge
+   * - prepareNextTurn：run 活跃注入 frontier；连续 8 次变更没 update_plan 则 nudge；送达插话
+   * - takeSteer：模型准备收尾时优先注入用户插话
    */
   private createLoopHooks(session: SessionStore): AgentLoopHooks | undefined {
-    if (!this.enableTaskTool) return undefined;
+    // 回合收尾闸（turn_stop / Claude Code Stop hook）是插件级能力，与治理无关：
+    // task 工具关闭的子 Agent runtime 也要生效（CC 的 SubagentStop 同理）。
+    const beforeTurnEnd: NonNullable<AgentLoopHooks["beforeTurnEnd"]> = async ({
+      result,
+      stopHookActive,
+    }) => {
+      const verdict = await runHook(
+        this.plugins,
+        "turn_stop",
+        {
+          hook: "turn_stop",
+          sessionId: session.id,
+          turnId: this.currentTurnId ?? "",
+          stopHookActive,
+          text: typeof result.message.content === "string" ? result.message.content : "",
+          ...this.hookScopeFields(session),
+        },
+        this.hookContext(session, this.turnAbort?.signal),
+      );
+      return verdict?.block ? { block: true, reason: verdict.reason } : undefined;
+    };
+    const prepareNextTurn: NonNullable<AgentLoopHooks["prepareNextTurn"]> = async (
+      messages,
+    ) => {
+      const injections: ChatMessage[] = [];
+      if (this.enableTaskTool && this.workflow.active && this.governanceApplies()) {
+        const frontier = this.workflow.frontier();
+        if (frontier) injections.push({ role: "user", content: `[workflow]\n${frontier}` });
+        if (this.mutationsSincePlanCheck >= 8) {
+          injections.push({
+            role: "user",
+            content:
+              "[workflow] You have made several file changes without updating the plan checklist. Call update_plan so the user can see current progress.",
+          });
+        }
+      }
+      // 插话排在 workflow 注入之后，保证用户的最后一句在上下文末尾
+      const prepared = injections.length ? [...messages, ...injections] : messages;
+      await this.flushPendingSteers(session, prepared);
+      return prepared === messages ? undefined : prepared;
+    };
+
+    const takeSteerHook: NonNullable<AgentLoopHooks["takeSteer"]> = async () =>
+      this.takeSteer();
+
+    /**
+     * 工具结果钩子：先采集学习轨迹（所有 runtime 都要，含子 Agent 的父级统计），
+     * 再做治理证据采集。两者互不影响，采集失败绝不阻断工具链。
+     */
+    const afterToolCall: NonNullable<AgentLoopHooks["afterToolCall"]> = async (call, message) => {
+      this.recordLearningToolCall(call, message);
+      if (!this.enableTaskTool) return;
+      const tool = call.function.name;
+      if (tool === "update_plan") {
+        this.mutationsSincePlanCheck = 0;
+        return;
+      }
+      if (!this.workflow.active) return;
+      if (tool === "write_file" || tool === "edit_file" || tool === "multi_edit") {
+        this.mutationsSincePlanCheck += 1;
+        let input: Record<string, unknown> = {};
+        try {
+          input = JSON.parse(call.function.arguments || "{}") as Record<string, unknown>;
+        } catch {
+          input = {};
+        }
+        const first = writablePaths(tool, input)[0];
+        if (first) {
+          const gateMessage = this.workflow.noteRootMutation(String(first));
+          if (gateMessage) {
+            const laneId = this.workflow.state?.lanes[0]?.id ?? "main";
+            await session
+              .appendGateReport({
+                laneId,
+                gate: "G4",
+                verdict: "pass",
+                agentId: "root",
+                message: gateMessage,
+              })
+              .catch(() => undefined);
+            this.emit({
+              type: "workflow_gate",
+              sessionId: session.id,
+              laneId,
+              gate: "G4",
+              verdict: "pass",
+              agentId: "root",
+              message: gateMessage,
+            });
+            this.emitWorkflowRoadmap(session);
+          }
+        }
+      }
+    };
+
+    const hooks: AgentLoopHooks = { prepareNextTurn, takeSteer: takeSteerHook, beforeTurnEnd, afterToolCall };
+    if (!this.enableTaskTool) return hooks;
     return {
+      ...hooks,
       beforeToolCall: async (call) => {
         if (!this.governanceApplies() || !this.workflow.needsAdmission) return;
         if (!GOVERNANCE_GATED_TOOLS.has(call.function.name)) return;
@@ -2457,65 +4134,27 @@ export class AgentRuntime {
             "governance gate — call admit first to declare the task shape (tier T0/T1/T2, lanes), then mutating tools unlock",
         };
       },
-      afterToolCall: async (call) => {
-        const tool = call.function.name;
-        if (tool === "update_plan") {
-          this.mutationsSincePlanCheck = 0;
-          return;
-        }
-        if (!this.workflow.active) return;
-        if (tool === "write_file" || tool === "edit_file" || tool === "multi_edit") {
-          this.mutationsSincePlanCheck += 1;
-          let input: Record<string, unknown> = {};
-          try {
-            input = JSON.parse(call.function.arguments || "{}") as Record<string, unknown>;
-          } catch {
-            input = {};
-          }
-          const first = writablePaths(tool, input)[0];
-          if (first) {
-            const gateMessage = this.workflow.noteRootMutation(String(first));
-            if (gateMessage) {
-              const laneId = this.workflow.state?.lanes[0]?.id ?? "main";
-              await session
-                .appendGateReport({
-                  laneId,
-                  gate: "G4",
-                  verdict: "pass",
-                  agentId: "root",
-                  message: gateMessage,
-                })
-                .catch(() => undefined);
-              this.emit({
-                type: "workflow_gate",
-                sessionId: session.id,
-                laneId,
-                gate: "G4",
-                verdict: "pass",
-                agentId: "root",
-                message: gateMessage,
-              });
-              this.emitWorkflowRoadmap(session);
-            }
-          }
-        }
-      },
-      prepareNextTurn: async (messages) => {
-        const injections: ChatMessage[] = [];
-        if (this.workflow.active && this.governanceApplies()) {
-          const frontier = this.workflow.frontier();
-          if (frontier) injections.push({ role: "user", content: `[workflow]\n${frontier}` });
-          if (this.mutationsSincePlanCheck >= 8) {
-            injections.push({
-              role: "user",
-              content:
-                "[workflow] You have made several file changes without updating the plan checklist. Call update_plan so the user can see current progress.",
-            });
-          }
-        }
-        return injections.length ? [...messages, ...injections] : undefined;
-      },
     };
+  }
+
+  /** 把一次工具调用记进本回合的学习轨迹；ok 从 tool_finished 快照里取。 */
+  private recordLearningToolCall(call: ToolCall, message: { content: string }): void {
+    const trace = this.learningTrace;
+    if (!trace) return;
+    const ok = this.toolOutcomes.get(call.id) ?? true;
+    this.toolOutcomes.delete(call.id);
+    let args: unknown = {};
+    try {
+      args = JSON.parse(call.function.arguments || "{}");
+    } catch {
+      args = {};
+    }
+    recordToolCall(trace, {
+      name: call.function.name,
+      args,
+      ok,
+      output: typeof message.content === "string" ? message.content : "",
+    });
   }
 
   private async persistTurnMetrics(
@@ -2568,6 +4207,8 @@ export class AgentRuntime {
   ): void {
     if (!this.experimental?.midstreamToolExec) return;
     if (!READ_ONLY_PARALLEL_TOOLS.has(call.function.name)) return;
+    // 有 tool_call hook 时不能提前执行：流中启动发生在分派前，hook 无法拦截。
+    if (this.plugins?.hasHooks("tool_call")) return;
     if (!call.id || this.earlyToolRuns.has(call.id)) return;
     if (this.turnAbort?.signal.aborted) return;
     this.earlyToolRuns.set(call.id, this.executeReadOnlyToolCall(session, call, messages));
@@ -2577,7 +4218,8 @@ export class AgentRuntime {
     session: SessionStore,
     call: ToolCall,
     messages: ChatMessage[],
-  ): Promise<Extract<ChatMessage, { role: "tool" }>> {    let input: unknown = {};
+  ): Promise<Extract<ChatMessage, { role: "tool" }>> {
+    let input: unknown = {};
     try {
       input = JSON.parse(call.function.arguments || "{}");
     } catch {
@@ -2600,6 +4242,48 @@ export class AgentRuntime {
       this.emit({ type: "tool_finished", sessionId: session.id, callId: call.id, ok: true });
       return { role: "tool", content: output, tool_call_id: call.id, name: tool };
     }
+
+    // 只读批同样经过 PreToolUse（Read/Grep/Glob 等 CC matcher 才能生效）
+    const inputRecord =
+      input && typeof input === "object" && !Array.isArray(input)
+        ? (input as Record<string, unknown>)
+        : {};
+    const toolCallHook = await runHook(
+      this.plugins,
+      "tool_call",
+      {
+        hook: "tool_call",
+        sessionId: session.id,
+        callId: call.id,
+        tool,
+        input: inputRecord,
+        ...this.hookScopeFields(session),
+      },
+      this.hookContext(session, this.turnAbort?.signal),
+    );
+    if (toolCallHook?.block) {
+      const output = toolCallHook.reason
+        ? `Tool call blocked by plugin: ${toolCallHook.reason}`
+        : "Tool call blocked by plugin.";
+      this.emit({ type: "tool_output", sessionId: session.id, callId: call.id, output, truncated: false });
+      this.emit({ type: "tool_finished", sessionId: session.id, callId: call.id, ok: false });
+      return { role: "tool", content: output, tool_call_id: call.id, name: tool };
+    }
+    const hookAsk = toolCallHook?.permission === "ask";
+    const hookReason = hookAsk
+      ? toolCallHook.reason ?? "The PreToolUse hook requests approval."
+      : undefined;
+    if (toolCallHook?.input) {
+      const revalidated = validateToolArguments(tool, JSON.stringify(toolCallHook.input));
+      if (!revalidated.ok) {
+        const output = `Tool call rejected: hook returned invalid arguments (${revalidated.error})`;
+        this.emit({ type: "tool_output", sessionId: session.id, callId: call.id, output, truncated: false });
+        this.emit({ type: "tool_finished", sessionId: session.id, callId: call.id, ok: false });
+        return { role: "tool", content: output, tool_call_id: call.id, name: tool };
+      }
+      input = revalidated.input;
+    }
+
     // 循环拦截（P1-2）：零信息重复达 8 次就不再执行
     const blocked = this.loopBlockFor(session, tool, input);
     if (blocked) {
@@ -2607,6 +4291,17 @@ export class AgentRuntime {
       this.emit({ type: "tool_finished", sessionId: session.id, callId: call.id, ok: false });
       return { role: "tool", content: blocked, tool_call_id: call.id, name: tool };
     }
+
+    if (hookAsk) {
+      const decision = await this.approveHookAsk(session, call, tool, input, turnId, hookReason);
+      if (!decision.approved) {
+        const output = decision.output ?? "User denied this tool call.";
+        this.emit({ type: "tool_output", sessionId: session.id, callId: call.id, output, truncated: false });
+        this.emit({ type: "tool_finished", sessionId: session.id, callId: call.id, ok: false });
+        return { role: "tool", content: output, tool_call_id: call.id, name: tool };
+      }
+    }
+
     const allowOutsideWorkspace =
       (this.turnApprovalMode ?? this.approvalMode) === "full";
     // 重复读短路：只读快路径同样生效
@@ -2619,8 +4314,14 @@ export class AgentRuntime {
         allowOutsideWorkspace,
       );
       if (stub) {
+        // 命中占位本身也是「模型想再读一次」的信号，计入压缩质量观测
+        this.noteReadTarget(session, tool, input);
         const loopNote = this.noteLoopResult(session, tool, input, stub);
-        const output = loopNote ? `${stub}\n\n${loopNote}` : stub;
+        const result = await this.applyToolResultHook(session, call.id, tool, input, {
+          output: stub,
+          ok: true,
+        });
+        const output = loopNote ? `${result.output}\n\n${loopNote}` : result.output;
         this.emit({
           type: "tool_output",
           sessionId: session.id,
@@ -2628,29 +4329,99 @@ export class AgentRuntime {
           output,
           truncated: false,
         });
-        this.emit({ type: "tool_finished", sessionId: session.id, callId: call.id, ok: true });
+        this.emit({ type: "tool_finished", sessionId: session.id, callId: call.id, ok: result.ok });
         return { role: "tool", content: output, tool_call_id: call.id, name: tool };
       }
     }
-    const result = await executeTool(tool, input, session.cwd, {
+    const startedAt = Date.now();
+    this.fireHook(
+      "tool_execution_start",
+      {
+        hook: "tool_execution_start",
+        ...this.hookScopeFields(session),
+        sessionId: session.id,
+        callId: call.id,
+        tool,
+        input: hookInput(input),
+        parallel: true,
+        startedAt,
+      },
+      session,
+      this.turnAbort?.signal,
+    );
+    let result = await executeTool(tool, input, session.cwd, {
       allowOutsideWorkspace,
       signal: this.turnAbort?.signal,
       vision: this.toolVisionEnabled(),
       shrinkImage: this.imageShrinker(),
+      // 批量读复用已读区间：整份读过的文件只回一行占位
+      readCoverage: (target) =>
+        this.loopGuard.fullyCovered(session.cwd, messages, target, allowOutsideWorkspace),
       hostToolBridge: (bridgeTool, bridgeArgs) =>
         this.runCodeHostTool(session, call.id, bridgeTool, bridgeArgs),
     });
+    this.fireHook(
+      "tool_execution_end",
+      {
+        hook: "tool_execution_end",
+        ...this.hookScopeFields(session),
+        sessionId: session.id,
+        callId: call.id,
+        tool,
+        input: hookInput(input),
+        output: result.output,
+        ok: result.ok,
+        durationMs: Date.now() - startedAt,
+      },
+      session,
+      this.turnAbort?.signal,
+    );
+    result = await this.applyToolResultHook(session, call.id, tool, input, result);
+    // 部分覆盖：只回未读过的尾部
+    let readOutput = result.output;
+    if (tool === "read_file" && result.ok && result.readRange && !result.images?.length) {
+      const trimmed = await this.trimCoveredRead(
+        session,
+        messages,
+        input,
+        result.output,
+        allowOutsideWorkspace,
+      );
+      if (trimmed) readOutput = trimmed;
+    }
+    // 跨回合结果去重：同参同输出且旧结果仍可见 → 一行占位
+    const deduped = this.loopGuard.dedupeRepeatedResult(
+      tool,
+      input,
+      result.output,
+      call.id,
+      messages,
+    );
+    if (deduped) readOutput = deduped;
     if (tool === "read_file" && result.ok && !result.images?.length) {
-      await this.rememberReadVersion(session, call.id, input, allowOutsideWorkspace);
+      await this.rememberReadRange(
+        session,
+        call.id,
+        input,
+        result.readRange,
+        allowOutsideWorkspace,
+      );
+    }
+    // 批量读逐文件登记：之后 read_file 同一文件可以直接命中区间
+    if (tool === "read_many" && result.ok && result.readRanges?.length) {
+      for (const range of result.readRanges) {
+        await this.rememberReadRangeAt(session, call.id, range.path, range, allowOutsideWorkspace);
+      }
     }
     const loopNote = this.noteLoopResult(session, tool, input, result.output);
-    const output = loopNote ? `${result.output}\n\n${loopNote}` : result.output;
+    const output = loopNote ? `${readOutput}\n\n${loopNote}` : readOutput;
     this.emit({
       type: "tool_output",
       sessionId: session.id,
       callId: call.id,
       output,
       truncated: result.truncated ?? output.length > 20000,
+      ...(result.spilled ? { spilled: result.spilled } : {}),
     });
     this.emit({ type: "tool_finished", sessionId: session.id, callId: call.id, ok: result.ok });
     return {
@@ -2668,7 +4439,7 @@ export class AgentRuntime {
     call: ToolCall,
   ): Promise<Extract<ChatMessage, { role: "tool" }>> {
     const validated = validateToolArguments("task", call.function.arguments);
-    const input = validated.ok ? validated.input : {};
+    let input = validated.ok ? validated.input : {};
     const turnId = this.currentTurnId;
     if (validated.ok && turnId) {
       await this.markToolCallStarted(session, { turnId, callId: call.id, tool: "task", input });
@@ -2680,6 +4451,43 @@ export class AgentRuntime {
       this.emit({ type: "tool_finished", sessionId: session.id, callId: call.id, ok: false });
       return { role: "tool", content: output, tool_call_id: call.id, name: "task" };
     }
+
+    const toolCallHook = await runHook(
+      this.plugins,
+      "tool_call",
+      {
+        hook: "tool_call",
+        sessionId: session.id,
+        callId: call.id,
+        tool: "task",
+        input: input as Record<string, unknown>,
+        ...this.hookScopeFields(session),
+      },
+      this.hookContext(session, this.turnAbort?.signal),
+    );
+    if (toolCallHook?.block) {
+      const output = toolCallHook.reason
+        ? `Tool call blocked by plugin: ${toolCallHook.reason}`
+        : "Tool call blocked by plugin.";
+      this.emit({ type: "tool_output", sessionId: session.id, callId: call.id, output, truncated: false });
+      this.emit({ type: "tool_finished", sessionId: session.id, callId: call.id, ok: false });
+      return { role: "tool", content: output, tool_call_id: call.id, name: "task" };
+    }
+    const hookAsk = toolCallHook?.permission === "ask";
+    const hookReason = hookAsk
+      ? toolCallHook.reason ?? "The PreToolUse hook requests approval."
+      : undefined;
+    if (toolCallHook?.input) {
+      const revalidated = validateToolArguments("task", JSON.stringify(toolCallHook.input));
+      if (!revalidated.ok) {
+        const output = `Tool call rejected: hook returned invalid arguments (${revalidated.error})`;
+        this.emit({ type: "tool_output", sessionId: session.id, callId: call.id, output, truncated: false });
+        this.emit({ type: "tool_finished", sessionId: session.id, callId: call.id, ok: false });
+        return { role: "tool", content: output, tool_call_id: call.id, name: "task" };
+      }
+      input = revalidated.input;
+    }
+
     // 计划模式禁止子 Agent：子代理会绕过 plans/ 门控，直接拒绝
     if ((this.turnChatMode ?? this.chatMode) === "plan") {
       const output = planModeRejection("task");
@@ -2687,7 +4495,51 @@ export class AgentRuntime {
       this.emit({ type: "tool_finished", sessionId: session.id, callId: call.id, ok: false });
       return { role: "tool", content: output, tool_call_id: call.id, name: "task" };
     }
-    const result = await this.runSubagentTask(session, call, input);
+
+    if (hookAsk) {
+      const decision = await this.approveHookAsk(session, call, "task", input, turnId, hookReason);
+      if (!decision.approved) {
+        const output = decision.output ?? "User denied this tool call.";
+        this.emit({ type: "tool_output", sessionId: session.id, callId: call.id, output, truncated: false });
+        this.emit({ type: "tool_finished", sessionId: session.id, callId: call.id, ok: false });
+        return { role: "tool", content: output, tool_call_id: call.id, name: "task" };
+      }
+    }
+
+    const taskStartedAt = Date.now();
+    this.fireHook(
+      "tool_execution_start",
+      {
+        hook: "tool_execution_start",
+        ...this.hookScopeFields(session),
+        sessionId: session.id,
+        callId: call.id,
+        tool: "task",
+        input: hookInput(input),
+        parallel: true,
+        startedAt: taskStartedAt,
+      },
+      session,
+      this.turnAbort?.signal,
+    );
+    const taskResult = await this.runSubagentTask(session, call, input);
+    this.fireHook(
+      "tool_execution_end",
+      {
+        hook: "tool_execution_end",
+        ...this.hookScopeFields(session),
+        sessionId: session.id,
+        callId: call.id,
+        tool: "task",
+        input: hookInput(input),
+        output: taskResult.output,
+        ok: taskResult.ok,
+        durationMs: Date.now() - taskStartedAt,
+      },
+      session,
+      this.turnAbort?.signal,
+    );
+    const result = await this.applyToolResultHook(session, call.id, "task", input, taskResult);
     const truncated = truncateOutput(result.output);
     this.emit({
       type: "tool_output",
@@ -2715,7 +4567,10 @@ export class AgentRuntime {
       providers.find(
         (provider) => provider.id === requestedId && provider.enabled !== false,
       ) ??
-      providers.find((provider) => provider.id === this.providerId) ??
+      providers.find(
+        (provider) => provider.id === this.providerId && provider.enabled !== false,
+      ) ??
+      providers.find((provider) => provider.enabled !== false) ??
       providers[0];
     const effort =
       typeof args.reasoning_effort === "string" ? args.reasoning_effort.trim() : "";
@@ -2765,13 +4620,29 @@ export class AgentRuntime {
       workspace: params.cwd,
       browserHost: this.browserHost,
       enableTaskTool: false,
+      // 插件 hooks 在子 Agent 内同样生效（SubagentStop / 子会话工具 hook）；
+      // hookScope 提供 root session 与 agent_id，审批仍由父会话聚合。
+      plugins: this.plugins,
+      hookScope: {
+        rootSessionId: this.hookScope?.rootSessionId ?? params.parentSessionId,
+        agentId: params.agentId,
+        agentType: params.agentType,
+        parentSessionId: params.parentSessionId,
+      },
+      // 子代理是机器节奏：连续打点、没有人为空档，1h 档只会多付写入溢价
+      sessionPace: "machine",
       systemPrompt: effectivePrompt,
+      instructionSettings: { ...this.instructionSettings },
       ...(effectiveTools ? { allowedTools: effectiveTools } : {}),
       ...(definition.injectInstructions === false ? { injectInstructions: false } : {}),
       onFileChange: async (change) => {
         // 宿主观测：子 Agent 的文件改动即 ground truth（不信任自述）
         params.observations.filesChanged.add(change.path);
         await params.session.appendFileChange(change.path, change.operation, change.diff);
+        // 后台子 Agent 结束时父回合可能已收尾：只在父回合活跃时计入其检查点
+        if (this.runningSessionId === params.parentSessionId) {
+          this.turnFileChanges.add(change.path);
+        }
         await params.session.flush();
         // 不带 agentId：父级 file_changed 要触发主界面审阅，而不是被当成子事件过滤掉。
         this.emit({
@@ -2782,6 +4653,10 @@ export class AgentRuntime {
         });
       },
     });
+    // 子 Agent 的会话不蒸馏记忆：长期事实只在主会话沉淀（ZCode 只对 main taskType 跑）
+    child.memoryExtraction = false;
+    // 同理不学习：子 Agent 的任务是被父级切碎的片段，从里面总结「经验」只会得到噪音
+    child.learning = false;
     child.onEvent((event) => {
       // 宿主观测：run_command 的起止配对（argv 来自 tool_started 的 input，
       // exitCode 以 ok 近似 —— 治理门禁只关心"是否全 0"）
@@ -2915,6 +4790,20 @@ export class AgentRuntime {
         prompt,
         startedAt,
       });
+      await this.emitHook(
+        "subagent_start",
+        {
+          hook: "subagent_start",
+          ...this.hookScopeFields(session),
+          sessionId: parentSessionId,
+          agentId,
+          ...(agentType ? { agentType } : {}),
+          description,
+          background,
+          ...(prompt ? { prompt: clipText(prompt, 2000) } : {}),
+        },
+        session,
+      );
 
       const completion = this.completeSubagent({
         session,
@@ -3123,6 +5012,21 @@ export class AgentRuntime {
         durationMs,
         ...(usage ? { usage } : {}),
       });
+      await this.emitHook(
+        "subagent_stop",
+        {
+          hook: "subagent_stop",
+          ...this.hookScopeFields(ctx.session),
+          sessionId: ctx.session.id,
+          agentId: ctx.agentId,
+          ...(ctx.agentType ? { agentType: ctx.agentType } : {}),
+          description: ctx.description,
+          status: status === "completed" ? "completed" : status === "failed" ? "failed" : "aborted",
+          ...(errorMessage ? { error: errorMessage } : {}),
+          durationMs,
+        },
+        ctx.session,
+      );
       if (ctx.background) {
         // 主回合不等待后台子 Agent：把报告放入父会话上下文，下一次父回合能看到。
         const notice = report
@@ -3131,6 +5035,7 @@ export class AgentRuntime {
         await ctx.session.appendContextNote(notice, "subagent").catch(() => undefined);
         await ctx.session.flush().catch(() => undefined);
       }
+      ctx.child.dropPendingSteers(status === "aborted" ? "aborted" : "completed");
       this.liveSubagents.delete(ctx.agentId);
       await ctx.child.flush().catch(() => undefined);
       await ctx.child.closeSession().catch(() => undefined);
@@ -3233,6 +5138,64 @@ export class AgentRuntime {
     if (!live) return false;
     live.runtime.abort();
     return true;
+  }
+
+  /** 运行中的子 Agent 插话：入队，下一个安全步骤注入；不中止当前工具/流。 */
+  steerSubagent(agentId: string, message: string): void {
+    const session = this.currentSession;
+    if (!session) throw new Error("No active session.");
+    const live = this.liveSubagents.get(agentId);
+    if (!live || live.parentSessionId !== session.id) throw new Error("Subagent not found.");
+    live.runtime.enqueueSteer(message);
+  }
+
+  /** 子 Agent runtime：把一条插话加入当前回合的待注入队列。 */
+  enqueueSteer(text: string): string {
+    const value = text.trim();
+    if (!value) throw new Error("Steer message must not be empty.");
+    if (!this.turnAbort) throw new Error("Subagent is not running.");
+    if (value.length > MAX_STEER_CHARS) {
+      throw new Error(`Steer message is too long (max ${MAX_STEER_CHARS} characters).`);
+    }
+    if (this.pendingSteers.length >= MAX_PENDING_STEERS) {
+      throw new Error(`At most ${MAX_PENDING_STEERS} pending steers per turn.`);
+    }
+    const steer = { id: randomUUID(), text: value };
+    this.pendingSteers.push(steer);
+    this.emit({
+      type: "subagent_steer_queued",
+      sessionId: this.currentSession?.id ?? "",
+      steerId: steer.id,
+      text: steer.text,
+    });
+    return steer.id;
+  }
+
+  /** 模型准备收尾时取一条插话；由 agent-loop 的 takeSteer 钩子调用。 */
+  takeSteer(): string | undefined {
+    const steer = this.pendingSteers.shift();
+    if (!steer) return undefined;
+    this.emit({
+      type: "subagent_steer_delivered",
+      sessionId: this.currentSession?.id ?? "",
+      steerId: steer.id,
+      text: steer.text,
+    });
+    return steer.text;
+  }
+
+  /** 子 Agent 结束/停止时丢弃未送达插话，前端据此清掉 pending 标记。 */
+  dropPendingSteers(reason: "aborted" | "completed"): void {
+    while (this.pendingSteers.length) {
+      const steer = this.pendingSteers.shift()!;
+      this.emit({
+        type: "subagent_steer_dropped",
+        sessionId: this.currentSession?.id ?? "",
+        steerId: steer.id,
+        text: steer.text,
+        reason,
+      });
+    }
   }
 
   /** 用户对一个已结束的子 Agent 继续发消息：恢复子会话并启动新回合。 */
@@ -3392,7 +5355,14 @@ export class AgentRuntime {
     }
 
     if (stage < 1) {
-      const shrunk = shrinkToolOutputs(messages);
+      // 第 0.5 档：投影先行（旧截图/文档滞回裁剪 + 跨轮 thinking 剥离，零信息损失）
+      // ——反正 stage 1 起每档都要改写前缀，投影搭同一班车，可能根本不用走到抽尾。
+      const projected = projectForRequest(messages, provider);
+      if (projected !== messages) {
+        console.error("[meowcode] stage 0.5: projecting old images/documents/thinking (no model call)");
+        return { messages: projected, stage: 1 };
+      }
+      const shrunk = await this.shrinkWithSpill(session, messages);
       if (shrunk.changed) {
         console.error("[meowcode] stage 1: trimming old tool outputs (no model call)");
         return { messages: shrunk.messages, stage: 1 };
@@ -3410,7 +5380,7 @@ export class AgentRuntime {
       }
     }
 
-    if (stage < 2) {
+    if (stage < 2 && this.localCompactionFailures < COMPACTION_FAILURE_LIMIT) {
       const outputs = collectOldToolOutputs(messages, { keepRecentUnits: 2, minChars: 400 });
       if (outputs.length) {
         try {
@@ -3462,7 +5432,10 @@ export class AgentRuntime {
       }
     }
 
-    return { messages: await this.performCompaction(session, provider, messages), stage: 3 };
+    return {
+      messages: await this.performCompaction(session, provider, messages, true),
+      stage: 3,
+    };
   }
 
   /**
@@ -3529,6 +5502,11 @@ export class AgentRuntime {
     session: SessionStore,
     provider: ProviderConfig,
     messages: ChatMessage[],
+    /**
+     * 溢出触发的压缩允许退化为「零模型兜底」；手动压缩不允许 ——
+     * 用户明确要求生成摘要，静默丢历史比报错更糟。
+     */
+    allowEmergency = false,
   ): Promise<ChatMessage[]> {
     this.compactingSession = true;
     const compactionId = randomUUID();
@@ -3542,6 +5520,18 @@ export class AgentRuntime {
     });
     await session.flush().catch(() => undefined);
     this.emit({ type: "compaction_started", sessionId: session.id });
+    this.fireHook(
+      "compaction_start",
+      {
+        hook: "compaction_start",
+        ...this.hookScopeFields(session),
+        sessionId: session.id,
+        compactionId,
+        reason: this.turnAbort ? "overflow" : "manual",
+        messageCount: messages.length,
+      },
+      session,
+    );
     try {
       // 服务端原生压缩优先：Anthropic 直接返回可读摘要，OpenAI 返回加密 item。
       // 不可用（端点不支持/输入低于触发值/连续失败）时静默退回下面的本地摘要。
@@ -3563,6 +5553,13 @@ export class AgentRuntime {
       // 模型压缩后仍能看到刚读过的文件内容与最新报错，减少重复劳动（参考 metis/opencode）。
       // recentKeptMessages 只返回真实落盘条目且按不可拆单元切段，keepRecentMessages
       // 计数与 effectiveMessages 的回放口径严格一致。
+      // 摘要连续失败到上限就不再花请求，直接零模型兜底（熔断）。
+      if (this.localCompactionFailures >= COMPACTION_FAILURE_LIMIT && allowEmergency) {
+        console.error(
+          `[meowcode] local compaction circuit-broken after ${this.localCompactionFailures} failures; dropping oldest history instead`,
+        );
+        return await this.emergencyCompaction(session, provider, compactionId, turnId, messages);
+      }
       const recent = session.recentKeptMessages({
         tokens: COMPACTION_KEEP_RECENT_TOKENS,
         contextWindow: provider.contextWindow,
@@ -3576,9 +5573,10 @@ export class AgentRuntime {
         provider: this.applyCachePolicy(provider, session.id),
         // 复用路径发全量投影对话（与主请求前缀一致）；专用回退路径只发旧前缀
         messages,
-        summaryMessages: messagesToSummarize,
+        summaryMessages: projectForRequest(messagesToSummarize, provider),
         reusePrefix: true,
         systemMessages: this.systemMessages(),
+        neutralizePersona: this.speechPersonaActive,
         tools: this.activeTools,
         signal: this.turnAbort?.signal,
         onUsage: (usage) => {
@@ -3601,6 +5599,7 @@ export class AgentRuntime {
       if (!summary) {
         throw new Error("Context compaction produced an empty summary.");
       }
+      this.localCompactionFailures = 0;
       return await this.commitCompaction(
         session,
         provider,
@@ -3612,19 +5611,91 @@ export class AgentRuntime {
       );
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      await session
-        .appendCompactionEnd({ compactionId, status: "failed", error: message })
-        .catch(() => undefined);
-      await session.flush().catch(() => undefined);
-      this.emit({
-        type: "compaction_failed",
-        sessionId: session.id,
-        message,
-      });
-      throw error;
+      // 中止是用户行为，不是压缩失败：照常收尾并抛出
+      if (isAbortError(error) || !allowEmergency) {
+        await this.failCompaction(session, compactionId, message);
+        throw error;
+      }
+      this.localCompactionFailures += 1;
+      console.error(
+        `[meowcode] compaction failed (${this.localCompactionFailures}/${COMPACTION_FAILURE_LIMIT}): ${message}; dropping oldest history instead of failing the turn`,
+      );
+      try {
+        return await this.emergencyCompaction(session, provider, compactionId, turnId, messages);
+      } catch (fallbackError) {
+        console.error(
+          `[meowcode] emergency compaction failed too: ${
+            fallbackError instanceof Error ? fallbackError.message : String(fallbackError)
+          }`,
+        );
+        await this.failCompaction(session, compactionId, message);
+        throw error;
+      }
     } finally {
       this.compactingSession = false;
     }
+  }
+
+  /** 压缩失败的统一收尾：落一条 failed 状态并广播事件。 */
+  private async failCompaction(
+    session: SessionStore,
+    compactionId: string,
+    message: string,
+  ): Promise<void> {
+    await session
+      .appendCompactionEnd({ compactionId, status: "failed", error: message })
+      .catch(() => undefined);
+    await session.flush().catch(() => undefined);
+    this.emit({
+      type: "compaction_failed",
+      sessionId: session.id,
+      message,
+    });
+    this.fireHook(
+      "compaction_end",
+      {
+        hook: "compaction_end",
+        ...this.hookScopeFields(session),
+        sessionId: session.id,
+        compactionId,
+        status: "failed",
+      },
+      session,
+    );
+  }
+
+  /**
+   * 零模型兜底压缩（参考 codex 的 compact_token_budget：直接换新上下文窗口）。
+   *
+   * 摘要调用失败时不把整轮打死：丢掉最旧的整单元历史，最近 ~16k 逐字保留，
+   * 再照常补计划快照与已碰文件清单。落盘一条说明性摘要，重放时模型能知道
+   * 「历史是被丢弃的，不是被总结的」——否则它会以为自己漏读了什么。
+   */
+  private async emergencyCompaction(
+    session: SessionStore,
+    provider: ProviderConfig,
+    compactionId: string,
+    turnId: string | null,
+    messages: ChatMessage[],
+  ): Promise<ChatMessage[]> {
+    const recent = session.recentKeptMessages({
+      tokens: COMPACTION_KEEP_RECENT_TOKENS,
+      contextWindow: provider.contextWindow,
+    });
+    // 窗口极小时可能一条都留不下；至少保留最后一条，配对由 trimMessages 修复
+    const keep = Math.max(1, recent.length);
+    console.error(
+      `[meowcode] emergency compaction: dropping history without a summary (keeping ${keep} recent messages)`,
+    );
+    return this.commitCompaction(
+      session,
+      provider,
+      compactionId,
+      turnId,
+      HISTORY_DROPPED_SUMMARY,
+      keep,
+      messages,
+    );
   }
 
   /** 从消息里的工具调用提取读写过的文件（去重、按出现顺序），只用于压缩后的路径提示。 */
@@ -3715,11 +5786,20 @@ export class AgentRuntime {
       await session.appendContextNote(
         `Runtime context: files already read or changed before compaction (paths only; re-read if you need contents):\n${list}`,
       );
+      // 基线：这些文件已经「交代过」了，压缩后模型再读一遍说明摘要没兜住
+      this.compactionQuality = {
+        compactionId,
+        paths: new Set(touched.map((item) => this.qualityPathKey(session.cwd, item))),
+        hits: [],
+        turnsLeft: COMPACTION_QUALITY_WINDOW_TURNS,
+      };
     }
     // 压缩前的真实用量已不代表当前上下文，回退到估算，下一次响应再刷新
     this.usageAnchor = null;
     await session.appendCompactionEnd({ compactionId, status: "completed" });
     await session.flush().catch(() => undefined);
+    // 压缩已经改写了历史前缀，这是应用延后工具变动的最便宜时机。
+    this.rebuildToolCatalog("compaction");
     this.emit({
       type: "compaction_completed",
       sessionId: session.id,
@@ -3727,9 +5807,22 @@ export class AgentRuntime {
         summary ||
         "Earlier history was compacted server-side by the provider (encrypted checkpoint; no readable summary).",
     });
+    this.fireHook(
+      "compaction_end",
+      {
+        hook: "compaction_end",
+        ...this.hookScopeFields(session),
+        sessionId: session.id,
+        compactionId,
+        status: "completed",
+        ...(summary ? { summary } : {}),
+        afterTokens: this.getContextUsage().usedTokens,
+      },
+      session,
+    );
     const rebuilt: ChatMessage[] = [
       ...this.systemMessages(),
-      ...projectForRequest(session.effectiveMessages, provider),
+      ...session.effectiveMessages,
     ];
     const toolTokens = estimateToolDefinitionsTokens(this.activeTools);
     const outputTokens = clampOutputTokens(provider, estimateMessagesTokens(rebuilt) + toolTokens);
@@ -3746,29 +5839,37 @@ export class AgentRuntime {
    * 达到占用阈值就启动后台预热压缩：对「近期保留段之前」的旧历史预生成摘要。
    * 不置位 compactingSession、不阻塞回合；生成结果等溢出/需要压缩时一次性消费。
    */
-  private maybeStartCompactionWarmup(session: SessionStore, provider: ProviderConfig): void {
+  private maybeStartCompactionWarmup(
+    session: SessionStore,
+    provider: ProviderConfig,
+    ratio: number = COMPACTION_WARMUP_RATIO,
+  ): void {
     if (!provider.contextWindow || this.warmupCompaction || this.compactingSession) return;
     if (this.warmupFailures >= 2) return;
     const usage = this.getContextUsage();
     if (!usage.contextWindow || usage.source !== "usage") return;
-    const ratio = usage.usedTokens / usage.contextWindow;
-    if (ratio < COMPACTION_WARMUP_RATIO || ratio >= COMPACTION_WARMUP_MAX_RATIO) return;
+    // 软阈值带绝对预留；95% 总量硬闸单独按窗口比值判，不随预留口径移动
+    const warmupAt = compactionTriggerTokens(usage.contextWindow, provider.maxTokens, ratio);
+    if (warmupAt <= 0 || usage.usedTokens < warmupAt) return;
+    if (usage.usedTokens / usage.contextWindow >= COMPACTION_WARMUP_MAX_RATIO) return;
     // 没有可摘要的旧历史（全部都在逐字保留预算内）就不预热
     const recent = session.recentKeptMessages({
       tokens: COMPACTION_KEEP_RECENT_TOKENS,
       contextWindow: provider.contextWindow,
     });
     if (!recent.length) return;
-    const effective = projectForRequest(session.effectiveMessages, provider);
+    // 与正常请求使用同一份未投影历史：复用路径才能命中刚写入的前缀缓存
+    const effective = session.effectiveMessages;
     const prefixLength = Math.max(0, effective.length - recent.length);
     if (prefixLength <= 0) return;
 
     // 稳定快照：摘要输入取自当下落盘的历史，之后新增的消息由 keepRecentMessages 兜住
     const systems = this.systemMessages();
     const prefix = effective.slice(0, prefixLength);
-    // 复用路径发全量投影对话（主请求刚跑过，前缀缓存最热）；回退路径只发旧前缀
-    const fullMessages = [...systems, ...effective];
-    const summaryMessages = [...systems, ...prefix];
+    // 复用路径发与主请求逐字节一致的全量对话（主路径带滞回投影，这里同口径，
+    // 否则摘要请求与主请求前缀字节不一致、读不回刚写入的缓存）；回退路径只发投影后的旧前缀
+    const fullMessages = [...systems, ...projectForMainPath(effective)];
+    const summaryMessages = [...systems, ...projectForRequest(prefix, provider)];
     const controller = new AbortController();
     const warmup: WarmupCompaction = {
       session,
@@ -3790,6 +5891,7 @@ export class AgentRuntime {
           summaryMessages,
           reusePrefix: true,
           systemMessages: systems,
+          neutralizePersona: this.speechPersonaActive,
           tools: this.activeTools,
           signal: controller.signal,
           onUsage: (usage2) => {
@@ -3840,6 +5942,124 @@ export class AgentRuntime {
   }
 
   /**
+   * 缓存保活：回合结束后若人类迟迟不继续，5m TTL 会过期，下一条请求整段冷重写
+   * （1.25×）。空闲 290s 后以 max_tokens=1 重放「system + 工具 + 全量历史」刷新
+   * TTL，读回成本 0.1×，远低于冷重写（aider warm_cache 同款）。
+   *
+   * 纪律：
+   *  - 只服务 anthropic-messages 且断点启用、TTL 5m 的会话（1h 档本来就能扛空档）；
+   *  - 不落盘、不 journal、不广播 usage（与 commit-message/polish 同口径），不污染命中率；
+   *  - 用户发消息 / 换会话 / 换模型 / 中止即取消——任何真实活动都让位。
+   */
+  private keepaliveTimer: ReturnType<typeof setTimeout> | null = null;
+  private keepalivePingsLeft = 0;
+  private keepaliveAbort: AbortController | null = null;
+
+  private scheduleCacheKeepalive(session: SessionStore): void {
+    this.cancelIdleTimers();
+    const provider = this.activeProvider();
+    if ((provider.protocol ?? "openai-chat-completions") !== "anthropic-messages") return;
+    const plan = resolveCachePlan(provider);
+    if (!plan.enabled || plan.ttl !== "5m") return;
+    this.keepalivePingsLeft = CACHE_KEEPALIVE_MAX_PINGS;
+    this.keepaliveTimer = setTimeout(
+      () => void this.runCacheKeepalive(session),
+      CACHE_KEEPALIVE_DELAY_MS,
+    );
+  }
+
+  /**
+   * 任何真实活动（新回合/换会话/换模型/中止）都取消空闲期后台任务（保活 ping +
+   * 空闲压缩）；进行中的 ping 一并中止。两者共享生命周期：都只在「人走开、前缀
+   * 静止」时有意义，任何上下文变化（尤其换模型=换缓存分片）都让旧计划作废。
+   */
+  private cancelIdleTimers(): void {
+    if (this.keepaliveTimer) {
+      clearTimeout(this.keepaliveTimer);
+      this.keepaliveTimer = null;
+    }
+    this.keepaliveAbort?.abort();
+    this.keepaliveAbort = null;
+    if (this.idleCompactionTimer) {
+      clearTimeout(this.idleCompactionTimer);
+      this.idleCompactionTimer = null;
+    }
+  }
+
+  /**
+   * 空闲压缩触发器：回合结束 54min 后仍无活动、占用在 60%–95% 区间时后台预热。
+   * 只对 1h TTL 会话真正省钱（缓存反正要过期）；5m 会话的空档由保活 ping 顶住，
+   * 到不了 54min。重用现有 maybeStartCompactionWarmup，只是阈值放宽到 60%。
+   */
+  private idleCompactionTimer: ReturnType<typeof setTimeout> | null = null;
+
+  private scheduleIdleCompaction(session: SessionStore): void {
+    if (this.idleCompactionTimer) clearTimeout(this.idleCompactionTimer);
+    this.idleCompactionTimer = setTimeout(() => {
+      this.idleCompactionTimer = null;
+      void this.maybeIdleCompaction(session);
+    }, IDLE_COMPACTION_DELAY_MS);
+  }
+
+  private async maybeIdleCompaction(session: SessionStore): Promise<void> {
+    if (this.currentSession !== session || this.turnAbort || this.shuttingDown) return;
+    const provider = this.activeProvider();
+    if (!provider.contextWindow) return;
+    const usage = this.getContextUsage();
+    if (!usage.contextWindow || usage.source !== "usage") return;
+    const ratio = usage.usedTokens / usage.contextWindow;
+    if (ratio < IDLE_COMPACTION_MIN_RATIO || ratio >= COMPACTION_WARMUP_MAX_RATIO) return;
+    this.maybeStartCompactionWarmup(session, provider, IDLE_COMPACTION_MIN_RATIO);
+  }
+
+  private async runCacheKeepalive(session: SessionStore): Promise<void> {
+    this.keepaliveTimer = null;
+    // 期间来了真实活动 / 切走了会话 / 在跑回合：全部让位
+    if (this.currentSession !== session || this.turnAbort || this.shuttingDown) return;
+    if (this.keepalivePingsLeft <= 0) return;
+    const provider = this.activeProvider();
+    if ((provider.protocol ?? "openai-chat-completions") !== "anthropic-messages") return;
+    const plan = resolveCachePlan(provider);
+    if (!plan.enabled || plan.ttl !== "5m") return;
+    const tools = this.ensureToolCatalog().tools;
+    const systems = this.systemMessages();
+    // 与主路径同口径：不带投影的保活请求会和主请求字节不一致，保活反而写不进同一条缓存
+    const messages = [...systems, ...projectForMainPath(session.effectiveMessages)];
+    if (messages.length <= systems.length) return; // 空会话没什么可保
+    this.keepalivePingsLeft -= 1;
+    this.keepaliveAbort = new AbortController();
+    try {
+      await streamChatCompletion({
+        // max_tokens=1：只要它开始吐流，本次请求对缓存的读回就完成了，输出丢弃。
+        // 思考一并关掉：max_tokens=1 装不下 budget_tokens，开着只会吃 400。
+        // purpose 用 main：亲和键与主对话同分片（anthropic 协议不发该字段，仅为口径一致）。
+        provider: this.applyCachePolicy(
+          { ...provider, maxTokens: 1, reasoningEffort: undefined, thinkingBudget: undefined },
+          session.id,
+          "main",
+        ),
+        messages,
+        tools,
+        toolCacheAnchor: this.toolCacheAnchor(),
+        signal: this.keepaliveAbort.signal,
+        onDelta: () => undefined,
+      });
+    } catch {
+      // 端点失败（网络/鉴权/限流）就停止续保：下次真实请求会重新计时
+      this.keepalivePingsLeft = 0;
+      return;
+    } finally {
+      this.keepaliveAbort = null;
+    }
+    if (this.keepalivePingsLeft > 0 && this.currentSession === session && !this.turnAbort) {
+      this.keepaliveTimer = setTimeout(
+        () => void this.runCacheKeepalive(session),
+        CACHE_KEEPALIVE_DELAY_MS,
+      );
+    }
+  }
+
+  /**
    * 回合间隙的主动压缩档：真实用量过 85% 时收一轮上下文，不等溢出。
    * 全程零同步模型请求：
    *  1) 预热摘要已就绪 → 直接采纳落盘（毫秒级，codex take_ready → install）；
@@ -3856,8 +6076,13 @@ export class AgentRuntime {
     if (this.currentSession?.id !== session.id) return;
     const usage = this.getContextUsage();
     if (!usage.contextWindow || usage.source !== "usage") return;
-    const ratio = usage.usedTokens / usage.contextWindow;
-    if (ratio < COMPACTION_PROACTIVE_RATIO || ratio >= COMPACTION_WARMUP_MAX_RATIO) return;
+    const proactiveAt = compactionTriggerTokens(
+      usage.contextWindow,
+      provider.maxTokens,
+      COMPACTION_PROACTIVE_RATIO,
+    );
+    if (proactiveAt <= 0 || usage.usedTokens < proactiveAt) return;
+    if (usage.usedTokens / usage.contextWindow >= COMPACTION_WARMUP_MAX_RATIO) return;
 
     const ready = this.takeReadyWarmup(session);
     if (ready) {
@@ -3919,6 +6144,18 @@ export class AgentRuntime {
     });
     await session.flush().catch(() => undefined);
     this.emit({ type: "compaction_started", sessionId: session.id });
+    this.fireHook(
+      "compaction_start",
+      {
+        hook: "compaction_start",
+        ...this.hookScopeFields(session),
+        sessionId: session.id,
+        compactionId,
+        reason: "warmup",
+        messageCount: session.effectiveMessages.length,
+      },
+      session,
+    );
     const keepRecentMessages = Math.max(0, session.effectiveMessages.length - warmup.prefixLength);
     return this.commitCompaction(
       session,
@@ -3985,53 +6222,80 @@ export class AgentRuntime {
       ? await writableRootViolation(session.cwd, tool, args)
       : null;
     const writableTarget = WRITABLE_ROOT_TOOLS.has(tool) && violation === null;
+    const commandRisk =
+      tool === "run_command" ? assessCommandRisk(String(args.command ?? "")) : undefined;
+    const autoReason = autoApprovalReason(tool, writableTarget, commandRisk);
     if (approvalMode !== "full" && WRITABLE_ROOT_TOOLS.has(tool) && !writableTarget) {
       return reject(
         `Tool ${tool} rejected: ${violation || "the target path"} is outside the workspace. Switch to full-access mode to write outside it.`,
       );
     }
 
+    const forceDeleteConfirm =
+      tool === "run_command" &&
+      shouldConfirmFileDelete() &&
+      isFileDeletionCommand(String(args.command ?? ""));
     let approved = planPaths !== null;
-    if (!approved && approvalMode === "full") {
+    if (!approved && forceDeleteConfirm) {
+      const diff = await previewDiff(tool, args, session.cwd, allowOutsideWorkspace).catch(
+        () => undefined,
+      );
+      approved = await this.awaitApproval(session, call, tool, args, diff, commandRisk, turnId, false);
+      await session.appendApproval(call.id, tool, args, approved, (turnId ? { turnId } : {}));
+    } else if (!approved && approvalMode === "full") {
       approved = true;
-      await session.appendApproval(call.id, tool, args, true, { ...(turnId ? { turnId } : {}) });
-    } else if (!approved && approvalMode === "auto" && writableTarget) {
+      await session.appendApproval(call.id, tool, args, true, (turnId ? { turnId } : {}));
+    } else if (!approved && approvalMode === "auto" && autoReason) {
       approved = true;
       await session.appendApproval(call.id, tool, args, true, {
         ...(turnId ? { turnId } : {}),
-        reason: "writable_root",
+        reason: autoReason,
       });
     } else if (!approved) {
-      const risk =
-        tool === "run_command" ? assessCommandRisk(String(args.command ?? "")) : undefined;
+      const risk = commandRisk;
       const diff = await previewDiff(tool, args, session.cwd, allowOutsideWorkspace).catch(
         () => undefined,
       );
       approved = await this.awaitApproval(session, call, tool, args, diff, risk, turnId, false);
-      await session.appendApproval(call.id, tool, args, approved, {
-        ...(turnId ? { turnId } : {}),
-      });
+      await session.appendApproval(call.id, tool, args, approved, (turnId ? { turnId } : {}));
     }
     if (!approved) return reject("User denied this tool call.");
 
     const reviewCaptures = WRITABLE_ROOT_TOOLS.has(tool)
       ? await captureBeforeAll(session.cwd, tool, args, allowOutsideWorkspace)
       : [];
-    const result = await executeTool(tool, args, session.cwd, {
-      allowOutsideWorkspace,
-      signal: this.turnAbort?.signal,
-      vision: this.toolVisionEnabled(),
-      shrinkImage: this.imageShrinker(),
-      // 不把宿主桥再传下去：防止 run_code → run_code 的递归
-    });
+    // 快照打点（写前）：state 记下「磁盘此刻」；写失败时 noteAfter 不会被调用，state 保持 before
+    const snapshotTargets: SnapshotTarget[] = reviewCaptures.map((capture) => ({
+      path: capture.target,
+      file: capture.file,
+    }));
+    await this.snapshotFor(session)?.noteBefore(snapshotTargets);
+    const result = await this.runToolWithSandboxEscape(
+      session,
+      call,
+      tool,
+      args,
+      turnId,
+      (sandbox) =>
+        executeTool(tool, args, session.cwd, {
+          allowOutsideWorkspace,
+          signal: this.turnAbort?.signal,
+          vision: this.toolVisionEnabled(),
+          shrinkImage: this.imageShrinker(),
+          sandbox,
+          // 不把宿主桥再传下去：防止 run_code → run_code 的递归
+        }),
+    );
     if (result.ok) await this.noteMutatedPath(session, tool, args);
     if (result.ok && reviewCaptures.length) {
+      await this.snapshotFor(session)?.noteAfter(snapshotTargets);
       const operation: "write_file" | "edit_file" =
         tool === "write_file" ? "write_file" : "edit_file";
       for (const capture of reviewCaptures) {
         const diff = await buildFileChangeDiff(tool, args, capture);
         if (!diff) continue;
         await session.appendFileChange(capture.target, operation, diff);
+        this.turnFileChanges.add(capture.target);
         this.emit({
           type: "file_changed",
           sessionId: session.id,
@@ -4108,16 +6372,22 @@ export class AgentRuntime {
       return;
     }
 
-    // 插件 hook：tool_call（可 block / 改写执行参数）。blocked → 不执行，原因作为工具结果返回；
+    // 插件 hook：tool_call（可 block / ask / 改写执行参数）。blocked → 不执行，原因作为工具结果返回；
     // 改写只影响本次执行，tool_started / 会话审计仍记录模型原始参数。
-    const toolCallHook = await runHook(this.plugins, "tool_call", {
-      hook: "tool_call",
-      sessionId: session.id,
-      callId: call.id,
-      tool,
-      // validated.ok 时必为 JSON object（validateToolArguments 保证）
-      input: input as Record<string, unknown>,
-    });
+    const toolCallHook = await runHook(
+      this.plugins,
+      "tool_call",
+      {
+        hook: "tool_call",
+        sessionId: session.id,
+        callId: call.id,
+        tool,
+        // validated.ok 时必为 JSON object（validateToolArguments 保证）
+        input: input as Record<string, unknown>,
+        ...this.hookScopeFields(session),
+      },
+      this.hookContext(session, this.turnAbort?.signal),
+    );
     if (toolCallHook?.block) {
       const output = toolCallHook.reason
         ? `Tool call blocked by plugin: ${toolCallHook.reason}`
@@ -4132,7 +6402,27 @@ export class AgentRuntime {
       this.emit({ type: "tool_finished", sessionId: session.id, callId: call.id, ok: false });
       return;
     }
-    if (toolCallHook?.input) input = toolCallHook.input;
+    const hookAsk = toolCallHook?.permission === "ask";
+    const hookReason = hookAsk
+      ? toolCallHook.reason ?? "The PreToolUse hook requests approval."
+      : undefined;
+    if (toolCallHook?.input) {
+      // hook 改写后的参数必须重新校验，防止把非法/越界参数直接送进执行器。
+      const revalidated = validateToolArguments(tool, JSON.stringify(toolCallHook.input));
+      if (!revalidated.ok) {
+        const output = `Tool call rejected: hook returned invalid arguments (${revalidated.error})`;
+        await this.pushToolMessage(session, messages, {
+          role: "tool",
+          content: output,
+          tool_call_id: call.id,
+          name: tool,
+        });
+        this.emit({ type: "tool_output", sessionId: session.id, callId: call.id, output, truncated: false });
+        this.emit({ type: "tool_finished", sessionId: session.id, callId: call.id, ok: false });
+        return;
+      }
+      input = revalidated.input;
+    }
 
     // ask_user 是"等待用户回答"的虚拟工具：emit 问题卡片并挂起回合，回答文本作为工具结果。
     // 与审批同构（await pending promise），plan/只读模式同样可用（纯交互、零副作用）。
@@ -4234,7 +6524,54 @@ export class AgentRuntime {
     }
 
     if (tool === "task") {
-      const result = await this.runSubagentTask(session, call, input);
+      if (hookAsk) {
+        const decision = await this.approveHookAsk(session, call, tool, input, turnId, hookReason);
+        if (!decision.approved) {
+          const output = decision.output ?? "User denied this tool call.";
+          await this.pushToolMessage(session, messages, {
+            role: "tool",
+            content: output,
+            tool_call_id: call.id,
+            name: tool,
+          });
+          this.emit({ type: "tool_output", sessionId: session.id, callId: call.id, output, truncated: false });
+          this.emit({ type: "tool_finished", sessionId: session.id, callId: call.id, ok: false });
+          return;
+        }
+      }
+      const taskStartedAt = Date.now();
+      this.fireHook(
+        "tool_execution_start",
+        {
+          hook: "tool_execution_start",
+          ...this.hookScopeFields(session),
+          sessionId: session.id,
+          callId: call.id,
+          tool,
+          input: hookInput(input),
+          startedAt: taskStartedAt,
+        },
+        session,
+        this.turnAbort?.signal,
+      );
+      const taskResult = await this.runSubagentTask(session, call, input);
+      this.fireHook(
+        "tool_execution_end",
+        {
+          hook: "tool_execution_end",
+          ...this.hookScopeFields(session),
+          sessionId: session.id,
+          callId: call.id,
+          tool,
+          input: hookInput(input),
+          output: taskResult.output,
+          ok: taskResult.ok,
+          durationMs: Date.now() - taskStartedAt,
+        },
+        session,
+        this.turnAbort?.signal,
+      );
+      const result = await this.applyToolResultHook(session, call.id, tool, input, taskResult);
       const truncated = truncateOutput(result.output);
       await this.pushToolMessage(session, messages, {
         role: "tool",
@@ -4254,6 +6591,21 @@ export class AgentRuntime {
     }
 
     if (tool === "update_plan") {
+      if (hookAsk) {
+        const decision = await this.approveHookAsk(session, call, tool, input, turnId, hookReason);
+        if (!decision.approved) {
+          const output = decision.output ?? "User denied this tool call.";
+          await this.pushToolMessage(session, messages, {
+            role: "tool",
+            content: output,
+            tool_call_id: call.id,
+            name: tool,
+          });
+          this.emit({ type: "tool_output", sessionId: session.id, callId: call.id, output, truncated: false });
+          this.emit({ type: "tool_finished", sessionId: session.id, callId: call.id, ok: false });
+          return;
+        }
+      }
       const validation = validatePlanInput(input);
       let output: string;
       if (validation.ok) {
@@ -4269,14 +6621,24 @@ export class AgentRuntime {
       } else {
         output = validation.error;
       }
+      const result = await this.applyToolResultHook(session, call.id, tool, input, {
+        output,
+        ok: validation.ok,
+      });
       await this.pushToolMessage(session, messages, {
         role: "tool",
-        content: output,
+        content: result.output,
         tool_call_id: call.id,
         name: tool,
       });
-      this.emit({ type: "tool_output", sessionId: session.id, callId: call.id, output, truncated: false });
-      this.emit({ type: "tool_finished", sessionId: session.id, callId: call.id, ok: validation.ok });
+      this.emit({
+        type: "tool_output",
+        sessionId: session.id,
+        callId: call.id,
+        output: result.output,
+        truncated: false,
+      });
+      this.emit({ type: "tool_finished", sessionId: session.id, callId: call.id, ok: result.ok });
       return;
     }
 
@@ -4356,6 +6718,8 @@ export class AgentRuntime {
     }
 
     let approved = !requiresApproval || planPaths !== null;
+    // hook 明确要求人工确认：即使 auto 自动批准或 full 模式也强制走审批
+    if (hookAsk) approved = false;
     if (
       approvalMode === "read-only" &&
       planPaths === null &&
@@ -4377,6 +6741,11 @@ export class AgentRuntime {
       ? await writableRootViolation(session.cwd, tool, input)
       : null;
     const writableTarget = WRITABLE_ROOT_TOOLS.has(tool) && violation === null;
+    const commandRisk =
+      tool === "run_command"
+        ? assessCommandRisk(String(((input ?? {}) as Record<string, unknown>).command ?? ""))
+        : undefined;
+    const autoReason = autoApprovalReason(tool, writableTarget, commandRisk);
     if (approvalMode !== "full" && WRITABLE_ROOT_TOOLS.has(tool) && !writableTarget) {
       const target = violation || "the target path";
       const output = `Tool ${tool} rejected: ${target} is outside the workspace. Switch to full-access mode to write outside it.`;
@@ -4391,24 +6760,31 @@ export class AgentRuntime {
       return;
     }
 
-    if (!approved && approvalMode === "full") {
+    const forceDeleteConfirm =
+      tool === "run_command" &&
+      shouldConfirmFileDelete() &&
+      isFileDeletionCommand(
+        String(((input ?? {}) as Record<string, unknown>).command ?? ""),
+      );
+    if (!approved && forceDeleteConfirm) {
+      const diff = await previewDiff(tool, input, session.cwd, allowOutsideWorkspace).catch(
+        () => undefined,
+      );
+      approved = await this.awaitApproval(session, call, tool, input, diff, commandRisk, turnId, false);
+      await session.appendApproval(call.id, tool, input, approved, (turnId ? { turnId } : {}));
+    } else if (!approved && approvalMode === "full" && !hookAsk) {
       // 完全访问：不弹审批直接放行，仍写一条 approved 记录到会话文件留痕
       approved = true;
-      await session.appendApproval(call.id, tool, input, true, {
-        ...(turnId ? { turnId } : {}),
-      });
-    } else if (!approved && approvalMode === "auto" && writableTarget) {
-      // codex 式：可写根内的写/改自动批准；越界路径与命令仍然走审批
+      await session.appendApproval(call.id, tool, input, true, (turnId ? { turnId } : {}));
+    } else if (!approved && approvalMode === "auto" && autoReason && !hookAsk) {
+      // codex 式：可写根内的写/改与常规命令自动批准；越界路径与高危命令仍然走审批
       approved = true;
       await session.appendApproval(call.id, tool, input, true, {
         ...(turnId ? { turnId } : {}),
-        reason: "writable_root",
+        reason: autoReason,
       });
     } else if (!approved) {
-      const risk =
-        tool === "run_command"
-          ? assessCommandRisk(String(((input ?? {}) as Record<string, unknown>).command ?? ""))
-          : undefined;
+      const risk = commandRisk;
       // 审批预览与真正落盘之间隔着用户思考的时间：先记下目标文件版本，批准后再比对。
       const targets = WRITABLE_ROOT_TOOLS.has(tool)
         ? await this.approvalTargetFiles(session, tool, input)
@@ -4418,7 +6794,22 @@ export class AgentRuntime {
       let diff = await previewDiff(tool, input, session.cwd, allowOutsideWorkspace).catch(
         () => undefined,
       );
-      approved = await this.awaitApproval(session, call, tool, input, diff, risk, turnId, false);
+      const decision = await this.awaitApprovalWithPermissionHooks(
+        session,
+        call,
+        tool,
+        input,
+        diff,
+        risk,
+        turnId,
+        hookReason,
+      );
+      approved = decision.approved;
+      const byHook = decision.byHook;
+      const hookDeniedReason =
+        !approved && byHook
+          ? decision.reason ?? "denied by PermissionRequest hook"
+          : undefined;
 
       let rechecked = false;
       if (approved && targets.length) {
@@ -4430,7 +6821,17 @@ export class AgentRuntime {
           diff = await previewDiff(tool, input, session.cwd, allowOutsideWorkspace).catch(
             () => undefined,
           );
-          approved = await this.awaitApproval(session, call, tool, input, diff, risk, turnId, true);
+          approved = await this.awaitApproval(
+            session,
+            call,
+            tool,
+            input,
+            diff,
+            risk,
+            turnId,
+            true,
+            hookReason,
+          );
           if (approved) {
             const settled = await Promise.all(targets.map((file) => captureVersion(file)));
             if (settled.some((version, index) => version !== current[index])) {
@@ -4462,8 +6863,30 @@ export class AgentRuntime {
       }
       await session.appendApproval(call.id, tool, input, approved, {
         ...(turnId ? { turnId } : {}),
-        ...(rechecked ? { reason: "stale_rechecked" } : {}),
+        ...(rechecked
+          ? { reason: "stale_rechecked" }
+          : byHook
+            ? { reason: "permission_request_hook" }
+            : {}),
       });
+      if (hookDeniedReason) {
+        const output = `Permission denied by hook: ${hookDeniedReason}`;
+        await this.pushToolMessage(session, messages, {
+          role: "tool",
+          content: output,
+          tool_call_id: call.id,
+          name: tool,
+        });
+        this.emit({
+          type: "tool_output",
+          sessionId: session.id,
+          callId: call.id,
+          output,
+          truncated: false,
+        });
+        this.emit({ type: "tool_finished", sessionId: session.id, callId: call.id, ok: false });
+        return;
+      }
     }
 
     if (!approved) {
@@ -4497,8 +6920,14 @@ export class AgentRuntime {
         allowOutsideWorkspace,
       );
       if (stub) {
+        // 命中占位本身也是「模型想再读一次」的信号，计入压缩质量观测
+        this.noteReadTarget(session, tool, input);
         const loopNote = this.noteLoopResult(session, tool, input, stub);
-        const output = loopNote ? `${stub}\n\n${loopNote}` : stub;
+        const result = await this.applyToolResultHook(session, call.id, tool, input, {
+          output: stub,
+          ok: true,
+        });
+        const output = loopNote ? `${result.output}\n\n${loopNote}` : result.output;
         await this.pushToolMessage(session, messages, {
           role: "tool",
           content: output,
@@ -4512,7 +6941,7 @@ export class AgentRuntime {
           output,
           truncated: false,
         });
-        this.emit({ type: "tool_finished", sessionId: session.id, callId: call.id, ok: true });
+        this.emit({ type: "tool_finished", sessionId: session.id, callId: call.id, ok: result.ok });
         return;
       }
     }
@@ -4522,13 +6951,14 @@ export class AgentRuntime {
       // 拆成紧随的 user 消息，不再丢图）。
       const provider = this.activeProvider();
       const keepImages = (provider.inputModalities ?? []).includes("image");
-      const result = this.browserHost
+      let result = this.browserHost
         ? await executeBrowserTool(tool, input, this.browserHost, { keepImages }, this.turnAbort?.signal)
         : {
             ok: false,
             output: "Browser tools are unavailable: the desktop browser host is not connected.",
             images: undefined,
           };
+      result = await this.applyToolResultHook(session, call.id, tool, input, result);
       await this.pushToolMessage(session, messages, {
         role: "tool",
         content: result.output,
@@ -4542,6 +6972,7 @@ export class AgentRuntime {
         callId: call.id,
         output: result.output,
         truncated: result.truncated ?? result.output.length > 20000,
+        ...(result.spilled ? { spilled: result.spilled } : {}),
       });
       this.emit({ type: "tool_finished", sessionId: session.id, callId: call.id, ok: result.ok });
       return;
@@ -4555,31 +6986,78 @@ export class AgentRuntime {
     // 审阅页签只有 write_file / edit_file 两种操作，批量编辑归入 edit_file
     const reviewOperation: "write_file" | "edit_file" =
       tool === "write_file" ? "write_file" : "edit_file";
+    // 快照打点（写前）：state 记下「磁盘此刻」；写失败时 noteAfter 不会被调用，state 保持 before
+    const snapshotTargets: SnapshotTarget[] = reviewCaptures.map((capture) => ({
+      path: capture.target,
+      file: capture.file,
+    }));
+    await this.snapshotFor(session)?.noteBefore(snapshotTargets);
 
-    let result = await executeTool(tool, input, session.cwd, {
-      allowOutsideWorkspace,
-      signal: this.turnAbort?.signal,
-      vision: this.toolVisionEnabled(),
-      pdfDocuments: this.toolPdfEnabled(),
-      shrinkImage: this.imageShrinker(),
-      // run_code 的 meow.write/edit/multiEdit/run 走宿主审批链（同一次调用内可多次触发）
-      hostToolBridge: (bridgeTool, bridgeArgs) =>
-        this.runCodeHostTool(session, call.id, bridgeTool, bridgeArgs),
-    });
-    // 插件 hook：tool_result（可改写 output/ok，链式累积）。只覆盖普通工具分支；
-    // task / update_plan / browser_* 走各自的提前 return，第一版不经过此 hook。
-    const toolResultHook = await runHook(this.plugins, "tool_result", {
-      hook: "tool_result",
-      sessionId: session.id,
-      callId: call.id,
+    const execStartedAt = Date.now();
+    this.fireHook(
+      "tool_execution_start",
+      {
+        hook: "tool_execution_start",
+        ...this.hookScopeFields(session),
+        sessionId: session.id,
+        callId: call.id,
+        tool,
+        input: hookInput(input),
+        startedAt: execStartedAt,
+      },
+      session,
+      this.turnAbort?.signal,
+    );
+    let result = await this.runToolWithSandboxEscape(
+      session,
+      call,
       tool,
-      output: result.output,
-      ok: result.ok,
-      ...(result.truncated !== undefined ? { truncated: result.truncated } : {}),
-    });
-    if (toolResultHook) {
-      if (typeof toolResultHook.output === "string") result = { ...result, output: toolResultHook.output };
-      if (typeof toolResultHook.ok === "boolean") result = { ...result, ok: toolResultHook.ok };
+      input,
+      turnId,
+      (sandbox) =>
+        executeTool(tool, input, session.cwd, {
+          allowOutsideWorkspace,
+          signal: this.turnAbort?.signal,
+          vision: this.toolVisionEnabled(),
+          pdfDocuments: this.toolPdfEnabled(),
+          shrinkImage: this.imageShrinker(),
+          // 批量读复用已读区间：整份读过的文件只回一行占位
+          readCoverage: (target) =>
+            this.loopGuard.fullyCovered(session.cwd, messages, target, allowOutsideWorkspace),
+          // run_code 的 meow.write/edit/multiEdit/run 走宿主审批链（同一次调用内可多次触发）
+          hostToolBridge: (bridgeTool, bridgeArgs) =>
+            this.runCodeHostTool(session, call.id, bridgeTool, bridgeArgs),
+          sandbox,
+        }),
+    );
+    this.fireHook(
+      "tool_execution_end",
+      {
+        hook: "tool_execution_end",
+        ...this.hookScopeFields(session),
+        sessionId: session.id,
+        callId: call.id,
+        tool,
+        input: hookInput(input),
+        output: result.output,
+        ok: result.ok,
+        durationMs: Date.now() - execStartedAt,
+      },
+      session,
+      this.turnAbort?.signal,
+    );
+    // 插件 hook：tool_result（可改写 output/ok，链式累积）。
+    result = await this.applyToolResultHook(session, call.id, tool, input, result);
+    // 已读区间部分覆盖：只回未读过的尾部（执行便宜，重复正文才是成本）
+    if (tool === "read_file" && result.ok && result.readRange && !result.images?.length) {
+      const trimmed = await this.trimCoveredRead(
+        session,
+        messages,
+        input,
+        result.output,
+        allowOutsideWorkspace,
+      );
+      if (trimmed) result = { ...result, output: trimmed };
     }
     // 写成功就标记：下一轮 @ 同一文件时不能再用"已读"占位（内容是旧的）
     if (result.ok) await this.noteMutatedPath(session, tool, input);
@@ -4592,10 +7070,12 @@ export class AgentRuntime {
       });
     }
     if (result.ok && reviewCaptures.length) {
+      await this.snapshotFor(session)?.noteAfter(snapshotTargets);
       for (const capture of reviewCaptures) {
         const diff = await buildFileChangeDiff(tool, input, capture);
         if (!diff) continue;
         await session.appendFileChange(capture.target, reviewOperation, diff);
+        this.turnFileChanges.add(capture.target);
         this.emit({
           type: "file_changed",
           sessionId: session.id,
@@ -4611,6 +7091,15 @@ export class AgentRuntime {
     }
     // 验证闭环：写成功后自动跑验证命令，失败反馈附加到工具回执（模型同回合修复）
     let toolOutput = result.output;
+    // 跨回合结果去重：同工具同参数同输出且旧结果仍可见 → 一行占位
+    const deduped = this.loopGuard.dedupeRepeatedResult(
+      tool,
+      input,
+      result.output,
+      call.id,
+      messages,
+    );
+    if (deduped) toolOutput = deduped;
     // 循环登记（P1-2）：参数+输出双一致才计数，提醒附加到回执末尾
     const loopNote = this.noteLoopResult(session, tool, input, result.output);
     if (loopNote) toolOutput = `${toolOutput}\n\n${loopNote}`;
@@ -4627,7 +7116,19 @@ export class AgentRuntime {
       ...(result.documents?.length ? { documents: result.documents } : {}),
     });
     if (tool === "read_file" && result.ok && !result.images?.length) {
-      await this.rememberReadVersion(session, call.id, input, allowOutsideWorkspace);
+      await this.rememberReadRange(
+        session,
+        call.id,
+        input,
+        result.readRange,
+        allowOutsideWorkspace,
+      );
+    }
+    // 批量读逐文件登记：之后 read_file 同一文件可以直接命中区间
+    if (tool === "read_many" && result.ok && result.readRanges?.length) {
+      for (const range of result.readRanges) {
+        await this.rememberReadRangeAt(session, call.id, range.path, range, allowOutsideWorkspace);
+      }
     }
     const truncated = result.truncated ?? toolOutput.length > 20000;
     this.emit({
@@ -4654,35 +7155,104 @@ export class AgentRuntime {
     try {
       const targets = writablePaths(tool, input);
       if (!targets.length) return null;
+      // 用户已中止回合：中止不算验证结果，不回灌任何反馈
+      if (this.turnAbort?.signal.aborted) return null;
       const config = await loadVerifyConfig(session.cwd);
-      if (!config.include.length) return null;
+      const absoluteTargets = targets.map((target) =>
+        path.isAbsolute(target) ? path.resolve(target) : path.resolve(session.cwd, target),
+      );
       const hit = targets.some((target) =>
         config.include.includes(path.extname(target).replace(/^\./, "").toLowerCase()),
       );
-      if (!hit) return null;
-      if (!config.commands.length) return null;
-      // 用户已中止回合：中止不算验证结果，不回灌任何反馈
+      const verifyEnabled =
+        config.include.length > 0 && config.commands.length > 0 && hit;
+
+      // LSP 与命令式 verify 并行：单文件语义诊断快，tsc 仍负责跨文件破坏
+      const lspPromise = (async () => {
+        try {
+          return await getLspManager().diagnose({
+            cwd: session.cwd,
+            files: absoluteTargets,
+            signal: this.turnAbort?.signal,
+            timeoutMs: 6_000,
+          });
+        } catch (error) {
+          console.warn(
+            `[meowcode] lsp diagnostics skipped: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+          );
+          return null;
+        }
+      })();
+      const verifyPromise = verifyEnabled
+        ? runVerification(config, session.cwd, this.turnAbort?.signal)
+        : Promise.resolve(null);
+      const [lspResult, verification] = await Promise.all([lspPromise, verifyPromise]);
       if (this.turnAbort?.signal.aborted) return null;
 
-      const verification = await runVerification(config, session.cwd, this.turnAbort?.signal);
-      if (!verification.ran || verification.passed) return null;
-
-      const failedIds = verification.steps
-        .filter((step) => !step.passed)
-        .map((step) => step.id)
-        .join(", ");
-      if (this.verifyFailuresThisTurn >= config.maxFeedbackPerTurn) {
-        return [
-          `--- auto-verify: ${failedIds} FAILED ---`,
-          `Automatic fix-and-retry feedback is disabled for this turn (limit of ${config.maxFeedbackPerTurn} reached) to avoid an endless loop. Do NOT keep editing silently.`,
-          "Finish your turn now and honestly tell the user that the changes do not pass verification, including the first error message.",
-        ].join("\n");
+      const parts: string[] = [];
+      let lspFeedback: string | null = null;
+      if (lspResult?.diagnostics.length && this.lspFeedbackThisTurn < 2) {
+        // verify 的 tsc 已报过的同一行不再重复回灌
+        const seen = new Set<string>();
+        for (const step of verification?.steps ?? []) {
+          if (step.passed) continue;
+          for (const diagnostic of parseTscErrors(step.output)) {
+            seen.add(
+              `${displayPath(session.cwd, diagnostic.file)}|${diagnostic.line}|${
+                diagnostic.col
+              }|${diagnostic.code}`,
+            );
+          }
+        }
+        lspFeedback = formatLspFeedback(
+          lspResult,
+          session.cwd,
+          (diagnostic) =>
+            !seen.has(
+              `${displayPath(session.cwd, diagnostic.file)}|${diagnostic.line}|${
+                diagnostic.column
+              }|${diagnostic.code ?? ""}`,
+            ),
+        );
+        if (lspFeedback) {
+          this.lspFeedbackThisTurn += 1;
+          parts.push(lspFeedback);
+        }
       }
-      this.verifyFailuresThisTurn += 1;
-      return verification.feedback ?? null;
+
+      if (verification?.ran && !verification.passed) {
+        const failedIds = verification.steps
+          .filter((step) => !step.passed)
+          .map((step) => step.id)
+          .join(", ");
+        if (this.verifyFailuresThisTurn >= config.maxFeedbackPerTurn) {
+          parts.push(
+            [
+              `--- auto-verify: ${failedIds} FAILED ---`,
+              `Automatic fix-and-retry feedback is disabled for this turn (limit of ${config.maxFeedbackPerTurn} reached) to avoid an endless loop. Do NOT keep editing silently.`,
+              "Finish your turn now and honestly tell the user that the changes do not pass verification, including the first error message.",
+            ].join("\n"),
+          );
+        } else {
+          this.verifyFailuresThisTurn += 1;
+          if (verification.feedback) parts.push(verification.feedback);
+        }
+      }
+
+      // verify 的 feedback 自带指令行；只有 LSP 单独命中时补一行
+      if (lspFeedback && !verification?.feedback) {
+        parts.push(
+          "[Automatic verification feedback. Fix these errors in this turn before finishing.]",
+        );
+      }
+      return parts.length ? parts.join("\n\n") : null;
     } catch (error) {
       console.warn(
-        `[meowcode] post-write verification skipped: ${error instanceof Error ? error.message : String(error)}`,
+        `[meowcode] post-write verification skipped: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
       );
       return null;
     }
@@ -4721,6 +7291,53 @@ export class AgentRuntime {
     return message;
   }
 
+  /**
+   * 工具批次结束后注入所有待送达插话：落盘 + 追加进工作上下文，再广播 delivered。
+   * 与 takeSteer 分开：这里一次送达一批，takeSteer 只用于无工具调用的收尾路径。
+   */
+  private async flushPendingSteers(
+    session: SessionStore,
+    messages: ChatMessage[],
+  ): Promise<void> {
+    while (this.pendingSteers.length) {
+      const steer = this.pendingSteers.shift()!;
+      await this.pushUserMessage(session, messages, steer.text);
+      this.emit({
+        type: "subagent_steer_delivered",
+        sessionId: session.id,
+        steerId: steer.id,
+        text: steer.text,
+      });
+    }
+  }
+
+  /**
+   * user 消息落盘并追加进工作上下文。turn_stop 拦截后续跑用：
+   * 落盘保证重启/回放后续跑历史完整；与 pushToolMessage 同一套失败降级
+   * （写盘失败只告警，内存照常带上，不能让模型觉得拦截理由没送达）。
+   */
+  private async pushUserMessage(
+    session: SessionStore,
+    messages: ChatMessage[],
+    content: string,
+  ): Promise<void> {
+    const message: Extract<ChatMessage, { role: "user" }> = { role: "user", content };
+    try {
+      await session.appendMessage(message);
+      await session.flush();
+    } catch (error) {
+      console.error(
+        `[meowcode] failed to journal stop-hook message: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      this.emit({
+        type: "error",
+        sessionId: session.id,
+        message: "Stop hook 的续跑指令写入会话记录失败，重启后该指令可能缺失。",
+      });
+    }
+    messages.push(message);
+  }
+
   /** 老会话/异常中止后，确保当前计划在有效历史里可见（工具结果或压缩后的 note）。 */
   private async ensurePlanContext(session: SessionStore): Promise<void> {    const plan = session.currentPlan;
     if (!plan?.steps.length) return;
@@ -4736,23 +7353,109 @@ export class AgentRuntime {
     );
   }
 
-  /** 稳定系统提示 + 当前工作区规则；两者都放在消息开头，前缀可复用。 */
+  /**
+   * 稳定系统提示 + 当前工作区规则；两者都放在消息开头，前缀可复用。模式指令走 in-history 尾注（ensureModeContext）。
+   *
+   * 返回值按会话缓存对象引用：Responses 增量链靠「消息对象引用相等」判断前缀可复用
+   * （runtime 里 chain.sentRefs 的恒等检查），这里每次新建字面量会让链在每个用户回合
+   * 开头失效、退回全量重发。内容不变就复用同一对象（codex 增量复用同纪律）；
+   * 提示词/指令/会话任一变化即换新对象——内容反正变了，缓存本来就要重写。
+   */
+  private systemMessagesCache: {
+    sessionId: string;
+    prompt: string;
+    instructions: string | null;
+    style: string | null;
+    messages: ChatMessage[];
+  } | null = null;
+
+  /** 语色只作用于用户可见的根/侧边 runtime；子 Agent 显式提示词必须保持机器契约中性。 */
+  private get speechPersonaActive(): boolean {
+    return !this.customSystemPrompt && this.speechStyle !== "normal";
+  }
+
   private systemMessages(): ChatMessage[] {
-    const system: ChatMessage = { role: "system", content: this.effectiveSystemPrompt };
-    const messages: ChatMessage[] = this.instructions
-      ? [system, { role: "system", content: this.instructions }]
-      : [system];
-    // 模式指令追加在最后：稳定前缀（主提示词 + 工作区说明）不动，切换模式只多一条尾部消息
-    const mode = this.turnChatMode ?? this.chatMode;
-    if (mode === "plan") messages.push({ role: "system", content: PLAN_MODE_PROMPT });
-    if (mode === "goal") messages.push({ role: "system", content: GOAL_MODE_PROMPT });
+    const prompt = this.effectiveSystemPrompt;
+    const instructions = this.instructions ?? null;
+    const style = this.speechPersonaActive ? speechStylePrompt(this.speechStyle) : null;
+    const sessionId = this.currentSession?.id ?? "";
+    const cached = this.systemMessagesCache;
+    if (
+      cached &&
+      cached.sessionId === sessionId &&
+      cached.prompt === prompt &&
+      cached.instructions === instructions &&
+      cached.style === style
+    ) {
+      return cached.messages;
+    }
+    const system: ChatMessage = { role: "system", content: prompt };
+    const instructionsMessage: ChatMessage | null = instructions
+      ? { role: "system", content: instructions }
+      : null;
+    const messages: ChatMessage[] = instructionsMessage ? [system, instructionsMessage] : [system];
+    if (style) messages.push({ role: "system", content: style });
+    this.systemMessagesCache = sessionId ? { sessionId, prompt, instructions, style, messages } : null;
     return messages;
   }
 
+  /** MCP 工具注册完成前不发首个模型请求；10s 上限兜底 MCP 卡死（mcpReady 永远 resolve，race 只是保险）。 */
+  private async awaitMcpReadyOnce(): Promise<void> {
+    if (this.mcpWaited) return;
+    this.mcpWaited = true;
+    if (!this.mcpReady) return;
+    await Promise.race([
+      this.mcpReady,
+      new Promise<void>((resolve) => {
+        const timer = setTimeout(resolve, 10_000) as { unref?: () => void };
+        timer.unref?.();
+      }),
+    ]);
+  }
+
+  /** 模式指令挂成 in-history 尾注：切换只追加、不改前缀；压缩后历史里找不到会重挂一条。 */
+  private async ensureModeContext(session: SessionStore): Promise<void> {
+    const mode = this.turnChatMode ?? this.chatMode;
+    if (mode !== "plan" && mode !== "goal") return;
+    const prefix = `${MODE_NOTE_PREFIX} ${mode}`;
+    const visible = session.effectiveMessages.some(
+      (message) => message.role === "user" && typeof message.content === "string" && message.content.startsWith(prefix),
+    );
+    if (visible) return;
+    const prompt = mode === "plan" ? PLAN_MODE_PROMPT : GOAL_MODE_PROMPT;
+    await session.appendContextNote(`${prefix} (supersedes earlier mode notes):\n${prompt}`);
+  }
+
+  /** AGENTS.md 会话级快照：每个会话只读一次；中途修改不生效，重开会话重新加载（避免换掉 system[1] 字节整段重算）。 */
   private async refreshInstructions(session: SessionStore): Promise<void> {
-    this.instructions = this.injectInstructions
-      ? await loadWorkspaceInstructions(session.cwd, this.homeDir)
+    if (this.instructionsSessionId === session.id) return;
+    this.instructionsSessionId = session.id;
+    const detail = this.injectInstructions
+      ? await loadWorkspaceInstructionsDetail(
+          session.cwd,
+          this.homeDir,
+          this.instructionSettings,
+        )
       : undefined;
+    this.instructions = detail?.text;
+    this.instructionSkills = {
+      tokens: detail?.skillIndex ? estimateTokens(detail.skillIndex) : 0,
+      count: detail?.skillCount ?? 0,
+    };
+  }
+
+  /** 设置页切换 AGENTS.md / CLAUDE.md 开关：清掉快照，下一轮重新读取。 */
+  setInstructionSettings(settings: InstructionSettings): void {
+    this.instructionSettings = { ...settings };
+    this.invalidateInstructions();
+  }
+
+  /** 规则文件增删改后调用：下一轮重新读取 instructions，但不影响当前正在流式的一轮。 */
+  invalidateInstructions(): void {
+    this.instructionsSessionId = null;
+    this.instructions = undefined;
+    this.instructionSkills = { tokens: 0, count: 0 };
+    this.systemMessagesCache = null;
   }
 
   /**
@@ -4814,7 +7517,12 @@ export class AgentRuntime {
   }
 
   private activeProvider(): ProviderConfig {
-    const provider = this.providers.find((item) => item.id === this.providerId) ?? this.providers[0];
+    const configured = this.providers.find((item) => item.id === this.providerId);
+    // 配置里的激活项被停用时，引擎与 UI 一起落到第一个启用的模型
+    const provider =
+      configured && configured.enabled !== false
+        ? configured
+        : (this.providers.find((item) => item.enabled !== false) ?? configured ?? this.providers[0]);
     if (!provider) throw new Error("No configured model provider.");
     return provider;
   }
@@ -4862,6 +7570,7 @@ export type SessionHeaderLike = {
   cwd: string;
   filePath: string;
   messages: ChatMessage[];
+  worktree?: SessionWorktree;
 };
 
 

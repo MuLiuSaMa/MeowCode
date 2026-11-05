@@ -1,0 +1,158 @@
+.mc-rewind__backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgb(0 0 0 / 55%);
+}
+.mc-rewind {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: min(640px, calc(100vw - 48px));
+  max-height: min(560px, calc(100vh - 64px));
+  padding: 20px 22px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl, 14px);
+  /* 实底：跟随标准 Dialog 的悬浮层背景，避免透出下层对话 */
+  background: var(--bg-elevated, #1c1c1c);
+  color: var(--fg);
+  box-shadow: var(--shadow-lg, 0 18px 48px rgb(0 0 0 / 45%));
+  overflow: hidden;
+}
+.mc-rewind__header {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.mc-rewind__title {
+  margin: 0;
+  font-size: var(--fs-lg);
+  font-weight: var(--fw-semibold);
+}
+.mc-rewind__groups {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  overflow-y: auto;
+  min-height: 0;
+  padding-right: 4px;
+}
+.mc-rewind__group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.mc-rewind__group--conflict {
+  padding: 10px 12px;
+  border: 1px solid var(--warning, #d97706);
+  border-radius: var(--radius-lg, 10px);
+}
+.mc-rewind__grouptitle {
+  margin: 0;
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-semibold);
+}
+/* 文件卡片：文件名 + 增删行数 */
+.mc-rewind__cards {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.mc-rewind__card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 7px 11px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--input-fill, rgb(255 255 255 / 4%));
+}
+.mc-rewind__filepath {
+  font-family: var(--font-mono, monospace);
+  font-size: var(--fs-xs);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mc-rewind__stats {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+.mc-rewind__stat {
+  font-family: var(--font-mono, monospace);
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-semibold);
+}
+.mc-rewind__stat--add {
+  color: var(--success, #3fb950);
+}
+.mc-rewind__stat--del {
+  color: var(--danger, #f85149);
+}
+.mc-rewind__stat--muted {
+  color: var(--muted, var(--fg));
+  font-weight: var(--fw-normal);
+}
+.mc-rewind__check {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--fs-sm);
+  user-select: none;
+}
+.mc-rewind__note {
+  margin: 0;
+  color: var(--muted, var(--fg));
+  font-size: var(--fs-xs);
+}
+.mc-rewind__warnings {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.mc-rewind__warning {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  color: var(--warning, #d97706);
+  font-size: var(--fs-xs);
+}
+.mc-rewind__footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.mc-rewind__button {
+  padding: 6px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--fg);
+  font-size: var(--fs-sm);
+  cursor: pointer;
+}
+.mc-rewind__button:hover:not(:disabled) {
+  border-color: var(--border-strong, var(--border));
+}
+/* 确认按钮：黑白（暗色主题下白底黑字，替代默认的蓝色强调） */
+.mc-rewind__button--primary {
+  background: #f5f5f5;
+  border-color: #f5f5f5;
+  color: #111111;
+}
+.mc-rewind__button--primary:hover:not(:disabled) {
+  background: #e2e2e2;
+  border-color: #e2e2e2;
+  filter: none;
+}
+.mc-rewind__button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

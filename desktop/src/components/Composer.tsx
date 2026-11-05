@@ -1,11 +1,15 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
-import { LuArrowRight, LuArrowUp, LuCheck, LuChevronDown, LuChevronLeft, LuChevronRight, LuCircleAlert, LuEye, LuFileText, LuFolder, LuListChecks, LuPaperclip, LuPlus, LuPuzzle, LuRotateCw, LuSearch, LuShield, LuShieldCheck, LuSparkles, LuSquare, LuTarget, LuX } from "react-icons/lu";
+import { useTranslation } from "react-i18next";
+import type { TFunction } from "i18next";
+import { LuArrowRight, LuArrowUp, LuCheck, LuChevronDown, LuChevronLeft, LuChevronRight, LuCircleAlert, LuEye, LuFileText, LuFolder, LuGitBranch, LuGitFork, LuListChecks, LuLoaderCircle, LuPaperclip, LuPlus, LuPuzzle, LuRotateCw, LuSearch, LuShield, LuShieldCheck, LuSparkles, LuSquare, LuTarget, LuWandSparkles, LuX } from "react-icons/lu";
 import { effortLabel, isEffortValid } from "../effort";
 import {
   api,
   installMarketplaceItem,
   listPlugins,
   listSkills,
+  polishPrompt,
+  type CacheDiagnostics,
   type ContextUsage,
   type InstalledSkill,
   type MarketplaceEntry,
@@ -15,9 +19,12 @@ import {
   type AgentProfileId,
   type HarnessArchitectureSummary,
   type QueuedPrompt,
+  type SessionChangeSummary,
   type SessionMode,
 } from "../api";
 import { agentProfileDisplay } from "../agentProfiles";
+import { Toggle } from "./ui/Toggle";
+import { BranchMenu } from "./BranchMenu";
 import { invalidateMarketplaceCatalog, loadMarketplaceCatalog } from "../data/marketplaceCatalog";
 import {
   buildMentionItems,
@@ -35,7 +42,9 @@ import { ContextMeter } from "./ContextMeter";
 import { ContextPopover } from "./ContextPopover";
 import { AgentProfilePopover } from "./AgentProfilePopover";
 import { ModelPopover, levelsFor } from "./ModelPopover";
-import { PlanCard } from "./PlanCard";
+import { findTemplate } from "../data/providerCatalog";
+import { ProviderIcon } from "./ui/ProviderIcon";
+import { SessionProgressPill } from "./SessionProgressPill";
 import { queuedPreview } from "../user-references";
 import "./Composer.css";
 
@@ -68,11 +77,11 @@ const MAX_IMAGE_BASE64 = 2_600_000;
 const MAX_IMAGE_EDGE = 2048;
 const IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/webp", "image/gif"]);
 
-function readAsDataUrl(file: File): Promise<string> {
+function readAsDataUrl(file: File, t: TFunction): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => resolve(String(reader.result ?? ""));
-    reader.onerror = () => reject(reader.error ?? new Error("读取图片失败"));
+    reader.onerror = () => reject(reader.error ?? new Error(t("image.readFailed")));
     reader.readAsDataURL(file);
   });
 }
@@ -102,11 +111,11 @@ function baseNameOf(target: string): string {
  * 缩完仍超限就继续降边长（×0.75，最多 4 轮，PNG 第二轮起转 JPEG 换体积），
  * 全部尝试都失败才报错，而不是一上来就拒收。
  */
-async function prepareImage(file: File): Promise<ComposerImage | string> {
+async function prepareImage(file: File, t: TFunction): Promise<ComposerImage | string> {
   if (!IMAGE_TYPES.has(file.type)) {
-    return `不支持的图片格式：${file.type || file.name}`;
+    return t("image.unsupported", { type: file.type || file.name });
   }
-  const original = await readAsDataUrl(file);
+  const original = await readAsDataUrl(file, t);
   let dataUrl = original;
   let mimeType = file.type;
   let scale = 1;
@@ -158,7 +167,7 @@ async function prepareImage(file: File): Promise<ComposerImage | string> {
 
   const data = base64Of(dataUrl);
   if (!data || data.length > MAX_IMAGE_BASE64) {
-    return `图片太大：${file.name || "图片"} 自动压缩后仍超过 2MB，请先裁剪或降低分辨率`;
+    return t("image.tooLarge", { name: file.name || t("image.fallbackName") });
   }
   return {
     id: `img-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
@@ -169,49 +178,50 @@ async function prepareImage(file: File): Promise<ComposerImage | string> {
   };
 }
 
-const PERMISSION_OPTIONS: Array<{ value: PermissionMode; label: string; desc: string }> = [
-  { value: "read-only", label: "只读", desc: "只读文件、搜索与浏览器，禁止写文件、改文件和运行命令" },
-  { value: "ask", label: "每次询问", desc: "写文件、改文件、跑命令前都需要你确认" },
+/** 表里只存 key：标签在组件内查表，切语言才会跟着刷新。 */
+const PERMISSION_OPTIONS: Array<{ value: PermissionMode; labelKey: string; descKey: string }> = [
+  { value: "read-only", labelKey: "permission.readOnly.label", descKey: "permission.readOnly.desc" },
+  { value: "ask", labelKey: "permission.ask.label", descKey: "permission.ask.desc" },
   {
     value: "auto",
-    label: "工作区内自动",
-    desc: "工作区内的写文件和改文件自动执行；运行命令与越界路径仍然需要确认",
+    labelKey: "permission.auto.label",
+    descKey: "permission.auto.desc",
   },
-  { value: "full", label: "完全访问", desc: "可读写整台电脑上的文件，自动执行全部工具" },
+  { value: "full", labelKey: "permission.full.label", descKey: "permission.full.desc" },
 ];
 
-const PERMISSION_LABELS: Record<PermissionMode, string> = {
-  "read-only": "只读",
-  ask: "每次询问",
-  auto: "工作区内自动",
-  full: "完全访问",
+const PERMISSION_LABEL_KEYS: Record<PermissionMode, string> = {
+  "read-only": "permission.readOnly.label",
+  ask: "permission.ask.label",
+  auto: "permission.auto.label",
+  full: "permission.full.label",
 };
 
 /** 输入 `/` 时弹出的命令列表（选中即执行，带文字的命令交给 trySlashCommand 发送） */
 const SLASH_COMMANDS: Array<{
   mode: Exclude<SessionMode, "default">;
   command: string;
-  label: string;
-  desc: string;
+  labelKey: string;
+  descKey: string;
 }> = [
   {
     mode: "plan",
     command: "/plan",
-    label: "计划模式",
-    desc: "只读调研，先把实施计划写成 plans/ 下的文档，等你确认",
+    labelKey: "slash.plan.label",
+    descKey: "slash.plan.desc",
   },
   {
     mode: "goal",
     command: "/goal",
-    label: "目标模式",
-    desc: "围绕目标连续推进，用 update_plan 跟踪进度",
+    labelKey: "slash.goal.label",
+    descKey: "slash.goal.desc",
   },
 ];
 
 /** 会话模式菜单项与徽章文案（plan / goal 两种）。 */
-const MODE_LABELS: Record<Exclude<SessionMode, "default">, string> = {
-  plan: "计划模式",
-  goal: "目标模式",
+const MODE_LABEL_KEYS: Record<Exclude<SessionMode, "default">, string> = {
+  plan: "mode.plan",
+  goal: "mode.goal",
 };
 
 function permissionIcon(mode: PermissionMode) {
@@ -229,6 +239,7 @@ function ProjectMenu({
   projectNames,
   active,
   onPick,
+  onRemove,
   onNew,
   onClose,
 }: {
@@ -236,11 +247,14 @@ function ProjectMenu({
   projectNames: Record<string, string>;
   active: string;
   onPick: (cwd: string) => void;
+  /** 从列表移除（只隐藏，聊天记录与磁盘文件都不动） */
+  onRemove: (cwd: string) => void;
   onNew: () => void;
   onClose: () => void;
 }) {
   const [query, setQuery] = useState("");
   const ref = useRef<HTMLDivElement>(null);
+  const { t } = useTranslation("composer");
 
   useEffect(() => {
     const onPointerDown = (event: MouseEvent) => {
@@ -266,12 +280,12 @@ function ProjectMenu({
   const filtered = needle ? projects.filter((cwd) => display(cwd).toLowerCase().includes(needle)) : projects;
 
   return (
-    <div className="mc-projmenu" ref={ref} role="menu" aria-label="切换项目">
+    <div className="mc-projmenu" ref={ref} role="menu" aria-label={t("project.menuAria")}>
       <label className="mc-projmenu__search">
         <LuSearch size={13} />
         <input
           value={query}
-          placeholder="搜索项目"
+          placeholder={t("project.search")}
           onChange={(event) => setQuery(event.target.value)}
           autoFocus
         />
@@ -279,30 +293,43 @@ function ProjectMenu({
       <div className="mc-projmenu__sep" />
       <div className="mc-projmenu__list">
         {filtered.length === 0 ? (
-          <p className="mc-projmenu__empty">没有匹配的项目</p>
+          <p className="mc-projmenu__empty">{t("project.empty")}</p>
         ) : (
           filtered.map((cwd) => (
-            <button
-              key={cwd}
-              type="button"
-              role="menuitemradio"
-              aria-checked={cwd === active}
-              className="mc-projmenu__item"
-              data-active={cwd === active}
-              title={cwd}
-              onClick={() => onPick(cwd)}
-            >
-              <LuFolder size={14} className="mc-projmenu__icon" />
-              <span className="mc-truncate">{display(cwd)}</span>
-              {cwd === active ? <LuCheck size={14} className="mc-projmenu__check" /> : null}
-            </button>
+            <div key={cwd} className="mc-projmenu__row" data-active={cwd === active}>
+              <button
+                type="button"
+                role="menuitemradio"
+                aria-checked={cwd === active}
+                className="mc-projmenu__item"
+                data-active={cwd === active}
+                title={cwd}
+                onClick={() => onPick(cwd)}
+              >
+                <LuFolder size={14} className="mc-projmenu__icon" />
+                <span className="mc-truncate">{display(cwd)}</span>
+                {cwd === active ? <LuCheck size={14} className="mc-projmenu__check" /> : null}
+              </button>
+              {/* 当前项目不给删：正开着的项目从列表消失只会让人一头雾水 */}
+              {cwd === active ? null : (
+                <button
+                  type="button"
+                  className="mc-projmenu__remove"
+                  title={t("project.remove")}
+                  aria-label={`${t("project.remove")}: ${display(cwd)}`}
+                  onClick={() => onRemove(cwd)}
+                >
+                  <LuX size={13} />
+                </button>
+              )}
+            </div>
           ))
         )}
       </div>
       <div className="mc-projmenu__sep" />
       <button type="button" role="menuitem" className="mc-projmenu__item" onClick={onNew}>
         <LuPlus size={14} className="mc-projmenu__icon" />
-        新建项目
+        {t("project.new")}
       </button>
     </div>
   );
@@ -311,6 +338,7 @@ function ProjectMenu({
 export function Composer({
   value,
   onChange,
+  polishTarget = "main",
   chips,
   onRemoveChip,
   onAttachSkill,
@@ -332,6 +360,13 @@ export function Composer({
   onDiscardRecovered,
   canUse,
   workspace,
+  projectCwd,
+  gitBranch,
+  onOpenGit,
+  worktreeEnabled,
+  worktreeLocked,
+  worktreeBusy,
+  onToggleWorktree,
   workspaceAvailable,
   providers,
   activeProviderId,
@@ -355,15 +390,20 @@ export function Composer({
   contextUsage,
   showContext,
   compacting,
+  cacheDiagnostics,
   onManualCompact,
   projects,
   projectNames,
   onSwitchProject,
   onNewProject,
+  onRemoveProject,
   plan,
+  changes,
 }: {
   value: string;
   onChange: (value: string) => void;
+  /** 美化提示词调用哪个 runtime：侧边聊传 "side"，缺省主聊天 */
+  polishTarget?: "main" | "side";
   /** 已引用的技能 / 插件 / 插件命令（可多选） */
   chips?: ComposerChip[];
   onRemoveChip?: (chip: ComposerChip) => void;
@@ -402,6 +442,17 @@ export function Composer({
   onDiscardRecovered: (id: string) => void;
   canUse: boolean;
   workspace?: string;
+  /** 项目目录（worktree 会话归回原项目）；只用于项目胶囊与 worktree 开关 */
+  projectCwd?: string;
+  /** 当前会话 cwd 的分支：null / 缺省表示不是 git 仓库，不显示分支胶囊 */
+  gitBranch?: { name: string; detached: boolean } | null;
+  /** 点分支胶囊 → 打开源码管理 */
+  onOpenGit?: () => void;
+  worktreeEnabled?: boolean;
+  /** 当前会话已经在 worktree 中：开关锁定，避免误解 */
+  worktreeLocked?: boolean;
+  worktreeBusy?: boolean;
+  onToggleWorktree?: (next: boolean) => void;
   /** 工作区目录是否存在：null = 校验中，false = 已被删除（显示「选择工作区」） */
   workspaceAvailable?: boolean | null;
   /** 已启用的模型，弹层里列出让用户切换 */
@@ -440,6 +491,8 @@ export function Composer({
   showContext: boolean;
   /** 压缩进行中（compaction_started → completed） */
   compacting: boolean;
+  /** 前缀缓存诊断（弹层缓存行数据源）；缺省 = 老服务端/还没有数据 */
+  cacheDiagnostics?: CacheDiagnostics | null;
   /** 手动压缩：POST /session/compact，由 App 处理错误展示 */
   onManualCompact: () => Promise<void>;
   /** 已知项目列表 + 自定义显示名（项目切换菜单） */
@@ -449,9 +502,15 @@ export function Composer({
   onSwitchProject: (cwd: string) => void;
   /** 新建项目：弹目录选择器 */
   onNewProject: () => void;
+  /** 从项目列表移除（只隐藏，聊天记录与磁盘文件都不动） */
+  onRemoveProject?: (cwd: string) => void;
   /** 当前会话任务计划：显示在输入框上方 */
   plan?: PlanState | null;
+  /** 当前会话已修改文件（GET /session/changes?summary=1）：与计划一起显示在悬浮胶囊里 */
+  changes?: SessionChangeSummary[];
 }) {
+  const projectDisplayCwd = projectCwd ?? workspace;
+  const { t } = useTranslation("composer");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const modelButtonRef = useRef<HTMLButtonElement>(null);
   const ctxButtonRef = useRef<HTMLButtonElement>(null);
@@ -489,6 +548,8 @@ export function Composer({
   );
   /** 项目切换菜单是否展开 */
   const [projectOpen, setProjectOpen] = useState(false);
+  /** 分支切换弹层是否展开（两个菜单互斥，同时只开一个） */
+  const [branchOpen, setBranchOpen] = useState(false);
   /** @文件引用：当前光标所在的引用 token */
   const [mention, setMention] = useState<MentionState | null>(null);
   /** `/` 命令面板：值以 / 开头且还没输入空格时显示；Esc 关掉后要重新输入才再弹 */
@@ -514,21 +575,36 @@ export function Composer({
     setAdjust("");
   }, [planDocPath]);
 
+  /** 「美化提示词」请求进行中：按钮转圈并阻止重复触发 */
+  const [polishing, setPolishing] = useState(false);
+  const polishingRef = useRef(false);
+  /** 异步返回时读取最新输入值（闭包里的 value 会过期） */
+  const valueRef = useRef(value);
+  valueRef.current = value;
+  /** 卸载后不再写宿主 state / 弹提示（切会话时旧请求的结果必须丢掉） */
+  const aliveRef = useRef(true);
+  useEffect(() => {
+    aliveRef.current = true;
+    return () => {
+      aliveRef.current = false;
+    };
+  }, []);
+
   const addImages = async (files: File[]) => {
     const room = MAX_COMPOSER_IMAGES - images.length;
     if (room <= 0) {
-      onError?.(`一条消息最多附 ${MAX_COMPOSER_IMAGES} 张图片`);
+      onError?.(t("image.maxCount", { count: MAX_COMPOSER_IMAGES }));
       return;
     }
     const picked = files.filter((file) => file.type.startsWith("image/")).slice(0, room);
     if (!picked.length) {
-      onError?.("只能附加图片文件");
+      onError?.(t("image.onlyImages"));
       return;
     }
-    if (files.length > room) onError?.(`一条消息最多附 ${MAX_COMPOSER_IMAGES} 张图片`);
+    if (files.length > room) onError?.(t("image.maxCount", { count: MAX_COMPOSER_IMAGES }));
     for (const file of picked) {
-      const prepared = await prepareImage(file).catch((error: unknown) =>
-        error instanceof Error ? error.message : "读取图片失败",
+      const prepared = await prepareImage(file, t).catch((error: unknown) =>
+        error instanceof Error ? error.message : t("image.readFailed"),
       );
       if (typeof prepared === "string") {
         onError?.(prepared);
@@ -558,12 +634,12 @@ export function Composer({
     for (const file of files) {
       const absolute = window.meow.getFilePath?.(file) ?? "";
       if (!absolute.trim()) {
-        onError?.(`读取文件路径失败：${file.name}`);
+        onError?.(t("file.pathFailed", { name: file.name }));
         continue;
       }
       // 拖入目录时 Chromium 给的是一条 size=0、无 type 的伪文件：挂上卡片也读不出内容
       if (file.size === 0 && !file.type) {
-        onError?.(`跳过空文件或目录：${file.name}`);
+        onError?.(t("file.skipped", { name: file.name }));
         continue;
       }
       const key = normalizeFilePath(absolute).toLowerCase();
@@ -617,6 +693,16 @@ export function Composer({
   const AgentProfileIcon = agentProfileInfo.icon;
   const activeEffort = isEffortValid(effort, levels) ? effort ?? "" : "";
   const enabledProviders = useMemo(() => providers.filter((item) => item.enabled !== false), [providers]);
+  /** 审批模式菜单项：表里只有 key，文案在这里随语言重建 */
+  const permissionOptions = useMemo(
+    () =>
+      PERMISSION_OPTIONS.map((option) => ({
+        value: option.value,
+        label: t(option.labelKey),
+        desc: t(option.descKey),
+      })),
+    [t],
+  );
 
   useEffect(() => {
     const el = textareaRef.current;
@@ -764,29 +850,38 @@ export function Composer({
       .filter((plugin) => !known.has(plugin.id))
       .map((plugin) => ({
         id: plugin.id,
-        title: marketByKey.get(`plugin:${plugin.id}`)?.name ?? plugin.id,
-        description: plugin.error ? `加载失败：${plugin.error}` : "本地插件",
-        iconUrl: marketIcons[`plugin:${plugin.id}`],
+        // 汉化显示名优先（内置插件 builtin-meta 提供），市场名次之，最后回落 id
+        title: marketByKey.get(`plugin:${plugin.id}`)?.name ?? plugin.displayName ?? plugin.id,
+        description: plugin.error
+          ? t("plugin.loadFailed", { error: plugin.error })
+          : plugin.description ?? t("plugin.local"),
+        // 内置插件不在市场索引里，图标走描述符自带的 iconUrl（builtin-meta），市场图标兜底
+        iconUrl: plugin.iconUrl ?? marketIcons[`plugin:${plugin.id}`],
         installed: true,
       }));
     return [...fromMarket, ...custom];
-  }, [marketEntries, pluginsOverview, marketByKey, marketIcons]);
+  }, [marketEntries, pluginsOverview, marketByKey, marketIcons, t]);
 
-  /** 插件注册的命令（source = plugin:<id>），带市场图标与展示名 */
+  /** 插件注册的命令（source = plugin:<id>），带市场图标与展示名；内置插件用描述符自带图标/汉化名 */
   const pluginCommandItems = useMemo<SlashPluginItem[]>(() => {
     if (!pluginsOverview) return [];
+    const metaByPlugin = new Map(pluginsOverview.plugins.map((plugin) => [plugin.id, plugin]));
     return pluginsOverview.commands
       .filter((item) => item.source.startsWith("plugin:"))
       .map((item) => {
         const pluginId = item.source.slice("plugin:".length);
+        const descriptor = metaByPlugin.get(pluginId);
         return {
           kind: "plugin" as const,
           command: `/${item.name}`,
           commandName: item.name,
           pluginId,
-          title: marketByKey.get(`plugin:${pluginId}`)?.name ?? pluginId,
+          title:
+            marketByKey.get(`plugin:${pluginId}`)?.name ??
+            descriptor?.displayName ??
+            pluginId,
           description: item.description ?? "",
-          iconUrl: marketIcons[`plugin:${pluginId}`],
+          iconUrl: descriptor?.iconUrl ?? marketIcons[`plugin:${pluginId}`],
         };
       });
   }, [pluginsOverview, marketByKey, marketIcons]);
@@ -825,7 +920,13 @@ export function Composer({
     if (slashQuery === null) return [];
     const modeItems: SlashModeItem[] = SLASH_COMMANDS.filter((item) =>
       item.command.slice(1).startsWith(slashQuery),
-    ).map((item) => ({ kind: "mode", mode: item.mode, command: item.command, label: item.label, desc: item.desc }));
+    ).map((item) => ({
+      kind: "mode",
+      mode: item.mode,
+      command: item.command,
+      label: t(item.labelKey),
+      desc: t(item.descKey),
+    }));
     const markdownItems = markdownCommandItems.filter((item) =>
       item.name.toLowerCase().startsWith(slashQuery),
     );
@@ -841,7 +942,7 @@ export function Composer({
         item.title.toLowerCase().includes(slashQuery),
     );
     return [...modeItems, ...markdownItems, ...pluginItems, ...skills];
-  }, [slashQuery, markdownCommandItems, pluginCommandItems, skillItems]);
+  }, [slashQuery, markdownCommandItems, pluginCommandItems, skillItems, t]);
   const slashOpen = !slashHidden && slashQuery !== null && slashItems.length > 0 && !mention;
 
   useEffect(() => {
@@ -888,18 +989,6 @@ export function Composer({
     requestAnimationFrame(() => textareaRef.current?.focus());
   };
 
-  /** + 菜单里选中插件命令：挂 chip（无 chip 回调时退回填命令文本） */
-  const attachPluginCommand = (chip: {
-    id: string;
-    name: string;
-    command: string;
-    iconUrl?: string;
-  }) => {
-    setPlusOpen(false);
-    if (onAttachCommand) onAttachCommand(chip);
-    else onChange(`/${chip.command} `);
-  };
-
   /** 选中技能：市场条目未安装时先复制安装，再挂 chip */
   const attachSkillChoice = async (choice: {
     id: string;
@@ -929,7 +1018,7 @@ export function Composer({
       }
     }
     if (onAttachSkill) onAttachSkill({ id: choice.id, name: choice.title, iconUrl: choice.iconUrl });
-    else onChange(`【技能引用】${choice.title} · ${choice.id}\n\n`);
+    else onChange(`【技能引用】${choice.title} · ${choice.id}\n\n`); // i18n-allow 消息首部协议标记，与 src/agent 解析约定一致
   };
 
   /** 选中插件：未安装时先安装，再挂整插件引用 chip（不是命令 chip） */
@@ -963,7 +1052,7 @@ export function Composer({
       }
     }
     if (onAttachPlugin) onAttachPlugin({ id: choice.id, name: choice.title, iconUrl: choice.iconUrl });
-    else onChange(`【插件引用】${choice.title} · ${choice.id}\n\n`);
+    else onChange(`【插件引用】${choice.title} · ${choice.id}\n\n`); // i18n-allow 消息首部协议标记，与 src/agent 解析约定一致
   };
 
   /**
@@ -1124,7 +1213,7 @@ export function Composer({
     onChange("");
     onSend(
       takeImages(),
-      `【插件命令】${command.title} · ${command.pluginId} · ${command.commandName}\n\n/${command.commandName}${args ? ` ${args}` : ""}`,
+      `【插件命令】${command.title} · ${command.pluginId} · ${command.commandName}\n\n/${command.commandName}${args ? ` ${args}` : ""}`, // i18n-allow 消息首部协议标记，与 src/agent 解析约定一致
     );
     return true;
   };
@@ -1133,7 +1222,38 @@ export function Composer({
   // 它们需要配合需求描述，单独发出去模型没任务可做。
   const hasAttachments = Boolean(chips?.some((chip) => chip.kind === "file"));
   const sendDisabled =
-    disabled || compacting || (!value.trim() && !images.length && !hasAttachments);
+    disabled || compacting || polishing || (!value.trim() && !images.length && !hasAttachments);
+
+  const polishDisabled = disabled || compacting || polishing || !value.trim();
+
+  /** 美化提示词：请求返回时若草稿已被改动/发送，丢弃结果，绝不覆盖新输入 */
+  const handlePolish = async () => {
+    const source = value;
+    if (!source.trim() || disabled || compacting || polishingRef.current) return;
+    polishingRef.current = true;
+    setPolishing(true);
+    try {
+      const result = await polishPrompt(source, { side: polishTarget === "side" });
+      if (!aliveRef.current) return;
+      if (valueRef.current !== source) {
+        onError?.(t("polish.discarded"));
+        return;
+      }
+      onChange(result.text);
+      requestAnimationFrame(() => {
+        const el = textareaRef.current;
+        if (!el) return;
+        el.focus();
+        el.setSelectionRange(result.text.length, result.text.length);
+      });
+    } catch (error) {
+      if (!aliveRef.current) return;
+      onError?.(t("polish.failed", { error: error instanceof Error ? error.message : String(error) }));
+    } finally {
+      polishingRef.current = false;
+      if (aliveRef.current) setPolishing(false);
+    }
+  };
 
   /** 确认卡片里的调整输入：Enter 或右侧箭头发送（留在计划模式，模型改文档） */
   const submitAdjust = () => {
@@ -1156,7 +1276,7 @@ export function Composer({
       const finalAnswers = { ...askAnswers, [step]: answer.trim() };
       onAnswerAsk?.(
         askCard.callId,
-        questions.map((_, index) => finalAnswers[index]?.trim() || "（未回答）"),
+        questions.map((_, index) => finalAnswers[index]?.trim() || t("plan.unanswered")),
       );
       setAskStep(0);
       setAskAnswers({});
@@ -1176,7 +1296,7 @@ export function Composer({
       onAnswerAsk?.(
         askCard.callId,
         questions.map((_, index) =>
-          index < step ? askAnswers[index]?.trim() || "（未回答）" : "（未回答）",
+          index < step ? askAnswers[index]?.trim() || t("plan.unanswered") : t("plan.unanswered"),
         ),
       );
       setAskStep(0);
@@ -1187,7 +1307,7 @@ export function Composer({
       <div className="mc-composerwrap">
         <div className="mc-composerstack">
           <div className="mc-composer" data-ask="true">
-            <div className="mc-planconfirm" role="dialog" aria-label="回答问题">
+            <div className="mc-planconfirm" role="dialog" aria-label={t("plan.answerAria")}>
               <p className="mc-planconfirm__title">
                 {total > 1 ? (
                   <>
@@ -1201,9 +1321,9 @@ export function Composer({
                 )}
               </p>
               {total > 1 ? (
-                <p className="mc-planconfirm__sub">选择一个答案，或在下方直接输入 · 选择后自动进入下一题</p>
+                <p className="mc-planconfirm__sub">{t("plan.answerSubMultiple")}</p>
               ) : (
-                <p className="mc-planconfirm__sub">选择一个答案，或在下方直接输入</p>
+                <p className="mc-planconfirm__sub">{t("plan.answerSub")}</p>
               )}
               {current.options.map((option, oIndex) => (
                 <button
@@ -1230,7 +1350,7 @@ export function Composer({
                   ref={askRef}
                   className="mc-planconfirm__input"
                   value={askDraft}
-                  placeholder="其他想法，Enter 直接进入下一题"
+                  placeholder={t("plan.answerPlaceholder")}
                   onChange={(event) => setAskDraft(event.target.value)}
                   onKeyDown={(event) => {
                     if (event.key === "Enter" && !event.shiftKey && askDraft.trim()) {
@@ -1251,11 +1371,11 @@ export function Composer({
                         setAskDraft("");
                       }}
                     >
-                      ‹ 上一题
+                      ‹ {t("plan.prev")}
                     </button>
                   ) : null}
                   <button type="button" className="mc-planconfirm__back" onClick={skipRest}>
-                    不回答，跳过剩余 ›
+                    {t("plan.skipRest")} ›
                   </button>
                 </div>
               ) : null}
@@ -1272,18 +1392,18 @@ export function Composer({
       <div className="mc-composerwrap">
         <div className="mc-composerstack">
           <div className="mc-composer" data-plan="true" data-disabled={disabled || compacting}>
-            <div className="mc-planconfirm" role="dialog" aria-label="确认计划">
+            <div className="mc-planconfirm" role="dialog" aria-label={t("plan.confirmAria")}>
                 <button
                   type="button"
                   className="mc-planconfirm__exit"
-                  aria-label="退出计划模式"
-                  title="退出计划模式"
+                  aria-label={t("plan.exit")}
+                  title={t("plan.exit")}
                   onClick={() => onChangeChatMode("default")}
                 >
                   <LuX size={13} />
                 </button>
-                <p className="mc-planconfirm__title">确认按此计划执行？</p>
-                <p className="mc-planconfirm__sub">确认后，我将按此计划执行并输出内容</p>
+                <p className="mc-planconfirm__title">{t("plan.confirmTitle")}</p>
+                <p className="mc-planconfirm__sub">{t("plan.confirmSub")}</p>
                 <button
                   type="button"
                   className="mc-planconfirm__option"
@@ -1292,7 +1412,7 @@ export function Composer({
                   onClick={() => onConfirmPlan?.()}
                 >
                   <span className="mc-planconfirm__num">1</span>
-                  <span className="mc-planconfirm__label">开始执行</span>
+                  <span className="mc-planconfirm__label">{t("plan.start")}</span>
                   <LuArrowRight size={15} className="mc-planconfirm__arrow" />
                 </button>
                 {/* 选项 2 本身就是一个输入框：写完按 Enter 或点右下角发送 */}
@@ -1306,7 +1426,7 @@ export function Composer({
                     ref={adjustRef}
                     className="mc-planconfirm__input"
                     value={adjust}
-                    placeholder="调整计划，补充内容告诉我如何调整"
+                    placeholder={t("plan.adjustPlaceholder")}
                     disabled={disabled || compacting}
                     onChange={(event) => setAdjust(event.target.value)}
                     onKeyDown={(event) => {
@@ -1321,8 +1441,8 @@ export function Composer({
                   <button
                     type="button"
                     className="mc-planconfirm__send"
-                    aria-label="发送调整"
-                    title="发送调整"
+                    aria-label={t("plan.sendAdjust")}
+                    title={t("plan.sendAdjust")}
                     disabled={!adjust.trim() || disabled || compacting}
                     onClick={submitAdjust}
                   >
@@ -1339,7 +1459,7 @@ export function Composer({
   return (
     <div className="mc-composerwrap">
       <div className="mc-composerstack">
-        {plan && plan.steps.length ? <PlanCard plan={plan} /> : null}
+        <SessionProgressPill plan={plan} changes={changes} streaming={streaming} />
 
         {/* 工作区缺失（未选择 / 目录已删）：同一位置回退成「选择工作区」，点击打开目录选择器 */}
         {!workspace || workspaceAvailable === false ? (
@@ -1347,12 +1467,12 @@ export function Composer({
             <button
               type="button"
               className="mc-composer__pickws"
-              aria-label="选择工作区"
-              title="选择工作区"
+              aria-label={t("project.pickWorkspace")}
+              title={t("project.pickWorkspace")}
               onClick={onNewProject}
             >
               <LuFolder size={14} />
-              <span>选择工作区</span>
+              <span>{t("project.pickWorkspace")}</span>
             </button>
           </div>
         ) : workspace && !showContext ? (
@@ -1367,18 +1487,85 @@ export function Composer({
                 className="mc-composer__projname"
                 aria-haspopup="menu"
                 aria-expanded={projectOpen}
-                title={workspace}
-                onClick={() => setProjectOpen((open) => !open)}
+                title={projectDisplayCwd}
+                onClick={() => {
+                  setBranchOpen(false);
+                  setProjectOpen((open) => !open);
+                }}
               >
-                <span className="mc-truncate">{projectNames[workspace]?.trim() || baseName(workspace)}</span>
+                <span className="mc-truncate">
+                  {projectDisplayCwd
+                    ? projectNames[projectDisplayCwd]?.trim() || baseName(projectDisplayCwd)
+                    : ""}
+                </span>
               </button>
             </div>
+
+            {/* 当前分支：点开是本仓库的分支列表，选一个就切过去 */}
+            {gitBranch ? (
+              <div className="mc-composer__branchwrap">
+                <button
+                  type="button"
+                  className="mc-composer__branch"
+                  data-detached={gitBranch.detached ? "true" : "false"}
+                  aria-haspopup="listbox"
+                  aria-expanded={branchOpen}
+                  title={
+                    gitBranch.detached
+                      ? t("branch.detached")
+                      : t("branch.current", { name: gitBranch.name })
+                  }
+                  onClick={() => {
+                    setProjectOpen(false);
+                    setBranchOpen((open) => !open);
+                  }}
+                >
+                  <LuGitBranch size={15} aria-hidden />
+                  <span className="mc-composer__branchname">
+                    {gitBranch.detached ? "detached" : gitBranch.name}
+                  </span>
+                </button>
+                {branchOpen ? (
+                  <BranchMenu
+                    onClose={() => setBranchOpen(false)}
+                    onOpenGit={
+                      onOpenGit
+                        ? () => {
+                            setBranchOpen(false);
+                            onOpenGit();
+                          }
+                        : undefined
+                    }
+                  />
+                ) : null}
+              </div>
+            ) : null}
+
+            {onToggleWorktree && projectDisplayCwd ? (
+              <div
+                className="mc-composer__wt"
+                data-on={worktreeEnabled ? "true" : "false"}
+                data-locked={worktreeLocked ? "true" : "false"}
+                title={
+                  worktreeLocked ? t("worktree.locked") : t("worktree.hint")
+                }
+              >
+                <LuGitFork size={15} aria-hidden />
+                <span>Worktree</span>
+                <Toggle
+                  checked={Boolean(worktreeEnabled)}
+                  disabled={Boolean(worktreeBusy || worktreeLocked)}
+                  label={t("worktree.hint")}
+                  onChange={(next) => onToggleWorktree(next)}
+                />
+              </div>
+            ) : null}
 
             {projectOpen ? (
               <ProjectMenu
                 projects={projects}
                 projectNames={projectNames}
-                active={workspace}
+                active={projectDisplayCwd ?? workspace}
                 onPick={(cwd) => {
                   setProjectOpen(false);
                   onSwitchProject(cwd);
@@ -1387,6 +1574,7 @@ export function Composer({
                   setProjectOpen(false);
                   onNewProject();
                 }}
+                onRemove={(cwd) => onRemoveProject?.(cwd)}
                 onClose={() => setProjectOpen(false)}
               />
             ) : null}
@@ -1397,9 +1585,9 @@ export function Composer({
           <div
             className="mc-queuedlist mc-queuedlist--recovered"
             role="status"
-            aria-label="上次未发送的消息"
+            aria-label={t("queue.recoveredAria")}
           >
-            <div className="mc-queuedlist__head">上次退出时还没发送</div>
+            <div className="mc-queuedlist__head">{t("queue.recoveredHead")}</div>
             {recoveredPrompts.map((item) => (
               <div className="mc-queued" key={item.id}>
                 <span className="mc-queued__text" title={queuedPreview(item.text)}>
@@ -1409,18 +1597,18 @@ export function Composer({
                   <button
                     type="button"
                     className="mc-queued__action"
-                    title="作为新消息发送"
+                    title={t("queue.sendAsNew")}
                     onClick={() => onSendRecovered(item)}
                   >
-                    发送
+                    {t("queue.send")}
                   </button>
                   <button
                     type="button"
                     className="mc-queued__action mc-queued__action--danger"
-                    title="丢弃这条消息"
+                    title={t("queue.discardTitle")}
                     onClick={() => onDiscardRecovered(item.id)}
                   >
-                    丢弃
+                    {t("queue.discard")}
                   </button>
                 </div>
               </div>
@@ -1431,7 +1619,7 @@ export function Composer({
         {/* 技能引用 chip：市场「使用」带过来的（已移入输入框内部） */}
 
         {queuedPrompts.length ? (
-          <div className="mc-queuedlist" role="status" aria-label="排队中的消息">
+          <div className="mc-queuedlist" role="status" aria-label={t("queue.pendingAria")}>
             {queuedPrompts.map((item) => (
               <div className="mc-queued" key={item.id}>
                 <span className="mc-queued__text" title={queuedPreview(item.text)}>
@@ -1441,18 +1629,18 @@ export function Composer({
                   <button
                     type="button"
                     className="mc-queued__action"
-                    title="中止当前回复，立即发送这条消息"
+                    title={t("queue.steerTitle")}
                     onClick={() => onSteerQueued(item.id)}
                   >
-                    强制插话
+                    {t("queue.steer")}
                   </button>
                   <button
                     type="button"
                     className="mc-queued__action mc-queued__action--danger"
-                    title="从队列中删除"
+                    title={t("queue.removeTitle")}
                     onClick={() => onRemoveQueued(item.id)}
                   >
-                    删除
+                    {t("queue.remove")}
                   </button>
                 </div>
               </div>
@@ -1462,19 +1650,19 @@ export function Composer({
 
         {/* `/` 命令面板：贴在输入框上方，Enter/Tab 选中，Esc 关闭；插件在上、技能在下 */}
         {slashOpen ? (
-          <div className="mc-slashmenu" role="listbox" aria-label="命令">
+          <div className="mc-slashmenu" role="listbox" aria-label={t("slash.menuAria")}>
             {slashItems.map((item, index) => {
               const previous = slashItems[index - 1];
               const showGroup = !previous || previous.kind !== item.kind;
               const key = item.kind === "skill" ? `skill:${item.id}` : `${item.kind}:${item.command}`;
               const groupLabel =
                 item.kind === "mode"
-                  ? "模式"
+                  ? t("slash.group.mode")
                   : item.kind === "markdown"
-                    ? "命令"
+                    ? t("slash.group.command")
                     : item.kind === "plugin"
-                      ? "插件"
-                      : "技能";
+                      ? t("slash.group.plugin")
+                      : t("slash.group.skill");
               return (
                 <Fragment key={key}>
                   {showGroup ? <div className="mc-slashmenu__group">{groupLabel}</div> : null}
@@ -1502,10 +1690,14 @@ export function Composer({
                     </span>
                     {item.kind === "mode" ? (
                       <span className="mc-slashmenu__desc">
-                        {chatMode === item.mode ? `退出${item.label}` : `${item.label} · ${item.desc}`}
+                        {chatMode === item.mode
+                          ? t("slash.exit", { mode: item.label })
+                          : `${item.label} · ${item.desc}`}
                       </span>
                     ) : item.kind === "markdown" ? (
-                      <span className="mc-slashmenu__desc">{item.description || "命令"}</span>
+                      <span className="mc-slashmenu__desc">
+                        {item.description || t("slash.group.command")}
+                      </span>
                     ) : null}
                   </button>
                 </Fragment>
@@ -1515,13 +1707,13 @@ export function Composer({
         ) : null}
 
         {mention ? (
-          <div className="mc-mention" role="listbox" aria-label="引用工作区文件">
+          <div className="mc-mention" role="listbox" aria-label={t("mention.aria")}>
             <div className="mc-mention__head">
               {mentionScope.dir ? (
                 <button
                   type="button"
                   className="mc-mention__crumb"
-                  title="返回上一层"
+                  title={t("mention.back")}
                   onMouseDown={(event) => event.preventDefault()}
                   onClick={() =>
                     applyMentionToken(mentionDirToken(parentDir(mentionScope.dir)), {
@@ -1535,15 +1727,17 @@ export function Composer({
               ) : (
                 <>
                   <LuFolder size={13} />
-                  <span>工作区根目录</span>
+                  <span>{t("mention.root")}</span>
                 </>
               )}
-              {mentionFailed ? <span className="mc-mention__hint">读取失败</span> : null}
+              {mentionFailed ? (
+                <span className="mc-mention__hint">{t("mention.loadFailed")}</span>
+              ) : null}
               <button
                 type="button"
                 className="mc-mention__refresh"
-                title="刷新列表"
-                aria-label="刷新列表"
+                title={t("mention.refresh")}
+                aria-label={t("mention.refresh")}
                 onMouseDown={(event) => event.preventDefault()}
                 onClick={() => setMentionReload((current) => current + 1)}
               >
@@ -1551,14 +1745,14 @@ export function Composer({
               </button>
             </div>
             {mentionEntries === null ? (
-              <p className="mc-mention__empty">加载中…</p>
+              <p className="mc-mention__empty">{t("mention.loading")}</p>
             ) : mentionResults.length === 0 ? (
               <p className="mc-mention__empty">
                 {mentionFailed
-                  ? "无法读取目录"
+                  ? t("mention.dirFailed")
                   : mentionScope.filter.trim()
-                    ? "没有匹配的文件"
-                    : "这个目录是空的"}
+                    ? t("mention.noMatch")
+                    : t("mention.emptyDir")}
               </p>
             ) : (
               <ul className="mc-mention__list" ref={mentionListRef}>
@@ -1616,15 +1810,19 @@ export function Composer({
           }}
         >
           {images.length ? (
-            <div className="mc-attach" role="list" aria-label="待发送图片">
+            <div className="mc-attach" role="list" aria-label={t("attach.listAria")}>
               {images.map((image) => (
                 <div className="mc-attach__item" role="listitem" key={image.id}>
-                  <img className="mc-attach__thumb" src={image.dataUrl} alt={image.name ?? "图片"} />
+                  <img
+                    className="mc-attach__thumb"
+                    src={image.dataUrl}
+                    alt={image.name ?? t("image.fallbackName")}
+                  />
                   <button
                     type="button"
                     className="mc-attach__remove"
-                    aria-label="移除图片"
-                    title="移除"
+                    aria-label={t("attach.removeImageAria")}
+                    title={t("attach.remove")}
                     onClick={() => setImages((current) => current.filter((item) => item.id !== image.id))}
                   >
                     <LuX size={12} />
@@ -1636,7 +1834,7 @@ export function Composer({
 
           {/* 已引用的技能 / 插件 / 插件命令：可多选，自动换行 */}
           {chips?.length ? (
-            <div className="mc-composer__skillrow" role="status" aria-label="已引用的技能、插件与附件">
+            <div className="mc-composer__skillrow" role="status" aria-label={t("chip.listAria")}>
               {chips.map((chip) => (
                 <span
                   className={`mc-skillchip${chip.kind === "file" ? " mc-skillchip--file" : ""}`}
@@ -1659,8 +1857,8 @@ export function Composer({
                   <button
                     type="button"
                     className="mc-skillchip__x"
-                    aria-label={`移除 ${chip.name}`}
-                    title={`移除 ${chip.name}`}
+                    aria-label={t("chip.remove", { name: chip.name })}
+                    title={t("chip.remove", { name: chip.name })}
                     onClick={() => onRemoveChip?.(chip)}
                   >
                     ×
@@ -1670,6 +1868,7 @@ export function Composer({
             </div>
           ) : null}
 
+          <div className="mc-composer__textwrap">
           <textarea
             ref={textareaRef}
             className="mc-composer__input"
@@ -1743,23 +1942,31 @@ export function Composer({
               }
               if (event.key === "Enter" && !event.shiftKey) {
                 event.preventDefault();
+                if (polishing) return;
                 if (trySlashCommand()) return;
                 onSend(takeImages());
               }
             }}
             placeholder={
               !canUse
-                ? "请先完成配置"
+                ? t("input.placeholder.setup")
                 : compacting
-                  ? "正在压缩对话历史，完成后可继续发送"
+                  ? t("input.placeholder.compacting")
                   : planDocPath
-                    ? "调整计划内容，发送后模型将继续修改计划…"
+                    ? t("plan.adjustPrompt")
                     : streaming
-                      ? "输入后按 Enter 排队发送"
-                      : "输入 @ 引用项目文件；图片/任意文件可直接拖入（含工作区外）"
+                      ? t("input.placeholder.streaming")
+                      : t("input.placeholder.default")
             }
             disabled={disabled || compacting}
+            readOnly={polishing}
           />
+          {polishing ? (
+            <div className="mc-composer__polishlayer" role="status" aria-live="polite">
+              <span className="mc-composer__polishlabel">{t("input.polishing")}</span>
+            </div>
+          ) : null}
+          </div>
 
           <div className="mc-composer__bar">
             <div className="mc-composer__left">
@@ -1779,10 +1986,10 @@ export function Composer({
                   ref={plusButtonRef}
                   type="button"
                   className="mc-composer__icon"
-                  aria-label="更多操作"
+                  aria-label={t("action.more")}
                   aria-haspopup="menu"
                   aria-expanded={plusOpen}
-                  title="添加附件 / 切换模式"
+                  title={t("action.moreTitle")}
                   onClick={() => {
                     setAccessOpen(false);
                     setAgentOpen(false);
@@ -1798,7 +2005,7 @@ export function Composer({
                   className="mc-permmenu mc-plusmenu"
                   ref={plusMenuRef}
                   role="menu"
-                  aria-label="添加、引用与命令"
+                  aria-label={t("action.plusMenuAria")}
                 >
                   <button
                     type="button"
@@ -1811,7 +2018,7 @@ export function Composer({
                     }}
                   >
                     <LuPaperclip size={15} />
-                    <span className="mc-plusmenu__label">上传附件</span>
+                    <span className="mc-plusmenu__label">{t("action.upload")}</span>
                   </button>
 
                   <div className="mc-plusmenu__divider" />
@@ -1830,7 +2037,7 @@ export function Composer({
                       }}
                     >
                       {mode === "plan" ? <LuListChecks size={15} /> : <LuTarget size={15} />}
-                      <span className="mc-plusmenu__label">{MODE_LABELS[mode]}</span>
+                      <span className="mc-plusmenu__label">{t(MODE_LABEL_KEYS[mode])}</span>
                       {chatMode === mode ? (
                         <LuCheck size={14} className="mc-plusmenu__check" />
                       ) : null}
@@ -1853,7 +2060,7 @@ export function Composer({
                       }
                     >
                       <LuPuzzle size={15} />
-                      <span className="mc-plusmenu__label">插件</span>
+                      <span className="mc-plusmenu__label">{t("action.plugins")}</span>
                       <LuChevronRight
                         size={14}
                         className="mc-plusmenu__chevron"
@@ -1867,7 +2074,9 @@ export function Composer({
                         onMouseEnter={() => showPlusFlyout("plugins")}
                         onMouseLeave={scheduleHidePlusFlyout}
                       >
-                        <div className="mc-plusmenu__group">插件（{allPluginChoices.length}）</div>
+                        <div className="mc-plusmenu__group">
+                          {t("action.pluginsCount", { count: allPluginChoices.length })}
+                        </div>
                         {allPluginChoices.map((choice) => {
                           const key = `plugin:${choice.id}`;
                           return (
@@ -1885,7 +2094,7 @@ export function Composer({
                               )}
                               <span className="mc-plusmenu__label">{choice.title}</span>
                               {installingKey === key ? (
-                                <span className="mc-plusmenu__hint">安装中…</span>
+                                <span className="mc-plusmenu__hint">{t("action.installing")}</span>
                               ) : null}
                             </button>
                           );
@@ -1906,7 +2115,7 @@ export function Composer({
                       onClick={() => setPlusFlyout(plusFlyout === "skills" ? null : "skills")}
                     >
                       <LuSparkles size={15} />
-                      <span className="mc-plusmenu__label">技能</span>
+                      <span className="mc-plusmenu__label">{t("action.skills")}</span>
                       <LuChevronRight
                         size={14}
                         className="mc-plusmenu__chevron"
@@ -1920,7 +2129,9 @@ export function Composer({
                         onMouseEnter={() => showPlusFlyout("skills")}
                         onMouseLeave={scheduleHidePlusFlyout}
                       >
-                        <div className="mc-plusmenu__group">技能（{allSkillChoices.length}）</div>
+                        <div className="mc-plusmenu__group">
+                          {t("action.skillsCount", { count: allSkillChoices.length })}
+                        </div>
                         {allSkillChoices.map((choice) => {
                           const key = `skill:${choice.id}`;
                           return (
@@ -1938,7 +2149,7 @@ export function Composer({
                               )}
                               <span className="mc-plusmenu__label">{choice.title}</span>
                               {installingKey === key ? (
-                                <span className="mc-plusmenu__hint">安装中…</span>
+                                <span className="mc-plusmenu__hint">{t("action.installing")}</span>
                               ) : null}
                             </button>
                           );
@@ -1955,8 +2166,9 @@ export function Composer({
                   className="mc-composer__access"
                   aria-haspopup="menu"
                   aria-expanded={accessOpen}
+                  aria-label={`${t("permission.title")} · ${t(PERMISSION_LABEL_KEYS[permissionMode])}`}
                   data-mode={permissionMode}
-                  title="工具执行权限"
+                  title={t("permission.title")}
                   onClick={() => {
                     setPlusOpen(false);
                     setAgentOpen(false);
@@ -1964,11 +2176,18 @@ export function Composer({
                   }}
                 >
                   {permissionIcon(permissionMode)}
-                  {PERMISSION_LABELS[permissionMode]}
+                  <span className="mc-composer__pilllabel">
+                    {t(PERMISSION_LABEL_KEYS[permissionMode])}
+                  </span>
                 </button>
                 {accessOpen ? (
-                  <div className="mc-permmenu" ref={accessMenuRef} role="menu" aria-label="工具执行权限">
-                    {PERMISSION_OPTIONS.map((option) => (
+                  <div
+                    className="mc-permmenu"
+                    ref={accessMenuRef}
+                    role="menu"
+                    aria-label={t("permission.title")}
+                  >
+                    {permissionOptions.map((option) => (
                       <button
                         key={option.value}
                         type="button"
@@ -2000,12 +2219,13 @@ export function Composer({
                     className="mc-composer__access mc-composer__agent"
                     aria-haspopup="menu"
                     aria-expanded={agentOpen}
+                    aria-label={activeCustomArchitecture?.name ?? agentProfileInfo.label}
                     data-profile={activeAgentProfile}
-                    title={
-                      activeCustomArchitecture
-                        ? `主 Agent：${activeCustomArchitecture.name ?? activeCustomArchitecture.id}`
-                        : `主 Agent：${agentProfileInfo.tagline}`
-                    }
+                    title={t("agent.title", {
+                      name: activeCustomArchitecture
+                        ? activeCustomArchitecture.name ?? activeCustomArchitecture.id
+                        : agentProfileInfo.tagline,
+                    })}
                     onClick={() => {
                       setPlusOpen(false);
                       setAccessOpen(false);
@@ -2017,7 +2237,9 @@ export function Composer({
                     ) : (
                       <AgentProfileIcon size={13} />
                     )}
-                    {activeCustomArchitecture?.name ?? agentProfileInfo.label}
+                    <span className="mc-composer__pilllabel">
+                      {activeCustomArchitecture?.name ?? agentProfileInfo.label}
+                    </span>
                   </button>
                   {agentOpen ? (
                     <AgentProfilePopover
@@ -2037,12 +2259,12 @@ export function Composer({
                   type="button"
                   className="mc-modebadge"
                   data-mode={chatMode}
-                  aria-label={`${MODE_LABELS[chatMode]}，点击退出`}
-                  title="点击退出该模式"
+                  aria-label={t("mode.exitAria", { mode: t(MODE_LABEL_KEYS[chatMode]) })}
+                  title={t("mode.exitTitle")}
                   onClick={() => onChangeChatMode("default")}
                 >
                   {chatMode === "plan" ? <LuListChecks size={13} /> : <LuTarget size={13} />}
-                  {MODE_LABELS[chatMode]}
+                  <span className="mc-composer__pilllabel">{t(MODE_LABEL_KEYS[chatMode])}</span>
                   <LuX size={12} />
                 </button>
               ) : null}
@@ -2061,6 +2283,7 @@ export function Composer({
                       usage={contextUsage}
                       streaming={streaming}
                       compacting={compacting}
+                      cache={cacheDiagnostics}
                       anchorRef={ctxButtonRef}
                       onCompact={onManualCompact}
                       onClose={() => setCtxOpen(false)}
@@ -2076,11 +2299,17 @@ export function Composer({
                   className="mc-composer__model"
                   aria-haspopup="dialog"
                   aria-expanded={menuOpen}
+                  aria-label={`${model}${activeEffort ? ` · ${effortLabel(activeEffort, levels)}` : ""}`}
+                  title={`${model}${activeEffort ? ` · ${effortLabel(activeEffort, levels)}` : ""}`}
                   onClick={() => setMenuOpen((open) => !open)}
                 >
-                  <span className="mc-truncate">{model}</span>
+                  {/* 当前服务商品牌 Logo：与模型弹层列表里同一套图标 */}
+                  {activeProvider ? (
+                    <ProviderIcon template={findTemplate(activeProvider.templateId)} size={16} />
+                  ) : null}
+                  <span className="mc-truncate mc-composer__modelname">{model}</span>
                   <span className="mc-composer__effort">{effortLabel(activeEffort, levels)}</span>
-                  <LuChevronDown size={13} />
+                  <LuChevronDown size={13} className="mc-composer__modelchev" />
                 </button>
                 {menuOpen ? (
                   <ModelPopover
@@ -2101,16 +2330,38 @@ export function Composer({
                 ) : null}
               </div>
 
+              <button
+                type="button"
+                className="mc-composer__icon mc-composer__polish"
+                aria-label={t("action.polish")}
+                aria-busy={polishing}
+                title={t("action.polish")}
+                disabled={polishDisabled}
+                onClick={() => void handlePolish()}
+              >
+                {polishing ? (
+                  <LuLoaderCircle size={15} className="mc-composer__polishspin" />
+                ) : (
+                  <LuWandSparkles size={15} />
+                )}
+              </button>
+
               {streaming ? (
-                <button type="button" className="mc-sendbtn" aria-label="停止" title="停止" onClick={onStop}>
+                <button
+                  type="button"
+                  className="mc-sendbtn"
+                  aria-label={t("action.stop")}
+                  title={t("action.stop")}
+                  onClick={onStop}
+                >
                   <LuSquare size={13} />
                 </button>
               ) : (
                 <button
                   type="button"
                   className="mc-sendbtn"
-                  aria-label="发送"
-                  title="发送"
+                  aria-label={t("action.send")}
+                  title={t("action.send")}
                   disabled={sendDisabled}
                   onClick={() => {
                     if (trySlashCommand()) return;

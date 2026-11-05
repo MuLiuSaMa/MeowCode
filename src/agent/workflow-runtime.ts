@@ -108,7 +108,7 @@ function deriveGateSteps(doc: HarnessDocument): Map<string, HarnessGateStep[]> {
     steps.set(
       tier,
       [...list]
-        .sort((a, b) => a.order - b.order || a.id.localeCompare(b.id))
+        .sort((a, b) => a.order - b.order || a.id.localeCompare(b.id, "en")) // locale 钉死：frontier 文本每轮进请求，防语言环境漂移破坏前缀缓存
         .map(({ id, name, closedBy: role, onFail }) => ({
           id,
           name,
@@ -166,6 +166,22 @@ function deriveAgentPrompt(doc: HarnessDocument): string | null {
   return trimmed ? trimmed : null;
 }
 
+/**
+ * 层级节点的额外提示词（tier id → 文本）：admit 成功时随准入报告一次性注入。
+ * 缺省或 trim 后为空 = 不注入（与 agent/role 提示词覆盖的缺省语义一致）。
+ */
+function deriveTierInstructions(doc: HarnessDocument): Map<string, string> {
+  const map = new Map<string, string>();
+  for (const node of doc.nodes) {
+    if (node.type !== "tier") continue;
+    const raw = (node.data as { instructions?: unknown }).instructions;
+    if (typeof raw !== "string") continue;
+    const trimmed = raw.trim();
+    if (trimmed) map.set(node.id, trimmed);
+  }
+  return map;
+}
+
 function hasCycle(lanes: Array<{ id: string; dependsOn: string[] }>): boolean {
   const state = new Map<string, 0 | 1 | 2>();
   const visit = (id: string): boolean => {
@@ -199,6 +215,8 @@ export class WorkflowRuntime {
   private agentTools: ReadonlySet<string> | null = null;
   /** 架构图根 agent 节点的系统提示词覆盖（null = 用档位提示词） */
   private agentPrompt: string | null = null;
+  /** 架构图 tier 节点的层级提示词（tier id → 文本；无该条目 = 该层级不注入） */
+  private tierInstructions: Map<string, string>;
 
   constructor(options?: { maxRepairs?: number; harness?: HarnessDocument }) {
     this.maxRepairs = options?.maxRepairs ?? DEFAULT_MAX_REPAIRS;
@@ -207,6 +225,7 @@ export class WorkflowRuntime {
     this.roleOverrides = deriveRoleOverrides(harness);
     this.agentTools = deriveAgentTools(harness);
     this.agentPrompt = deriveAgentPrompt(harness);
+    this.tierInstructions = deriveTierInstructions(harness);
   }
 
   /**
@@ -221,6 +240,7 @@ export class WorkflowRuntime {
     this.roleOverrides = deriveRoleOverrides(harness);
     this.agentTools = deriveAgentTools(harness);
     this.agentPrompt = deriveAgentPrompt(harness);
+    this.tierInstructions = deriveTierInstructions(harness);
     return true;
   }
 
@@ -305,6 +325,12 @@ export class WorkflowRuntime {
     return undefined;
   }
 
+  /** 层级提示词块：tier 节点配了 instructions 才非空（拼在 admit 报告尾部）。 */
+  private tierPromptSuffix(tier: WorkflowTier): string {
+    const instructions = this.tierInstructions.get(tier);
+    return instructions ? `\nTier instructions: ${instructions}` : "";
+  }
+
   /**
    * 结构化准入：tier 决定路线，门禁序列来自架构图（缺省 G4→G5→G6）。
    * 校验失败 fail-closed 返回错误，不建立 run。
@@ -345,7 +371,8 @@ export class WorkflowRuntime {
         ok: true,
         report:
           `Governed run admitted (${tier}, no gates): ${clip(taskShape)}\n` +
-          "No gates on this tier per the architecture graph — implement directly and verify before reporting done.",
+          "No gates on this tier per the architecture graph — implement directly and verify before reporting done." +
+          this.tierPromptSuffix(tier),
       };
     }
 
@@ -364,7 +391,8 @@ export class WorkflowRuntime {
         report:
           `Governed run admitted (T1, single lane "${MAIN_LANE_ID}"): ${clip(taskShape)}\n` +
           `Route from the architecture graph: ${routeText}.\n` +
-          `Dispatch gates with task(agent_type=<role>, lane_id="${MAIN_LANE_ID}"). Mutating tools are unblocked.`,
+          `Dispatch gates with task(agent_type=<role>, lane_id="${MAIN_LANE_ID}"). Mutating tools are unblocked.` +
+          this.tierPromptSuffix(tier),
       };
     }
 
@@ -430,7 +458,8 @@ export class WorkflowRuntime {
               `- ${lane.id} [${lane.status}]${lane.dependsOn.length ? ` (after ${lane.dependsOn.join(", ")})` : ""}: ${clip(lane.objective, 120)}`,
           )
           .join("\n") +
-        `\nGate sequence per lane from the architecture graph: ${routeText}. Dispatch with task(..., lane_id=<id>). Mutating tools are unblocked.`,
+        `\nGate sequence per lane from the architecture graph: ${routeText}. Dispatch with task(..., lane_id=<id>). Mutating tools are unblocked.` +
+        this.tierPromptSuffix(tier),
     };
   }
 

@@ -1,0 +1,176 @@
+{
+  "tabs": {
+    "home": "Nueva pestaña",
+    "workspace": "Archivos",
+    "review": "Revisión",
+    "sidechat": "Chat lateral",
+    "terminal": "Terminal",
+    "plan": "Plan",
+    "subagents": "Subagentes",
+    "subagent": "Subagente"
+  },
+  "runStatus": {
+    "running": "En ejecución",
+    "completed": "Completado",
+    "failed": "Fallido",
+    "aborted": "Detenido",
+    "interrupted": "Interrumpido"
+  },
+  "laneStatus": {
+    "queued": "En cola",
+    "active": "Activo",
+    "done": "Hecho",
+    "blocked": "Bloqueado"
+  },
+  "home": {
+    "toolsSection": "Herramientas",
+    "sessionSection": "Información de la sesión",
+    "card": {
+      "workspace": "Archivos",
+      "search": "Buscar",
+      "sidechat": "Chat lateral",
+      "terminal": "Terminal",
+      "review": "Revisión",
+      "subagents": "Subagentes"
+    },
+    "fileMenu": "Menú del archivo",
+    "quickOpen": "Apertura rápida (Ctrl+P)",
+    "revealInExplorer": "Abrir en el explorador",
+    "field": {
+      "workspace": "Espacio de trabajo",
+      "provider": "Proveedor",
+      "model": "Modelo",
+      "sessionId": "ID de sesión",
+      "toolCalls": "Llamadas a herramientas",
+      "uncachedInput": "Entrada sin caché",
+      "cacheRead": "Lectura de caché",
+      "cacheStatus": "Estado de la caché",
+      "cacheWrite": "Escritura de caché",
+      "output": "Salida",
+      "cacheHitRate": "Tasa de aciertos de caché (sesión)",
+      "speed": "Velocidad de generación",
+      "response": "Tiempo de respuesta",
+      "firstToken": "Latencia del primer token"
+    },
+    "notReported": "Sin datos",
+    "cache": {
+      "localBreakpoint": "Puntos de control locales · {{ttl}}",
+      "autoTtl": "Automático (1h para personas / 5m para máquinas)",
+      "serverManaged": "Gestionado por el servidor",
+      "serverManagedUncontrolled": "Gestionado por el servidor · TTL/expulsión no controlables",
+      "notReported": "{{base}} (sin datos)",
+      "miss": "{{base}} (fallo)",
+      "hitting": "{{base}} (acierto)"
+    },
+    "tokenValue": "{{value}} tok"
+  },
+  "subagent": {
+    "fallbackTitle": "Subagente",
+    "background": "Segundo plano",
+    "stop": "Detener este subagente",
+    "readOnly": "Solo lectura",
+    "canContinue": "Se puede seguir conversando",
+    "tokensIn": "Entrada {{tokens}}",
+    "tokensOut": "Salida {{tokens}}",
+    "loadingTranscript": "Cargando transcripción…",
+    "emptyTranscript": "Aún no hay transcripción",
+    "pendingSteers_one": "{{count}} mensaje en cola, se aplicará en el siguiente paso",
+    "pendingSteers_other": "{{count}} mensajes en cola, se aplicarán en el siguiente paso",
+    "pendingSteers_few": "{{count}} mensajes en cola, se aplicarán en el siguiente paso",
+    "pendingSteers_many": "{{count}} mensajes en cola, se aplicarán en el siguiente paso",
+    "steerPlaceholderReadOnly": "Mensaje para {{role}} (se aplica en el siguiente paso, solo lectura)…",
+    "steerPlaceholder": "Mensaje: se aplica en el siguiente paso sin interrumpir la ejecución actual…",
+    "steer": "Mensaje",
+    "steerTitle": "Se aplica en el siguiente paso",
+    "runningHint": "En ejecución: podrás seguir conversando al terminar",
+    "continuePlaceholderReadOnly": "Pedir a {{role}} que continúe (solo lectura)…",
+    "continuePlaceholder": "Pedir al subagente que continúe…",
+    "send": "Enviar"
+  },
+  "subagents": {
+    "emptyTitle": "Esta sesión aún no tiene subagentes",
+    "emptyHint": "Aparecerán aquí cuando el agente principal lance una tarea",
+    "onlyCurrentSession": "Solo se muestran los subagentes de esta sesión",
+    "open": "Abrir transcripción del subagente",
+    "invalidFallback": "Validación del host fallida",
+    "invalidTooltip": "{{reason}}: {{summary}}",
+    "verified": "Verificado",
+    "unverified": "Sin verificar",
+    "criticalFindings_one": "{{count}} crítico",
+    "criticalFindings_other": "{{count}} críticos",
+    "criticalFindings_few": "{{count}} críticos",
+    "criticalFindings_many": "{{count}} críticos"
+  },
+  "sidechat": {
+    "interruptedNotice": "La generación anterior se interrumpió al cerrar la aplicación. El contenido generado se conserva, puedes seguir conversando.",
+    "generating": "Generando…",
+    "standalone": "Sesión independiente · en paralelo a la conversación principal",
+    "initializing": "Inicializando…",
+    "newSession": "Nueva sesión",
+    "noModel": "Sin modelo configurado",
+    "planConfirmedWithPath": "Plan confirmado. Empieza la implementación según {{path}}.",
+    "planConfirmed": "Plan confirmado. Empieza la implementación."
+  },
+  "browser": {
+    "back": "Atrás",
+    "forward": "Adelante",
+    "reload": "Recargar",
+    "addressPlaceholder": "Buscar o escribir una URL"
+  },
+  "filePreview": {
+    "copyPath": "Copiar ruta",
+    "openInEditor": "Abrir en el editor",
+    "loading": "Cargando…",
+    "truncated": "Solo se muestran las primeras {{shown}} de {{total}} líneas"
+  },
+  "plan": {
+    "governance": "Gobernanza · {{tier}}",
+    "allPassed": "Todo superado",
+    "inProgress": "En curso",
+    "repairs": "Retrabajo {{count}}/3",
+    "trivial": "Tarea T0 trivial: sin controles, implementar y verificar directamente.",
+    "emptyTitle": "Aún no hay documento de plan",
+    "emptyHint": "El modo plan investiga primero con herramientas de solo lectura y luego escribe el plan de implementación en plans/; el documento se muestra aquí.",
+    "updating": "Actualizando",
+    "writing": "Escribiendo",
+    "reload": "Releer",
+    "writingBody": "Escribiendo el documento del plan…",
+    "loadingBody": "Leyendo el documento del plan…"
+  },
+  "quickOpen": {
+    "title": "Apertura rápida",
+    "placeholder": "Escribe un nombre de archivo o ruta",
+    "failed": "No se pudo leer la lista de archivos, inténtalo de nuevo",
+    "loading": "Cargando…",
+    "noMatch": "Ningún archivo coincide",
+    "empty": "No hay archivos en el espacio de trabajo"
+  },
+  "review": {
+    "loading": "Cargando…",
+    "changedFiles_one": "{{count}} archivo modificado",
+    "changedFiles_other": "{{count}} archivos modificados",
+    "changedFiles_few": "{{count}} archivos modificados",
+    "changedFiles_many": "{{count}} archivos modificados",
+    "refresh": "Recargar",
+    "failed": "Error al leer, inténtalo más tarde",
+    "empty": "Esta sesión aún no tiene cambios de archivos",
+    "changeCount_one": "Modificado {{count}} vez",
+    "changeCount_other": "Modificado {{count}} veces",
+    "changeCount_few": "Modificado {{count}} veces",
+    "changeCount_many": "Modificado {{count}} veces",
+    "diffAria": "Cambios en {{path}}"
+  },
+  "workspace": {
+    "loading": "Cargando…",
+    "readFailed": "Error al leer",
+    "truncated": "…{{total}} elementos, solo se muestran los primeros {{shown}}",
+    "selectFile": "Selecciona un archivo a la derecha para previsualizarlo (texto / imagen / vídeo / audio / PDF)",
+    "resizeAria": "Ajustar el ancho de la lista de archivos",
+    "filterPlaceholder": "Filtrar archivos…",
+    "searching": "Buscando…",
+    "noMatch": "Ningún archivo coincide"
+  },
+  "terminal": {
+    "exited": "[Proceso finalizado]"
+  }
+}

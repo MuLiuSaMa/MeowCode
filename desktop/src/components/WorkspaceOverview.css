@@ -1,0 +1,285 @@
+.mc-workspaceov {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.mc-workspaceov__capsule {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 9px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  corner-shape: superellipse(1.5);
+  background: var(--surface);
+  color: var(--fg-subtle);
+  font: inherit;
+  font-size: var(--fs-sm);
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    background-color var(--dur) var(--ease),
+    color var(--dur) var(--ease);
+}
+
+.mc-workspaceov__capsule:hover,
+.mc-workspaceov__capsule[aria-expanded="true"] {
+  background: var(--surface-hover);
+  color: var(--fg);
+}
+
+.mc-workspaceov__capsule:focus-visible {
+  outline: 2px solid var(--accent, currentColor);
+  outline-offset: 2px;
+}
+
+.mc-workspaceov__icon {
+  flex-shrink: 0;
+}
+
+.mc-workspaceov__label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mc-workspaceov__stats {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: baseline;
+  gap: 4px;
+  font-variant-numeric: tabular-nums;
+}
+
+.mc-workspaceov__add {
+  color: var(--diff-add);
+}
+
+.mc-workspaceov__del {
+  color: var(--diff-del);
+}
+
+/* 展开卡片：从胶囊向下浮出，右侧贴边 */
+.mc-workspaceov__card {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 25;
+  width: min(300px, calc(100vw - 48px));
+  max-height: min(70vh, 640px);
+  padding: 10px 12px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  corner-shape: superellipse(1.5);
+  background: var(--bg-elevated);
+  box-shadow: var(--shadow-lg);
+  animation: mc-workspaceov-fade 120ms var(--ease);
+}
+
+@keyframes mc-workspaceov-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.mc-workspaceov__changes {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: var(--fs-sm);
+}
+
+.mc-workspaceov__sectiontitle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--fg);
+  font-weight: var(--fw-medium);
+}
+
+.mc-workspaceov__branch {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  color: var(--fg-subtle);
+  font-size: var(--fs-sm);
+}
+
+/* 分支切换：看起来是卡片里的一行，菜单由 CustomSelect portal 到 body，不被卡片滚动裁切 */
+.mc-workspaceov__branchselect {
+  width: 100%;
+  margin-top: 6px;
+}
+
+.mc-workspaceov__branchselect .mc-customselect__button {
+  height: 30px;
+  padding: 0 6px;
+  border-color: transparent;
+  background: transparent;
+  color: var(--fg-subtle);
+  font-size: var(--fs-sm);
+}
+
+.mc-workspaceov__branchselect .mc-customselect__button:hover,
+.mc-workspaceov__branchselect[data-open="true"] .mc-customselect__button {
+  border-color: transparent;
+  background: var(--surface-hover);
+  color: var(--fg);
+}
+
+.mc-workspaceov__branchselect .mc-customselect__chevron {
+  color: inherit;
+}
+
+.mc-workspaceov__error {
+  margin: 4px 6px 0;
+  color: var(--danger);
+  font-size: var(--fs-xs);
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.mc-workspaceov__commit {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  height: 30px;
+  margin-top: 2px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--fg-subtle);
+  font: inherit;
+  font-size: var(--fs-sm);
+  text-align: left;
+  cursor: pointer;
+}
+
+.mc-workspaceov__commit:hover {
+  background: var(--surface-hover);
+  color: var(--fg);
+}
+
+.mc-workspaceov__commit:focus-visible {
+  outline: 2px solid var(--accent, currentColor);
+  outline-offset: -2px;
+}
+
+.mc-workspaceov__commit .mc-workspaceov__chevron {
+  margin-left: auto;
+}
+
+.mc-workspaceov__divider {
+  height: 1px;
+  margin: 10px 0;
+  background: var(--border);
+}
+
+.mc-workspaceov__agenthead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--fg-subtle);
+  font-size: var(--fs-sm);
+}
+
+.mc-workspaceov__count {
+  color: var(--fg-subtlest);
+  font-variant-numeric: tabular-nums;
+}
+
+.mc-workspaceov__agents {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 4px;
+}
+
+.mc-workspaceov__agent {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 6px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--fg);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.mc-workspaceov__agent:hover {
+  background: var(--surface-hover);
+}
+
+.mc-workspaceov__agent:focus-visible {
+  outline: 2px solid var(--accent, currentColor);
+  outline-offset: -2px;
+}
+
+.mc-workspaceov__agenticon {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  color: var(--fg-subtle);
+}
+
+.mc-workspaceov__agenticon[data-status="completed"] {
+  color: var(--success-strong);
+}
+
+.mc-workspaceov__agenticon[data-status="failed"] {
+  color: var(--danger);
+}
+
+.mc-workspaceov__agenticon[data-status="interrupted"] {
+  color: var(--warning);
+}
+
+.mc-workspaceov__agenttext {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+
+.mc-workspaceov__agentdesc {
+  overflow: hidden;
+  color: var(--fg);
+  font-size: var(--fs-sm);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mc-workspaceov__agentmeta {
+  color: var(--fg-subtlest);
+  font-size: var(--fs-xs);
+}
+
+.mc-workspaceov__chevron {
+  flex-shrink: 0;
+  color: var(--fg-subtlest);
+}
+
+.mc-workspaceov__empty {
+  margin: 4px 0 0;
+  padding: 6px;
+  color: var(--fg-subtlest);
+  font-size: var(--fs-sm);
+}

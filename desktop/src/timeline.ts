@@ -40,15 +40,30 @@ export type HistoryCompaction = {
   status?: "completed" | "interrupted" | "failed";
 };
 
+export type HistoryCheckpoint = {
+  id: string;
+  timestamp: string;
+  label?: string;
+  auto: boolean;
+  fileChanges: string[];
+  /** 检查点之前有多少条消息（消息数组下标，与压缩点同口径） */
+  messageIndex: number;
+  /** 是否带文件快照（决定能否回滚代码；旧会话 false） */
+  hasSnapshot?: boolean;
+  fileCount?: number;
+};
+
 /**
  * 会话存档 → 时间线。存档里的工具调用只有 assistant.tool_calls（没有输出），
  * 重建为 replayed 工具行；content 为空的纯工具轮不再产生空白气泡。
  * 传入压缩记录时，把每条压缩分隔线插回它发生的原始位置。
+ * 传入检查点时同理插入检查点分隔线（同一位置可有多条，按 id 去重）。
  */
 export function timelineFromHistory(
   messages: ChatMessage[],
   nextKey: KeyFactory,
   compaction?: HistoryCompaction | HistoryCompaction[] | null,
+  checkpoints?: HistoryCheckpoint[] | null,
 ): TimelineItem[] {
   const items: TimelineItem[] = [];
   const toolOutputs = new Map<string, string>();
@@ -75,8 +90,34 @@ export function timelineFromHistory(
     }
   };
 
+  // 自动检查点（每个用户回合开始一条）不画分隔线 —— 挂到对应 user 消息气泡上做
+  // 「回滚到此处」入口，时间线保持干净；手动检查点仍画分隔线。
+  const checkpointList = (checkpoints ?? []).filter((point) => !point.auto);
+  const autoCheckpoints = (checkpoints ?? []).filter((point) => point.auto);
+  const autoCheckpointAt = (index: number) =>
+    autoCheckpoints.find((point) => point.messageIndex === index) ?? null;
+  const insertedCheckpoints = new Set<string>();
+  const insertCheckpoints = (index: number) => {
+    for (const point of checkpointList) {
+      if (point.messageIndex !== index || insertedCheckpoints.has(point.id)) continue;
+      insertedCheckpoints.add(point.id);
+      items.push({
+        kind: "checkpoint",
+        key: nextKey("checkpoint"),
+        id: point.id,
+        ...(point.label ? { label: point.label } : {}),
+        auto: point.auto,
+        timestamp: point.timestamp,
+        fileChanges: point.fileChanges,
+        ...(point.hasSnapshot !== undefined ? { hasSnapshot: point.hasSnapshot } : {}),
+        ...(point.fileCount !== undefined ? { fileCount: point.fileCount } : {}),
+      });
+    }
+  };
+
   for (let index = 0; index < messages.length; index += 1) {
     insertCompactions(index);
+    insertCheckpoints(index);
     const message = messages[index];
     if (message.role === "system" || message.role === "tool") continue;
 
@@ -94,12 +135,21 @@ export function timelineFromHistory(
           }))
           .filter((image): image is { mimeType: string; src: string } => Boolean(image.src)),
       ];
+      const anchor = autoCheckpointAt(index);
       items.push({
         kind: "message",
         key: nextKey("user"),
         role: "user",
         content: typeof message.content === "string" ? message.content : "",
         ...(images.length ? { images } : {}),
+        messageIndex: index,
+        ...(anchor
+          ? {
+              checkpointId: anchor.id,
+              checkpointHasSnapshot: anchor.hasSnapshot ?? false,
+              ...(anchor.label ? { checkpointLabel: anchor.label } : {}),
+            }
+          : {}),
       });
       continue;
     }
@@ -113,6 +163,7 @@ export function timelineFromHistory(
         role: "assistant",
         content,
         ...(reasoning ? { thinking: reasoning } : {}),
+        messageIndex: index,
       });
     }
 
@@ -132,8 +183,9 @@ export function timelineFromHistory(
     }
   }
 
-  // 压缩发生在最后一条消息之后（正常情况）时补在末尾
+  // 压缩/检查点发生在最后一条消息之后（正常情况）时补在末尾
   insertCompactions(messages.length);
+  insertCheckpoints(messages.length);
   return items;
 }
 

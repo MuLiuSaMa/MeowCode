@@ -63,6 +63,95 @@ export function estimateMessagesTokens(messages: ChatMessage[]): number {
   return messages.reduce((sum, message) => sum + estimateMessageTokens(message), 0);
 }
 
+/** 对话消息的细分占用（token）。各桶互斥，加总恒等于消息总量。 */
+export type MessageBreakdown = {
+  system: number;
+  /** 工具结果，按工具名降序；超出 topN 的合并成 "other tools" */
+  toolResults: Array<{ name: string; tokens: number }>;
+  userText: number;
+  assistantText: number;
+  /** 运行时注入的 user 消息（模式提示、@mention 文件上下文、harness 等） */
+  injected: number;
+  /** 图片与文档（从各角色桶里切出来单列：这是唯一能靠删减直接回收的部分） */
+  media: number;
+  /** 工具调用参数等其余部分 */
+  other: number;
+  total: number;
+};
+
+/**
+ * 把对话消息拆成可归因的几类（看板用，纯估算）。
+ *
+ * 三桶明细（system / tools / messages）只能说明「多大」，说明不了「谁在吃」；
+ * 按工具名与角色拆开，才能判断该收紧哪个工具的输出上限、哪个注入该改成仅本次请求。
+ */
+export function breakdownMessages(messages: ChatMessage[], topTools = 8): MessageBreakdown {
+  const toolTokens = new Map<string, number>();
+  let system = 0;
+  let userText = 0;
+  let assistantText = 0;
+  let injected = 0;
+  let media = 0;
+  let other = 0;
+
+  for (const message of messages) {
+    const total = estimateMessageTokens(message);
+    const mediaTokens =
+      ("images" in message ? (message.images?.length ?? 0) * IMAGE_TOKEN_ESTIMATE : 0) +
+      ("documents" in message ? (message.documents?.length ?? 0) * DOCUMENT_TOKEN_ESTIMATE : 0);
+    media += mediaTokens;
+    const rest = Math.max(0, total - mediaTokens);
+
+    if (message.role === "system") {
+      system += rest;
+      continue;
+    }
+    if (message.role === "tool") {
+      const name = message.name ?? "tool";
+      toolTokens.set(name, (toolTokens.get(name) ?? 0) + rest);
+      continue;
+    }
+    if (message.role === "user") {
+      if (isInjectedUserMessage(message)) injected += rest;
+      else userText += rest;
+      continue;
+    }
+    if (message.role === "assistant") {
+      // 工具调用参数是「怎么调」的开销，不是正文：切进 other，避免虚高正文占比
+      const callTokens = message.tool_calls?.length
+        ? message.tool_calls.reduce(
+            (sum, call) =>
+              sum + estimateTokens(call.function.name) + estimateTokens(call.function.arguments),
+            0,
+          )
+        : 0;
+      assistantText += Math.max(0, rest - callTokens);
+      other += Math.min(rest, callTokens);
+      continue;
+    }
+    other += rest;
+  }
+
+  const sorted = [...toolTokens.entries()]
+    .map(([name, tokens]) => ({ name, tokens }))
+    .sort((a, b) => b.tokens - a.tokens);
+  const toolResults = sorted.slice(0, topTools);
+  const tailTokens = sorted.slice(topTools).reduce((sum, item) => sum + item.tokens, 0);
+  if (tailTokens > 0) toolResults.push({ name: "other tools", tokens: tailTokens });
+
+  return {
+    system,
+    toolResults,
+    userText,
+    assistantText,
+    injected,
+    media,
+    other,
+    total: system + userText + assistantText + injected + media + other +
+      toolResults.reduce((sum, item) => sum + item.tokens, 0),
+  };
+}
+
 /** 工具定义的估算 token（JSON schema 按 4 字符/token 保守折算）。 */
 export function estimateToolDefinitionsTokens(tools: unknown): number {
   if (!tools || (Array.isArray(tools) && tools.length === 0)) return 0;
@@ -72,13 +161,6 @@ export function estimateToolDefinitionsTokens(tools: unknown): number {
     return 0;
   }
 }
-
-/**
- * 免费剪枝的主动触发阈值（P0-2）：估算占用过窗口 80% 就先跑 shrinkToolOutputs
- * （旧工具输出 → 头尾摘录，零模型调用）。剪完仍紧才轮到 trimMessages / 预热摘要 /
- * 溢出降级 —— 把"溢出才卡住"变成"过 80% 就悄悄瘦身"。
- */
-export const PRUNE_TRIGGER_RATIO = 0.8;
 
 /**
  * 按剩余窗口收紧单次输出预算（逐请求 preflight，参考 ZCode 的 per-step
@@ -168,16 +250,53 @@ export function estimateContextTokens(
   };
 }
 
-/** 上下文达到窗口的 85% 时提示用户手动压缩；真正溢出仍由 runtime 自动压缩。 */
+/** 上下文达到软阈值时提示用户手动压缩；真正溢出仍由 runtime 自动压缩。 */
 export const COMPACTION_WARNING_RATIO = 0.85;
+
+/**
+ * 压缩软触发的绝对预留项，两段都取自开源同类的现成口径，不自创数值：
+ *  - 输出预留 = min(maxTokens, 21_000)：ZCode `getAutoCompactOutputReserveTokens`
+ *    （provider 窗口是输入+输出共享的，自动压缩只能让出输入侧）
+ *  - 余量 = max(15% 窗口, 窗口 ≥ 32_000 时的 16_000)：OpenCode 的 `RESERVE_SHARE` /
+ *    `RESERVE_MIN`，注释写明这份额「留给压缩前最后一次回复和摘要本身」，
+ *    15% 的余量是为了「一步跨过阈值时整段对话仍能原样发出并复用缓存」
+ *    （实测单步 p99 增长约 22k token）。
+ *
+ * 两段**取大者而不是相加**：OpenCode 的 16_000 已经把输出算在内，
+ * 再叠一次输出预留会把 32k 窗口的阈值压到 26%，属于过早压缩。
+ *
+ * 阈值 = min(window × ratio, window − 预留)；预留吃满窗口时退回纯比值。
+ * 95% 的总量硬闸不走这个函数 —— Codex 的全窗守卫从不随口径移动，照此保留。
+ */
+export const COMPACTION_OUTPUT_RESERVE_CAP = 21_000;
+export const COMPACTION_RESERVE_SHARE = 0.15;
+export const COMPACTION_RESERVE_MIN_TOKENS = 16_000;
+
+/** 软触发阈值（token）；窗口未知时返回 0，调用方按「不触发」处理。 */
+export function compactionTriggerTokens(
+  contextWindow: number | null | undefined,
+  maxOutputTokens?: number,
+  ratio = COMPACTION_WARNING_RATIO,
+): number {
+  if (!contextWindow || contextWindow <= 0) return 0;
+  const ratioThreshold = Math.floor(contextWindow * ratio);
+  const outputReserve = Math.min(maxOutputTokens ?? 8_192, COMPACTION_OUTPUT_RESERVE_CAP);
+  const headroom = Math.max(
+    Math.floor(contextWindow * COMPACTION_RESERVE_SHARE),
+    contextWindow >= 2 * COMPACTION_RESERVE_MIN_TOKENS ? COMPACTION_RESERVE_MIN_TOKENS : 0,
+  );
+  const room = contextWindow - Math.max(outputReserve, headroom);
+  return room > 0 ? Math.min(ratioThreshold, room) : ratioThreshold;
+}
 
 export function shouldRecommendCompaction(
   usedTokens: number,
   contextWindow: number | null | undefined,
+  maxOutputTokens?: number,
 ): boolean {
-  return Boolean(
-    contextWindow && contextWindow > 0 && usedTokens / contextWindow >= COMPACTION_WARNING_RATIO,
-  );
+  if (!contextWindow || contextWindow <= 0) return false;
+  const trigger = compactionTriggerTokens(contextWindow, maxOutputTokens, COMPACTION_WARNING_RATIO);
+  return trigger > 0 && usedTokens >= trigger;
 }
 
 /** 判断一条 assistant 消息是否带工具调用。 */
@@ -292,45 +411,8 @@ export function buildMessageUnits(messages: ChatMessage[]): ChatMessage[][] {
   return units;
 }
 
-/**
- * 旧工具输出淘汰阈值：超过这个轮数、且长度超限的结果替换成占位符。
- * 淘汰粒度比"整单元丢弃"细，能保住"读过哪个文件"这类事实。
- */
-const STALE_TOOL_ROUNDS = 6;
-const STALE_TOOL_MIN_CHARS = 2000;
-/** 这几类结果记录的是"改过什么"，淘汰掉模型会重复改同一处，必须保留。 */
+/** 这几类结果记录的是"改过什么"，收缩掉模型会重复改同一处，必须保留。 */
 const KEEP_TOOL_NAMES = new Set(["edit_file", "multi_edit", "write_file"]);
-
-/**
- * 淘汰旧工具输出而不是整单元丢弃：
- * 一次 400 行 read_file 的 4k token 会一直躺在上下文里，直到整个单元被丢——
- * 而丢弃时连"读过这个文件"的事实也一起没了。先清内容、保结构，能多留几轮近期对话。
- */
-function elideStaleToolOutputs(messages: ChatMessage[]): ChatMessage[] {
-  const units = buildMessageUnits(messages);
-  if (units.length <= STALE_TOOL_ROUNDS + 1) return messages;
-  const cutoff = units.length - STALE_TOOL_ROUNDS;
-  let changed = false;
-  const next = units.map((unit, index) => {
-    if (index >= cutoff) return unit;
-    return unit.map((message) => {
-      if (message.role !== "tool") return message;
-      if (message.name && KEEP_TOOL_NAMES.has(message.name)) return message;
-      if (message.content.length <= STALE_TOOL_MIN_CHARS) return message;
-      changed = true;
-      return {
-        ...message,
-        content: `[${message.name ?? "tool"} output elided: ${message.content.length} chars]`,
-        images: undefined,
-        documents: undefined,
-      };
-    });
-  });
-  if (!changed) return messages;
-  const flat = next.flat();
-  // 孤儿 tool 消息会被 buildMessageUnits 丢掉；数量对不上就放弃淘汰，绝不改坏消息序列
-  return flat.length === messages.length ? flat : messages;
-}
 
 /**
  * 轻量压缩档位（参考 opencode 的 SHRINK_STEPS 思路：溢出先做便宜的裁剪，
@@ -350,6 +432,8 @@ type ShrinkOptions = {
   keepRecentUnits?: number;
   /** 单条工具输出保留的字符上限 */
   maxChars?: number;
+  /** callId → 落盘产物相对路径：命中时摘录附 locator，全文可用 read_file 找回 */
+  spilled?: ReadonlyMap<string, string>;
 };
 
 /** 判断一条 tool 结果是否属于「可以被轻量压缩」的旧输出（改文件的记录必须留着）。 */
@@ -416,11 +500,13 @@ export function shrinkToolOutputs(
     return unit.map((message) => {
       if (!isShrinkableToolMessage(message, maxChars)) return message;
       changed = true;
+      const spillPath = options.spilled?.get(message.tool_call_id);
       const dropped = [
-        message.images?.length ? `${message.images.length} image(s)` : "",
-        message.documents?.length ? `${message.documents.length} document(s)` : "",
+        spillPath ? `full text saved to ${spillPath}; read it with read_file` : "",
+        message.images?.length ? `${message.images.length} image(s) dropped` : "",
+        message.documents?.length ? `${message.documents.length} document(s) dropped` : "",
       ].filter(Boolean);
-      const note = dropped.length ? ` [${dropped.join(" / ")} dropped]` : "";
+      const note = dropped.length ? ` [${dropped.join("; ")}]` : "";
       return {
         ...message,
         // 标注算进预算内，保证多次收缩会收敛到 maxChars 以内
@@ -441,8 +527,8 @@ export function shrinkToolOutputs(
  * 按上下文窗口裁剪历史。
  *
  * 规则（保证请求合法、且最近的对话优先保留）：
- *  - **无条件先淘汰** 旧工具输出（保结构、清内容），无论是否超预算
- *  - 仍超预算时做第二层轻量压缩：旧工具输出抽头尾，尽量不丢整轮对话
+ *  - 预算内不改写任何消息：已发送过的历史一旦变动，前缀缓存就整段失效
+ *  - 超预算时做轻量压缩：旧工具输出抽头尾，尽量不丢整轮对话
  *  - **永远保留** 开头全部 system 消息（稳定提示 + 易变计划/摘要）
  *  - 以「普通消息」或「assistant(tool_calls)+tool 结果」为不可拆单元，从最新往回保留
  *  - 最后一条真实 user 消息之后的回合整体保留；压缩摘要前缀也保留
@@ -466,13 +552,10 @@ export function trimMessages(
     1024,
     contextWindow - (maxTokens ?? 0) - Math.max(0, reservedTokens) - 1024,
   );
-  // 无条件先淘汰旧工具输出（保结构、清内容），不等超预算：
-  // 几轮前的 read_file/grep 大结果早已过期，没有理由在每个后续请求里反复计费。
-  // 未变化时返回原数组，会话早期零开销。
-  const elided = elideStaleToolOutputs(messages);
-  let current = elided === messages ? messages : elided;
+  // 预算内保持原样：任何中段改写都会让上一次请求已经缓存的前缀失效。
+  let current = messages;
   let total = estimateMessagesTokens(current);
-  // 超预算时先做第二层轻量压缩：旧工具输出抽头尾，保住时间线与「读过什么」，
+  // 超预算时才做轻量压缩：旧工具输出抽头尾，保住时间线与「读过什么」，
   // 尽量不靠整单元丢弃（丢单元会连用户/助手的正文一起消失）。
   if (total > budget) {
     const shrunk = shrinkToolOutputs(current);

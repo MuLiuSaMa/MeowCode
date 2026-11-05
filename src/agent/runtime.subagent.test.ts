@@ -4,6 +4,7 @@ import path from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ChatMessage, MeowEvent } from "./types";
 import { SessionStore } from "./session-store";
+import { PluginRegistry } from "../plugins/registry.js";
 
 const { streamMock } = vi.hoisted(() => ({ streamMock: vi.fn() }));
 vi.mock("./provider.js", () => ({
@@ -58,6 +59,16 @@ function collectEvents(runtime: InstanceType<typeof AgentRuntime>): MeowEvent[] 
   const events: MeowEvent[] = [];
   runtime.onEvent((event) => events.push(event));
   return events;
+}
+
+async function waitFor<T>(read: () => T | undefined, timeoutMs = 3_000): Promise<T> {
+  const started = Date.now();
+  while (Date.now() - started < timeoutMs) {
+    const value = read();
+    if (value !== undefined) return value;
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  throw new Error("waitFor timed out");
 }
 
 beforeEach(() => {
@@ -190,6 +201,49 @@ describe("AgentRuntime subagents", () => {
     );
     expect(taskResult?.content).toContain("child report");
 
+    await runtime.closeSession();
+  });
+
+  it("injects plugins into the child runtime and scopes turn_stop with agentId", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "meowcode-subagents-"));
+    const workspace = await mkdtemp(path.join(tmpdir(), "meowcode-subws-"));
+    const plugins = new PluginRegistry();
+    const stops: Array<{ sessionId: string; agentId?: string }> = [];
+    plugins.addHook("obs", "turn_stop", (event) => {
+      stops.push({
+        sessionId: event.sessionId,
+        ...(event.agentId ? { agentId: event.agentId } : {}),
+      });
+    });
+    const runtime = new AgentRuntime({
+      providers: [{ id: "p", name: "P", baseUrl: "http://localhost", model: "m" }],
+      sessionsDir: dir,
+      plugins,
+    });
+    await runtime.newSession(workspace);
+    await runtime.setApprovalMode("full");
+    const parentId = runtime.current!.id;
+
+    streamMock.mockImplementation(async ({ messages }: { messages: ChatMessage[] }) => {
+      if (isChildRequest(messages)) {
+        return { message: { role: "assistant", content: "child report" } };
+      }
+      const hasToolResult = messages.some((message) => message.role === "tool");
+      if (!hasToolResult) {
+        return {
+          message: {
+            role: "assistant",
+            content: null,
+            tool_calls: [taskCall("task-1", "Inspect", "Look around.")],
+          },
+        };
+      }
+      return { message: { role: "assistant", content: "parent final" } };
+    });
+
+    await runtime.prompt("delegate");
+    expect(stops.some((stop) => stop.agentId && stop.sessionId !== parentId)).toBe(true);
+    expect(stops.some((stop) => !stop.agentId && stop.sessionId === parentId)).toBe(true);
     await runtime.closeSession();
   });
 
@@ -450,6 +504,7 @@ describe("AgentRuntime subagents", () => {
 
     expect(childTools).toEqual([
       "context_status",
+      "diagnostics",
       "glob",
       "grep",
       "list_dir",
@@ -511,7 +566,7 @@ describe("AgentRuntime subagents", () => {
     releaseChild();
     await vi.waitFor(() => {
       expect(events.some((event) => event.type === "subagent_completed")).toBe(true);
-    });
+    }, { timeout: 5_000 });
     const completed = events.find(
       (event) => event.type === "subagent_completed",
     ) as Extract<MeowEvent, { type: "subagent_completed" }>;
@@ -581,8 +636,9 @@ describe("AgentRuntime subagents", () => {
         (event) => event.type === "subagent_completed",
       ) as Extract<MeowEvent, { type: "subagent_completed" }> | undefined;
       expect(completed?.status).toBe("aborted");
-    });
-    expect(runtime.hasLiveSubagents).toBe(false);
+    }, { timeout: 5_000 });
+    // 事件先发、live 表在收尾里清理：等清理完成，别在两者之间的窗口里断言
+    await vi.waitFor(() => expect(runtime.hasLiveSubagents).toBe(false), { timeout: 5_000 });
     expect(runtime.abortSubagent(started.agentId)).toBe(false);
     await runtime.closeSession();
   });
@@ -629,7 +685,7 @@ describe("AgentRuntime subagents", () => {
       expect(
         events.filter((event) => event.type === "subagent_completed"),
       ).toHaveLength(2);
-    });
+    }, { timeout: 5_000 });
     const resumed = events.find(
       (event) => event.type === "subagent_resumed",
     ) as Extract<MeowEvent, { type: "subagent_resumed" }>;
@@ -704,7 +760,7 @@ describe("AgentRuntime subagents", () => {
     const promptPromise = runtime.prompt("delegate write");
     await vi.waitFor(() => {
       expect(runtime.pendingApprovalList).toHaveLength(1);
-    });
+    }, { timeout: 5_000 });
     const pending = runtime.pendingApprovalList[0];
     expect(pending).toMatchObject({
       sessionId: parentId,
@@ -769,7 +825,7 @@ describe("AgentRuntime subagents", () => {
     const promptPromise = runtime.prompt("start long task");
     await vi.waitFor(() => {
       expect(events.some((event) => event.type === "subagent_started")).toBe(true);
-    });
+    }, { timeout: 5_000 });
     runtime.abort();
     await promptPromise;
 
@@ -848,6 +904,7 @@ describe("AgentRuntime subagents", () => {
     expect(captures).toHaveLength(3);
     const readOnlyTools = [
       "context_status",
+      "diagnostics",
       "glob",
       "grep",
       "list_dir",
@@ -1027,6 +1084,209 @@ describe("AgentRuntime subagents", () => {
     expect(taskOutput.output).toContain("out.txt");
     expect(taskOutput.output).toContain('"valid":true');
     expect(taskOutput.output).toContain('"status":"completed"');
+    await runtime.closeSession();
+  });
+
+  it("steers a running subagent at the next safe step", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "meowcode-subagents-"));
+    const workspace = await mkdtemp(path.join(tmpdir(), "meowcode-subws-"));
+    const runtime = makeRuntime(dir);
+    await runtime.newSession(workspace);
+    await runtime.setApprovalMode("full");
+    const events = collectEvents(runtime);
+
+    let releaseFirstChild!: () => void;
+    const firstChildGate = new Promise<void>((resolve) => {
+      releaseFirstChild = resolve;
+    });
+    let childCalls = 0;
+
+    streamMock.mockImplementation(async ({ messages }: { messages: ChatMessage[] }) => {
+      if (isChildRequest(messages)) {
+        childCalls += 1;
+        if (childCalls === 1) {
+          await firstChildGate;
+          return { message: { role: "assistant", content: "first child answer" } };
+        }
+        return { message: { role: "assistant", content: "child report after steer" } };
+      }
+      const hasToolResult = messages.some((message) => message.role === "tool");
+      if (!hasToolResult) {
+        return {
+          message: {
+            role: "assistant",
+            content: null,
+            tool_calls: [taskCall("task-steer", "Inspect", "Inspect the repo.")],
+          },
+        };
+      }
+      return { message: { role: "assistant", content: "parent final" } };
+    });
+
+    const parentPrompt = runtime.prompt("delegate");
+    await waitFor(() => (childCalls > 0 ? true : undefined));
+    const agentId = runtime.liveSubagentIds[0];
+    runtime.steerSubagent(agentId, "Also inspect the tests");
+    expect(
+      events.some((event) => event.type === "subagent_steer_queued" && event.agentId === agentId),
+    ).toBe(true);
+
+    releaseFirstChild();
+    await parentPrompt;
+
+    const childRequests = streamMock.mock.calls
+      .map((call) => call[0] as { messages: ChatMessage[] })
+      .filter((request) => isChildRequest(request.messages));
+    expect(childRequests).toHaveLength(2);
+    expect(childRequests[1].messages).toContainEqual({
+      role: "user",
+      content: "Also inspect the tests",
+    });
+    expect(
+      events.some((event) => event.type === "subagent_steer_delivered" && event.agentId === agentId),
+    ).toBe(true);
+
+    const childFile = path.join(dir, "subagents", runtime.current!.id, `${agentId}.jsonl`);
+    const child = await SessionStore.load(childFile);
+    expect(child.messages).toContainEqual({ role: "user", content: "Also inspect the tests" });
+    await child.close();
+    await runtime.closeSession();
+  });
+
+  it("injects a steer after the current tool batch", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "meowcode-subagents-"));
+    const workspace = await mkdtemp(path.join(tmpdir(), "meowcode-subws-"));
+    await writeFile(path.join(workspace, "README.md"), "hello\n");
+    const runtime = makeRuntime(dir);
+    await runtime.newSession(workspace);
+    await runtime.setApprovalMode("full");
+    const events = collectEvents(runtime);
+
+    let releaseFirstChild!: () => void;
+    const firstChildGate = new Promise<void>((resolve) => {
+      releaseFirstChild = resolve;
+    });
+    let childCalls = 0;
+
+    streamMock.mockImplementation(async ({ messages }: { messages: ChatMessage[] }) => {
+      if (isChildRequest(messages)) {
+        childCalls += 1;
+        if (childCalls === 1) {
+          await firstChildGate;
+          return {
+            message: {
+              role: "assistant",
+              content: null,
+              tool_calls: [
+                {
+                  id: "read-1",
+                  type: "function",
+                  function: {
+                    name: "read_file",
+                    arguments: JSON.stringify({ path: "README.md" }),
+                  },
+                },
+              ],
+            },
+          };
+        }
+        return { message: { role: "assistant", content: "child report after tool" } };
+      }
+      const hasToolResult = messages.some((message) => message.role === "tool");
+      if (!hasToolResult) {
+        return {
+          message: {
+            role: "assistant",
+            content: null,
+            tool_calls: [taskCall("task-tool-steer", "Inspect", "Inspect the repo.")],
+          },
+        };
+      }
+      return { message: { role: "assistant", content: "parent final" } };
+    });
+
+    const parentPrompt = runtime.prompt("delegate");
+    await waitFor(() => (childCalls > 0 ? true : undefined));
+    const agentId = runtime.liveSubagentIds[0];
+    runtime.steerSubagent(agentId, "Now summarize the README");
+    releaseFirstChild();
+    await parentPrompt;
+
+    const childRequests = streamMock.mock.calls
+      .map((call) => call[0] as { messages: ChatMessage[] })
+      .filter((request) => isChildRequest(request.messages));
+    expect(childRequests).toHaveLength(2);
+    const second = childRequests[1].messages;
+    const toolIndex = second.findIndex((message) => message.role === "tool");
+    const steerIndex = second.findIndex(
+      (message) => message.role === "user" && message.content === "Now summarize the README",
+    );
+    expect(toolIndex).toBeGreaterThanOrEqual(0);
+    expect(steerIndex).toBeGreaterThan(toolIndex);
+    expect(
+      events.some(
+        (event) => event.type === "subagent_steer_delivered" && event.agentId === agentId,
+      ),
+    ).toBe(true);
+    await runtime.closeSession();
+  });
+
+  it("drops a pending steer when the subagent is stopped", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "meowcode-subagents-"));
+    const workspace = await mkdtemp(path.join(tmpdir(), "meowcode-subws-"));
+    const runtime = makeRuntime(dir);
+    await runtime.newSession(workspace);
+    await runtime.setApprovalMode("full");
+    const events = collectEvents(runtime);
+
+    let releaseChild!: () => void;
+    const childGate = new Promise<void>((resolve) => {
+      releaseChild = resolve;
+    });
+    let childCalls = 0;
+
+    streamMock.mockImplementation(
+      async ({ messages, signal }: { messages: ChatMessage[]; signal?: AbortSignal }) => {
+        if (isChildRequest(messages)) {
+          childCalls += 1;
+          await childGate;
+          if (signal?.aborted) throw new Error("Aborted");
+          return { message: { role: "assistant", content: "child done" } };
+        }
+        const hasToolResult = messages.some((message) => message.role === "tool");
+        if (!hasToolResult) {
+          return {
+            message: {
+              role: "assistant",
+              content: null,
+              tool_calls: [taskCall("task-drop", "Inspect", "Inspect the repo.")],
+            },
+          };
+        }
+        return { message: { role: "assistant", content: "parent final" } };
+      },
+    );
+
+    const parentPrompt = runtime.prompt("delegate");
+    await waitFor(() => (childCalls > 0 ? true : undefined));
+    const agentId = runtime.liveSubagentIds[0];
+    runtime.steerSubagent(agentId, "Too late");
+    expect(runtime.abortSubagent(agentId)).toBe(true);
+    releaseChild();
+    await parentPrompt;
+
+    expect(
+      events.some(
+        (event) =>
+          event.type === "subagent_steer_dropped" &&
+          event.agentId === agentId &&
+          event.reason === "aborted",
+      ),
+    ).toBe(true);
+    const childFile = path.join(dir, "subagents", runtime.current!.id, `${agentId}.jsonl`);
+    const child = await SessionStore.load(childFile);
+    expect(child.messages).not.toContainEqual({ role: "user", content: "Too late" });
+    await child.close();
     await runtime.closeSession();
   });
 });

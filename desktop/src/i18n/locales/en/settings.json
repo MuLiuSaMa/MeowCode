@@ -1,0 +1,584 @@
+{
+  "language": {
+    "section": "Language",
+    "title": "Display language",
+    "description": "Choose the language MeowCode shows its interface in. Applies immediately, no restart needed.",
+    "system": "System"
+  },
+  "speech": {
+    "section": "Speech style",
+    "field": "Reply style",
+    "desc": {
+      "normal": "Default tone: concise, direct and professional — just the essentials.",
+      "tafei": "Taffy tone: a playful catgirl persona that ends sentences with “miao” (喵) and occasionally uses her catchphrase; technical content stays accurate.",
+      "dazui": "Dazui: ah, this, this… right? The best speech style under ten million."
+    },
+    "options": {
+      "normal": "Normal",
+      "tafei": "永雏塔菲",
+      "dazui": "大嘴"
+    }
+  },
+  "nav": {
+    "heading": "Settings",
+    "ariaLabel": "Settings sections",
+    "back": "Back to chat"
+  },
+  "sections": {
+    "general": "General",
+    "appearance": "Appearance",
+    "shortcuts": "Shortcuts",
+    "island": "AI Floating Island",
+    "worktree": "Worktrees",
+    "rules": "Rules",
+    "models": "Models",
+    "memory": "Memory",
+    "archive": "Archive",
+    "about": "About",
+    "hooks": "Hooks",
+    "dataImport": "Data Import",
+    "learning": "Self-learning",
+    "rewind": "Session rewind",
+    "sandbox": "Sandbox"
+  },
+  "island": {
+    "section": "AI Floating Island",
+    "field": "Enable floating island",
+    "desc": {
+      "on": "The island is on: a capsule at the top center of your screen shows every running session. Hover it to read the conversation, reply, or stop a task.",
+      "off": "Shows a capsule at the top center of your screen with live status for all running sessions; hover to expand it into a mini chat window."
+    }
+  },
+  "close": {
+    "section": "Window close behaviour",
+    "field": "When closing the window",
+    "desc": {
+      "ask": "Ask every time whether to hide to the tray or quit.",
+      "tray": "Closing the window hides it in the system tray and MeowCode keeps running in the background.",
+      "quit": "Closing the window quits MeowCode right away."
+    },
+    "options": {
+      "ask": "Ask every time",
+      "tray": "Hide in tray",
+      "quit": "Quit directly"
+    }
+  },
+  "update": {
+    "section": "Updates",
+    "field": "Download updates in the background",
+    "desc": {
+      "on": "When a new version is found at startup it downloads automatically. A restart button then appears in the lower-left corner of the sidebar — click it to install.",
+      "off": "Only check quietly at startup and notify. Downloading and installing stays manual on the About page."
+    }
+  },
+  "worktree": {
+    "section": "Worktrees",
+    "fetch": {
+      "label": "Fetch upstream before creating",
+      "hint": "Fetch upstream updates before creating a worktree."
+    },
+    "cleanup": {
+      "label": "Automatically remove old worktrees",
+      "hint": "Recommended for most users. Turn off only if you want to manage old worktrees and disk usage yourself."
+    },
+    "maxKeep": {
+      "label": "Worktree limit",
+      "hint": "Once the limit is exceeded, the oldest worktrees are cleaned up automatically. A Git backup is created before deletion, so removed worktrees can always be restored."
+    }
+  },
+  "rules": {
+    "importSection": "Import settings",
+    "agents": {
+      "label": "Include AGENTS.md in context",
+      "hint": "The agent reads AGENTS.md from the workspace root and adds it to the context."
+    },
+    "claude": {
+      "label": "Include CLAUDE.md in context",
+      "hint": "The agent reads CLAUDE.md and CLAUDE.local.md from the workspace root and adds them to the context."
+    },
+    "title": "Rules",
+    "hint": "Create and manage rules that the agent follows during chat.",
+    "refresh": "Refresh rules",
+    "create": "Create",
+    "empty": "No rules yet",
+    "emptyHint": "Click Create to add your first rule",
+    "noWorkspace": "Select a workspace first",
+    "noWorkspaceHint": "Rules are stored in the project's .meowcode/rules directory.",
+    "clickToEdit": "Click to edit this rule",
+    "deleteAria": "Delete rule \"{{name}}\"",
+    "confirmDeleteAria": "Click again to confirm deleting rule \"{{name}}\"",
+    "createTitle": "New rule",
+    "editTitle": "Edit rule \"{{name}}\"",
+    "editorDesc": "Rules are injected into the system prompt with the project. Markdown is supported.",
+    "name": "Rule name",
+    "namePlaceholder": "e.g. code-style",
+    "nameHint": "Lowercase letters, digits, and hyphens, e.g. code-style",
+    "nameRule": "Use lowercase letters, digits, and hyphens; do not start or end with a hyphen.",
+    "content": "Rule content",
+    "contentPlaceholder": "e.g. Every new function needs JSDoc; do not edit generated/.",
+    "loadFailed": "Failed to load rules",
+    "readFailed": "Failed to read the rule",
+    "saveFailed": "Failed to save the rule",
+    "deleteFailed": "Failed to delete the rule",
+    "saved": "Saved rule \"{{name}}\"",
+    "deleted": "Deleted rule \"{{name}}\""
+  },
+  "appearance": {
+    "themeSection": "Theme",
+    "themeField": "Color theme",
+    "themeDesc": "“System” follows the Windows light / dark setting in real time. Changes apply immediately, no restart needed.",
+    "theme": {
+      "system": "System",
+      "light": "Light",
+      "dark": "Dark"
+    },
+    "fontSection": "Fonts",
+    "fontDesc": "The interface font applies to chat, the sidebar and other UI text; the code font applies to code blocks, diffs and other monospaced text. Pick a system font or import a local font file (ttf / otf / woff / woff2). Changes apply immediately.",
+    "importField": "Import font",
+    "importButton": "Import Font…",
+    "uiFont": "Interface font",
+    "codeFont": "Code font",
+    "defaultFont": "Default",
+    "fontsLoading": "Reading system fonts… click to retry",
+    "imported": "{{name}} (imported)"
+  },
+  "shortcuts": {
+    "title": "Shortcuts",
+    "description": "Keyboard shortcuts reference.",
+    "ctrlHint": "On macOS, ⌘ replaces Ctrl",
+    "items": {
+      "search": "Search all conversations",
+      "quickOpen": "Quick open files",
+      "sideChat": "Side chat",
+      "terminal": "Terminal",
+      "send": "Send message",
+      "commit": "Commit Git changes"
+    }
+  },
+  "memory": {
+    "extractionTitle": "Automatic memory extraction",
+    "extractionDesc": "After each turn, a lightweight background request reviews the new conversation and saves what is worth remembering long-term (preferences, corrections, project decisions) into memory. When off, only manual entries and the AI's own memory tool writes remain.",
+    "extractionField": "Extract memories after each turn",
+    "extractionFailed": "Failed to save the toggle",
+    "scope": {
+      "user": "Personal memory",
+      "project": "Project memory"
+    },
+    "descUser": "Long-term memory kept across workspaces: your preferences, recurring workflows, lessons learned. Stored in ~/.meowcode/memory/. The index is injected when a new chat starts, and the AI reads and writes entries with the memory tools.",
+    "descProject": "Memory specific to the current workspace, stored in the project's .meowcode/memory/ (not committed to git).",
+    "descProjectNamed": "Memory specific to the current workspace ({{workspace}}), stored in the project's .meowcode/memory/ (not committed to git).",
+    "count_one": "{{count}} memory stored",
+    "count_other": "{{count}} memories stored",
+    "count_few": "{{count}} memories stored",
+    "count_many": "{{count}} memories stored",
+    "create": "New memory",
+    "empty": "No memories yet — when the AI learns something worth keeping in a chat it saves it here, and you can add entries yourself too.",
+    "clickToEdit": "Click to edit",
+    "noDescription": "(no description)",
+    "deleteAria": "Delete {{name}}",
+    "confirmDeleteAria": "Confirm deleting {{name}}",
+    "editTitle": "Edit {{name}} ({{scope}})",
+    "createTitle": "New {{scope}}",
+    "editorDesc": "Edit the Markdown source. The frontmatter description goes into the MEMORY.md index (takes effect in new chats).",
+    "name": "Name",
+    "namePlaceholder": "kebab-case, for example docker-cli",
+    "nameHint": "Saved as <name>.md",
+    "nameRule": "Names are lowercase kebab-case (letters, digits, hyphens), up to 64 characters",
+    "saved": "{{name}} saved to {{scope}}",
+    "deleted": "{{name}} deleted from {{scope}}",
+    "loadFailed": "Couldn't load memories",
+    "readFailed": "Couldn't read the memory",
+    "saveFailed": "Couldn't save the memory",
+    "deleteFailed": "Couldn't delete the memory"
+  },
+  "archive": {
+    "section": "Archive",
+    "desc": "Archived chats stay out of the chat list and can be restored any time. To archive one, hover over a chat in the list and click the archive icon on the right. Deleting removes the chat record itself and cannot be undone.",
+    "empty": "No archived chats",
+    "item": "Chat · {{when}}",
+    "unknownTime": "unknown time",
+    "deleteAll": "Delete all",
+    "confirmDeleteAll": "Delete all?",
+    "deleteAria": "Delete {{name}} permanently",
+    "confirmDeleteAria": "Click again to delete {{name}} permanently"
+  },
+  "about": {
+    "loading": "Reading version info…",
+    "version": "Version",
+    "newVersion": "Update available",
+    "checking": "Checking…",
+    "check": "Check Version",
+    "author": "Author",
+    "website": "Website",
+    "repo": "Repository",
+    "openInBrowser": "Open in browser",
+    "credits": "Credits",
+    "sponsor": "Support",
+    "sponsorHint": "If MeowCode has been useful to you, feel free to support the author by scanning a QR code.",
+    "qrAlt": "{{name}} payment QR code",
+    "sponsors": {
+      "wechat": "WeChat Pay",
+      "alipay": "Alipay"
+    },
+    "upToDate": "You're already on the latest version",
+    "checkFailed": "Update check failed: {{error}}"
+  },
+  "actions": {
+    "add": "Add",
+    "cancel": "Cancel",
+    "confirmDelete": "Confirm Delete",
+    "delete": "Delete",
+    "edit": "Edit",
+    "restore": "Restore",
+    "save": "Save",
+    "saving": "Saving…"
+  },
+  "models": {
+    "section": "Models",
+    "desc": "Add model providers here, then enter the model name you want to use.",
+    "count_one": "{{count}} model configured",
+    "count_other": "{{count}} models configured",
+    "count_few": "{{count}} models configured",
+    "count_many": "{{count}} models configured",
+    "add": "Add Model",
+    "empty": "No models configured yet. Click “Add Model” to get started.",
+    "deleteTitle": "Delete provider",
+    "deleteMessage": "Delete \"{{name}}\"? You will need to set it up again before it can be used.",
+    "restartTitle": "Saving restarts the local service",
+    "restartMessage": "Model changes restart the local agent service, which interrupts the running turn. Save anyway?",
+    "restartConfirm": "Save anyway",
+    "colModel": "Model",
+    "colProvider": "Provider",
+    "colActions": "Actions",
+    "active": "Current",
+    "enableAria": "Enable {{name}}",
+    "levels": "Reasoning levels",
+    "levelRemoveAria": "Remove {{level}}",
+    "levelRemoveTitle": "Remove this level",
+    "levelsAuto": "Leave empty to match by model name (currently {{levels}})",
+    "levelsManual": "Set manually. Clear every level to go back to matching by model name.",
+    "modalityOptions": {
+      "text": "Text",
+      "image": "Image",
+      "pdf": "PDF"
+    },
+    "ttlOptions": {
+      "fiveMinutes": "5 minutes (default)",
+      "auto": "Automatic (follows chat cadence)",
+      "oneHour": "1 hour (long Anthropic TTL)"
+    },
+    "summaryOptions": {
+      "none": "Don't send (saves tokens)",
+      "auto": "Auto",
+      "concise": "Concise",
+      "detailed": "Detailed"
+    },
+    "compactionOptions": {
+      "auto": "Automatic (official endpoints)",
+      "on": "Force on (compatible gateways)",
+      "off": "Off (local summaries only)"
+    },
+    "authOptions": {
+      "protocolDefault": "Protocol default (Anthropic x-api-key / OpenAI Bearer)",
+      "bearer": "Authorization: Bearer",
+      "azureKey": "api-key header (Azure OpenAI)",
+      "bedrockKey": "Bedrock-API-Key (Amazon Bedrock)",
+      "none": "No auth header (local inference / set in headers)"
+    },
+    "picker": {
+      "title": "Add Model Provider",
+      "desc": "Pick a provider, then enter the model you want to use. The API format can be changed later. Not on the list? Use “Custom provider” and fill in the endpoint yourself.",
+      "search": "Search",
+      "searchPlaceholder": "Search by name or id, for example deepseek",
+      "custom": "Custom provider",
+      "customMeta": "Enter the endpoint and key by hand",
+      "needEndpoint": "Endpoint required",
+      "noMatch": "No provider matches — try “Custom provider”"
+    },
+    "form": {
+      "addTitle": "Add Model · {{name}}",
+      "editTitle": "Edit Model",
+      "desc": "The provider is picked — now configure the model itself. API keys stay on this machine (encrypted with Windows credentials).",
+      "customProviderName": "Custom provider",
+      "providerName": "Provider name",
+      "providerNamePlaceholder": "For example, My Provider",
+      "providerNameHint": "Shown in the Provider column of the model list",
+      "provider": "Provider",
+      "apiFormat": "API format",
+      "apiFormatAuto": "Detected from the request URL; picking one manually stops auto-detection",
+      "apiFormatDesc": "Decides which endpoint the request hits and how the body is shaped; detected from the request URL",
+      "baseUrl": "Request URL",
+      "baseUrlHint": "Enter the root URL and the API format is detected for you; the path is appended per format",
+      "modelId": "Model ID",
+      "modelIdPlaceholder": "For example, deepseek-chat",
+      "modelIdHint": "The model identifier from the provider's docs; required. One model ID can be configured more than once (different URL or key).",
+      "displayName": "Model display name",
+      "displayNamePlaceholder": "Leave empty to show the model ID",
+      "displayNameHint": "Affects the interface only, and must not duplicate an existing model",
+      "apiKey": "API key",
+      "apiKeySaved": "Already saved — leave empty to keep it",
+      "contextWindow": "Context window",
+      "contextWindowHint": "Detected from the model name if empty; 256K / 1M notation works",
+      "maxOutput": "Max output",
+      "maxOutputHint": "Detected from the model name if empty — how many tokens a single reply may produce",
+      "modalities": "Input modalities",
+      "requiredTag": " (required)",
+      "modalityHint": "Image support is detected from the model name; PDF only rides the Anthropic / Responses protocols. Keep at least the text modality.",
+      "advanced": "Advanced settings",
+      "advancedHint": "Reasoning effort / cache TTL / reasoning levels / auth and request tweaks — leave empty for defaults",
+      "reasoningEffort": "Reasoning effort",
+      "reasoningEffortPlaceholder": "Empty = provider default",
+      "reasoningEffortHint": "Sent as reasoning_effort",
+      "thinkingBudget": "Thinking budget",
+      "thinkingBudgetPlaceholder": "Empty = follow the reasoning effort",
+      "thinkingBudgetHint": "thinking.budget_tokens; automatically clamped below max_tokens",
+      "cacheTtl": "Cache TTL",
+      "cacheTtlHint": "1h writes cost 2×; automatic and 1h only take effect on endpoints verified to support the long TTL, everything else falls back to 5m",
+      "reasoningSummary": "Reasoning summary",
+      "reasoningSummaryHint": "Responses protocol only; summaries are billed as output tokens",
+      "nativeCompaction": "Server-side compaction",
+      "nativeCompactionHint": "Lets the provider compact history, which saves one full summarization request",
+      "authStyle": "Auth method",
+      "authStyleHint": "Keep the default for most providers; Azure / Bedrock need their own option",
+      "extraHeaders": "Extra request headers",
+      "extraHeadersHint": "One “name: value” per line; a line starting with # is a comment. For example OpenRouter's HTTP-Referer",
+      "extraBody": "Extra request body",
+      "extraBodyHint": "A JSON object merged into the top level of the request body. For example Qwen's {\"enable_thinking\": false}",
+      "models": "Models",
+      "addModel": "Add model ID",
+      "fetchModels": "Fetch model list",
+      "fetching": "Fetching…",
+      "fetchTitle": "Select models to add",
+      "fetchHint": "Only checked models are added to the list above.",
+      "fetchEmpty": "No models were returned.",
+      "fetchFailed": "Failed to fetch models: {{message}}",
+      "fetchAdded": "Already added",
+      "fetchAdd": "Add selected ({{count}})",
+      "modelSettings": "Model settings",
+      "modelSettingsDesc": "Applies to this model only; endpoint, key and protocol are configured above.",
+      "modelsRequired": "Add at least one model.",
+      "contextDefault": "Model default"
+    },
+    "error": {
+      "providerNameRequired": "Provider name can't be empty",
+      "modelRequired": "Model ID can't be empty",
+      "duplicateName": "The display name “{{name}}” is already configured",
+      "baseUrlRequired": "Request URL can't be empty",
+      "contextFormat": "Invalid context window format — use something like 128k or 1M",
+      "maxOutputFormat": "Invalid max output format — use something like 32k",
+      "extraBodyObject": "The extra request body must be a JSON object",
+      "extraBodyJson": "The extra request body isn't valid JSON: {{message}}",
+      "headerLine": "Invalid header line: {{line}}"
+    }
+  },
+  "hooks": {
+    "loading": "Loading hook configuration…",
+    "error": "Failed to load hook configuration: {{error}}",
+    "retry": "Retry",
+    "saving": "Restarting the agent service to apply hooks…",
+    "import": {
+      "section": "Import Claude Code hooks",
+      "description": "Reads ~/.claude/settings.json and workspace .claude configs. Workspace configs are not executed by default.",
+      "master": "Enable hooks",
+      "masterHint": {
+        "on": "Claude Code hook configuration is loaded.",
+        "off": "Disabled: configuration is shown read-only and will not run."
+      },
+      "workspace": "Include workspace .claude config",
+      "workspaceHint": {
+        "on": "Hooks in workspace .claude/settings*.json will run.",
+        "off": "Only ~/.claude config runs; workspace config is shown for reference."
+      },
+      "workspaceWarning": "Workspace hooks come from files in this repository and may contain malicious commands. Only enable them when you trust this repository.",
+      "disabledNote": "Hooks are disabled. Turn on the switch above to run commands."
+    },
+    "configured": {
+      "section": "Configured hooks",
+      "description": "Read-only summary. Open the config file to edit.",
+      "empty": "No Claude Code hooks are configured.",
+      "eventCount": "{{count}} command(s)",
+      "matcher": "matches {{matcher}}",
+      "timeout": "{{seconds}}s timeout",
+      "layer": {
+        "user": "User",
+        "project": "Workspace",
+        "local": "Workspace local"
+      },
+      "layerUnknown": "Unknown path",
+      "excluded": "Not running",
+      "open": "Open for editing",
+      "missing": "File not found",
+      "fileCount": "{{count}} command(s)",
+      "missingToast": "File not found: {{path}}",
+      "openError": "Could not open file: {{error}}",
+      "unsupported": "Unbridged events: {{events}}"
+    },
+    "runMode": {
+      "section": "Hook command run mode",
+      "description": {
+        "auto": "Run hook commands automatically; PreToolUse `ask`/`deny` still apply.",
+        "ask": "Ask before each hook command runs for the first time in a session; declining only skips that command."
+      },
+      "field": "Run mode",
+      "options": {
+        "auto": "Run automatically",
+        "autoDesc": "No extra confirmation; follow the hook configuration",
+        "ask": "Ask every time",
+        "askDesc": "Confirm each command once per session"
+      }
+    },
+    "confirm": {
+      "title": "Restart the agent service?",
+      "message": "A turn is running. Saving hook settings will interrupt it.",
+      "confirm": "Save and restart"
+    }
+  },
+  "dataImport": {
+    "title": "Data Import",
+    "desc": "Import new content from other apps; no automatic sync, and source app data is never modified.",
+    "fromApps": "Import from apps",
+    "redetect": "Re-detect",
+    "loading": "Detecting importable apps…",
+    "error": "Detection failed: {{error}}",
+    "retry": "Retry",
+    "app": {
+      "qoder": "Qoder CN IDE (Quest)",
+      "qoderintl": "Qoder (International)",
+      "workbuddy": "WorkBuddy",
+      "workbuddyai": "WorkBuddyAI",
+      "zcode": "ZCode",
+      "opencode": "OpenCode",
+      "dsh": "DeepSeek Harness",
+      "codex": "Codex"
+    },
+    "notDetected": "Not detected",
+    "selected": "{{count}} selected",
+    "import": "Import data",
+    "importing": "Importing…",
+    "groups": {
+      "mcp": "MCP connectors",
+      "memory": "Memory",
+      "skills": "Skills",
+      "tasks": "Conversations"
+    },
+    "groupEmpty": "None",
+    "result": {
+      "imported": "Imported {{count}} items",
+      "skipped": "{{count}} already present",
+      "failed": "{{count}} failed, click to view",
+      "mcpReloaded": "MCP connectors updated and reconnected"
+    },
+    "progress": "Importing {{done}}/{{total}}"
+  },
+  "learning": {
+    "title": "Self-learning",
+    "desc": "After a turn, the agent distils what it learned into reusable skills, project guidelines and a model of how you like to work. Nothing is trusted immediately: new items start on probation, must prove useful, and retire themselves if they get in the way.",
+    "toggleField": "Learn from conversations",
+    "toggleFailed": "Could not change the setting",
+    "budgetField": "Calls today",
+    "budgetValue": "{{count}} on {{date}}",
+    "skillsTitle": "Learned skills",
+    "skillsDesc": "Procedures the agent wrote for itself. Read a skill by its SKILL.md path; it is recalled by name and description.",
+    "skillsEmpty": "Nothing learned yet. Skills appear once a procedure succeeds and looks worth repeating.",
+    "skillCount_one": "{{count}} skill",
+    "skillCount_other": "{{count}} skills",
+    "skillCount_few": "{{count}} skills",
+    "skillCount_many": "{{count}} skills",
+    "consolidate": "Consolidate now",
+    "consolidated": "Consolidated: {{count}} item(s) updated",
+    "consolidatedEmpty": "Nothing to consolidate",
+    "consolidateFailed": "Consolidation failed",
+    "statsHint": "helped / hurt — how often this item was recalled and whether the turn went well",
+    "rollbackAria": "Roll back {{name}} to the previous revision",
+    "reactivateAria": "Put {{name}} back on probation",
+    "deleteAria": "Delete {{name}}",
+    "actionFailed": "That action did not go through",
+    "guidelinesTitle": "Project guidelines",
+    "guidelinesDesc": "Rules that only surface when their trigger matches — a command, an error, a keyword or a file pattern.",
+    "guidelinesEmpty": "No guidelines yet.",
+    "profileTitle": "What it knows about you",
+    "profileDesc": "Communication style, how much rigor you expect, how much autonomy you grant.",
+    "profileEmpty": "Nothing yet. These build up slowly from repeated evidence.",
+    "status": {
+      "tentative": "probation",
+      "active": "trusted",
+      "retired": "retired"
+    },
+    "dimension": {
+      "communication": "communication",
+      "rigor": "rigor",
+      "autonomy": "autonomy",
+      "coding_style": "coding style",
+      "toolchain": "toolchain",
+      "domain": "domain"
+    },
+    "loadFailed": "Could not load learned items",
+    "clearField": "Clear everything learned",
+    "clearHint": "Deletes every learned skill, guideline, profile trait and the outcome history — in this project and across projects. Cannot be undone.",
+    "clearAction": "Clear all",
+    "clearConfirm": "Click again to confirm",
+    "cleared": "Cleared {{scopes}} learning directories",
+    "clearedNothing": "Nothing to clear",
+    "clearFailed": "Could not clear learned items"
+  },
+  "general": {
+    "section": "General",
+    "desc": "Everyday behaviour. Changes apply immediately.",
+    "notify": {
+      "field": "System notifications",
+      "desc": {
+        "on": "When a turn finishes, needs your approval, or is interrupted — and the window is in the background — show a system notification with the chat title and reply summary.",
+        "off": "No system notifications will be shown."
+      }
+    }
+  },
+  "proxy": {
+    "title": "Network proxy",
+    "desc": "Switch connection method when the network misbehaves. Applies immediately.",
+    "mode": {
+      "direct": "Direct",
+      "system": "Follow system",
+      "manual": "Manual"
+    },
+    "urlLabel": "Proxy address",
+    "urlHint": "For example http://127.0.0.1:7890 — leave empty to connect directly.",
+    "urlMissing": "No address yet, so requests still go direct.",
+    "failed": "Could not apply the proxy setting"
+  },
+  "rewind": {
+    "section": "Session rewind",
+    "enabled": {
+      "label": "File snapshots",
+      "hint": "A checkpoint is taken at the start of every turn; files written or edited can be rewound together with the conversation. Restart the app after changing."
+    },
+    "keep": {
+      "label": "Snapshots to keep",
+      "hint": "Keep file snapshots for the most recent N checkpoints per session; older ones are cleaned up."
+    },
+    "maxTotal": {
+      "label": "Snapshot size cap",
+      "hint": "Total size cap of one session's snapshot directory; oldest snapshots are reclaimed first."
+    }
+  },
+  "sandbox": {
+    "title": "Sandbox",
+    "modeField": "Sandbox mode",
+    "modeDesc": "Control the Agent's filesystem access.",
+    "modeFull": "Full access",
+    "modeFullDesc": "The Agent can read and write files outside the workspace.",
+    "modeWorkspace": "Workspace write",
+    "modeWorkspaceDesc": "Commands can only write to the workspace and extra writable roots.",
+    "deleteField": "Deletion confirmation",
+    "deleteDesc": "Only applies in workspace-write mode; full access skips deletion confirmation by default.",
+    "unsupported": "The command sandbox is only available on Windows.",
+    "riskTitle": "Switch to workspace-write?",
+    "riskDoes": "Enabling writes a standing ACL and Low integrity label to the workspace and runs run_command under a restricted token.",
+    "riskDoesNot": "It does not restrict reads or network, nor file-editing tools. A blocked command asks separately whether to retry once outside the sandbox.",
+    "riskUndo": "Switch back to full access to stop sandboxing; the workspace ACL remains but is no longer used.",
+    "confirmEnable": "Switch",
+    "cancel": "Cancel",
+    "enabled": "Switched to workspace-write (first grant {{ms}} ms)",
+    "saveFailed": "Failed to save sandbox settings",
+    "loadFailed": "Failed to load sandbox settings"
+  }
+}

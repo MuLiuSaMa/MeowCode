@@ -1,0 +1,160 @@
+{
+  "nav": {
+    "heading": "Contrôle de code source",
+    "ariaLabel": "Contrôle de code source",
+    "viewAria": "Vue du contrôle de code source"
+  },
+  "group": {
+    "conflicted": "Conflits",
+    "staged": "Indexé",
+    "unstaged": "Modifications",
+    "empty": "Aucun",
+    "unstageAll": "Tout désindexer",
+    "stageAll": "Tout indexer"
+  },
+  "list": {
+    "truncated": "Affichage des {{shown}} premiers sur {{total}}",
+    "truncatedStaged": " (utilisez « Tout désindexer » pour le reste)",
+    "truncatedUnstaged": " (utilisez « Tout indexer » pour le reste, ou ajoutez-les à .gitignore)"
+  },
+  "repo": {
+    "unavailable": "git est introuvable. Installez-le et ajoutez-le au PATH",
+    "notRepo": "L'espace de travail actuel n'est pas un dépôt Git",
+    "reading": "Lecture de l'état du dépôt…"
+  },
+  "repoHint": {
+    "unavailable": "git est introuvable : installez Git et vérifiez que `git --version` fonctionne dans le terminal.",
+    "notRepo": "L'espace de travail actuel n'est pas un dépôt Git. Exécutez `git init` dans le terminal, puis actualisez ici.",
+    "failed": "Impossible de lire l'état du dépôt."
+  },
+  "branch": {
+    "switch": "Changer de branche",
+    "search": "Rechercher une branche",
+    "listAria": "Liste des branches",
+    "loading": "Lecture des branches…",
+    "noMatch": "Aucune branche correspondante",
+    "stash": "Remiser les modifications locales avant de changer",
+    "force": "Forcer le changement (abandonner les modifications non validées)",
+    "newPlaceholder": "Créer une branche depuis le HEAD actuel, par ex. feature/login",
+    "create": "Créer et changer",
+    "close": "Fermer"
+  },
+  "conflict": {
+    "ours": "La mienne",
+    "oursTitle": "Utiliser la mienne (ours)",
+    "theirs": "La leur",
+    "theirsTitle": "Utiliser la leur (theirs)",
+    "mark": "Résolu",
+    "markTitle": "Marquer comme résolu (contenu déjà traité manuellement)",
+    "resolveTitleOurs": "Utiliser ma version",
+    "resolveTitleTheirs": "Utiliser leur version",
+    "resolveTitleMark": "Marquer comme résolu",
+    "resolveMessageMark": "Le fichier en conflit sera marqué comme résolu (son contenu actuel sur le disque est conservé).",
+    "resolveMessageReplace": "Le fichier sera remplacé par la version du côté choisi ; le contenu de l'autre côté sera perdu."
+  },
+  "file": {
+    "stage": "Indexer",
+    "unstage": "Désindexer",
+    "discard": "Abandonner les modifications"
+  },
+  "discard": {
+    "title": "Abandonner les modifications",
+    "message": "Les modifications de l'arbre de travail de ces fichiers seront définitivement abandonnées (les modifications non indexées seront perdues et les fichiers non suivis seront supprimés).",
+    "confirm": "Abandonner"
+  },
+  "dialog": {
+    "cancel": "Annuler",
+    "confirm": "Confirmer",
+    "processing": "Traitement…"
+  },
+  "footer": {
+    "changes_one": "{{count, number}} modification",
+    "changes_other": "{{count, number}} modifications",
+    "changes_few": "{{count, number}} modifications",
+    "changes_many": "{{count, number}} modifications"
+  },
+  "action": {
+    "refresh": "Actualiser",
+    "pull": "Tirer",
+    "push": "Pousser",
+    "forcePush": "Forcer le push",
+    "back": "Retour"
+  },
+  "pull": {
+    "title": "Tirer (--ff-only)",
+    "noUpstream": "Cette branche n'a pas de branche amont"
+  },
+  "push": {
+    "detached": "Impossible de pousser depuis un HEAD détaché",
+    "forceTitle": "Push forcé (--force-with-lease, deux confirmations requises)",
+    "message": "Pousser {{branch}} vers {{upstream}}.",
+    "messageNew": "Pousser {{branch}} vers origin et définir la branche amont.",
+    "forceWarning": "Un push forcé écrase avec l'historique local les commits qui pourraient exister sur le dépôt distant (--force-with-lease ne protège que si personne d'autre n'a mis à jour le distant). C'est généralement irréversible.",
+    "forceConfirm": "Écraser {{upstream}} distant avec le {{branch}} local ?",
+    "forceStep1": "Push forcé (1/2)",
+    "forceStep2": "Push forcé (2/2)",
+    "continue": "Continuer"
+  },
+  "upstream": {
+    "none": "Aucune branche amont",
+    "short": "amont",
+    "ahead": "{{count, number}} en avance",
+    "behind": "{{count, number}} en retard"
+  },
+  "tab": {
+    "changes": "Modifications",
+    "history": "Historique"
+  },
+  "detail": {
+    "backTitle": "Retour à la liste",
+    "loading": "Lecture des détails du commit…",
+    "mergeCommit": "Commit de fusion",
+    "moreFiles_one": "+{{count, number}} fichier non listé",
+    "moreFiles_other": "+{{count, number}} fichiers non listés",
+    "moreFiles_few": "+{{count, number}} fichiers non listés",
+    "moreFiles_many": "+{{count, number}} fichiers non listés"
+  },
+  "diff": {
+    "loading": "Lecture du diff…",
+    "binary": "Fichier binaire, contenu non affiché",
+    "empty": "Aucune modification à afficher",
+    "emptyCommit": "Ce commit n'a aucune modification à afficher",
+    "truncated": "Patch trop volumineux, tronqué",
+    "select": "Sélectionnez un fichier pour voir les modifications",
+    "selectFileHint": "Sélectionnez un fichier à gauche pour voir les modifications (indexées et non indexées affichées séparément)",
+    "preparing": "Préparation du diff…"
+  },
+  "commit": {
+    "placeholder": "Message de commit (Ctrl+Entrée pour valider)",
+    "placeholderEmpty": "Indexez d'abord des fichiers, puis saisissez un message",
+    "conflicts_one": "{{count, number}} conflit doit être résolu avant de valider",
+    "conflicts_other": "{{count, number}} conflits doivent être résolus avant de valider",
+    "conflicts_few": "{{count, number}} conflits doivent être résolus avant de valider",
+    "conflicts_many": "{{count, number}} conflits doivent être résolus avant de valider",
+    "needsStaged": "Indexez des fichiers pour pouvoir valider",
+    "staged_one": "{{count, number}} fichier indexé",
+    "staged_other": "{{count, number}} fichiers indexés",
+    "staged_few": "{{count, number}} fichiers indexés",
+    "staged_many": "{{count, number}} fichiers indexés",
+    "aiTitle": "Générer un message de commit à partir du diff indexé",
+    "aiGenerate": "Générer par IA",
+    "aiGenerating": "Génération…",
+    "submit": "Valider",
+    "committing": "Validation…",
+    "emptyMessage": "Le message de commit ne peut pas être vide",
+    "aiFailed": "Échec de la génération par IA : {{message}}"
+  },
+  "history": {
+    "loading": "Lecture de l'historique des commits…",
+    "empty": "Aucun commit pour l'instant",
+    "loadMore": "Charger plus",
+    "loadingMore": "Chargement…"
+  },
+  "workspace": {
+    "label": "Espace de travail :",
+    "none": "Non sélectionné"
+  },
+  "error": {
+    "close": "Fermer"
+  }
+}

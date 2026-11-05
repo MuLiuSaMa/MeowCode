@@ -51,6 +51,8 @@ export interface HarnessTierData {
   id: string;
   name: string;
   description?: string;
+  /** 层级提示词：admit 成功时随准入报告一次性注入给主模型；缺省或空串 = 不注入 */
+  instructions?: string;
 }
 
 export interface HarnessGateData {
@@ -186,6 +188,9 @@ export function validateHarnessDocument(doc: unknown): HarnessValidationResult {
           errors.push(`Role node "${n.id}" 'tools' must be an array of non-empty strings if defined.`);
         }
       }
+    }
+    if (n.type === "tier" && d.instructions !== undefined && typeof d.instructions !== "string") {
+      errors.push(`Tier node "${n.id}" 'instructions' must be a string if defined.`);
     }
     if (n.type === "gate" && d.onFail !== undefined) {
       if (typeof d.onFail !== "string") {

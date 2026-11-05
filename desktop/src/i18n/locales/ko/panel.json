@@ -1,0 +1,176 @@
+{
+  "tabs": {
+    "home": "새 탭",
+    "workspace": "파일",
+    "review": "검토",
+    "sidechat": "사이드 채팅",
+    "terminal": "터미널",
+    "plan": "계획",
+    "subagents": "하위 에이전트",
+    "subagent": "하위 에이전트"
+  },
+  "runStatus": {
+    "running": "실행 중",
+    "completed": "완료됨",
+    "failed": "실패",
+    "aborted": "중지됨",
+    "interrupted": "중단됨"
+  },
+  "laneStatus": {
+    "queued": "대기 중",
+    "active": "진행 중",
+    "done": "완료",
+    "blocked": "차단됨"
+  },
+  "home": {
+    "toolsSection": "도구",
+    "sessionSection": "세션 정보",
+    "card": {
+      "workspace": "파일",
+      "search": "대화 검색",
+      "sidechat": "사이드 채팅",
+      "terminal": "터미널",
+      "review": "검토",
+      "subagents": "하위 에이전트"
+    },
+    "fileMenu": "파일 메뉴",
+    "quickOpen": "빠른 열기(Ctrl+P)",
+    "revealInExplorer": "파일 탐색기에서 열기",
+    "field": {
+      "workspace": "작업 공간",
+      "provider": "공급자",
+      "model": "모델",
+      "sessionId": "세션 ID",
+      "toolCalls": "도구 호출",
+      "uncachedInput": "미캐시 입력",
+      "cacheRead": "캐시 읽기",
+      "cacheStatus": "캐시 상태",
+      "cacheWrite": "캐시 쓰기",
+      "output": "출력",
+      "cacheHitRate": "캐시 적중률(세션)",
+      "speed": "생성 속도",
+      "response": "응답 시간",
+      "firstToken": "첫 토큰 지연"
+    },
+    "notReported": "보고되지 않음",
+    "cache": {
+      "localBreakpoint": "로컬 브레이크포인트 · {{ttl}}",
+      "autoTtl": "자동(사람 1h / 머신 5m)",
+      "serverManaged": "서버 관리",
+      "serverManagedUncontrolled": "서버 관리 · TTL/제거 제어 불가",
+      "notReported": "{{base}}(보고되지 않음)",
+      "miss": "{{base}}(미적중)",
+      "hitting": "{{base}}(적중 중)"
+    },
+    "tokenValue": "{{value}} tok"
+  },
+  "subagent": {
+    "fallbackTitle": "하위 에이전트",
+    "background": "백그라운드",
+    "stop": "이 하위 에이전트 중지",
+    "readOnly": "읽기 전용 실행",
+    "canContinue": "대화 계속 가능",
+    "tokensIn": "입력 {{tokens}}",
+    "tokensOut": "출력 {{tokens}}",
+    "loadingTranscript": "대화록 불러오는 중…",
+    "emptyTranscript": "대화록 없음",
+    "pendingSteers_one": "메시지를 전달했습니다. 다음 단계에 반영됩니다({{count}})",
+    "pendingSteers_other": "메시지를 전달했습니다. 다음 단계에 반영됩니다({{count}})",
+    "pendingSteers_few": "메시지를 전달했습니다. 다음 단계에 반영됩니다({{count}})",
+    "pendingSteers_many": "메시지를 전달했습니다. 다음 단계에 반영됩니다({{count}})",
+    "steerPlaceholderReadOnly": "{{role}}에게 메시지(다음 단계 반영, 읽기 전용)…",
+    "steerPlaceholder": "메시지: 다음 단계에 반영되며 현재 실행은 중단되지 않습니다…",
+    "steer": "메시지",
+    "steerTitle": "다음 단계에 반영",
+    "runningHint": "실행 중입니다. 완료 후 대화를 계속할 수 있습니다",
+    "continuePlaceholderReadOnly": "{{role}}에게 계속 실행 요청(읽기 전용)…",
+    "continuePlaceholder": "하위 에이전트에게 계속 작업 요청…",
+    "send": "보내기"
+  },
+  "subagents": {
+    "emptyTitle": "이 세션에는 아직 하위 에이전트가 없습니다",
+    "emptyHint": "메인 에이전트가 task를 디스패치하면 여기에 표시됩니다",
+    "onlyCurrentSession": "이 세션의 하위 에이전트만 표시",
+    "open": "하위 에이전트 대화록 열기",
+    "invalidFallback": "호스트 검증 실패",
+    "invalidTooltip": "{{reason}}: {{summary}}",
+    "verified": "검증됨",
+    "unverified": "검증 미통과",
+    "criticalFindings_one": "심각 {{count}}건",
+    "criticalFindings_other": "심각 {{count}}건",
+    "criticalFindings_few": "심각 {{count}}건",
+    "criticalFindings_many": "심각 {{count}}건"
+  },
+  "sidechat": {
+    "interruptedNotice": "이전 생성이 앱 종료로 중단되었습니다. 생성된 내용은 보존되어 있으므로 대화를 계속할 수 있습니다.",
+    "generating": "생성 중…",
+    "standalone": "독립 세션 · 메인 대화와 병행",
+    "initializing": "초기화 중…",
+    "newSession": "새 세션",
+    "noModel": "모델 미설정",
+    "planConfirmedWithPath": "계획을 확인했습니다. {{path}}에 따라 구현을 시작하세요.",
+    "planConfirmed": "계획을 확인했습니다. 구현을 시작하세요."
+  },
+  "browser": {
+    "back": "뒤로",
+    "forward": "앞으로",
+    "reload": "새로 고침",
+    "addressPlaceholder": "검색어 또는 URL 입력"
+  },
+  "filePreview": {
+    "copyPath": "경로 복사",
+    "openInEditor": "편집기에서 열기",
+    "loading": "불러오는 중…",
+    "truncated": "처음 {{shown}}줄만 표시(전체 {{total}}줄)"
+  },
+  "plan": {
+    "governance": "거버넌스 · {{tier}}",
+    "allPassed": "모두 통과",
+    "inProgress": "진행 중",
+    "repairs": "재작업 {{count}}/3",
+    "trivial": "T0 사소한 작업: 게이트 없이 바로 구현하고 검증합니다.",
+    "emptyTitle": "아직 계획 문서가 없습니다",
+    "emptyHint": "계획 모드는 읽기 전용 도구로 먼저 조사한 뒤 구현 계획을 plans/에 작성하며, 문서가 여기에 표시됩니다.",
+    "updating": "업데이트 중",
+    "writing": "작성 중",
+    "reload": "다시 읽기",
+    "writingBody": "계획 문서를 작성하는 중…",
+    "loadingBody": "계획 문서를 읽는 중…"
+  },
+  "quickOpen": {
+    "title": "빠른 열기",
+    "placeholder": "파일 이름 또는 경로 입력",
+    "failed": "파일 목록을 불러오지 못했습니다. 다시 시도하세요",
+    "loading": "불러오는 중…",
+    "noMatch": "일치하는 파일 없음",
+    "empty": "작업 공간에 파일이 없습니다"
+  },
+  "review": {
+    "loading": "불러오는 중…",
+    "changedFiles_one": "파일 {{count}}개 변경됨",
+    "changedFiles_other": "파일 {{count}}개 변경됨",
+    "changedFiles_few": "파일 {{count}}개 변경됨",
+    "changedFiles_many": "파일 {{count}}개 변경됨",
+    "refresh": "새로 고침",
+    "failed": "불러오지 못했습니다. 나중에 다시 시도하세요",
+    "empty": "이 세션에는 아직 파일 변경이 없습니다",
+    "changeCount_one": "{{count}}회 변경",
+    "changeCount_other": "{{count}}회 변경",
+    "changeCount_few": "{{count}}회 변경",
+    "changeCount_many": "{{count}}회 변경",
+    "diffAria": "{{path}}의 변경"
+  },
+  "workspace": {
+    "loading": "불러오는 중…",
+    "readFailed": "불러오기 실패",
+    "truncated": "…전체 {{total}}개 중 처음 {{shown}}개만 표시",
+    "selectFile": "오른쪽에서 파일을 선택해 미리 보기(텍스트 / 이미지 / 동영상 / 오디오 / PDF)",
+    "resizeAria": "파일 목록 너비 조정",
+    "filterPlaceholder": "파일 필터…",
+    "searching": "검색 중…",
+    "noMatch": "일치하는 파일 없음"
+  },
+  "terminal": {
+    "exited": "[프로세스가 종료되었습니다]"
+  }
+}

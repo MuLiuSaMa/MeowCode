@@ -5,7 +5,7 @@ import "./ProviderIcon.css";
 
 /**
  * 服务商图标。优先级：品牌图片（深色主题按需反色）→ 单色品牌字形（currentColor）→
- * 品牌色字母标 → 灰底首字母方块兜底。
+ * 灰底首字母方块兜底。
  *
  * 圆角按图标尺寸等比（约 18%，最小 3px）：小图标上用固定 8px 会占掉三分之一边长，
  * 视觉上圆角过大。
@@ -31,18 +31,6 @@ export function ProviderIcon({ template, size = 20 }: { template?: ProviderTempl
     return (
       <span className="mc-provicon mc-provicon--glyph" style={style}>
         <icon.Icon size={size} aria-hidden />
-      </span>
-    );
-  }
-
-  if (icon.kind === "letter") {
-    // 无底色：品牌色字母直接作为图标（用户要求去掉色块底）
-    return (
-      <span
-        className="mc-provicon mc-provicon--letter"
-        style={{ ...style, color: icon.color, fontSize: Math.round(size * 0.62) }}
-      >
-        {icon.text}
       </span>
     );
   }

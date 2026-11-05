@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { LuArrowUp, LuCircleAlert, LuSquare } from "react-icons/lu";
 import type { SubagentRun } from "../../api";
 import { SUBAGENT_READ_ONLY, SUBAGENT_ROLE_LABELS } from "../../agentRoles";
@@ -6,12 +7,13 @@ import { MessageList } from "../MessageList";
 import { Spinner } from "../ui/Spinner";
 import "./SubagentTab.css";
 
-const STATUS_LABELS: Record<SubagentRun["status"], string> = {
-  running: "运行中",
-  completed: "已完成",
-  failed: "失败",
-  aborted: "已停止",
-  interrupted: "已中断",
+/** 状态文案只存 key：在组件里查表，切语言才会跟着刷新。 */
+const STATUS_KEYS: Record<SubagentRun["status"], string> = {
+  running: "runStatus.running",
+  completed: "runStatus.completed",
+  failed: "runStatus.failed",
+  aborted: "runStatus.aborted",
+  interrupted: "runStatus.interrupted",
 };
 
 function formatDuration(ms: number): string {
@@ -36,13 +38,19 @@ export function SubagentTab({
   onEnsure,
   onStop,
   onContinue,
+  onSteer,
+  onOpenFile,
 }: {
   agentId: string;
   run?: SubagentRun;
   onEnsure: (agentId: string) => void;
   onStop?: (agentId: string) => void;
   onContinue?: (agentId: string, message: string) => Promise<void>;
+  onSteer?: (agentId: string, message: string) => Promise<void>;
+  /** read_file 工具行点击 → 右侧「文件」页签打开 */
+  onOpenFile?: (path: string) => void;
 }) {
+  const { t } = useTranslation("panel");
   const needsHydration = !run || (!run.hydrated && run.status !== "running");
   useEffect(() => {
     if (needsHydration) onEnsure(agentId);
@@ -73,7 +81,9 @@ export function SubagentTab({
   const waiting = status === "running" && !streaming;
   const loading = !run || (!timeline.length && (status === "running" || !run.hydrated));
   const role = run?.agentType ?? "general";
+  const roleLabel = SUBAGENT_ROLE_LABELS[role];
   const readOnly = SUBAGENT_READ_ONLY.has(role);
+  const fallbackTitle = t("subagent.fallbackTitle");
 
   const submitContinue = async () => {
     const text = input.trim();
@@ -90,33 +100,50 @@ export function SubagentTab({
     }
   };
 
+  const submitSteer = async () => {
+    const text = input.trim();
+    if (!text || !onSteer || sending) return;
+    setSending(true);
+    setSendError(null);
+    try {
+      await onSteer(agentId, text);
+      setInput("");
+    } catch (error) {
+      setSendError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setSending(false);
+    }
+  };
+
   return (
     <div className="mc-subagent">
       <div className="mc-subagent__head">
-        <span className="mc-subagent__title" title={run?.description ?? "子 Agent"}>
-          <span className="mc-truncate">{run?.description ?? "子 Agent"}</span>
+        <span className="mc-subagent__title" title={run?.description || fallbackTitle}>
+          <span className="mc-truncate">{run?.description || fallbackTitle}</span>
           <span className="mc-subagent__type" data-type={role}>
-            {SUBAGENT_ROLE_LABELS[role]}
+            {roleLabel}
           </span>
-          {run?.background ? <span className="mc-subagent__bg">后台</span> : null}
+          {run?.background ? <span className="mc-subagent__bg">{t("subagent.background")}</span> : null}
         </span>
         {status === "running" && onStop ? (
           <button
             type="button"
             className="mc-subagent__stop"
-            title="停止这个子 Agent"
-            aria-label="停止这个子 Agent"
+            title={t("subagent.stop")}
+            aria-label={t("subagent.stop")}
             onClick={() => onStop(agentId)}
           >
             <LuSquare size={12} />
           </button>
         ) : null}
         <span className="mc-subagent__status" data-status={status}>
-          {STATUS_LABELS[status]}
+          {t(STATUS_KEYS[status])}
         </span>
       </div>
       <div className="mc-subagent__meta">
-        <span className="mc-subagent__readonly">{readOnly ? "只读执行" : "可继续对话"}</span>
+        <span className="mc-subagent__readonly">
+          {readOnly ? t("subagent.readOnly") : t("subagent.canContinue")}
+        </span>
         {durationMs != null ? (
           <>
             <span className="mc-subagent__dot">·</span>
@@ -127,9 +154,9 @@ export function SubagentTab({
           <>
             <span className="mc-subagent__dot">·</span>
             <span>
-              {inputTokens ? `入 ${inputTokens}` : ""}
+              {inputTokens ? t("subagent.tokensIn", { tokens: inputTokens }) : ""}
               {inputTokens && outputTokens ? " · " : ""}
-              {outputTokens ? `出 ${outputTokens}` : ""}
+              {outputTokens ? t("subagent.tokensOut", { tokens: outputTokens }) : ""}
             </span>
           </>
         ) : null}
@@ -141,10 +168,16 @@ export function SubagentTab({
           <span>{run.error}</span>
         </div>
       ) : null}
+      {run?.steerError ? (
+        <div className="mc-subagent__error" role="alert" title={run.steerError}>
+          <LuCircleAlert size={14} />
+          <span>{run.steerError}</span>
+        </div>
+      ) : null}
       {loading ? (
         <div className="mc-subagent__loading">
           <Spinner size={22} />
-          <span>正在加载转录…</span>
+          <span>{t("subagent.loadingTranscript")}</span>
         </div>
       ) : timeline.length ? (
         <MessageList
@@ -152,9 +185,10 @@ export function SubagentTab({
           canUse={false}
           waiting={waiting}
           preparing={run?.preparing}
+          onOpenFile={onOpenFile}
         />
       ) : (
-        <div className="mc-subagent__loading">暂无转录</div>
+        <div className="mc-subagent__loading">{t("subagent.emptyTranscript")}</div>
       )}
       {sendError ? (
         <div className="mc-subagent__error" role="alert" title={sendError}>
@@ -162,9 +196,52 @@ export function SubagentTab({
           <span>{sendError}</span>
         </div>
       ) : null}
-      {onContinue ? (
+      {status === "running" && run?.pendingSteers?.length ? (
+        <div className="mc-subagent__pending" role="status">
+          {t("subagent.pendingSteers", { count: run.pendingSteers.length })}
+        </div>
+      ) : null}
+      {status === "running" && onSteer ? (
+        <form
+          className="mc-subagent__composer"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void submitSteer();
+          }}
+        >
+          <textarea
+            className="mc-subagent__input mc-subagent__input--steer"
+            value={input}
+            rows={1}
+            maxLength={4000}
+            placeholder={
+              readOnly
+                ? t("subagent.steerPlaceholderReadOnly", { role: roleLabel })
+                : t("subagent.steerPlaceholder")
+            }
+            onChange={(event) => setInput(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.nativeEvent.isComposing) return;
+              if (event.key === "Enter" && !event.shiftKey) {
+                event.preventDefault();
+                void submitSteer();
+              }
+            }}
+            disabled={sending}
+          />
+          <button
+            type="submit"
+            className="mc-subagent__send"
+            aria-label={t("subagent.steer")}
+            title={t("subagent.steerTitle")}
+            disabled={!input.trim() || sending}
+          >
+            <LuArrowUp size={14} />
+          </button>
+        </form>
+      ) : onContinue ? (
         status === "running" ? (
-          <div className="mc-subagent__continue-hint">运行中，完成后可以继续对话</div>
+          <div className="mc-subagent__continue-hint">{t("subagent.runningHint")}</div>
         ) : (
           <form
             className="mc-subagent__composer"
@@ -178,8 +255,8 @@ export function SubagentTab({
               value={input}
               placeholder={
                 readOnly
-                  ? `继续让 ${SUBAGENT_ROLE_LABELS[role]} 执行（只读）…`
-                  : "继续让子 Agent 工作…"
+                  ? t("subagent.continuePlaceholderReadOnly", { role: roleLabel })
+                  : t("subagent.continuePlaceholder")
               }
               onChange={(event) => setInput(event.target.value)}
               disabled={sending}
@@ -187,7 +264,7 @@ export function SubagentTab({
             <button
               type="submit"
               className="mc-subagent__send"
-              aria-label="发送"
+              aria-label={t("subagent.send")}
               disabled={!input.trim() || sending}
             >
               <LuArrowUp size={14} />

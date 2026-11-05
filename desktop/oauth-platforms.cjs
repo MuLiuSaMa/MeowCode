@@ -37,6 +37,22 @@ const OAUTH_PLATFORMS = {
     /** 内置应用 Client Secret：用于开箱即用的一键授权；设置页 / 环境变量 / 本机文件可覆盖 */
     defaultClientSecret: "05f760d694a241278ab86c42ef5f12da",
   },
+  /**
+   * 社区市场独立登录：与 gitcode 槽位（MCP 连接）分属两个应用、两份 token。
+   * 提交/删除社区条目需要 fork → 建分支 → 传文件 → 建 PR，scope 只申请这三组权限。
+   */
+  "gitcode-community": {
+    label: "GitCode 社区",
+    authorizeUrl: "https://gitcode.com/oauth/authorize",
+    tokenUrl: "https://gitcode.com/oauth/token",
+    scope: "user_info projects pull_requests",
+    localCallbackPath: "/oauth/gitcode-community/callback",
+    tokenEnv: "MEOWCODE_GITCODE_COMMUNITY_TOKEN",
+    appSetupUrl: "https://gitcode.com/settings/applications",
+    appSetupHint: "GitCode 设置 → 应用管理 → 创建应用",
+    defaultClientId: "0cdb15925d064724a031159253a33dde",
+    defaultClientSecret: "d287fbc3e26b4a6fa252805d67a197f1",
+  },
 };
 
 /** 生效的 Client ID：用户自建应用优先，否则用内置应用。 */

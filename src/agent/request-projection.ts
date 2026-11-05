@@ -123,6 +123,85 @@ export function projectAnthropicThinking(
   return changed ? projected : messages;
 }
 
+/**
+ * 滞回触发/目标线（字节）：图片/文档 payload 以 base64 字符长度近似（偏大 ~1.37×，
+ * 常数吸收）。对齐 opencode 的「trigger/target 双线」语义但按截图密度取 8/4 MiB——
+ * 编码会话的截图比设计稿小一个量级，25/15 MiB 要攒太多张才触发一次。
+ */
+export const ATTACHMENT_HYSTERESIS_TRIGGER_BYTES = 8 * 1024 * 1024;
+export const ATTACHMENT_HYSTERESIS_TARGET_BYTES = 4 * 1024 * 1024;
+
+/**
+ * 滞回式附件投影（主路径用；opencode 的图片淘汰同款）：
+ *  - 附件总量 ≤ 触发线 → 不裁；
+ *  - 越过触发线 → 保留**最新**的、总量 ≤ 目标线的后缀，更旧的全部换成一行说明。
+ *
+ * 两次裁剪之间切点不动：切点由「历史里有什么附件」唯一决定，新增附件只会让
+ * 保留集在目标线内滑动——即切点只在触发线-目标线的余量被吃满时才前移一次，
+ * 代价是一次性后缀重写，换来之后每轮少发一截旧附件。逐请求重算但字节单调，
+ * 重启后同一历史算出同一切点（确定性），不落盘标记。
+ * （对照：count 版 projectUserImages 每来一张新图就动一次切点，主路径不适用。）
+ */
+export function projectAttachmentsHysteresis(
+  messages: ChatMessage[],
+  field: "images" | "documents",
+  trigger = ATTACHMENT_HYSTERESIS_TRIGGER_BYTES,
+  target = ATTACHMENT_HYSTERESIS_TARGET_BYTES,
+): ChatMessage[] {
+  if (trigger <= 0 || target <= 0 || target >= trigger) return messages;
+  // 最新→最旧的带附件消息（下标 + payload 字节）
+  const carrier: Array<{ index: number; bytes: number }> = [];
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (message.role !== "user" || !message[field]?.length) continue;
+    const bytes = message[field]!.reduce((sum, item) => sum + (item.data?.length ?? 0), 0);
+    if (bytes > 0) carrier.push({ index, bytes });
+  }
+  const total = carrier.reduce((sum, item) => sum + item.bytes, 0);
+  if (total <= trigger) return messages;
+
+  // 保留最新的、总量 ≤ 目标线的后缀；cut 之前的带附件消息（更旧的）整体投影
+  let kept = 0;
+  let cut = carrier.length; // carrier 下标：>= cut 的（更旧的）都裁
+  for (let position = 0; position < carrier.length; position += 1) {
+    const item = carrier[position];
+    if (kept + item.bytes > target) {
+      cut = position;
+      break;
+    }
+    kept += item.bytes;
+  }
+  if (cut === 0) cut = 1; // 最新一条附件就超目标线：仍保留最新一条，只裁更旧的
+  const dropIndexes = new Set(carrier.slice(cut).map((item) => item.index));
+  const note =
+    field === "images"
+      ? (count: number) =>
+          `[${count} image(s) omitted from an earlier message to save context; re-attach if needed]`
+      : (count: number) =>
+          `[${count} document(s) omitted from an earlier message; read the file again if needed]`;
+
+  let changed = false;
+  const projected = messages.map((message, index) => {
+    if (message.role !== "user" || !dropIndexes.has(index)) return message;
+    changed = true;
+    const count = message[field]!.length;
+    const text = note(count);
+    return {
+      ...message,
+      [field]: undefined,
+      content: message.content.trim() ? `${message.content}\n${text}` : text,
+    } as ChatMessage;
+  });
+  return changed ? projected : messages;
+}
+
+/** 主路径组合：图片 + 文档滞回投影。thinking 不进主路径——它的边界每轮移动，逐轮投影等于每轮自爆缓存。 */
+export function projectForMainPath(messages: ChatMessage[]): ChatMessage[] {
+  let projected = projectAttachmentsHysteresis(messages, "images");
+  projected = projectAttachmentsHysteresis(projected, "documents");
+  return projected;
+}
+
 /** 按 provider 协议组合投影；非 Anthropic 协议不碰 thinking。 */
 export function projectForRequest(
   messages: ChatMessage[],

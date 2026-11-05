@@ -39,6 +39,7 @@
   flex: 1;
   min-height: 0;
   overflow-y: auto;
+  overflow-x: hidden;
   padding-right: 2px;
 }
 
@@ -232,10 +233,6 @@
   min-height: 0;
   overflow: hidden;
 }
-/* 菜单展开期间允许越过折叠容器边界，避免被文件夹行裁切 */
-.mc-convpanel__collapse[data-open="true"] .mc-convpanel__collapse-inner[data-menu-open="true"] {
-  overflow: visible;
-}
 
 .mc-convpanel__items {
   list-style: none;
@@ -243,6 +240,8 @@
   flex-direction: column;
   gap: 1px;
   margin-top: 2px;
+  min-width: 0;
+  width: 100%;
 }
 
 .mc-convpanel__item {
@@ -276,10 +275,40 @@
 }
 
 .mc-convpanel__itemtitle {
+  flex: 1;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* 会话行右侧的紧凑时间：今天钟点、昨天、更早日期；比标题淡一档，别抢注意力 */
+.mc-convpanel__itemtime {
+  flex-shrink: 0;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: inherit;
+  opacity: 0.55;
+}
+
+/* worktree 会话：标题右侧的分支小标 */
+.mc-convpanel__branch {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  flex: none;
+  max-width: 46%;
+  padding: 1px 5px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-hover);
+  color: var(--fg-subtlest);
+  font-size: var(--fs-caption);
+  overflow: hidden;
+}
+.mc-convpanel__branch > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* 正在生成回复的主会话：小圆点脉冲 */
@@ -318,6 +347,8 @@
   position: relative;
   display: flex;
   align-items: center;
+  min-width: 0;
+  width: 100%;
 }
 .mc-convpanel__itemrow .mc-convpanel__item {
   flex: 1;
@@ -345,10 +376,15 @@
   transition: opacity var(--dur) var(--ease), background-color var(--dur) var(--ease), color var(--dur) var(--ease);
 }
 .mc-convpanel__itemrow:hover .mc-convpanel__rowbtn,
-.mc-convpanel__rowbtn:focus-visible {
+.mc-convpanel__rowbtn:focus-visible,
+.mc-convpanel__rowbtn[aria-expanded="true"] {
   opacity: 1;
 }
 .mc-convpanel__rowbtn:hover {
+  background: var(--surface-hover);
+  color: var(--fg);
+}
+.mc-convpanel__itemrow[data-menu-open="true"] .mc-convpanel__item {
   background: var(--surface-hover);
   color: var(--fg);
 }
@@ -369,6 +405,15 @@
 .mc-convpanel__sessionmenu[data-dir="down"] {
   top: calc(100% + 4px);
   bottom: auto;
+}
+/* fixed 呼出（右键 / 项目「…」菜单）：脱离行内布局；滚动/缩放由组件负责关闭 */
+.mc-convpanel__menu[data-context="true"] {
+  position: fixed;
+  right: auto;
+  bottom: auto;
+  z-index: 60;
+  max-height: calc(100vh - 16px);
+  overflow-y: auto;
 }
 .mc-convpanel__menuitem--danger,
 .mc-convpanel__menuitem--danger > svg {

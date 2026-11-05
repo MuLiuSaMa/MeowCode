@@ -1,0 +1,160 @@
+{
+  "nav": {
+    "heading": "Quellcodeverwaltung",
+    "ariaLabel": "Quellcodeverwaltung",
+    "viewAria": "Ansicht der Quellcodeverwaltung"
+  },
+  "group": {
+    "conflicted": "Konflikte",
+    "staged": "Bereitgestellt",
+    "unstaged": "Änderungen",
+    "empty": "Keine",
+    "unstageAll": "Alle zurücksetzen",
+    "stageAll": "Alle bereitstellen"
+  },
+  "list": {
+    "truncated": "Es werden die ersten {{shown}} von {{total}} angezeigt",
+    "truncatedStaged": " (Rest über „Alle zurücksetzen“)",
+    "truncatedUnstaged": " (Rest über „Alle bereitstellen“ oder in .gitignore aufnehmen)"
+  },
+  "repo": {
+    "unavailable": "git nicht gefunden. Bitte installieren und zu PATH hinzufügen",
+    "notRepo": "Dieser Arbeitsbereich ist kein Git-Repository",
+    "reading": "Repository-Status wird gelesen…"
+  },
+  "repoHint": {
+    "unavailable": "git nicht gefunden: Bitte Git installieren und prüfen, ob `git --version` im Terminal funktioniert.",
+    "notRepo": "Dieser Arbeitsbereich ist kein Git-Repository. Führen Sie `git init` im Terminal aus und aktualisieren Sie dann hier.",
+    "failed": "Der Repository-Status konnte nicht gelesen werden."
+  },
+  "branch": {
+    "switch": "Branch wechseln",
+    "search": "Branches durchsuchen",
+    "listAria": "Branch-Liste",
+    "loading": "Branches werden gelesen…",
+    "noMatch": "Keine passenden Branches",
+    "stash": "Lokale Änderungen vor dem Wechsel stashen",
+    "force": "Wechsel erzwingen (nicht committete Änderungen verwerfen)",
+    "newPlaceholder": "Neuen Branch vom aktuellen HEAD erstellen, z. B. feature/login",
+    "create": "Erstellen und wechseln",
+    "close": "Schließen"
+  },
+  "conflict": {
+    "ours": "Eigene",
+    "oursTitle": "Eigene übernehmen (ours)",
+    "theirs": "Fremde",
+    "theirsTitle": "Fremde übernehmen (theirs)",
+    "mark": "Behoben",
+    "markTitle": "Als behoben markieren (Inhalt bereits manuell bearbeitet)",
+    "resolveTitleOurs": "Eigene Version übernehmen",
+    "resolveTitleTheirs": "Fremde Version übernehmen",
+    "resolveTitleMark": "Als behoben markieren",
+    "resolveMessageMark": "Die Konfliktdatei wird als behoben markiert (der Inhalt bleibt so, wie er aktuell auf der Festplatte liegt).",
+    "resolveMessageReplace": "Die Datei wird durch die Version der gewählten Seite ersetzt, der Inhalt der anderen Seite geht verloren."
+  },
+  "file": {
+    "stage": "Bereitstellen",
+    "unstage": "Zurücksetzen",
+    "discard": "Änderungen verwerfen"
+  },
+  "discard": {
+    "title": "Änderungen verwerfen",
+    "message": "Änderungen im Arbeitsverzeichnis dieser Dateien werden endgültig verworfen (nicht bereitgestellte Änderungen gehen verloren, unversionierte Dateien werden gelöscht).",
+    "confirm": "Verwerfen"
+  },
+  "dialog": {
+    "cancel": "Abbrechen",
+    "confirm": "Bestätigen",
+    "processing": "Wird verarbeitet…"
+  },
+  "footer": {
+    "changes_one": "{{count, number}} Änderung",
+    "changes_other": "{{count, number}} Änderungen",
+    "changes_few": "{{count, number}} Änderungen",
+    "changes_many": "{{count, number}} Änderungen"
+  },
+  "action": {
+    "refresh": "Aktualisieren",
+    "pull": "Pull",
+    "push": "Push",
+    "forcePush": "Force-Push",
+    "back": "Zurück"
+  },
+  "pull": {
+    "title": "Pull (--ff-only)",
+    "noUpstream": "Dieser Branch hat kein Upstream"
+  },
+  "push": {
+    "detached": "Aus einem detached HEAD kann nicht gepusht werden",
+    "forceTitle": "Force-Push (--force-with-lease, zwei Bestätigungen erforderlich)",
+    "message": "{{branch}} nach {{upstream}} pushen.",
+    "messageNew": "{{branch}} nach origin pushen und den Upstream-Branch festlegen.",
+    "forceWarning": "Ein Force-Push überschreibt möglicherweise vorhandene Commits auf dem Remote mit der lokalen Historie (--force-with-lease greift nur, wenn niemand sonst das Remote aktualisiert hat). Das ist meist irreversibel.",
+    "forceConfirm": "Remote {{upstream}} mit lokalem {{branch}} überschreiben?",
+    "forceStep1": "Force-Push (1/2)",
+    "forceStep2": "Force-Push (2/2)",
+    "continue": "Weiter"
+  },
+  "upstream": {
+    "none": "Kein Upstream-Branch",
+    "short": "Upstream",
+    "ahead": "{{count, number}} voraus",
+    "behind": "{{count, number}} zurück"
+  },
+  "tab": {
+    "changes": "Änderungen",
+    "history": "Verlauf"
+  },
+  "detail": {
+    "backTitle": "Zurück zur Liste",
+    "loading": "Commit-Details werden gelesen…",
+    "mergeCommit": "Merge-Commit",
+    "moreFiles_one": "+{{count, number}} Datei nicht aufgeführt",
+    "moreFiles_other": "+{{count, number}} Dateien nicht aufgeführt",
+    "moreFiles_few": "+{{count, number}} Dateien nicht aufgeführt",
+    "moreFiles_many": "+{{count, number}} Dateien nicht aufgeführt"
+  },
+  "diff": {
+    "loading": "Diff wird gelesen…",
+    "binary": "Binärdatei, Inhalt wird nicht angezeigt",
+    "empty": "Keine Änderungen anzuzeigen",
+    "emptyCommit": "Dieser Commit hat keine anzuzeigenden Änderungen",
+    "truncated": "Patch zu groß, gekürzt",
+    "select": "Datei auswählen, um Änderungen zu sehen",
+    "selectFileHint": "Datei links auswählen, um Änderungen zu sehen (bereitgestellt und nicht bereitgestellt getrennt)",
+    "preparing": "Diff wird vorbereitet…"
+  },
+  "commit": {
+    "placeholder": "Commit-Nachricht (Strg+Enter zum Committen)",
+    "placeholderEmpty": "Zuerst Dateien bereitstellen, dann Commit-Nachricht schreiben",
+    "conflicts_one": "{{count, number}} Konflikt muss vor dem Commit behoben werden",
+    "conflicts_other": "{{count, number}} Konflikte müssen vor dem Commit behoben werden",
+    "conflicts_few": "{{count, number}} Konflikte müssen vor dem Commit behoben werden",
+    "conflicts_many": "{{count, number}} Konflikte müssen vor dem Commit behoben werden",
+    "needsStaged": "Dateien bereitstellen, um committen zu können",
+    "staged_one": "{{count, number}} Datei bereitgestellt",
+    "staged_other": "{{count, number}} Dateien bereitgestellt",
+    "staged_few": "{{count, number}} Dateien bereitgestellt",
+    "staged_many": "{{count, number}} Dateien bereitgestellt",
+    "aiTitle": "Commit-Nachricht aus dem bereitgestellten Diff generieren",
+    "aiGenerate": "KI-generiert",
+    "aiGenerating": "Wird generiert…",
+    "submit": "Commit",
+    "committing": "Wird committet…",
+    "emptyMessage": "Die Commit-Nachricht darf nicht leer sein",
+    "aiFailed": "KI-Generierung fehlgeschlagen: {{message}}"
+  },
+  "history": {
+    "loading": "Commit-Verlauf wird gelesen…",
+    "empty": "Noch keine Commits",
+    "loadMore": "Mehr laden",
+    "loadingMore": "Wird geladen…"
+  },
+  "workspace": {
+    "label": "Arbeitsbereich:",
+    "none": "Nicht ausgewählt"
+  },
+  "error": {
+    "close": "Schließen"
+  }
+}

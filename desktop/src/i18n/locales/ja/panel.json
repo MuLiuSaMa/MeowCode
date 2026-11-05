@@ -1,0 +1,176 @@
+{
+  "tabs": {
+    "home": "新しいタブ",
+    "workspace": "ファイル",
+    "review": "レビュー",
+    "sidechat": "サイドチャット",
+    "terminal": "ターミナル",
+    "plan": "プラン",
+    "subagents": "サブエージェント",
+    "subagent": "サブエージェント"
+  },
+  "runStatus": {
+    "running": "実行中",
+    "completed": "完了",
+    "failed": "失敗",
+    "aborted": "停止済み",
+    "interrupted": "中断済み"
+  },
+  "laneStatus": {
+    "queued": "待機中",
+    "active": "実行中",
+    "done": "完了",
+    "blocked": "ブロック中"
+  },
+  "home": {
+    "toolsSection": "ツール",
+    "sessionSection": "セッション情報",
+    "card": {
+      "workspace": "ファイル",
+      "search": "会話検索",
+      "sidechat": "サイドチャット",
+      "terminal": "ターミナル",
+      "review": "レビュー",
+      "subagents": "サブエージェント"
+    },
+    "fileMenu": "ファイルメニュー",
+    "quickOpen": "クイックオープン（Ctrl+P）",
+    "revealInExplorer": "エクスプローラーで開く",
+    "field": {
+      "workspace": "ワークスペース",
+      "provider": "プロバイダー",
+      "model": "モデル",
+      "sessionId": "セッション ID",
+      "toolCalls": "ツール呼び出し",
+      "uncachedInput": "未キャッシュ入力",
+      "cacheRead": "キャッシュ読み取り",
+      "cacheStatus": "キャッシュ状態",
+      "cacheWrite": "キャッシュ書き込み",
+      "output": "出力",
+      "cacheHitRate": "キャッシュヒット率（セッション）",
+      "speed": "生成速度",
+      "response": "応答時間",
+      "firstToken": "初回トークン遅延"
+    },
+    "notReported": "未報告",
+    "cache": {
+      "localBreakpoint": "ローカルブレークポイント · {{ttl}}",
+      "autoTtl": "自動（人 1h / マシン 5m）",
+      "serverManaged": "サーバー側管理",
+      "serverManagedUncontrolled": "サーバー側管理 · TTL/追い出しは制御不可",
+      "notReported": "{{base}}（未報告）",
+      "miss": "{{base}}（ミス）",
+      "hitting": "{{base}}（ヒット中）"
+    },
+    "tokenValue": "{{value}} tok"
+  },
+  "subagent": {
+    "fallbackTitle": "サブエージェント",
+    "background": "バックグラウンド",
+    "stop": "このサブエージェントを停止",
+    "readOnly": "読み取り専用",
+    "canContinue": "会話を続行可能",
+    "tokensIn": "入力 {{tokens}}",
+    "tokensOut": "出力 {{tokens}}",
+    "loadingTranscript": "トランスクリプトを読み込み中…",
+    "emptyTranscript": "トランスクリプトはまだありません",
+    "pendingSteers_one": "メッセージを挿入しました。次のステップで反映されます（{{count}}）",
+    "pendingSteers_other": "メッセージを挿入しました。次のステップで反映されます（{{count}}）",
+    "pendingSteers_few": "メッセージを挿入しました。次のステップで反映されます（{{count}}）",
+    "pendingSteers_many": "メッセージを挿入しました。次のステップで反映されます（{{count}}）",
+    "steerPlaceholderReadOnly": "{{role}} にメッセージ（次のステップで反映、読み取り専用）…",
+    "steerPlaceholder": "メッセージ：次のステップで反映され、現在の実行は中断しません…",
+    "steer": "メッセージ",
+    "steerTitle": "次のステップで反映",
+    "runningHint": "実行中です。完了後に会話を続行できます",
+    "continuePlaceholderReadOnly": "{{role}} に続行させる（読み取り専用）…",
+    "continuePlaceholder": "サブエージェントに続行させる…",
+    "send": "送信"
+  },
+  "subagents": {
+    "emptyTitle": "このセッションにはまだサブエージェントがいません",
+    "emptyHint": "メインエージェントが task をディスパッチするとここに表示されます",
+    "onlyCurrentSession": "このセッションのサブエージェントのみ表示",
+    "open": "サブエージェントのトランスクリプトを開く",
+    "invalidFallback": "ホスト検証に失敗",
+    "invalidTooltip": "{{reason}}：{{summary}}",
+    "verified": "検証済み",
+    "unverified": "検証未通過",
+    "criticalFindings_one": "重大 {{count}} 件",
+    "criticalFindings_other": "重大 {{count}} 件",
+    "criticalFindings_few": "重大 {{count}} 件",
+    "criticalFindings_many": "重大 {{count}} 件"
+  },
+  "sidechat": {
+    "interruptedNotice": "前回の生成はアプリ終了により中断されました。生成済みの内容は保持されているため、会話を続行できます。",
+    "generating": "生成中…",
+    "standalone": "独立セッション · メインの会話と並行",
+    "initializing": "初期化中…",
+    "newSession": "新しいセッション",
+    "noModel": "モデル未設定",
+    "planConfirmedWithPath": "プランを確認しました。{{path}} に従って実装を開始してください。",
+    "planConfirmed": "プランを確認しました。実装を開始してください。"
+  },
+  "browser": {
+    "back": "戻る",
+    "forward": "進む",
+    "reload": "再読み込み",
+    "addressPlaceholder": "検索または URL を入力"
+  },
+  "filePreview": {
+    "copyPath": "パスをコピー",
+    "openInEditor": "エディターで開く",
+    "loading": "読み込み中…",
+    "truncated": "先頭 {{shown}} 行のみ表示（全 {{total}} 行）"
+  },
+  "plan": {
+    "governance": "ガバナンス · {{tier}}",
+    "allPassed": "すべて通過",
+    "inProgress": "進行中",
+    "repairs": "手戻り {{count}}/3",
+    "trivial": "T0 の軽微なタスク：ゲートなし、そのまま実装して検証します。",
+    "emptyTitle": "プランドキュメントはまだありません",
+    "emptyHint": "プランモードでは読み取り専用ツールで調査し、実装プランを plans/ に書き出します。ドキュメントはここに表示されます。",
+    "updating": "更新中",
+    "writing": "書き込み中",
+    "reload": "再読み込み",
+    "writingBody": "プランドキュメントを書き込み中…",
+    "loadingBody": "プランドキュメントを読み込み中…"
+  },
+  "quickOpen": {
+    "title": "クイックオープン",
+    "placeholder": "ファイル名またはパスを入力",
+    "failed": "ファイル一覧の読み込みに失敗しました。再試行してください",
+    "loading": "読み込み中…",
+    "noMatch": "一致するファイルがありません",
+    "empty": "ワークスペースにファイルがありません"
+  },
+  "review": {
+    "loading": "読み込み中…",
+    "changedFiles_one": "{{count}} 個のファイルに変更",
+    "changedFiles_other": "{{count}} 個のファイルに変更",
+    "changedFiles_few": "{{count}} 個のファイルに変更",
+    "changedFiles_many": "{{count}} 個のファイルに変更",
+    "refresh": "再読み込み",
+    "failed": "読み込みに失敗しました。後でもう一度お試しください",
+    "empty": "このセッションにはまだファイル変更がありません",
+    "changeCount_one": "{{count}} 回変更",
+    "changeCount_other": "{{count}} 回変更",
+    "changeCount_few": "{{count}} 回変更",
+    "changeCount_many": "{{count}} 回変更",
+    "diffAria": "{{path}} の変更"
+  },
+  "workspace": {
+    "loading": "読み込み中…",
+    "readFailed": "読み込みに失敗",
+    "truncated": "…全 {{total}} 項目、先頭 {{shown}} のみ表示",
+    "selectFile": "右側でファイルを選んでプレビュー（テキスト / 画像 / 動画 / 音声 / PDF）",
+    "resizeAria": "ファイル一覧の幅を調整",
+    "filterPlaceholder": "ファイルを絞り込む…",
+    "searching": "検索中…",
+    "noMatch": "一致するファイルがありません"
+  },
+  "terminal": {
+    "exited": "[プロセスは終了しました]"
+  }
+}

@@ -1,0 +1,176 @@
+{
+  "tabs": {
+    "home": "Новая вкладка",
+    "workspace": "Файлы",
+    "review": "Ревью",
+    "sidechat": "Боковой чат",
+    "terminal": "Терминал",
+    "plan": "План",
+    "subagents": "Субагенты",
+    "subagent": "Субагент"
+  },
+  "runStatus": {
+    "running": "Выполняется",
+    "completed": "Завершено",
+    "failed": "Ошибка",
+    "aborted": "Остановлено",
+    "interrupted": "Прервано"
+  },
+  "laneStatus": {
+    "queued": "В очереди",
+    "active": "В работе",
+    "done": "Готово",
+    "blocked": "Заблокировано"
+  },
+  "home": {
+    "toolsSection": "Инструменты",
+    "sessionSection": "Сведения о сеансе",
+    "card": {
+      "workspace": "Файлы",
+      "search": "Поиск чатов",
+      "sidechat": "Боковой чат",
+      "terminal": "Терминал",
+      "review": "Ревью",
+      "subagents": "Субагенты"
+    },
+    "fileMenu": "Меню файла",
+    "quickOpen": "Быстрое открытие (Ctrl+P)",
+    "revealInExplorer": "Открыть в проводнике",
+    "field": {
+      "workspace": "Рабочая область",
+      "provider": "Провайдер",
+      "model": "Модель",
+      "sessionId": "ID сеанса",
+      "toolCalls": "Вызовы инструментов",
+      "uncachedInput": "Некэшированный ввод",
+      "cacheRead": "Чтение кэша",
+      "cacheStatus": "Состояние кэша",
+      "cacheWrite": "Запись кэша",
+      "output": "Вывод",
+      "cacheHitRate": "Доля попаданий в кэш (сеанс)",
+      "speed": "Скорость генерации",
+      "response": "Время отклика",
+      "firstToken": "Задержка первого токена"
+    },
+    "notReported": "Не сообщается",
+    "cache": {
+      "localBreakpoint": "Локальные контрольные точки · {{ttl}}",
+      "autoTtl": "Авто (1h для людей / 5m для машин)",
+      "serverManaged": "Управляется сервером",
+      "serverManagedUncontrolled": "Управляется сервером · TTL/вытеснение не контролируются",
+      "notReported": "{{base}} (не сообщается)",
+      "miss": "{{base}} (промах)",
+      "hitting": "{{base}} (попадание)"
+    },
+    "tokenValue": "{{value}} tok"
+  },
+  "subagent": {
+    "fallbackTitle": "Субагент",
+    "background": "Фон",
+    "stop": "Остановить этого субагента",
+    "readOnly": "Только чтение",
+    "canContinue": "Можно продолжить диалог",
+    "tokensIn": "Вход {{tokens}}",
+    "tokensOut": "Выход {{tokens}}",
+    "loadingTranscript": "Загрузка расшифровки…",
+    "emptyTranscript": "Расшифровки пока нет",
+    "pendingSteers_one": "Добавлено сообщение: {{count}} — вступит в силу на следующем шаге",
+    "pendingSteers_other": "Добавлено сообщений: {{count}} — вступят в силу на следующем шаге",
+    "pendingSteers_few": "Добавлено сообщений: {{count}} — вступят в силу на следующем шаге",
+    "pendingSteers_many": "Добавлено сообщений: {{count}} — вступят в силу на следующем шаге",
+    "steerPlaceholderReadOnly": "Сообщение для {{role}} (вступит в силу на следующем шаге, только чтение)…",
+    "steerPlaceholder": "Сообщение: вступит в силу на следующем шаге, не прерывая текущий запуск…",
+    "steer": "Сообщение",
+    "steerTitle": "Вступит в силу на следующем шаге",
+    "runningHint": "Идёт выполнение — после завершения можно продолжить диалог",
+    "continuePlaceholderReadOnly": "Продолжить выполнение для {{role}} (только чтение)…",
+    "continuePlaceholder": "Продолжить работу субагента…",
+    "send": "Отправить"
+  },
+  "subagents": {
+    "emptyTitle": "В этом сеансе пока нет субагентов",
+    "emptyHint": "Они появятся здесь, когда главный агент запустит задачу",
+    "onlyCurrentSession": "Показаны только субагенты этого сеанса",
+    "open": "Открыть расшифровку субагента",
+    "invalidFallback": "Проверка хоста не пройдена",
+    "invalidTooltip": "{{reason}}: {{summary}}",
+    "verified": "Проверено",
+    "unverified": "Не проверено",
+    "criticalFindings_one": "{{count}} критическая",
+    "criticalFindings_other": "{{count}} критических",
+    "criticalFindings_few": "{{count}} критических",
+    "criticalFindings_many": "{{count}} критических"
+  },
+  "sidechat": {
+    "interruptedNotice": "Предыдущая генерация прервана выходом из приложения. Сгенерированное содержимое сохранено — можно продолжить диалог.",
+    "generating": "Генерация…",
+    "standalone": "Отдельный сеанс · параллельно основному диалогу",
+    "initializing": "Инициализация…",
+    "newSession": "Новый сеанс",
+    "noModel": "Модель не настроена",
+    "planConfirmedWithPath": "План подтверждён. Начните реализацию по {{path}}.",
+    "planConfirmed": "План подтверждён. Начните реализацию."
+  },
+  "browser": {
+    "back": "Назад",
+    "forward": "Вперёд",
+    "reload": "Обновить",
+    "addressPlaceholder": "Поиск или ввод URL"
+  },
+  "filePreview": {
+    "copyPath": "Копировать путь",
+    "openInEditor": "Открыть в редакторе",
+    "loading": "Загрузка…",
+    "truncated": "Показаны первые {{shown}} из {{total}} строк"
+  },
+  "plan": {
+    "governance": "Управление · {{tier}}",
+    "allPassed": "Все проверки пройдены",
+    "inProgress": "В работе",
+    "repairs": "Доработка {{count}}/3",
+    "trivial": "Задача T0: без гейтов, сразу реализовать и проверить.",
+    "emptyTitle": "Документа плана пока нет",
+    "emptyHint": "В режиме плана сначала идёт исследование инструментами только для чтения, затем план реализации пишется в plans/ и показывается здесь.",
+    "updating": "Обновление",
+    "writing": "Запись",
+    "reload": "Перечитать",
+    "writingBody": "Запись документа плана…",
+    "loadingBody": "Чтение документа плана…"
+  },
+  "quickOpen": {
+    "title": "Быстрое открытие",
+    "placeholder": "Введите имя файла или путь",
+    "failed": "Не удалось прочитать список файлов, повторите попытку",
+    "loading": "Загрузка…",
+    "noMatch": "Нет подходящих файлов",
+    "empty": "В рабочей области нет файлов"
+  },
+  "review": {
+    "loading": "Загрузка…",
+    "changedFiles_one": "Изменён {{count}} файл",
+    "changedFiles_other": "Изменено файлов: {{count}}",
+    "changedFiles_few": "Изменено файлов: {{count}}",
+    "changedFiles_many": "Изменено файлов: {{count}}",
+    "refresh": "Обновить",
+    "failed": "Не удалось прочитать, повторите позже",
+    "empty": "В этом сеансе пока нет изменений файлов",
+    "changeCount_one": "Изменений: {{count}}",
+    "changeCount_other": "Изменений: {{count}}",
+    "changeCount_few": "Изменений: {{count}}",
+    "changeCount_many": "Изменений: {{count}}",
+    "diffAria": "Изменения в {{path}}"
+  },
+  "workspace": {
+    "loading": "Загрузка…",
+    "readFailed": "Не удалось прочитать",
+    "truncated": "…всего {{total}}, показаны первые {{shown}}",
+    "selectFile": "Выберите файл справа для просмотра (текст / изображение / видео / аудио / PDF)",
+    "resizeAria": "Изменить ширину списка файлов",
+    "filterPlaceholder": "Фильтр файлов…",
+    "searching": "Поиск…",
+    "noMatch": "Нет подходящих файлов"
+  },
+  "terminal": {
+    "exited": "[Процесс завершён]"
+  }
+}

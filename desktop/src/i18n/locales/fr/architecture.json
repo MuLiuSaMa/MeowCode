@@ -1,0 +1,186 @@
+{
+  "nav": {
+    "heading": "Architecture des agents",
+    "agentListAria": "Liste des agents",
+    "mainAgentGroup": "Agent principal",
+    "subagentGroup": "Sous-agents · {{name}}",
+    "subagentCount_one": "{{count}} sous-agent · {{tagline}}",
+    "subagentCount_other": "{{count}} sous-agents · {{tagline}}",
+    "subagentCount_few": "{{count}} sous-agents · {{tagline}}",
+    "subagentCount_many": "{{count}} sous-agents · {{tagline}}",
+    "addArchitecture": "Nouvelle architecture d’agent personnalisée",
+    "renameHint": "Double-cliquez sur le nom pour le renommer",
+    "deleteAria": "Supprimer « {{name}} »",
+    "currentBadge": "Actuelle",
+    "profileDisabledBadge": "Désactivé dans ce profil",
+    "readOnlyBadge": "Lecture seule",
+    "customTagline": "Architecture personnalisée",
+    "loading": "Chargement des agents…",
+    "emptySubagents": "Cet agent ne contient aucun sous-agent"
+  },
+  "roles": {
+    "general": "Généraliste",
+    "explore": "Exploration",
+    "planner": "Planification",
+    "scoper": "Cadrage du périmètre",
+    "depthProber": "Sondage en profondeur",
+    "implementer": "Implémentation",
+    "reviewer": "Revue",
+    "verifier": "Vérification",
+    "freshVerifier": "Contre-vérification",
+    "juror": "Arbitrage final",
+    "sweeper": "Nettoyage de fin",
+    "goalChecker": "Contrôle de l’objectif",
+    "custom": "Personnalisé"
+  },
+  "types": {
+    "agent": "Agent",
+    "tier": "Niveau",
+    "gate": "Contrôle",
+    "role": "Sous-agent"
+  },
+  "nodeCard": {
+    "agent": "Agent principal",
+    "role": "Sous-agent",
+    "gate": "Contrôle",
+    "tier": "Niveau",
+    "tierPassThrough": "Niveau · direct",
+    "agentTip": "L’agent principal est la runtime racine ; il attribue les sous-agents via task",
+    "roleTip": "Le sous-agent est instancié au moment de l’attribution via task",
+    "gateTip": "Un contrôle est un point de passage ; l’arête gate→role désigne le sous-agent de clôture",
+    "tierTip": "Niveau de tâche : décide quels contrôles s’enchaînent après admit",
+    "terminalTierTip": "Ce niveau n’a aucun contrôle : il se termine juste après admit"
+  },
+  "edge": {
+    "closeOut": "clôture"
+  },
+  "select": {
+    "placeholder": "Choisissez une option"
+  },
+  "defaults": {
+    "standardAgent": "Agent standard",
+    "mainAgent": "Agent principal",
+    "newTier": "Nouveau niveau",
+    "newGate": "Nouveau contrôle",
+    "customRoleDescription": "Sous-agent personnalisé : la liste des outils autorisés et le prompt système sont surchargés dans le panneau de propriétés de ce nœud"
+  },
+  "status": {
+    "loading": "Chargement…",
+    "saving": "Enregistrement…",
+    "saved": "Enregistré — le run de gouvernance charge le nouveau graphe avant le prochain admit",
+    "reset": "Réinitialisé à l’architecture intégrée — effectif après enregistrement",
+    "connectTarget": "Mode connexion : cliquez sur le nœud cible",
+    "connectPickNode": "Sélectionnez d’abord un nœud, puis cliquez sur « Connecter »",
+    "dirty": "Modifications non enregistrées"
+  },
+  "toolbar": {
+    "addTier": "Niveau",
+    "addGate": "Contrôle",
+    "addRole": "Sous-agent",
+    "connect": "Connecter",
+    "cancelConnect": "Annuler la connexion",
+    "connectTip": "Cliquez sur le nœud d’origine, puis sur le nœud de destination pour les connecter",
+    "delete": "Supprimer",
+    "deleteTip": "Supprimer le nœud ou la connexion sélectionné (supprimer un nœud retire aussi ses arêtes)",
+    "fit": "Ajuster au canvas",
+    "fitTip": "Centrer et zoomer pour voir toute l’architecture",
+    "reset": "Revenir à l’intégré",
+    "save": "Enregistrer dans l’espace de travail"
+  },
+  "canvas": {
+    "loading": "Chargement du graphe d’architecture…",
+    "legend": "Glisser les nœuds · glisser sur le vide pour déplacer · molette pour zoomer | Agent principal→sous-agent = attribution task, agent principal→niveau = admit | numéro tier→gate = ordre des contrôles, gate→role = clôture"
+  },
+  "inspector": {
+    "ariaLabel": "Propriétés du nœud",
+    "close": "Fermer le panneau de propriétés",
+    "edge": "Connexion",
+    "agentSubtitle": "Agent principal · {{id}}",
+    "tierSubtitle": "Niveau de tâche · {{id}}",
+    "gateSubtitle": "Contrôle qualité · {{id}}",
+    "roleSubtitle": "Sous-agent · {{role}}",
+    "roleSubtitleNumbered": "Sous-agent · {{role}} #{{ordinal}}",
+    "edgeSubtitle": "Connexion · {{type}}",
+    "deleteNode": "Supprimer le nœud",
+    "deleteEdge": "Supprimer la connexion"
+  },
+  "fields": {
+    "nodeName": "Nom du nœud",
+    "nodeId": "Identifiant du nœud",
+    "description": "Responsabilité",
+    "availableTools": "Outils disponibles",
+    "selectAll": "Tout sélectionner",
+    "clearAll": "Tout effacer",
+    "restoreDefault": "Valeurs par défaut",
+    "restoreBuiltin": "Revenir à l’intégré",
+    "systemPrompt": "Prompt système",
+    "agentPromptPlaceholder": "Vide = prompt par défaut du profil actif",
+    "dispatch": "Attributions",
+    "dispatchHint": "Se modifie sur la connexion",
+    "roleType": "Identifiant du sous-agent",
+    "displayName": "Nom affiché",
+    "roleDescription": "Résumé de la responsabilité du sous-agent",
+    "gateBindings": "Affectations aux contrôles",
+    "gateBindingsHint": "Cliquez pour réaffecter",
+    "rolePromptPlaceholder": "Vide = utiliser le prompt intégré",
+    "gateName": "Nom du contrôle qualité",
+    "invariant": "Invariant / critères d’acceptation",
+    "onFail": "Stratégie en cas d’échec",
+    "closer": "Sous-agent de clôture",
+    "tierName": "Nom du niveau",
+    "tierId": "Identifiant du niveau (seuls T0 / T1 / T2 sont reconnus par admit)",
+    "tierDescription": "Description du niveau",
+    "tierPrompt": "Prompt du niveau (injecté lors de admit, facultatif)",
+    "tierPromptPlaceholder": "Vide = rien n’est injecté ; le texte part une seule fois vers l’agent principal avec le rapport d’admit",
+    "gateSequence": "Ordre des contrôles",
+    "gateSequenceHint": "Cliquez pour ajouter ou retirer",
+    "edgePath": "Chemin",
+    "edgeType": "Type",
+    "order": "Numéro d’ordre (exécuté de façon croissante dans le niveau)"
+  },
+  "tools": {
+    "none": "Aucun outil",
+    "allIncludingDynamic": "Tous les outils, y compris les outils dynamiques MCP / navigateur",
+    "selectedCount_one": "{{count}} élément sélectionné",
+    "selectedCount_other": "{{count}} éléments sélectionnés",
+    "selectedCount_few": "{{count}} éléments sélectionnés",
+    "selectedCount_many": "{{count}} éléments sélectionnés",
+    "selectedFull": "Tous les outils sont sélectionnés",
+    "followProfile": "Suit le profil actif",
+    "inheritedNote": "Sans surcharge, aucune limite supplémentaire : le profil décide",
+    "orchestrationNote": "task / admit sont des canaux d’orchestration, toujours disponibles",
+    "explicitWhitelistNote": "Une liste autorisée explicite exclut les outils MCP / navigateur injectés à l’exécution"
+  },
+  "registry": {
+    "unavailable": "Registre indisponible",
+    "loading": "Lecture du registre…",
+    "unavailableRetry": "Registre indisponible — relancez l’application ou utilisez « Réessayer » ci-dessus",
+    "loadFailed": "Échec du chargement du registre des sous-agents",
+    "loadFailedHint": "Le poste de travail tourne peut-être encore sur un ancien build du serveur ; relancez l’application puis réessayez.",
+    "retry": "Réessayer"
+  },
+  "onFail": {
+    "rework": "Reprise (retour au premier contrôle)",
+    "loopTo": "loop-to:{{id}} (retour vers {{id}})",
+    "block": "block (bloque immédiatement la lane)"
+  },
+  "closer": {
+    "unbound": "Non affecté (admit refusera)"
+  },
+  "empty": {
+    "dispatchEdges": "Aucune connexion d’attribution pour le moment",
+    "gateNodes": "Le graphe ne contient pas encore de nœud de contrôle"
+  },
+  "tier": {
+    "executionOrder": "Ordre d’exécution : {{gates}} ; l’ordre se change via order sur la connexion.",
+    "passThrough": "Aucun contrôle · direct (terminé juste après admit)"
+  },
+  "notes": {
+    "agentPrompt": "Le champ est pré-rempli avec le prompt par défaut du profil actif ; enregistrez pour appliquer vos modifications. Un contenu personnalisé <strong>remplace intégralement</strong> le prompt du profil, pensez donc à conserver les règles d’usage des outils et de chemins.",
+    "agentRoot": "L’agent principal est une runtime racine permanente et ne participe à aucun contrôle ; les sous-agents de clôture verrouillent le résultat via la chaîne tier→gate→role. Un sous-agent ne peut pas attribuer d’autre tâche.",
+    "rolePrompt": "Laisser vide revient au prompt intégré. Le mode d’approbation des sous-agents en lecture seule reste imposé par le registre ; un sous-agent de clôture doit conserver le contrat de résultat JSON, sinon la validation ChildResult échoue.",
+    "gateBinding": "Un contrôle n’admet qu’un seul sous-agent de clôture ; cliquer sur celui déjà affecté le désaffecte.",
+    "gateEvidence": "Les preuves sont mesurées par l’hôte : implementer examine les modifications de fichiers, reviewer les critical findings, verifier les codes de retour des commandes ; pour tout autre sous-agent, seules completed et valid sont contrôlées. Un contrôle ne se fie pas à la parole du modèle.",
+    "edgeSemantics": "Les arêtes tier→gate fixent l’ordre des contrôles ; les arêtes gate→role désignent le sous-agent de clôture ; les autres connexions sont purement indicatives."
+  }
+}

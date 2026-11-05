@@ -1,0 +1,232 @@
+{
+  "rail": {
+    "home": "होम",
+    "architecture": "Agent आर्किटेक्चर",
+    "git": "Git प्रबंधन",
+    "plugins": "मार्केटप्लेस",
+    "settings": "सेटिंग्स"
+  },
+  "update": {
+    "downloadingPercent": "नया संस्करण स्वचालित रूप से डाउनलोड हो रहा है {{percent}}%",
+    "downloading": "नया संस्करण स्वचालित रूप से डाउनलोड हो रहा है",
+    "dismiss": "सूचना बंद करें",
+    "restart": "पुनः आरंभ करके अपडेट इंस्टॉल करें",
+    "failedAria": "स्वचालित डाउनलोड विफल, मैन्युअल डाउनलोड के लिए क्लिक करें",
+    "failedTitle": "स्वचालित डाउनलोड विफल, मैन्युअल डाउनलोड के लिए क्लिक करें"
+  },
+  "window": {
+    "minimize": "मिनिमाइज़ करें",
+    "restore": "पुनर्स्थापित करें",
+    "maximize": "मैक्सिमाइज़ करें",
+    "close": "बंद करें"
+  },
+  "approval": {
+    "title": "अनुमति आवश्यक है",
+    "requestSubagent": "सबएजेंट \"{{name}}\" {{tool}} इस्तेमाल करना चाहता है।",
+    "requestApp": "MeowCode {{tool}} इस्तेमाल करना चाहता है।",
+    "stale": "अनुमोदन के दौरान फ़ाइल बदल गई। नीचे की प्रीव्यू फिर से बनाई गई है, कृपया दोबारा पुष्टि करें।",
+    "risk": "जोखिम भरा कमांड",
+    "diff": "बदलाव की प्रीव्यू",
+    "deny": "अस्वीकार करें",
+    "approve": "अनुमति दें",
+    "hookTitle": "Hook एक कमांड चलाना चाहता है",
+    "hookRequest": "इवेंट: {{event}}",
+    "hookFromAgent": "सबएजेंट \"{{name}}\" द्वारा अनुरोधित",
+    "hookMatcher": "मैचर: {{matcher}}",
+    "hookSource": "कॉन्फ़िगरेशन: {{source}}",
+    "hookNote": "यह कमांड आपकी उपयोगकर्ता अनुमतियों के साथ चलेगा। अनुमोदन केवल इस सत्र में याद रहेगा।",
+    "hookRun": "चलाएँ",
+    "hookSkip": "छोड़ें",
+    "hookReasonTitle": "Hook को पुष्टि चाहिए",
+    "sandboxTitle": "सैंडबॉक्स ने यह लेखन रोका",
+    "sandboxDesc": "कमांड ने कार्यक्षेत्र के बाहर लिखने का प्रयास किया और OS-स्तरीय राइट सैंडबॉक्स ने उसे रोक दिया।",
+    "sandboxCommand": "अवरुद्ध कमांड",
+    "sandboxEvidence": "सैंडबॉक्स प्रमाण",
+    "sandboxNote": "सैंडबॉक्स के बाहर पुनः प्रयास इस कमांड को आपके उपयोगकर्ता विशेषाधिकारों से चलाएगा। केवल एक बार अनुमति दी जाएगी; सैंडबॉक्स बंद नहीं होगा।",
+    "sandboxDeny": "सैंडबॉक्स रखें",
+    "sandboxRetry": "सैंडबॉक्स के बाहर पुनः प्रयास करें"
+  },
+  "plan": {
+    "aria": "कार्य योजना",
+    "expand": "कार्य योजना खोलें",
+    "collapse": "कार्य योजना बंद करें",
+    "allDone": "सभी कार्य पूरे हुए",
+    "endedHeadline": "योजना समाप्त हो गई",
+    "ended": "समाप्त",
+    "status": {
+      "pending": "बाकी",
+      "inProgress": "जारी",
+      "completed": "पूरा",
+      "cancelled": "रद्द"
+    },
+    "confirmedWithPath": "योजना की पुष्टि हो गई। {{path}} से कार्यान्वयन शुरू करें।",
+    "confirmed": "योजना की पुष्टि हो गई। कार्यान्वयन शुरू करें।",
+    "stepsProgress": "चरण {{done}} / {{total}}",
+    "filesChanged": "{{n}} फ़ाइलें बदलीं"
+  },
+  "status": {
+    "preparingSubagents_one": "{{count}} सबएजेंट तैयार हो रहा है…",
+    "preparingSubagents_few": "{{count}} सबएजेंट तैयार हो रहे हैं…",
+    "preparingSubagents_many": "{{count}} सबएजेंट तैयार हो रहे हैं…",
+    "preparingSubagents_other": "{{count}} सबएजेंट तैयार हो रहे हैं…",
+    "preparingWrites": "फ़ाइल लिखी जा रही है…",
+    "preparingEdits": "फ़ाइल बदली जा रही है…",
+    "preparingTools_one": "{{count}} टूल कॉल तैयार हो रहा है…",
+    "preparingTools_few": "{{count}} टूल कॉल तैयार हो रहे हैं…",
+    "preparingTools_many": "{{count}} टूल कॉल तैयार हो रहे हैं…",
+    "preparingTools_other": "{{count}} टूल कॉल तैयार हो रहे हैं…"
+  },
+  "notice": {
+    "interrupted": "पिछला जनरेशन ऐप बंद होने से बीच में रुक गया। जनरेट किया गया कंटेंट सुरक्षित रखा गया है, आप बातचीत जारी रख सकते हैं।",
+    "updateAvailable": "नया संस्करण {{version}} उपलब्ध है",
+    "updateNow": "अभी अपडेट करें",
+    "subagentInterrupted": "इस सबएजेंट का टर्न बीच में रुका। जनरेट किया गया कंटेंट सुरक्षित रखा गया है।",
+    "cacheEvicted": "सर्वर ने शायद कैश हटा दिया है (घोषित TTL से अधिक निष्क्रियता), इसलिए यह टर्न कैश मिस के रूप में बिल हुआ।",
+    "cacheUnsupported": "प्रीफ़िक्स न बदलने पर भी इस गेटवे ने कैश हिट नहीं लौटाया, हो सकता है यह प्रीफ़िक्स कैशिंग समर्थित न करे; लागत पूरे इनपुट पर गिनी जाती है।",
+    "providerSwitched": "प्रोवाइडर अस्थायी रूप से बदला गया: {{from}} → {{to}} ({{reason}})। क्रम सेटिंग्स → मॉडल में बदल सकते हैं।",
+    "undoableRewind": "{{count}} फ़ाइलें रीवाइंड की गईं; यह रीवाइंड रद्द किया जा सकता है (मूल सेशन सुरक्षित है)।",
+    "undoRewind": "रीवाइंड रद्द करें",
+    "dismiss": "बंद करें"
+  },
+  "subagent": {
+    "label": "सबएजेंट",
+    "loadFailed": "सबएजेंट का ट्रांसक्रिप्ट लोड नहीं हो सका",
+    "steerAborted": "संदेश नहीं पहुँचा: सबएजेंट रुक गया",
+    "steerFinished": "संदेश नहीं पहुँचा: सबएजेंट पहले ही समाप्त हो चुका है",
+    "status": {
+      "completed": "पूरा हुआ",
+      "failed": "विफल",
+      "aborted": "रुका",
+      "interrupted": "बाधित"
+    },
+    "notice": "सबएजेंट \"{{name}}\": {{status}}",
+    "noticeWithReport": "सबएजेंट \"{{name}}\": {{status}} — {{report}}"
+  },
+  "error": {
+    "reason": {
+      "timeout": "अनुरोध का समय समाप्त",
+      "rateLimit": "दर सीमा पार हो गई",
+      "server": "सर्वर त्रुटि"
+    },
+    "worktreeLoad": "worktree सत्र बनने के बाद लोड नहीं हो सका। कृपया फिर कोशिश करें।",
+    "notGitRepo": "मौजूदा वर्कस्पेस git रिपॉज़िटरी नहीं है, इसलिए worktree अलगाव उपलब्ध नहीं है।"
+  },
+  "toast": {
+    "worktreeDirty": "मुख्य वर्कस्पेस में बिना कमिट किए बदलाव हैं: worktree HEAD से शुरू होता है, इसलिए वे बदलाव साथ नहीं जाएँगे"
+  },
+  "architecture": {
+    "customName": "कस्टम Agent"
+  },
+  "model": {
+    "unconfigured": "कोई मॉडल कॉन्फ़िगर नहीं है"
+  },
+  "resize": {
+    "list": "बाईं सूची की चौड़ाई बदलें",
+    "inspector": "दाएँ पैनल की चौड़ाई बदलें"
+  },
+  "theme": {
+    "providerMissing": "useTheme का उपयोग ThemeProvider के अंदर ही करें"
+  },
+  "updateModal": {
+    "currentVersion": "वर्तमान {{version}}",
+    "noAsset": "इस रिलीज़ में मौजूदा प्लेटफ़ॉर्म के लिए इंस्टॉलर नहीं है, इसलिए इसे ऑनलाइन डाउनलोड नहीं किया जा सकता।",
+    "noNotes": "इस रिलीज़ में कोई रिलीज़ नोट नहीं है।",
+    "downloadDone": "डाउनलोड पूर्ण",
+    "downloading": "डाउनलोड हो रहा है {{percent}}%",
+    "downloadSize": " ({{received}} / {{total}})",
+    "later": "बाद में",
+    "restart": "पुनः प्रारंभ कर अपडेट करें",
+    "cancel": "रद्द करें",
+    "downloadingShort": "डाउनलोड हो रहा है…",
+    "download": "अपडेट डाउनलोड करें"
+  },
+  "modelPopover": {
+    "aria": "मॉडल और सोच की तीव्रता",
+    "selectModel": "मॉडल चुनें",
+    "empty": "कोई मॉडल सक्षम नहीं है। सेटिंग्स → मॉडल में जाकर एक जोड़ें।",
+    "manage": "मॉडल प्रबंधित करें",
+    "back": "मॉडल सूची पर वापस जाएँ",
+    "effort": "सोच की तीव्रता"
+  },
+  "taskRow": {
+    "status": {
+      "running": "चल रहा है",
+      "completed": "पूर्ण",
+      "failed": "विफल",
+      "aborted": "रोका गया",
+      "interrupted": "बाधित"
+    },
+    "background": "पृष्ठभूमि",
+    "open": "सबएजेंट खोलें: {{name}}",
+    "durationUnderSecond": "<1 सेकंड",
+    "durationSeconds": "{{value}} सेकंड",
+    "durationMinutes": "{{minutes}} मिनट {{seconds}} सेकंड"
+  },
+  "closeDialog": {
+    "title": "विंडो बंद करने पर MeowCode को क्या करना चाहिए?",
+    "desc": "MeowCode पृष्ठभूमि में चलता रहेगा। आप इसे सिस्टम ट्रे से फिर से खोल सकते हैं।",
+    "remember": "मेरी पसंद याद रखें (सेटिंग्स → सामान्य में बदल सकते हैं)",
+    "cancel": "रद्द करें",
+    "tray": "ट्रे में छोटा करें",
+    "quit": "पूरी तरह बंद करें"
+  },
+  "contextWarning": {
+    "usage": "संदर्भ <b>{{percent}}%</b> उपयोग में है ({{used}} / {{window}})।",
+    "hintStreaming": " इस टर्न के बाद आप मैन्युअल रूप से संपीड़ित कर सकते हैं, ताकि अगली अनुरोध के ओवरफ़्लो होने पर स्वचालित संपीड़न न हो।",
+    "hint": " अगली अनुरोध के ओवरफ़्लो होने पर स्वचालित संपीड़न से बचने के लिए मैन्युअल रूप से संपीड़ित करने की सलाह दी जाती है।",
+    "compacting": "संपीड़ित हो रहा है…",
+    "compactAfterTurn": "इस टर्न के बाद संपीड़ित करें",
+    "compactNow": "अभी संपीड़ित करें",
+    "dismissAria": "संपीड़न संकेत छिपाएँ",
+    "dismissTitle": "इस बार न दिखाएँ"
+  },
+  "compaction": {
+    "compacting": "बातचीत का इतिहास संपीड़ित हो रहा है…",
+    "interrupted": "पिछला संपीड़न ऐप बंद होने से बाधित हुआ",
+    "failed": "पिछला संपीड़न विफल रहा, इतिहास संपीड़ित नहीं हुआ",
+    "done": "बातचीत का इतिहास संपीड़ित हो गया; पुराने संदेश सारांश के रूप में सुरक्षित हैं"
+  },
+  "messageNav": {
+    "aria": "बातचीत नेविगेशन",
+    "noText": "(कोई टेक्स्ट नहीं)",
+    "itemTitle": "संदेश {{index}}: {{preview}}",
+    "images_one": "{{count, number}} छवि",
+    "images_few": "{{count, number}} छवियाँ",
+    "images_many": "{{count, number}} छवियाँ",
+    "images_other": "{{count, number}} छवियाँ"
+  },
+  "agentProfile": {
+    "aria": "मुख्य Agent प्रोफ़ाइल",
+    "customDesc": "कस्टम आर्किटेक्चर · मौजूदा प्रोफ़ाइल की क्षमताओं का उपयोग करता है",
+    "dispatchable_one": "{{tagline}} · {{count, number}} सबएजेंट भेजा जा सकता है",
+    "dispatchable_few": "{{tagline}} · {{count, number}} सबएजेंट भेजे जा सकते हैं",
+    "dispatchable_many": "{{tagline}} · {{count, number}} सबएजेंट भेजे जा सकते हैं",
+    "dispatchable_other": "{{tagline}} · {{count, number}} सबएजेंट भेजे जा सकते हैं"
+  },
+  "contextMeter": {
+    "usage": "संदर्भ {{used}} / {{window}} ({{percent}}%)",
+    "noWindow": "कोई संदर्भ विंडो सेट नहीं है",
+    "aria": "संदर्भ उपयोग"
+  },
+  "bootSplash": {
+    "aria": "MeowCode प्रारंभ हो रहा है"
+  },
+  "island": {
+    "connecting": "कनेक्ट हो रहा है…",
+    "running": "{{n}} सत्र चल रहे हैं",
+    "waitingApproval": "स्वीकृति की प्रतीक्षा",
+    "idle": "निष्क्रिय",
+    "approvalHint": "स्वीकृति की प्रतीक्षा",
+    "thinking": "सोच रहा है…",
+    "working": "काम कर रहा है…",
+    "hadError": "कुछ गलत हो गया",
+    "untitled": "शीर्षकहीन सत्र",
+    "empty": "अभी कोई संदेश नहीं",
+    "stop": "रोकें",
+    "send": "भेजें",
+    "openMain": "मुख्य विंडो खोलें",
+    "inputPlaceholder": "संदेश लिखें, भेजने के लिए Enter",
+    "inputIdle": "यह सत्र चल नहीं रहा है। मुख्य विंडो में जारी रखें।",
+    "dropHint": "जोड़ने के लिए छोड़ें"
+  }
+}

@@ -384,4 +384,49 @@ describeGit("git service integration", () => {
     const service = createGitService({ workspace: root });
     await expect(service.log({ limit: 5 })).resolves.toEqual({ commits: [], hasMore: false });
   });
+
+  slow("caps status lists but reports the real totals", async () => {
+    const root = await makeRepo();
+    dirs.push(root);
+    for (const name of ["a.txt", "b.txt", "c.txt"]) {
+      await writeFile(path.join(root, name), `${name}\n`);
+    }
+    // 几万个未跟踪文件整包回传会把桌面端渲染进程拖死，这里验证截断 + 总数
+    const capped = await getStatus(root, { maxEntries: 2 });
+    expect(capped.unstaged).toHaveLength(2);
+    expect(capped.unstagedCount).toBe(3);
+    const full = await getStatus(root);
+    expect(full.unstaged).toHaveLength(3);
+    expect(full.unstagedCount).toBe(3);
+  });
+
+  slow("stages and unstages everything even when the list is truncated", async () => {
+    const root = await makeRepo();
+    dirs.push(root);
+    await mkdir(path.join(root, "src"), { recursive: true });
+    await writeFile(path.join(root, "src", "a.ts"), "a\n");
+    await writeFile(path.join(root, "src", "b.ts"), "b\n");
+    const service = createGitService({ workspace: root });
+
+    // 没有 HEAD 时走 rm --cached 分支
+    await service.stageAll();
+    const staged = await service.status();
+    expect(staged.stagedCount).toBe(2);
+    expect(staged.unstaged).toEqual([]);
+    await service.unstageAll();
+    const unstaged = await service.status();
+    expect(unstaged.staged).toEqual([]);
+    expect(unstaged.unstagedCount).toBe(2);
+
+    // 有 HEAD 时走 reset 分支
+    await service.stageAll();
+    await service.commit("chore: seed");
+    await writeFile(path.join(root, "src", "a.ts"), "a2\n");
+    await service.stageAll();
+    expect((await service.status()).stagedCount).toBe(1);
+    await service.unstageAll();
+    const afterHead = await service.status();
+    expect(afterHead.staged).toEqual([]);
+    expect(afterHead.unstagedCount).toBe(1);
+  });
 });

@@ -1,0 +1,60 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>MeowCode Island</title>
+    <style>
+      /* 透明窗口：body 任何底色都会破坏穿透与形状，必须全程透明 */
+      html,
+      body {
+        background: transparent !important;
+      }
+    </style>
+    <script>
+      // 与 index.html 同款：首帧前定主题与语言（悬浮岛是独立 document，需要自己解析一遍）。
+      // key 必须与 src/theme/theme.tsx 的 STORAGE_KEY / src/i18n/index.ts 的 LANGUAGE_STORAGE_KEY 一致。
+      (function () {
+        try {
+          var stored = localStorage.getItem("meow:theme");
+          var resolved =
+            stored === "light" || stored === "dark"
+              ? stored
+              : window.matchMedia("(prefers-color-scheme: dark)").matches
+                ? "dark"
+                : "light";
+          document.documentElement.dataset.theme = resolved;
+        } catch (error) {
+          document.documentElement.dataset.theme = "dark";
+        }
+        try {
+          var stored = localStorage.getItem("meow:language");
+          var supported = ["zh-CN", "zh-TW", "en", "ja", "ko", "ru", "de", "fr", "es", "pt", "hi"];
+          var language = stored && supported.indexOf(stored) >= 0 ? stored : null;
+          if (!language) {
+            var tags = navigator.languages || [navigator.language];
+            for (var i = 0; i < tags.length; i += 1) {
+              var tag = String(tags[i] || "").toLowerCase();
+              if (tag.indexOf("zh") === 0) {
+                language = /tw|hk|mo|hant/.test(tag) ? "zh-TW" : "zh-CN";
+                break;
+              }
+              var base = tag.split("-")[0];
+              if (supported.indexOf(base) >= 0) {
+                language = base;
+                break;
+              }
+            }
+          }
+          document.documentElement.lang = language || "zh-CN";
+        } catch (error) {
+          document.documentElement.lang = "zh-CN";
+        }
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/island/main.tsx"></script>
+  </body>
+</html>

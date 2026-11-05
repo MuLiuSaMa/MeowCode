@@ -1,0 +1,21 @@
+import { createRoot } from "react-dom/client";
+import IslandApp from "./IslandApp";
+import { setupI18n } from "../i18n";
+import "../theme/tokens.css";
+// base.css 提供 .mc-markdown 等全局排版（岛内 Agent 内容与主窗口同源）；
+// 它会把 body 画成实色，island.css 在最后重新压回透明
+import "../theme/base.css";
+// 岛内复用主窗口组件（气泡/工具行/输入框/发送按钮），直接引入同一份组件样式保证视觉一致
+import "../components/UserBubble.css";
+import "../components/AssistantMessage.css";
+import "../components/ToolRow.css";
+import "../components/Composer.css";
+import "./island.css";
+
+const root = document.getElementById("root");
+if (!root) throw new Error("Root element not found");
+
+// 语言首帧前就绪（html 内联脚本已解析好 lang，这里同步初始化词典）
+setupI18n();
+
+createRoot(root).render(<IslandApp />);

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { LuCheck, LuCopy, LuExternalLink, LuLoaderCircle, LuTriangleAlert } from "react-icons/lu";
 import type { MarketplaceEntry, OauthPlatform, OauthPlatformStatus } from "../../api";
 import { Button } from "../ui/Button";
@@ -11,9 +12,10 @@ const PLATFORM_CALLBACKS: Record<string, string> = {
   gitcode: "http://127.0.0.1:53682/oauth/gitcode/callback",
 };
 
-const TOKEN_LABELS: Record<string, string> = {
-  MEOWCODE_GITEE_TOKEN: "Gitee 私人令牌",
-  MEOWCODE_GITCODE_TOKEN: "GitCode 访问令牌",
+/** 环境变量名是发给后端的标识符，表里只存对应的词条 key */
+const TOKEN_LABEL_KEYS: Record<string, string> = {
+  MEOWCODE_GITEE_TOKEN: "oauth.tokenLabelGitee",
+  MEOWCODE_GITCODE_TOKEN: "oauth.tokenLabelGitcode",
 };
 
 type Phase = "setup" | "connect" | "starting" | "pending" | "success" | "error" | "pat";
@@ -39,6 +41,7 @@ export function PlatformOauthDialog({
   onClose: () => void;
   onSaved: (warning?: string) => void;
 }) {
+  const { t } = useTranslation("marketplace");
   const [phase, setPhase] = useState<Phase>("connect");
   const [clientId, setClientId] = useState("");
   const [clientSecret, setClientSecret] = useState("");
@@ -50,7 +53,7 @@ export function PlatformOauthDialog({
   const [copied, setCopied] = useState<"" | "redirect" | "client">("");
   const [authorizeUrl, setAuthorizeUrl] = useState("");
 
-  const label = platform === "gitee" ? "Gitee" : platform === "gitcode" ? "GitCode" : "MCP";
+  const label = platform ? t(`platforms.${platform}`) : "MCP";
   const redirectUri = platform ? status?.redirectUri ?? PLATFORM_CALLBACKS[platform] ?? "" : "";
   const builtinClientId = status?.clientId ?? "";
   const envNames = entry?.requiresEnv ?? [];
@@ -59,7 +62,7 @@ export function PlatformOauthDialog({
   const startConnect = useCallback(async () => {
     if (!platform) return;
     if (typeof window.meow.oauthConnectStart !== "function") {
-      setError("OAuth 模块尚未加载，请完全重启 MeowCode 后重试。");
+      setError(t("oauth.moduleMissing"));
       setPhase("error");
       return;
     }
@@ -79,7 +82,7 @@ export function PlatformOauthDialog({
       setError(err instanceof Error ? err.message : String(err));
       setPhase("error");
     }
-  }, [platform]);
+  }, [platform, t]);
 
   useEffect(() => {
     if (!open || !platform) return;
@@ -126,7 +129,7 @@ export function PlatformOauthDialog({
           onSaved(result.warning);
           return;
         }
-        setError(result.message || "授权失败，请重试。");
+        setError(result.message || t("oauth.authFailed"));
         setPhase("error");
       } catch (err) {
         if (cancelled) return;
@@ -139,7 +142,7 @@ export function PlatformOauthDialog({
       cancelled = true;
       if (timer) window.clearTimeout(timer);
     };
-  }, [open, phase, platform, onSaved]);
+  }, [open, phase, platform, onSaved, t]);
 
   // 离开 pending（关闭/取消）时通知主进程清理本地回跳服务
   useEffect(() => {
@@ -177,11 +180,11 @@ export function PlatformOauthDialog({
   const saveApp = async () => {
     if (!platform) return;
     if (!clientSecret.trim()) {
-      setError("请填写 Client Secret。");
+      setError(t("oauth.requireSecret"));
       return;
     }
     if (!clientId.trim()) {
-      setError("请填写 Client ID（与 Client Secret 属于同一个应用）。");
+      setError(t("oauth.requireClientId"));
       return;
     }
     setSaving(true);
@@ -195,7 +198,7 @@ export function PlatformOauthDialog({
         clientSecret: clientSecret.trim(),
       });
       if (!result.ok) {
-        setError(result.message ?? "保存失败。");
+        setError(result.message ?? t("actions.saveFailed"));
         return;
       }
       setClientSecret("");
@@ -215,7 +218,7 @@ export function PlatformOauthDialog({
         .filter(([, value]) => value),
     );
     if (!Object.keys(env).length) {
-      setError("请至少填写一个 Token。");
+      setError(t("oauth.requireToken"));
       return;
     }
     setSaving(true);
@@ -223,7 +226,7 @@ export function PlatformOauthDialog({
     try {
       const result = await window.meow.setMcpCredentials({ env });
       if (!result.ok) {
-        setError(result.message ?? "保存失败。");
+        setError(result.message ?? t("actions.saveFailed"));
         return;
       }
       onSaved(result.warning);
@@ -250,10 +253,12 @@ export function PlatformOauthDialog({
       type="button"
       className="mc-oauth__copy"
       onClick={() => void copyText(kind, text)}
-      aria-label={kind === "redirect" ? "复制回调地址" : "复制 Client ID"}
+      aria-label={
+        kind === "redirect" ? t("oauth.copyRedirectAria") : t("oauth.copyClientIdAria")
+      }
     >
       {copied === kind ? <LuCheck size={13} /> : <LuCopy size={13} />}
-      {copied === kind ? "已复制" : "复制"}
+      {copied === kind ? t("actions.copied") : t("actions.copy")}
     </button>
   );
 
@@ -266,18 +271,15 @@ export function PlatformOauthDialog({
       labelledBy="mc-oauth-title"
     >
       <span className="mc-dialog__title" id="mc-oauth-title">
-        连接 {label}
+        {t("oauth.connectPlatform", { platform: label })}
       </span>
-      <p className="mc-dialog__desc">
-        使用 {label} OAuth 直接授权：点击后会用系统浏览器打开授权页，授权完自动回到 MeowCode。
-        凭据只保存在本机，用于连接 {label} MCP。
-      </p>
+      <p className="mc-dialog__desc">{t("oauth.desc", { platform: label })}</p>
 
       {phase === "setup" ? (
         <>
           <div className="mc-oauth__redirect">
             <span className="mc-oauth__redirectlabel">
-              回调地址（需与 {label} OAuth 应用登记的一致）
+              {t("oauth.redirectLabel", { platform: label })}
             </span>
             <div className="mc-oauth__redirectrow">
               <code className="mc-oauth__redirecturi">{redirectUri}</code>
@@ -285,28 +287,25 @@ export function PlatformOauthDialog({
             </div>
           </div>
           <label className="mc-oauth__field">
-            <span className="mc-oauth__fieldlabel">
-              Client ID（与下面的 Client Secret 必须属于同一个应用）
-            </span>
+            <span className="mc-oauth__fieldlabel">{t("oauth.clientIdLabel")}</span>
             <input
               className="mc-dialog__input mc-oauth__input"
               type="text"
               value={clientId}
-              placeholder="OAuth 应用的 Client ID"
+              placeholder={t("oauth.clientIdPlaceholder")}
               autoComplete="off"
               spellCheck={false}
               onChange={(event) => setClientId(event.target.value)}
             />
             {builtinClientId ? (
               <span className="mc-oauth__fieldhint">
-                默认填的是 MeowCode 内置应用 ID。若你用自己的应用，请把这里和下面的 Secret
-                一起改成应用页面上的值——两者不配套会换 token 失败（401）。
+                {t("oauth.clientIdHint")}
                 <button
                   type="button"
                   className="mc-oauth__altlink"
                   onClick={() => setClientId(builtinClientId)}
                 >
-                  恢复内置 Client ID
+                  {t("oauth.restoreClientId")}
                 </button>
                 {copyButton("client", builtinClientId)}
               </span>
@@ -314,23 +313,21 @@ export function PlatformOauthDialog({
           </label>
           <label className="mc-oauth__field">
             <span className="mc-oauth__fieldlabel">
-              Client Secret（{label} 换 token 强制校验，只需填一次）
+              {t("oauth.secretLabel", { platform: label })}
             </span>
             <input
               className="mc-dialog__input mc-oauth__input"
               type="password"
               value={clientSecret}
-              placeholder="OAuth 应用的 Client Secret"
+              placeholder={t("oauth.secretPlaceholder")}
               autoComplete="off"
               spellCheck={false}
               onChange={(event) => setClientSecret(event.target.value)}
             />
           </label>
           <div className="mc-oauth__hint">
-            这个表单只出现一次：{label} 换 token 时必须带 Client Secret（平台不支持免密 PKCE），
-            首次填一次后加密存在本机。点「保存并连接」会立刻弹出浏览器；之后每次点「连接 {label}」
-            都直接开浏览器，不再出现这个表单。
-            <code>也可以把 Secret 放进 %APPDATA%\MeowCode\oauth-apps.json（不进仓库）</code>
+            {t("oauth.setupHint", { platform: label })}
+            <code>{t("oauth.secretFilePath")}</code>
           </div>
           {verifyMessage && !error ? (
             <div className="mc-oauth__success">
@@ -346,17 +343,17 @@ export function PlatformOauthDialog({
           ) : null}
           <div className="mc-dialog__footer">
             <Button variant="ghost" disabled={saving} onClick={onClose}>
-              取消
+              {t("actions.cancel")}
             </Button>
             <Button
               variant="ghost"
               disabled={saving || verifying || !clientId.trim() || !clientSecret.trim()}
               onClick={() => void verifyApp()}
             >
-              {verifying ? "校验中…" : "校验凭据"}
+              {verifying ? t("actions.verifying") : t("oauth.verifyCredentials")}
             </Button>
             <Button variant="primary" disabled={saving} onClick={() => void saveApp()}>
-              {saving ? "保存中…" : "保存并连接"}
+              {saving ? t("actions.saving") : t("oauth.saveAndConnect")}
             </Button>
           </div>
         </>
@@ -365,7 +362,7 @@ export function PlatformOauthDialog({
       {phase === "connect" || phase === "starting" ? (
         <>
           <div className="mc-oauth__hint">
-            点击「直接连接」会用系统浏览器打开 {label} 授权页，授权后自动回跳本机，无需粘贴 Token。
+            {t("oauth.connectHint", { platform: label })}
             <code>{redirectUri}</code>
           </div>
           {error ? (
@@ -376,15 +373,19 @@ export function PlatformOauthDialog({
           ) : null}
           <p className="mc-oauth__alt">
             <button type="button" className="mc-oauth__altlink" onClick={() => setPhase("setup")}>
-              重新配置应用凭据（Client ID / Secret）
+              {t("oauth.reconfigure")}
             </button>
           </p>
           <div className="mc-dialog__footer">
             <Button variant="ghost" disabled={phase === "starting"} onClick={onClose}>
-              取消
+              {t("actions.cancel")}
             </Button>
-            <Button variant="primary" disabled={phase === "starting"} onClick={() => void startConnect()}>
-              {phase === "starting" ? "正在打开…" : "直接连接"}
+            <Button
+              variant="primary"
+              disabled={phase === "starting"}
+              onClick={() => void startConnect()}
+            >
+              {phase === "starting" ? t("oauth.opening") : t("oauth.connectNow")}
             </Button>
           </div>
         </>
@@ -394,18 +395,18 @@ export function PlatformOauthDialog({
         <>
           <p className="mc-oauth__wait">
             <LuLoaderCircle size={14} className="mc-oauth__spin" />
-            等待你在浏览器中完成授权…
+            {t("oauth.awaitingUser")}
           </p>
           <div className="mc-dialog__footer">
             <Button variant="ghost" onClick={onClose}>
-              取消
+              {t("actions.cancel")}
             </Button>
             <Button
               variant="primary"
               icon={<LuExternalLink size={14} />}
               onClick={() => void window.meow.openExternal(authorizeUrl)}
             >
-              重新打开授权页
+              {t("oauth.reopenAuthPage")}
             </Button>
           </div>
         </>
@@ -415,11 +416,11 @@ export function PlatformOauthDialog({
         <>
           <div className="mc-oauth__success">
             <LuCheck size={16} />
-            <span>{label} 已连接，正在加载 MCP 工具。</span>
+            <span>{t("oauth.connected", { platform: label })}</span>
           </div>
           <div className="mc-dialog__footer">
             <Button variant="primary" onClick={onClose}>
-              完成
+              {t("actions.done")}
             </Button>
           </div>
         </>
@@ -433,15 +434,15 @@ export function PlatformOauthDialog({
           </div>
           <p className="mc-oauth__alt">
             <button type="button" className="mc-oauth__altlink" onClick={() => setPhase("setup")}>
-              重新配置应用凭据（Client ID / Secret）
+              {t("oauth.reconfigure")}
             </button>
           </p>
           <div className="mc-dialog__footer">
             <Button variant="ghost" onClick={onClose}>
-              取消
+              {t("actions.cancel")}
             </Button>
             <Button variant="primary" onClick={() => void startConnect()}>
-              重试
+              {t("actions.retry")}
             </Button>
           </div>
         </>
@@ -449,22 +450,25 @@ export function PlatformOauthDialog({
 
       {phase === "pat" ? (
         <>
-          {envNames.map((name) => (
-            <label className="mc-oauth__field" key={name}>
-              <span className="mc-oauth__fieldlabel">{TOKEN_LABELS[name] ?? name}</span>
-              <input
-                className="mc-dialog__input mc-oauth__input"
-                type="password"
-                value={patValues[name] ?? ""}
-                placeholder="粘贴 Token"
-                autoComplete="off"
-                spellCheck={false}
-                onChange={(event) =>
-                  setPatValues((current) => ({ ...current, [name]: event.target.value }))
-                }
-              />
-            </label>
-          ))}
+          {envNames.map((name) => {
+            const labelKey = TOKEN_LABEL_KEYS[name];
+            return (
+              <label className="mc-oauth__field" key={name}>
+                <span className="mc-oauth__fieldlabel">{labelKey ? t(labelKey) : name}</span>
+                <input
+                  className="mc-dialog__input mc-oauth__input"
+                  type="password"
+                  value={patValues[name] ?? ""}
+                  placeholder={t("oauth.pasteToken")}
+                  autoComplete="off"
+                  spellCheck={false}
+                  onChange={(event) =>
+                    setPatValues((current) => ({ ...current, [name]: event.target.value }))
+                  }
+                />
+              </label>
+            );
+          })}
           {error ? (
             <div className="mc-oauth__error">
               <LuTriangleAlert size={15} />
@@ -473,10 +477,10 @@ export function PlatformOauthDialog({
           ) : null}
           <div className="mc-dialog__footer">
             <Button variant="ghost" disabled={saving} onClick={onClose}>
-              取消
+              {t("actions.cancel")}
             </Button>
             <Button variant="primary" disabled={saving} onClick={() => void savePat()}>
-              {saving ? "校验中…" : "保存"}
+              {saving ? t("actions.verifying") : t("actions.save")}
             </Button>
           </div>
         </>
@@ -485,7 +489,7 @@ export function PlatformOauthDialog({
       {phase === "setup" || phase === "connect" || phase === "error" || phase === "success" ? (
         <p className="mc-oauth__alt">
           <button type="button" className="mc-oauth__altlink" onClick={() => setPhase("pat")}>
-            改用私人令牌
+            {t("oauth.usePat")}
           </button>
         </p>
       ) : null}
@@ -496,7 +500,7 @@ export function PlatformOauthDialog({
             className="mc-oauth__altlink"
             onClick={() => setPhase(status?.configured ? "connect" : "setup")}
           >
-            使用 OAuth 直接连接
+            {t("oauth.useOauth")}
           </button>
         </p>
       ) : null}

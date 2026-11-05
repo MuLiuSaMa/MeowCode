@@ -1,0 +1,57 @@
+{
+  "actions": {
+    "back": "戻る",
+    "next": "続ける",
+    "skip": "スキップ",
+    "later": "後で設定",
+    "connect": "接続する",
+    "connecting": "接続中…",
+    "start": "使い始める",
+    "finishing": "完了処理中…",
+    "close": "ガイドを閉じる"
+  },
+  "language": {
+    "title": "言語を選択",
+    "label": "言語",
+    "previewLabel": "言語プレビュー",
+    "previewText": "こんにちは、MeowCode へようこそ。",
+    "systemMeta": "システムに従う · 現在は{{language}}",
+    "selectedMeta": "表示言語 · {{language}}"
+  },
+  "theme": {
+    "title": "テーマを選択",
+    "desc": "選択するとすぐに反映されます。後から設定 → 外観でいつでも変更できます。",
+    "options": {
+      "system": {
+        "label": "システムに従う",
+        "desc": "Windows のライト / ダーク設定にリアルタイムで従います"
+      },
+      "light": {
+        "label": "ライト",
+        "desc": "常にライトテーマを使用します"
+      },
+      "dark": {
+        "label": "ダーク",
+        "desc": "常にダークテーマを使用します"
+      }
+    }
+  },
+  "provider": {
+    "title": "AI プロバイダーを選択",
+    "searchLabel": "プロバイダーを検索",
+    "searchPlaceholder": "名前または id で検索（例：deepseek）",
+    "empty": "一致するプロバイダーがありません。「カスタムプロバイダー」をお試しください",
+    "customName": "カスタムプロバイダー",
+    "customMeta": "エンドポイントとキーを手入力",
+    "needsEndpoint": "エンドポイントの入力が必要"
+  },
+  "connect": {
+    "title": "AI プロバイダーに接続",
+    "saveFailed": "接続に失敗しました。設定を確認して再試行してください。"
+  },
+  "finish": {
+    "title": "準備完了",
+    "desc": "セットアップが完了しました。MeowCode を使い始められます。",
+    "noProvider": "モデルが未設定です。後から設定 → モデルで追加できます。"
+  }
+}

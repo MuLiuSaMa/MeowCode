@@ -16,10 +16,12 @@
   background: var(--bg-elevated);
   box-shadow: var(--shadow-lg);
   animation: mc-ctxpop-in 140ms var(--ease);
-  /* 分类色：与分段条、图例圆点一一对应 */
+  /* 分类色：与分段条、来源列表圆点一一对应 */
   --ctx-cat-system: #8a69fd;
   --ctx-cat-tools: #52b788;
+  --ctx-cat-skills: #5b9cf0;
   --ctx-cat-messages: #d4a24e;
+  --ctx-cat-other: #9aa0a6;
 }
 
 /* 只动 opacity：keyframes 里写 transform 会覆盖居中用的 translateX(-50%) */
@@ -120,8 +122,16 @@
   background: var(--ctx-cat-tools);
 }
 
+.mc-ctxpop__seg[data-key="skills"] {
+  background: var(--ctx-cat-skills);
+}
+
 .mc-ctxpop__seg[data-key="messages"] {
   background: var(--ctx-cat-messages);
+}
+
+.mc-ctxpop__seg[data-key="other"] {
+  background: var(--ctx-cat-other);
 }
 
 .mc-ctxpop__legend {
@@ -155,8 +165,31 @@
   background: var(--ctx-cat-tools);
 }
 
+.mc-ctxpop__dot[data-key="skills"] {
+  background: var(--ctx-cat-skills);
+}
+
 .mc-ctxpop__dot[data-key="messages"] {
   background: var(--ctx-cat-messages);
+}
+
+.mc-ctxpop__dot[data-key="other"] {
+  background: var(--ctx-cat-other);
+}
+
+/* 缓存诊断行：状态点用工具色系之外的中性色；失配行用警示色 */
+.mc-ctxpop__dot[data-key="cache"] {
+  background: var(--ctx-cat-other);
+  opacity: 0.75;
+}
+
+.mc-ctxpop__dot[data-key="warn"] {
+  background: var(--warning, #d97706);
+}
+
+.mc-ctxpop__row[data-warn="true"] .mc-ctxpop__label,
+.mc-ctxpop__row[data-warn="true"] .mc-ctxpop__val {
+  color: var(--warning, #d97706);
 }
 
 .mc-ctxpop__label {

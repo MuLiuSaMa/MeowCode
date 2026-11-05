@@ -88,6 +88,20 @@ describe("harness 文档结构校验", () => {
     expect(validateHarnessDocument(roleDoc({ systemPrompt: 42 })).valid).toBe(false);
   });
 
+  it("tier 节点 instructions 可选，类型必须正确", () => {
+    const tierDoc = (data: Record<string, unknown>) => ({
+      version: 1,
+      nodes: [{ id: "T1", type: "tier", data: { id: "T1", name: "单车道", ...data } }],
+      edges: [],
+    });
+    expect(validateHarnessDocument(tierDoc({}))).toEqual({ valid: true, errors: [] });
+    expect(validateHarnessDocument(tierDoc({ instructions: "先跑 pnpm test" }))).toEqual({
+      valid: true,
+      errors: [],
+    });
+    expect(validateHarnessDocument(tierDoc({ instructions: 42 })).valid).toBe(false);
+  });
+
   it("角色节点 id 可以自定义，data.role 指定内置角色类型", () => {
     const node = (role: unknown) => ({
       version: 1,
@@ -206,7 +220,7 @@ describe("每个主 Agent 一张独立架构图", () => {
 
     // 根节点名字跟着档位走
     const rootName = (doc: ReturnType<typeof builtinHarnessSeed>) =>
-      (doc.nodes.find((node) => node.type === "agent")?.data as { name?: string }).name;
+      (doc.nodes.find((node) => node.type === "agent")?.data as { name?: string } | undefined)?.name;
     expect(rootName(standard)).toBe("标准 Agent");
     expect(rootName(minimal)).toBe("极简 Agent");
     expect(rootName(complex)).toBe("复杂 Agent");
@@ -269,7 +283,7 @@ describe("架构图完整性（角色节点自动补齐）", () => {
     const added = doc.nodes.find(
       (node) => node.type === "role" && (node.data as { role?: string }).role === "planner",
     );
-    expect((added?.data as { name?: string }).name).toBe("规划");
+    expect((added?.data as { name?: string } | undefined)?.name).toBe("规划");
     expect(
       doc.edges.some((edge) => edge.source === "main" && edge.target === added?.id),
     ).toBe(true);

@@ -1,7 +1,8 @@
 import { toAnthropicMessages } from "./anthropic.js";
+import { resolveCachePlan, withoutCacheWrites } from "./cache-profile.js";
 import { compactionSummaryMaxTokens } from "./compaction.js";
 import { estimateMessagesTokens, estimateToolDefinitionsTokens } from "./context.js";
-import { fetchWithRetry } from "./http.js";
+import { buildAuthHeaders, fetchWithRetry, mergeExtraHeaders } from "./http.js";
 import { completionUrl } from "./provider.js";
 import { responsesTools, toResponsesInput } from "./responses.js";
 import type {
@@ -143,7 +144,12 @@ async function requestAnthropicCompaction(options: {
     ANTHROPIC_MIN_COMPACT_TRIGGER,
     Math.min(Math.floor(window * 0.5), Math.floor(estimated * 0.9)),
   );
-  const { system, messages } = toAnthropicMessages(options.messages);
+  // 一次性请求：压缩点生成后不会再有任何请求在这个前缀上读回缓存。
+  // 默认画像会在 system/anchor/tail 打 3-4 个标记，把整段历史按 1.25x/2x 白写一遍。
+  const { system, messages } = toAnthropicMessages(
+    options.messages,
+    withoutCacheWrites(resolveCachePlan(provider)),
+  );
   const body = {
     model: provider.model,
     max_tokens: compactionSummaryMaxTokens(provider),
@@ -163,11 +169,14 @@ async function requestAnthropicCompaction(options: {
     stream: false,
   };
 
-  const headers: Record<string, string> = {
-    "content-type": "application/json",
-    "anthropic-version": "2023-06-01",
-  };
-  if (provider.apiKey) headers["x-api-key"] = provider.apiKey;
+  const headers = mergeExtraHeaders(
+    {
+      "content-type": "application/json",
+      "anthropic-version": "2023-06-01",
+      ...buildAuthHeaders(provider.apiKey, provider.authStyle, "x-api-key"),
+    },
+    provider.extraHeaders,
+  );
   const response = await fetchWithRetry(completionUrl(provider.baseUrl, "anthropic-messages"), {
     method: "POST",
     headers,
@@ -238,8 +247,13 @@ async function requestResponsesCompaction(options: {
     ...(options.tools.length ? { tools: responsesTools(options.tools) } : {}),
     ...(provider.promptCacheKey ? { prompt_cache_key: provider.promptCacheKey } : {}),
   };
-  const headers: Record<string, string> = { "content-type": "application/json" };
-  if (provider.apiKey) headers.authorization = `Bearer ${provider.apiKey}`;
+  const headers = mergeExtraHeaders(
+    {
+      "content-type": "application/json",
+      ...buildAuthHeaders(provider.apiKey, provider.authStyle, "bearer"),
+    },
+    provider.extraHeaders,
+  );
   const response = await fetchWithRetry(url, {
     method: "POST",
     headers,

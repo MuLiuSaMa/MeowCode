@@ -27,7 +27,7 @@ export type ProviderTemplate = {
   source: "zcode" | "dsh" | "custom";
 };
 
-/** ZCode 内置模板（20 条，含中文名、协议、图标、内置模型）。 */
+/** ZCode 内置模板（19 条，含中文名、协议、图标、内置模型）。 */
 const ZCODE_TEMPLATES: ProviderTemplate[] = [
   {
     id: "zai-api",
@@ -153,7 +153,7 @@ const ZCODE_TEMPLATES: ProviderTemplate[] = [
   },
   {
     id: "qwen-alibaba-model-studio-cn",
-    name: "阿里云百炼（中国）",
+    name: "阿里云百炼（中国）", // i18n-allow 服务商品牌名（含地区限定），按厂商官方叫法原样展示
     baseUrl: "https://dashscope.aliyuncs.com/apps/anthropic",
     protocol: "anthropic-messages",
     iconKey: "alibaba-model-studio",
@@ -176,7 +176,7 @@ const ZCODE_TEMPLATES: ProviderTemplate[] = [
   },
   {
     id: "qwen-alibaba-model-studio-intl",
-    name: "阿里云百炼（国际）",
+    name: "阿里云百炼（国际）", // i18n-allow 服务商品牌名（含地区限定），按厂商官方叫法原样展示
     baseUrl: "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
     protocol: "openai-chat-completions",
     iconKey: "alibaba-model-studio",
@@ -348,6 +348,38 @@ const ZCODE_TEMPLATES: ProviderTemplate[] = [
     ],
     source: "zcode",
   },
+  {
+    id: "volcengine-ark",
+    name: "火山方舟 API", // i18n-allow 服务商品牌名，按厂商官方叫法原样展示
+    baseUrl: "https://ark.cn-beijing.volces.com/api/compatible",
+    protocol: "anthropic-messages",
+    iconKey: "doubao",
+    models: [
+      "doubao-seed-evolving",
+      "doubao-seed-2-1-pro-260915",
+      "doubao-seed-2-1-lite-260915",
+      "doubao-seed-2-1-turbo-260628",
+    ],
+    source: "zcode",
+  },
+  {
+    id: "volcengine-coding-plan",
+    name: "火山方舟 Coding Plan", // i18n-allow 服务商品牌名，按厂商官方叫法原样展示
+    baseUrl: "https://ark.cn-beijing.volces.com/api/coding",
+    protocol: "anthropic-messages",
+    iconKey: "doubao",
+    models: ["doubao-seed-2.1-pro", "doubao-seed-2.1-lite"],
+    source: "zcode",
+  },
+  {
+    id: "volcengine-agent-plan",
+    name: "火山方舟 Agent Plan", // i18n-allow 服务商品牌名，按厂商官方叫法原样展示
+    baseUrl: "https://ark.cn-beijing.volces.com/api/plan",
+    protocol: "anthropic-messages",
+    iconKey: "doubao",
+    models: ["doubao-seed-2.1-pro", "doubao-seed-2.1-lite"],
+    source: "zcode",
+  },
 ];
 
 /**
@@ -361,22 +393,22 @@ const ZCODE_TEMPLATES: ProviderTemplate[] = [
  *  - `moonshotai` / `moonshotai-cn` ≈ ZCode `moonshot-kimi`（Kimi）
  *  - `qwen-token-plan-individual`   ≈ `qwen-token-plan`（端点逐字节相同）
  * 协议在添加后的表单里可自由切换，因此每种品牌/套餐只保留一条。
- * 第四列是图标 key（见 providerIcons.ts）—— 品牌图形（图片/字形）或品牌色字母标，
- * 全部条目都有图标。
+ *
+ * 端点参考 Cherry Studio / LobeChat 的服务商清单补充；
+ * **每条都必须有品牌图形**（图片或字形，见 providerIcons.ts），
+ * 拿不到品牌图形的（ant-ling / radius / index / typesafe）已直接从目录删除；
+ * baseten / cerebras / fireworks / groq / togetherai / digitalocean / venice
+ * 的品牌图标后来从 OpenCode 的服务商图标集补入。
  */
+// i18n-allow-block-start 以下为服务商预置条目：名称是厂商品牌名（含「中国 / 本地」等地区限定），不翻译
 const DSH_ONLY: Array<[id: string, name: string, baseUrl: string, iconKey?: string]> = [
   ["amazon-bedrock", "Amazon Bedrock", "", "aws"],
-  ["ant-ling", "Ant Ling", "https://api.ant-ling.com/v1", "ant-ling"],
   ["azure", "Azure OpenAI", "", "azure"],
-  ["baseten", "Baseten", "https://inference.baseten.co/v1", "baseten"],
-  ["cerebras", "Cerebras", "https://api.cerebras.ai/v1", "cerebras"],
   ["cloudflare-ai-gateway", "Cloudflare AI Gateway", "", "cloudflare"],
   ["cloudflare-workers-ai", "Cloudflare Workers AI", "", "cloudflare-workers"],
-  ["fireworks", "Fireworks AI", "https://api.fireworks.ai/inference", "fireworks"],
   ["github-copilot", "GitHub Copilot", "https://api.individual.githubcopilot.com", "github-copilot"],
-  ["google", "Google Gemini", "https://generativelanguage.googleapis.com/v1beta", "google-gemini"],
+  ["google", "Google Gemini", "https://generativelanguage.googleapis.com/v1beta/openai", "google-gemini"],
   ["google-vertex", "Google Vertex AI", "", "google-cloud"],
-  ["groq", "Groq", "https://api.groq.com/openai/v1", "groq"],
   ["huggingface", "Hugging Face", "https://router.huggingface.co/v1", "huggingface"],
   ["kimi-coding", "Kimi Coding", "https://api.kimi.com/coding", "moonshot-kimi"],
   ["meta", "Meta", "https://api.meta.ai/v1", "meta"],
@@ -385,14 +417,39 @@ const DSH_ONLY: Array<[id: string, name: string, baseUrl: string, iconKey?: stri
   ["openai-codex", "OpenAI Codex", "https://chatgpt.com/backend-api", "openai"],
   ["qwen-token-plan", "Qwen Token Plan", "https://token-plan.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1", "qwen"],
   ["qwen-token-plan-cn", "Qwen Token Plan（中国）", "https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1", "qwen"],
-  ["radius", "Radius", "https://radius.pi.dev/v1", "radius"],
-  ["together", "Together AI", "https://api.together.ai/v1", "together"],
-  ["typesafe", "Typesafe", "", "typesafe"],
   ["vercel-ai-gateway", "Vercel AI Gateway", "https://ai-gateway.vercel.sh", "vercel"],
   ["xiaomi-token-plan-ams", "Xiaomi Token Plan（AMS）", "https://token-plan-ams.xiaomimimo.com/v1", "xiaomi"],
   ["xiaomi-token-plan-cn", "Xiaomi Token Plan（中国）", "https://token-plan-cn.xiaomimimo.com/v1", "xiaomi"],
   ["xiaomi-token-plan-sgp", "Xiaomi Token Plan（SGP）", "https://token-plan-sgp.xiaomimimo.com/v1", "xiaomi"],
+  // —— 参考开源项目（Cherry Studio / LobeChat）补充的服务商，全部有品牌图形 ——
+  ["siliconcloud", "硅基流动", "https://api.siliconflow.cn/v1", "siliconcloud"],
+  ["tencent-hunyuan", "腾讯混元", "https://api.hunyuan.cloud.tencent.com/v1", "hunyuan"],
+  ["iflytek-spark", "讯飞星火", "https://spark-api-open.xf-yun.com/v1", "spark"],
+  ["baidu-qianfan", "百度千帆", "https://qianfan.baidubce.com/v2", "wenxin"],
+  ["baichuan", "百川智能", "https://api.baichuan-ai.com/v1", "baichuan"],
+  ["stepfun", "阶跃星辰", "https://api.stepfun.com/v1", "stepfun"],
+  ["sensenova", "商汤日日新", "https://api.sensenova.cn/compatible-mode/v1", "sensenova"],
+  ["modelscope", "魔搭社区", "https://api-inference.modelscope.cn/v1", "modelscope"],
+  ["gitee-ai", "Gitee AI", "https://ai.gitee.com/v1", "giteeai"],
+  ["aihubmix", "AIHubMix", "https://aihubmix.com/v1", "aihubmix"],
+  ["ppio", "PPIO 派欧云", "https://api.ppinfra.com/v3/openai", "ppio"],
+  ["perplexity", "Perplexity", "https://api.perplexity.ai", "perplexity"],
+  ["cohere", "Cohere", "https://api.cohere.ai/compatibility/v1", "cohere"],
+  ["deepinfra", "DeepInfra", "https://api.deepinfra.com/v1/openai", "deepinfra"],
+  ["novita", "Novita AI", "https://api.novita.ai/v3/openai", "novita"],
+  ["github-models", "GitHub Models", "https://models.github.ai/inference", "github-models"],
+  ["ollama", "Ollama（本地）", "http://localhost:11434/v1", "ollama"],
+  ["lmstudio", "LM Studio（本地）", "http://localhost:1234/v1", "lmstudio"],
+  // —— 参考 OpenCode 的服务商（品牌图标取自 opencode 的 provider 图标集）——
+  ["groq", "Groq", "https://api.groq.com/openai/v1", "groq"],
+  ["cerebras", "Cerebras", "https://api.cerebras.ai/v1", "cerebras"],
+  ["togetherai", "Together AI", "https://api.together.xyz/v1", "togetherai"],
+  ["fireworks", "Fireworks AI", "https://api.fireworks.ai/inference/v1", "fireworks"],
+  ["baseten", "Baseten", "https://inference.baseten.co/v1", "baseten"],
+  ["digitalocean", "DigitalOcean", "https://inference.do-ai.run/v1", "digitalocean"],
+  ["venice", "Venice AI", "https://api.venice.ai/api/v1", "venice"],
 ];
+// i18n-allow-block-end
 
 const DSH_TEMPLATES: ProviderTemplate[] = DSH_ONLY.map(([id, name, baseUrl, iconKey]) => ({
   id,
@@ -408,7 +465,7 @@ export const PROVIDER_CATALOG: ProviderTemplate[] = [...ZCODE_TEMPLATES, ...DSH_
 /** 「自定义服务商」虚拟模板：不在目录计数里，由选择器单独置顶展示。 */
 export const CUSTOM_TEMPLATE: ProviderTemplate = {
   id: "custom",
-  name: "自定义服务商",
+  name: "自定义服务商", // i18n-allow 与预置品牌名同一份展示数据，消费方按模板名直接渲染
   baseUrl: "",
   protocol: "openai-chat-completions",
   iconKey: "custom",

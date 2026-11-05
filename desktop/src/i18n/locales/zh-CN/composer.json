@@ -1,0 +1,213 @@
+{
+  "image": {
+    "readFailed": "读取图片失败",
+    "unsupported": "不支持的图片格式：{{type}}",
+    "tooLarge": "图片太大：{{name}} 自动压缩后仍超过 2MB，请先裁剪或降低分辨率",
+    "maxCount_one": "一条消息最多附 {{count}} 张图片",
+    "maxCount_few": "一条消息最多附 {{count}} 张图片",
+    "maxCount_many": "一条消息最多附 {{count}} 张图片",
+    "maxCount_other": "一条消息最多附 {{count}} 张图片",
+    "onlyImages": "只能附加图片文件",
+    "fallbackName": "图片"
+  },
+  "file": {
+    "pathFailed": "读取文件路径失败：{{name}}",
+    "skipped": "跳过空文件或目录：{{name}}"
+  },
+  "plugin": {
+    "loadFailed": "加载失败：{{error}}",
+    "local": "本地插件"
+  },
+  "permission": {
+    "title": "工具执行权限",
+    "readOnly": {
+      "label": "只读",
+      "desc": "只读文件、搜索与浏览器，禁止写文件、改文件和运行命令"
+    },
+    "ask": {
+      "label": "每次询问",
+      "desc": "写文件、改文件、跑命令前都需要你确认"
+    },
+    "auto": {
+      "label": "工作区内自动",
+      "desc": "工作区内的写文件、改文件与常规开发命令自动执行；读取凭据、下载执行、改系统设置、发布部署、破坏性 git 或工作区外路径仍需确认"
+    },
+    "full": {
+      "label": "完全访问",
+      "desc": "可读写整台电脑上的文件，自动执行全部工具"
+    }
+  },
+  "slash": {
+    "plan": {
+      "label": "计划模式",
+      "desc": "只读调研，先把实施计划写成 plans/ 下的文档，等你确认"
+    },
+    "goal": {
+      "label": "目标模式",
+      "desc": "围绕目标连续推进，用 update_plan 跟踪进度"
+    },
+    "exit": "退出{{mode}}",
+    "menuAria": "命令",
+    "group": {
+      "mode": "模式",
+      "command": "命令",
+      "plugin": "插件",
+      "skill": "技能"
+    }
+  },
+  "mode": {
+    "plan": "计划模式",
+    "goal": "目标模式",
+    "exitAria": "{{mode}}，点击退出",
+    "exitTitle": "点击退出该模式"
+  },
+  "project": {
+    "menuAria": "切换项目",
+    "search": "搜索项目",
+    "empty": "没有匹配的项目",
+    "new": "新建项目",
+    "remove": "从列表移除",
+    "pickWorkspace": "选择工作区"
+  },
+  "mention": {
+    "aria": "引用工作区文件",
+    "back": "返回上一层",
+    "root": "工作区根目录",
+    "refresh": "刷新列表",
+    "loadFailed": "读取失败",
+    "loading": "加载中…",
+    "dirFailed": "无法读取目录",
+    "noMatch": "没有匹配的文件",
+    "emptyDir": "这个目录是空的"
+  },
+  "queue": {
+    "recoveredAria": "上次未发送的消息",
+    "recoveredHead": "上次退出时还没发送",
+    "sendAsNew": "作为新消息发送",
+    "send": "发送",
+    "discardTitle": "丢弃这条消息",
+    "discard": "丢弃",
+    "pendingAria": "排队中的消息",
+    "steerTitle": "中止当前回复，立即发送这条消息",
+    "steer": "强制插话",
+    "removeTitle": "从队列中删除",
+    "remove": "删除"
+  },
+  "plan": {
+    "answerAria": "回答问题",
+    "answerSubMultiple": "选择一个答案，或在下方直接输入 · 选择后自动进入下一题",
+    "answerSub": "选择一个答案，或在下方直接输入",
+    "answerPlaceholder": "其他想法，Enter 直接进入下一题",
+    "prev": "上一题",
+    "skipRest": "不回答，跳过剩余",
+    "unanswered": "（未回答）",
+    "confirmAria": "确认计划",
+    "exit": "退出计划模式",
+    "confirmTitle": "确认按此计划执行？",
+    "confirmSub": "确认后，我将按此计划执行并输出内容",
+    "start": "开始执行",
+    "adjustPlaceholder": "调整计划，补充内容告诉我如何调整",
+    "sendAdjust": "发送调整",
+    "adjustPrompt": "调整计划内容，发送后模型将继续修改计划…"
+  },
+  "branch": {
+    "detached": "detached HEAD · 点击切换分支",
+    "current": "当前分支 {{name}} · 点击切换",
+    "search": "搜索分支",
+    "listAria": "分支列表",
+    "loading": "正在读取分支…",
+    "noMatch": "没有匹配的分支",
+    "empty": "这个仓库还没有分支",
+    "stashSwitch": "贮藏本地改动后切换",
+    "openGit": "打开源码管理"
+  },
+  "worktree": {
+    "locked": "当前会话已在独立 worktree 中",
+    "hint": "在独立 git worktree 中开始本次对话；未提交改动不会带入"
+  },
+  "input": {
+    "placeholder": {
+      "setup": "请先完成配置",
+      "compacting": "正在压缩对话历史，完成后可继续发送",
+      "streaming": "输入后按 Enter 排队发送",
+      "default": "输入 @ 引用项目文件；图片/任意文件可直接拖入（含工作区外）"
+    },
+    "polishing": "AI 美化中"
+  },
+  "action": {
+    "more": "更多操作",
+    "moreTitle": "添加附件 / 切换模式",
+    "plusMenuAria": "添加、引用与命令",
+    "upload": "上传附件",
+    "plugins": "插件",
+    "pluginsCount": "插件（{{count}}）",
+    "skills": "技能",
+    "skillsCount": "技能（{{count}}）",
+    "installing": "安装中…",
+    "polish": "美化提示词",
+    "send": "发送",
+    "stop": "停止"
+  },
+  "attach": {
+    "listAria": "待发送图片",
+    "removeImageAria": "移除图片",
+    "remove": "移除"
+  },
+  "chip": {
+    "listAria": "已引用的技能、插件与附件",
+    "remove": "移除 {{name}}"
+  },
+  "agent": {
+    "title": "主 Agent：{{name}}"
+  },
+  "polish": {
+    "discarded": "输入内容已变化，已丢弃美化结果。",
+    "failed": "美化提示词失败：{{error}}"
+  },
+  "ctx": {
+    "title": "上下文用量",
+    "close": "关闭",
+    "used": "已使用",
+    "windowUnset": "未设置窗口",
+    "categories": {
+      "system": "系统提示词",
+      "tools": "系统工具",
+      "skills": "Skill（{{count}}个）",
+      "messages": "消息",
+      "other": "其他"
+    },
+    "cache": {
+      "stateLabel": "缓存",
+      "stateWarm": "热",
+      "stateCold": "冷",
+      "stateEvicted": "已逐出",
+      "stateUnsupported": "不支持",
+      "stateUnknown": "未知",
+      "roundLabel": "本轮",
+      "round": "读 {{read}} · 写 {{write}}",
+      "busts": "疑似失配",
+      "bustTitle": "较上一轮少读约 {{drop}} tokens：前缀被改写或缓存被逐出",
+      "reasonPrefixChanged": "前缀已变化（工具目录/系统提示重写）",
+      "reasonFirstRequest": "首个请求（冷启动）",
+      "reasonIdleExceededTtl": "空闲超过缓存 TTL",
+      "reasonNotReported": "服务商未报告缓存明细",
+      "reasonBelowGranularity": "输入低于最小可缓存长度",
+      "reasonCacheMiss": "缓存未命中"
+    },
+    "hint": "压缩会把早期对话折叠成摘要，界面上的历史和会话文件都完整保留。",
+    "compacting": "正在压缩…",
+    "compact": "立即压缩上下文"
+  },
+  "effort": {
+    "default": "默认",
+    "off": "关闭",
+    "on": "开启",
+    "minimal": "极低",
+    "low": "低",
+    "medium": "中",
+    "high": "高",
+    "xhigh": "极高",
+    "max": "最高",
+    "ultra": "极致"
+  }
+}

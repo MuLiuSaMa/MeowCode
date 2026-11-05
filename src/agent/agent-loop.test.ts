@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  MAX_TURN_STOP_BLOCKS,
   READ_ONLY_PARALLEL_TOOLS,
   runAgentLoop,
   type AgentLoopHost,
@@ -29,6 +30,7 @@ type LoopTrace = {
   executedReadOnly: string[];
   executedTasks: string[];
   pushedToolMessages: Array<{ callId: string; content: string }>;
+  pushedUserMessages: string[];
   completed: string[];
   errors: string[];
   metrics: number;
@@ -50,6 +52,7 @@ function createMockHost(options?: {
     executedReadOnly: [],
     executedTasks: [],
     pushedToolMessages: [],
+    pushedUserMessages: [],
     completed: [],
     errors: [],
     metrics: 0,
@@ -130,6 +133,10 @@ function createMockHost(options?: {
     pushToolMessage: async (messages, message) => {
       messages.push(message);
       trace.pushedToolMessages.push({ callId: message.tool_call_id, content: message.content });
+    },
+    pushUserMessage: async (messages, content) => {
+      messages.push({ role: "user", content });
+      trace.pushedUserMessages.push(content);
     },
     earlyRun: () => undefined,
     ...(options?.hooks ? { hooks: options.hooks } : {}),
@@ -293,6 +300,66 @@ describe("runAgentLoop 薄循环", () => {
     expect(host.trace.errors[0]).toContain("truncated");
     expect(host.trace.metrics).toBe(1);
   });
+
+  it("turn_stop 拦截：reason 作为 user 消息续跑，下一轮带该消息", async () => {
+    let stopCalls = 0;
+    const host = createMockHost({
+      script: [{ message: assistant("done?") }, { message: assistant("really done") }],
+      hooks: {
+        beforeTurnEnd: async () => {
+          stopCalls += 1;
+          return stopCalls === 1 ? { block: true, reason: "run the tests first" } : undefined;
+        },
+      },
+    });
+    await runAgentLoop(host);
+    expect(host.trace.streams).toHaveLength(2);
+    expect(host.trace.pushedUserMessages).toEqual(["run the tests first"]);
+    // 续跑那一轮的请求里能看到注入的 user 消息
+    expect(
+      host.trace.streams[1].some((m) => m.role === "user" && m.content === "run the tests first"),
+    ).toBe(true);
+    expect(host.trace.completed).toEqual(["really done"]);
+    expect(host.trace.metrics).toBe(1);
+  });
+
+  it("turn_stop 连续拦截超过上限：强制收尾并告警", async () => {
+    const host = createMockHost({
+      script: [
+        { message: assistant("a") },
+        { message: assistant("b") },
+        { message: assistant("c") },
+        { message: assistant("d") },
+        { message: assistant("e") },
+      ],
+      hooks: {
+        beforeTurnEnd: async () => ({ block: true, reason: "keep going" }),
+      },
+    });
+    await runAgentLoop(host);
+    // 3 次拦截后第 4 次强制结束
+    expect(host.trace.streams).toHaveLength(MAX_TURN_STOP_BLOCKS + 1);
+    expect(host.trace.errors[0]).toContain("kept blocking");
+    expect(host.trace.metrics).toBe(1);
+  });
+
+  it("turn_stop 放行：正常收尾（onMessageComplete + metrics）", async () => {
+    let stopActiveSeen: boolean | null = null;
+    const host = createMockHost({
+      script: [{ message: assistant("fine") }],
+      hooks: {
+        beforeTurnEnd: async ({ stopHookActive }) => {
+          stopActiveSeen = stopHookActive;
+          return undefined;
+        },
+      },
+    });
+    await runAgentLoop(host);
+    expect(stopActiveSeen).toBe(false);
+    expect(host.trace.pushedUserMessages).toEqual([]);
+    expect(host.trace.completed).toEqual(["fine"]);
+    expect(host.trace.metrics).toBe(1);
+  });
 });
 
 describe("供应商故障转移（fallback chain）", () => {
@@ -386,6 +453,9 @@ describe("供应商故障转移（fallback chain）", () => {
       }),
       pushToolMessage: async (messages, message) => {
         messages.push(message);
+      },
+      pushUserMessage: async (messages, content) => {
+        messages.push({ role: "user", content });
       },
       earlyRun: () => undefined,
     };
