@@ -11,6 +11,7 @@
  * 混成一条的话，模型每回合都在重写整份知识库，成本和抖动都受不了。
  */
 import { streamChatCompletion, utilityProvider } from "../provider.js";
+import { sliceTailToTokens } from "../tool-budget.js";
 import type { ChatMessage, ProviderConfig, TokenUsage } from "../types.js";
 import { clipText, isValidLearningName, isValidTriggerRegex, redactSecrets } from "./guard.js";
 import {
@@ -29,7 +30,7 @@ import {
 import type { LearningSignal } from "./signals.js";
 
 /** 单次输入预算（字符近似 token 的 4 倍）。 */
-const MAX_TRANSCRIPT_CHARS = 24_000;
+const MAX_TRANSCRIPT_TOKENS = 6_000;
 
 /** 低预算先试；思考型模型会把正文烧空，用大预算再来一次。 */
 const LEARNING_MAX_TOKENS = 2_500;
@@ -311,7 +312,7 @@ export async function generateLearningOps(options: {
   signal?: AbortSignal;
   onUsage?: (usage: TokenUsage) => void;
 }): Promise<LearningOp[]> {
-  const transcript = options.transcript.slice(-MAX_TRANSCRIPT_CHARS);
+  const transcript = sliceTailToTokens(options.transcript, MAX_TRANSCRIPT_TOKENS);
   const baseMessages: ChatMessage[] = [
     { role: "system", content: systemPromptFor(options.mode) },
     {

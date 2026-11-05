@@ -39,7 +39,8 @@
     "worktree": "Worktrees",
     "learning": "자기 학습",
     "rewind": "세션 되돌리기",
-    "sandbox": "샌드박스"
+    "sandbox": "샌드박스",
+    "approvals": "승인 규칙"
   },
   "close": {
     "section": "창 닫기 동작",
@@ -96,10 +97,6 @@
     }
   },
   "memory": {
-    "extractionTitle": "자동 메모리 증류",
-    "extractionDesc": "각 턴이 끝나면 가벼운 백그라운드 요청이 새 대화를 훑어 오래 기억할 가치가 있는 내용(선호, 수정 요청, 프로젝트 결정)을 메모리에 자동 저장합니다. 끄면 수동 항목과 AI가 메모리 도구로 직접 쓴 내용만 남습니다.",
-    "extractionField": "턴 종료 후 자동 증류",
-    "extractionFailed": "설정 저장 실패",
     "scope": {
       "user": "개인 메모리",
       "project": "프로젝트 메모리"
@@ -129,7 +126,15 @@
     "loadFailed": "메모리를 불러오지 못했습니다",
     "readFailed": "메모리를 읽지 못했습니다",
     "saveFailed": "메모리를 저장하지 못했습니다",
-    "deleteFailed": "메모리를 삭제하지 못했습니다"
+    "deleteFailed": "메모리를 삭제하지 못했습니다",
+    "toggleTitle": "자동 메모리 증류",
+    "toggleDesc": "각 턴이 끝나면 가벼운 백그라운드 요청이 새 대화를 훑어 오래 기억할 가치가 있는 내용(선호, 수정 요청, 프로젝트 결정)을 메모리에 자동 저장합니다. 끄면 수동 항목과 AI가 메모리 도구로 직접 쓴 내용만 남습니다.",
+    "toggleField": "턴 종료 후 자동 증류",
+    "toggleFailed": "설정 저장 실패",
+    "clearAction": "모두 삭제",
+    "clearConfirm": "모두 삭제할까요?",
+    "clearDone": "모든 메모리를 삭제했습니다",
+    "clearFailed": "메모리를 지우지 못했습니다"
   },
   "archive": {
     "section": "보관",
@@ -152,7 +157,6 @@
     "website": "웹사이트",
     "repo": "오픈소스 저장소",
     "openInBrowser": "브라우저에서 열기",
-    "credits": "크레딧",
     "sponsor": "후원",
     "sponsorHint": "MeowCode가 도움이 되었다면 QR 코드를 스캔해 작성자를 응원해 주세요.",
     "qrAlt": "{{name}} 결제 QR 코드",
@@ -161,7 +165,8 @@
       "alipay": "알리페이"
     },
     "upToDate": "이미 최신 버전입니다",
-    "checkFailed": "버전 확인 실패: {{error}}"
+    "checkFailed": "버전 확인 실패: {{error}}",
+    "sponsorList": "후원자 목록 (MeowCode, NexBox, OpenMD, LingTab)"
   },
   "actions": {
     "add": "추가",
@@ -580,5 +585,40 @@
     "enabled": "워크스페이스 쓰기로 전환했습니다(첫 권한 부여 {{ms}} ms)",
     "saveFailed": "샌드박스 설정 저장 실패",
     "loadFailed": "샌드박스 설정 읽기 실패"
+  },
+  "dataLocation": {
+    "section": "로컬 데이터",
+    "desc": "설정, 대화 기록, 로컬 글꼴이 저장되는 위치입니다.",
+    "field": "데이터 위치",
+    "open": "폴더 열기",
+    "change": "위치 변경...",
+    "loading": "불러오는 중…",
+    "confirmTitle": "데이터 위치를 변경할까요?",
+    "confirmDesc": "현재 데이터를 새 위치로 복사한 뒤 앱을 다시 시작합니다. 원래 데이터는 유지됩니다.",
+    "move": "이동 후 재시작",
+    "moving": "이동 중…",
+    "restarting": "데이터를 이동했습니다. 앱을 다시 시작하는 중…",
+    "errors": {
+      "same_path": "새 위치가 현재 위치와 같습니다.",
+      "not_empty": "대상 폴더가 비어 있지 않습니다. 빈 폴더를 선택하세요.",
+      "failed": "데이터 위치를 변경하지 못했습니다."
+    }
+  },
+  "approvals": {
+    "section": "승인 규칙",
+    "desc": "이 프로젝트에서 '다시 묻지 않기'로 승인한 작업입니다. 규칙을 삭제하면 다음부터 다시 확인합니다. 파일 규칙은 파일이 변경되면 자동으로 만료됩니다.",
+    "empty": "프로젝트 승인 규칙이 없습니다",
+    "clearAll": "모두 지우기",
+    "remove": "규칙 삭제",
+    "cleared": "프로젝트의 모든 승인 규칙을 지웠습니다",
+    "clearConfirmTitle": "모든 승인 규칙을 지울까요?",
+    "clearConfirmDesc": "이 작업들은 다음부터 다시 승인을 요청합니다. 파일 규칙은 파일 변경 시 자동으로 만료됩니다.",
+    "kind": {
+      "tool": "도구",
+      "path": "파일",
+      "command-exact": "정확한 명령",
+      "command-prefix": "명령 접두사"
+    },
+    "loading": "불러오는 중…"
   }
 }

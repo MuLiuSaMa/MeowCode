@@ -2,11 +2,12 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { LuBrain, LuPlus, LuTrash2 } from "react-icons/lu";
 import {
+  clearAllMemories,
   deleteMemoryFile,
-  getMemoryExtraction,
+  getMemoryEnabled,
   listMemories,
   readMemoryFile,
-  setMemoryExtraction,
+  setMemoryEnabled,
   writeMemoryFile,
   type MemoryListItem,
   type MemoryScopeId,
@@ -67,8 +68,12 @@ export function MemorySection({
   const [nameError, setNameError] = useState<string | null>(null);
   const [confirming, setConfirming] = useState<{ scope: MemoryScopeId; name: string } | null>(null);
   const confirmTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  /** 回合后自动蒸馏开关：null = 还没从服务端拿到当前值 */
-  const [extraction, setExtraction] = useState<boolean | null>(null);
+  /** 全部删除：每个 scope 独立二次确认，4 秒后自动复位 */
+  const [confirmingClear, setConfirmingClear] = useState<MemoryScopeId | null>(null);
+  const [clearingScope, setClearingScope] = useState<MemoryScopeId | null>(null);
+  const clearTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** 记忆总开关：null = 还没从服务端拿到当前值 */
+  const [memoryOn, setMemoryOn] = useState<boolean | null>(null);
 
   const scopeLabel = useCallback((scope: MemoryScopeId) => t(`memory.scope.${scope}`), [t]);
 
@@ -91,35 +96,36 @@ export function MemorySection({
 
   useEffect(() => {
     let cancelled = false;
-    getMemoryExtraction()
+    getMemoryEnabled()
       .then((result) => {
-        if (!cancelled) setExtraction(result.enabled);
+        if (!cancelled) setMemoryOn(result.enabled);
       })
       .catch(() => {
         // 查询失败按默认值（开）展示，避免开关卡在加载态
-        if (!cancelled) setExtraction(true);
+        if (!cancelled) setMemoryOn(true);
       });
     return () => {
       cancelled = true;
     };
   }, []);
 
-  const toggleExtraction = async (value: boolean) => {
-    const previous = extraction;
-    setExtraction(value); // 乐观更新：失败回滚
+  const toggleMemory = async (value: boolean) => {
+    const previous = memoryOn;
+    setMemoryOn(value); // 乐观更新：失败回滚
     try {
-      await setMemoryExtraction(value); // 运行中的 server 立即生效
+      await setMemoryEnabled(value); // 运行中的 server 立即生效（蒸馏 / 注入 / 工具三处同时切换）
       // 落盘供下次启动传 env；走 saveProviderPrefs，绝不重启 agent server
-      await window.meow.saveProviderPrefs({ memoryExtraction: value });
+      await window.meow.saveProviderPrefs({ memoryEnabled: value });
     } catch (error) {
-      setExtraction(previous ?? true);
-      onToast(error instanceof Error ? error.message : t("memory.extractionFailed"));
+      setMemoryOn(previous ?? true);
+      onToast(error instanceof Error ? error.message : t("memory.toggleFailed"));
     }
   };
 
   useEffect(
     () => () => {
       if (confirmTimer.current) clearTimeout(confirmTimer.current);
+      if (clearTimer.current) clearTimeout(clearTimer.current);
     },
     [],
   );
@@ -163,6 +169,8 @@ export function MemorySection({
 
   const remove = async (scope: MemoryScopeId, name: string) => {
     if (confirmTimer.current) clearTimeout(confirmTimer.current);
+    if (clearTimer.current) clearTimeout(clearTimer.current);
+    setConfirmingClear(null);
     if (!confirming || confirming.scope !== scope || confirming.name !== name) {
       setConfirming({ scope, name });
       confirmTimer.current = setTimeout(() => setConfirming(null), 4000);
@@ -178,10 +186,47 @@ export function MemorySection({
     }
   };
 
+  const clearAll = async (scope: MemoryScopeId) => {
+    if (clearTimer.current) clearTimeout(clearTimer.current);
+    if (confirmingClear !== scope) {
+      if (confirmTimer.current) clearTimeout(confirmTimer.current);
+      setConfirming(null);
+      setConfirmingClear(scope);
+      clearTimer.current = setTimeout(() => setConfirmingClear(null), 4000);
+      return;
+    }
+    setConfirmingClear(null);
+    if (confirmTimer.current) clearTimeout(confirmTimer.current);
+    setConfirming(null);
+    setClearingScope(scope);
+    try {
+      await clearAllMemories(scope, workspace ?? undefined);
+      onToast(t("memory.clearDone"));
+      await refresh();
+    } catch (error) {
+      onToast(error instanceof Error ? error.message : t("memory.clearFailed"));
+    } finally {
+      setClearingScope(null);
+    }
+  };
+
   const renderGroup = (scope: MemoryScopeId, items: MemoryListItem[], description: string) => (
     <Section
       title={scopeLabel(scope)}
       description={description}
+      action={
+        items.length ? (
+          <Button
+            size="sm"
+            variant={confirmingClear === scope ? "danger" : "outline"}
+            icon={<LuTrash2 size={13} />}
+            disabled={clearingScope === scope}
+            onClick={() => void clearAll(scope)}
+          >
+            {confirmingClear === scope ? t("memory.clearConfirm") : t("memory.clearAction")}
+          </Button>
+        ) : undefined
+      }
     >
       <div className="mc-memory">
         <div className="mc-memory__toolbar">
@@ -245,15 +290,15 @@ export function MemorySection({
 
   return (
     <div className="mc-settings__inner">
-      <Section title={t("memory.extractionTitle")} description={t("memory.extractionDesc")}>
-        <FieldRow label={t("memory.extractionField")}>
-          {extraction === null ? (
+      <Section title={t("memory.toggleTitle")} description={t("memory.toggleDesc")}>
+        <FieldRow label={t("memory.toggleField")}>
+          {memoryOn === null ? (
             <Spinner size={16} />
           ) : (
             <Toggle
-              checked={extraction}
-              onChange={(value) => void toggleExtraction(value)}
-              label={t("memory.extractionField")}
+              checked={memoryOn}
+              onChange={(value) => void toggleMemory(value)}
+              label={t("memory.toggleField")}
             />
           )}
         </FieldRow>

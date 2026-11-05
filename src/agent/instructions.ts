@@ -30,6 +30,12 @@ export type InstructionSettings = {
   includeAgentsMd?: boolean;
   /** 是否读取工作区根的 CLAUDE.md / CLAUDE.local.md；缺省 true */
   includeClaudeMd?: boolean;
+  /**
+   * 是否注入跨会话记忆索引；缺省 true。
+   * 记忆总开关关闭时由 runtime 传 false —— 记忆文件仍在磁盘，只是不再进上下文，
+   * 模型要读就用普通 read_file（这也是「关掉不等于删掉」的落点）。
+   */
+  includeMemory?: boolean;
 };
 
 /** dir 是否包含 target（含相等）；Windows 路径大小写不敏感。 */
@@ -130,7 +136,10 @@ export async function loadWorkspaceInstructionsDetail(
   const home = homeDir !== undefined ? homeDir : os.homedir();
   const includeAgents = settings.includeAgentsMd !== false;
   const includeClaude = settings.includeClaudeMd !== false;
-  const memorySection = await loadMemorySection(workspace, home).catch(() => undefined);
+  const includeMemory = settings.includeMemory !== false;
+  const memorySection = includeMemory
+    ? await loadMemorySection(workspace, home).catch(() => undefined)
+    : undefined;
   const candidates: string[] = [];
   if (includeAgents) {
     candidates.push("AGENTS.md", path.join(".meowcode", "AGENTS.md"));

@@ -1,22 +1,26 @@
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { LuCopy, LuExternalLink } from "react-icons/lu";
+import { LuCopy } from "react-icons/lu";
 import { api } from "../../api";
 import { highlightToLines } from "../../code-highlight";
 import { formatNumber } from "../../i18n/format";
+import { MarkdownDocument } from "../ui/MarkdownDocument";
+import { OpenWithButton } from "./OpenWithButton";
 import "./FilePreview.css";
 
 /** 单次渲染行数上限（1MB 文本可能上万行，只展示前 N 行并提示） */
 const MAX_VIEW_LINES = 3_000;
 
-type PreviewKind = "text" | "image" | "video" | "audio" | "pdf";
+type PreviewKind = "text" | "markdown" | "image" | "video" | "audio" | "pdf";
 
+const MARKDOWN_EXTS = new Set(["md", "markdown", "mdown", "mkd"]);
 const IMAGE_EXTS = new Set(["png", "jpg", "jpeg", "gif", "webp", "bmp", "ico", "svg", "avif"]);
 const VIDEO_EXTS = new Set(["mp4", "webm", "mov", "m4v", "ogv"]);
 const AUDIO_EXTS = new Set(["mp3", "wav", "ogg", "m4a", "flac"]);
 
 function previewKind(filePath: string): PreviewKind {
   const ext = filePath.split(".").pop()?.toLowerCase() ?? "";
+  if (MARKDOWN_EXTS.has(ext)) return "markdown";
   if (IMAGE_EXTS.has(ext)) return "image";
   if (VIDEO_EXTS.has(ext)) return "video";
   if (AUDIO_EXTS.has(ext)) return "audio";
@@ -51,6 +55,25 @@ export function FilePreview({ path: relativePath, workspace }: { path: string; w
     status: "loading",
   });
   const [mediaUrl, setMediaUrl] = useState<string | null>(null);
+  const [view, setView] = useState<"preview" | "source">("preview");
+  const [reloadKey, setReloadKey] = useState(0);
+
+  // 外部改动当前文件：重新拉取（路径按 / 归一后比较）
+  useEffect(() => {
+    const normalized = relativePath.split("\\").join("/");
+    const off = window.meow.onEvent((event) => {
+      const payload = event as { type?: string; paths?: string[] };
+      if (payload.type !== "workspace_changed" || !Array.isArray(payload.paths)) return;
+      if (payload.paths.some((item) => item.split("\\").join("/") === normalized)) {
+        setReloadKey((current) => current + 1);
+      }
+    });
+    return off;
+  }, [relativePath]);
+
+  useEffect(() => {
+    setView("preview");
+  }, [relativePath]);
 
   useEffect(() => {
     let disposed = false;
@@ -60,7 +83,7 @@ export function FilePreview({ path: relativePath, workspace }: { path: string; w
 
     const load = async () => {
       try {
-        if (kind === "text") {
+        if (kind === "text" || kind === "markdown") {
           const result = await api<{ content: string }>(`/workspace/file?path=${encodeURIComponent(relativePath)}`);
           if (!disposed) setState({ status: "ready", content: result.content });
           return;
@@ -88,7 +111,7 @@ export function FilePreview({ path: relativePath, workspace }: { path: string; w
       disposed = true;
       if (createdUrl) URL.revokeObjectURL(createdUrl);
     };
-  }, [relativePath, kind]);
+  }, [relativePath, kind, reloadKey]);
 
   const lines = useMemo(() => (state.content ?? "").split(/\r?\n/), [state.content]);
   const visible = lines.slice(0, MAX_VIEW_LINES);
@@ -101,9 +124,6 @@ export function FilePreview({ path: relativePath, workspace }: { path: string; w
   const copyPath = () => {
     void navigator.clipboard?.writeText(relativePath).catch(() => undefined);
   };
-  const openExternal = () => {
-    if (workspace) void window.meow.openPath(joinWorkspacePath(workspace, relativePath));
-  };
 
   return (
     <div className="mc-preview">
@@ -111,19 +131,31 @@ export function FilePreview({ path: relativePath, workspace }: { path: string; w
         <span className="mc-preview__path mc-truncate" title={relativePath}>
           {relativePath}
         </span>
+        {kind === "markdown" ? (
+          <div className="mc-preview__viewtoggle" role="group">
+            <button
+              type="button"
+              data-active={view === "preview"}
+              onClick={() => setView("preview")}
+            >
+              {t("filePreview.preview")}
+            </button>
+            <button
+              type="button"
+              data-active={view === "source"}
+              onClick={() => setView("source")}
+            >
+              {t("filePreview.source")}
+            </button>
+          </div>
+        ) : null}
         <button type="button" className="mc-preview__btn" aria-label={t("filePreview.copyPath")} title={t("filePreview.copyPath")} onClick={copyPath}>
           <LuCopy size={13} />
         </button>
-        <button
-          type="button"
-          className="mc-preview__btn"
-          aria-label={t("filePreview.openInEditor")}
-          title={t("filePreview.openInEditor")}
+        <OpenWithButton
+          target={workspace ? joinWorkspacePath(workspace, relativePath) : null}
           disabled={!workspace}
-          onClick={openExternal}
-        >
-          <LuExternalLink size={13} />
-        </button>
+        />
       </div>
 
       {state.status === "loading" ? (
@@ -144,6 +176,14 @@ export function FilePreview({ path: relativePath, workspace }: { path: string; w
         </div>
       ) : kind === "pdf" && mediaUrl ? (
         <iframe className="mc-preview__frame" src={mediaUrl} title={relativePath} />
+      ) : kind === "markdown" && view === "preview" ? (
+        <div className="mc-preview__doc">
+          <MarkdownDocument
+            content={state.content ?? ""}
+            docPath={relativePath}
+            workspace={workspace}
+          />
+        </div>
       ) : (
         <div className="mc-preview__body">
           {visible.map((line, index) => (

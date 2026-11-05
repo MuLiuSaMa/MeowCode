@@ -29,6 +29,8 @@ export type AgentProfileDefinition = {
   tools: ReadonlySet<string> | null;
   /** 单回合并发子 Agent 上限 */
   maxSubagents: number;
+  /** 子 Agent 嵌套深度上限（顶层 = 0；标准档允许再派一层） */
+  maxSubagentDepth: number;
 };
 
 /** 标准档提示词：即原来的 BASE_SYSTEM_PROMPT，逐字保留（prompt-budget 有 token 断言）。 */
@@ -86,6 +88,7 @@ export const AGENT_PROFILES: Record<AgentProfileId, AgentProfileDefinition> = {
     roles: STANDARD_ROLES,
     tools: null,
     maxSubagents: MAX_SUBAGENTS_PER_TURN,
+    maxSubagentDepth: 2,
   },
   minimal: {
     id: "minimal",
@@ -97,6 +100,7 @@ export const AGENT_PROFILES: Record<AgentProfileId, AgentProfileDefinition> = {
     roles: ["general", "explore"],
     tools: new Set(["read_file", "run_command"]),
     maxSubagents: 1,
+    maxSubagentDepth: 1,
   },
   complex: {
     id: "complex",
@@ -108,6 +112,7 @@ export const AGENT_PROFILES: Record<AgentProfileId, AgentProfileDefinition> = {
     roles: AGENT_ROLE_NAMES,
     tools: null,
     maxSubagents: 5,
+    maxSubagentDepth: 3,
   },
 };
 

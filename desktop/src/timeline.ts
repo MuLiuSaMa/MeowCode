@@ -1,4 +1,4 @@
-import type { ChatMessage, TimelineItem } from "./api";
+import type { ChatMessage, TimelineItem, TurnFileChangeGroup } from "./api";
 
 type KeyFactory = (prefix: string) => string;
 
@@ -58,12 +58,14 @@ export type HistoryCheckpoint = {
  * 重建为 replayed 工具行；content 为空的纯工具轮不再产生空白气泡。
  * 传入压缩记录时，把每条压缩分隔线插回它发生的原始位置。
  * 传入检查点时同理插入检查点分隔线（同一位置可有多条，按 id 去重）。
+ * 传入回合改动汇总时，在该回合结束的位置插回「已编辑 N 个文件」卡片。
  */
 export function timelineFromHistory(
   messages: ChatMessage[],
   nextKey: KeyFactory,
   compaction?: HistoryCompaction | HistoryCompaction[] | null,
   checkpoints?: HistoryCheckpoint[] | null,
+  turnChanges?: TurnFileChangeGroup[] | null,
 ): TimelineItem[] {
   const items: TimelineItem[] = [];
   const toolOutputs = new Map<string, string>();
@@ -115,9 +117,29 @@ export function timelineFromHistory(
     }
   };
 
+  // 回合改动汇总：挂在该轮最后一条消息之后（turn_end 的位置）
+  const turnChangeGroups = turnChanges ?? [];
+  const insertedTurnChanges = new Set<string>();
+  const insertTurnChanges = (index: number) => {
+    for (const group of turnChangeGroups) {
+      if (group.messageIndex !== index || insertedTurnChanges.has(group.turnId)) continue;
+      if (!group.files.length) continue;
+      insertedTurnChanges.add(group.turnId);
+      items.push({
+        kind: "turn-changes",
+        key: nextKey("turn-changes"),
+        turnId: group.turnId,
+        ...(group.checkpointId ? { checkpointId: group.checkpointId } : {}),
+        ...(group.canRewind ? { canRewind: true } : {}),
+        files: group.files,
+      });
+    }
+  };
+
   for (let index = 0; index < messages.length; index += 1) {
     insertCompactions(index);
     insertCheckpoints(index);
+    insertTurnChanges(index);
     const message = messages[index];
     if (message.role === "system" || message.role === "tool") continue;
 
@@ -183,9 +205,10 @@ export function timelineFromHistory(
     }
   }
 
-  // 压缩/检查点发生在最后一条消息之后（正常情况）时补在末尾
+  // 压缩/检查点/回合汇总发生在最后一条消息之后（正常情况）时补在末尾
   insertCompactions(messages.length);
   insertCheckpoints(messages.length);
+  insertTurnChanges(messages.length);
   return items;
 }
 

@@ -87,7 +87,9 @@ export function globToRegExp(pattern: string): RegExp | null {
     .replace(/[.+^${}()|[\]\\]/g, "\\$&")
     .replace(/\*\*/g, "\u0000")
     .replace(/\*/g, "[^/\\\\]*")
-    .replace(/\u0000/g, ".*");
+    // 还原占位符（不用正则：控制字符会让 no-control-regex 报警，语义上也没必要）
+    .split("\u0000")
+    .join(".*");
   try {
     return new RegExp(escaped, "i");
   } catch {

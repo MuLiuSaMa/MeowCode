@@ -1,9 +1,10 @@
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   MEMORY_INDEX_NAME,
+  clearMemories,
   deleteMemory,
   isValidMemoryName,
   listMemories,
@@ -162,6 +163,18 @@ describe("saveMemory / readMemory / deleteMemory", () => {
     expect(await readMemory(dir, "gone")).toBeNull();
     expect(await readIndex(dir)).not.toContain("[gone]");
     expect(await deleteMemory(dir, "gone")).toBe(false);
+  });
+
+  it("clears every memory and the index but keeps unrelated files", async () => {
+    const dir = await makeDir("meowcode-memory-");
+    await saveMemory(dir, "alpha", { description: "a", content: "a" });
+    await saveMemory(dir, "beta", { description: "b", content: "b" });
+    await writeFile(path.join(dir, "notes.txt"), "keep");
+
+    expect(await clearMemories(dir)).toBe(2);
+    expect(await listMemories(dir)).toEqual([]);
+    await expect(readIndex(dir)).rejects.toThrow();
+    expect(await readFile(path.join(dir, "notes.txt"), "utf8")).toBe("keep");
   });
 
   it("rejects invalid names", async () => {

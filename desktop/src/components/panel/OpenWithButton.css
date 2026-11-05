@@ -1,0 +1,129 @@
+.mc-openwith {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  height: 24px;
+  border-radius: var(--radius-sm);
+}
+.mc-openwith:hover {
+  background: var(--surface-hover);
+}
+
+/* 主按钮：应用图标 + 名称 */
+.mc-openwith__main {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 24px;
+  max-width: 180px;
+  padding: 0 4px 0 7px;
+  border: 0;
+  border-radius: var(--radius-sm) 0 0 var(--radius-sm);
+  background: transparent;
+  color: var(--fg-subtle);
+  font-size: var(--fs-xs);
+  cursor: pointer;
+}
+.mc-openwith__main:hover:not(:disabled) {
+  color: var(--fg);
+}
+.mc-openwith__main:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.mc-openwith__name {
+  max-width: 112px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mc-openwith__icon {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  object-fit: contain;
+}
+
+/* 展开箭头 */
+.mc-openwith__chev {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  background: transparent;
+  color: var(--fg-subtle);
+  cursor: pointer;
+}
+.mc-openwith__chev:hover:not(:disabled) {
+  color: var(--fg);
+}
+.mc-openwith__chev:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+/* 下拉：系统关联应用 + 兜底动作 */
+.mc-openwith__menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 80;
+  min-width: 224px;
+  max-width: 300px;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-elevated);
+  box-shadow: var(--shadow-md);
+  display: flex;
+  flex-direction: column;
+}
+.mc-openwith__apps {
+  max-height: 280px;
+  overflow-y: auto;
+}
+.mc-openwith__loading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  color: var(--fg-subtle);
+  font-size: var(--fs-sm);
+  white-space: nowrap;
+}
+.mc-openwith__item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  height: 30px;
+  padding: 0 9px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--fg);
+  font-size: var(--fs-sm);
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background-color var(--dur) var(--ease);
+}
+.mc-openwith__item:hover,
+.mc-openwith__item[data-active="true"] {
+  background: var(--surface-hover);
+}
+.mc-openwith__itemname {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mc-openwith__sep {
+  height: 1px;
+  margin: 4px 6px;
+  background: var(--border);
+}

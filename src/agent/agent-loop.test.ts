@@ -44,6 +44,7 @@ type LoopTrace = {
 function createMockHost(options?: {
   script?: ScriptItem[];
   hooks?: AgentLoopHooks;
+  isParallelSafe?: (toolName: string) => boolean;
 }): AgentLoopHost & { trace: LoopTrace } {
   const script = [...(options?.script ?? [])];
   const trace: LoopTrace = {
@@ -139,6 +140,7 @@ function createMockHost(options?: {
       trace.pushedUserMessages.push(content);
     },
     earlyRun: () => undefined,
+    ...(options?.isParallelSafe ? { isParallelSafe: options.isParallelSafe } : {}),
     ...(options?.hooks ? { hooks: options.hooks } : {}),
   };
   return host;
@@ -182,6 +184,24 @@ describe("runAgentLoop 薄循环", () => {
     expect(host.trace.executedReadOnly.sort()).toEqual(["grep", "read_file"]);
     expect(host.trace.executedTools).toEqual([]);
     expect(host.trace.completed).toEqual(["done"]);
+  });
+
+  it("宿主的契约判定接管并发批：契约外工具仍串行，契约内动态工具可并发", async () => {
+    const host = createMockHost({
+      isParallelSafe: (name) => name === "mcp__demo__read",
+      script: [
+        {
+          message: assistant("", [
+            toolCall("m1", "mcp__demo__read"),
+            toolCall("m2", "mcp__demo__read"),
+          ]),
+        },
+        { message: assistant("done") },
+      ],
+    });
+    await runAgentLoop(host);
+    expect(host.trace.executedReadOnly).toEqual(["mcp__demo__read", "mcp__demo__read"]);
+    expect(host.trace.executedTools).toEqual([]);
   });
 
   it("task 批：update_plan 先串行执行，task 结果最后统一落盘", async () => {

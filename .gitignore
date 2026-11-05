@@ -52,3 +52,7 @@ Thumbs.db
 
 # 市场构建的下载缓存（ZCode 官方插件 zip 等）
 /.cache/
+
+# 更新检查用的 GitCode 只读令牌（打包时随 resources 进安装包，源码与仓库里绝不出现）
+/resources/gitcode-update-token.txt
+/gitcode-update-token.txt

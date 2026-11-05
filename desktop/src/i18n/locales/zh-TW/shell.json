@@ -44,7 +44,14 @@
     "sandboxEvidence": "攔截證據",
     "sandboxNote": "在沙箱外重試會以目前使用者權限執行這條命令；只放行這一次，不會關閉沙箱。",
     "sandboxDeny": "保持沙箱",
-    "sandboxRetry": "在沙箱外重試"
+    "sandboxRetry": "在沙箱外重試",
+    "feedbackLabel": "拒絕理由（選填）",
+    "feedbackPlaceholder": "告訴 AI 哪裡不對，它會據此調整",
+    "rememberCommand": "本專案內不再詢問該命令",
+    "rememberPath": "本專案內不再詢問對該檔案的變更",
+    "rememberTool": "本專案內不再詢問此工具",
+    "rememberExact": "僅此命令",
+    "rememberPrefix": "以該命令開頭"
   },
   "plan": {
     "aria": "任務計畫",
@@ -224,7 +231,6 @@
     "empty": "尚無訊息",
     "stop": "停止",
     "send": "傳送",
-    "openMain": "開啟主視窗",
     "inputPlaceholder": "輸入訊息，Enter 傳送",
     "inputIdle": "此對話未在執行中，請在主視窗開啟後繼續",
     "dropHint": "鬆開以附加"

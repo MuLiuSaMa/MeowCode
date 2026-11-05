@@ -14,6 +14,7 @@ const {
   shell,
 } = require("electron");
 const { registerTerminalIpc } = require("./terminals.cjs");
+const { createJobHost } = require("./job-host.cjs");
 const { createBrowserHostController } = require("./browser-host.cjs");
 const { createComputerHostController } = require("./computer-host.cjs");
 const { mainStrings } = require("./main-i18n.cjs");
@@ -32,6 +33,13 @@ const {
   shouldNotify,
 } = require("./notifications.cjs");
 const { readJsonWithBackup, writeJsonAtomic } = require("./persist.cjs");
+const {
+  defaultDataDir,
+  locationPointerPath,
+  migrateData,
+  readDataLocation,
+  validateDataTarget,
+} = require("./data-location.cjs");
 const { createEventBatcher } = require("./event-batcher.cjs");
 const {
   DEFAULT_CLIENT_ID: GITHUB_OAUTH_CLIENT_ID,
@@ -48,7 +56,7 @@ const {
   verifyClientCredentials: verifyOauthPlatformCredentials,
 } = require("./oauth-platforms.cjs");
 const { registerCommunitySubmitIpc } = require("./community-submit.cjs");
-const { fork, execFileSync } = require("node:child_process");
+const { fork, execFile, execFileSync } = require("node:child_process");
 const crypto = require("node:crypto");
 const fs = require("node:fs");
 const http = require("node:http");
@@ -171,8 +179,10 @@ function resolveOauthApp(settings, platform) {
 }
 
 app.setName("MeowCode");
-// 显式锁定数据目录：默认取 package.json 的 name（@meowcode/desktop）会产出 %APPDATA%/@meowcode
-app.setPath("userData", path.join(app.getPath("appData"), "MeowCode"));
+const APP_DATA_DIR = app.getPath("appData");
+const DEFAULT_DATA_DIR = defaultDataDir(APP_DATA_DIR);
+// 默认 %APPDATA%/MeowCode；用户改过数据位置时读取外部指针，启动前切换 userData。
+app.setPath("userData", readDataLocation(APP_DATA_DIR));
 if (process.platform === "win32") {
   // 打包后与 electron-builder 的 appId 一致，任务栏/通知按 MeowCode 归组。
   // dev 下 exe 是改名后的 MeowCode.exe，没有对应开始菜单快捷方式，用 appId 会因为没有
@@ -520,8 +530,8 @@ function defaultSettings() {
     closeAction: "ask",
     language: "system",
     speechStyle: "normal",
-    // 回合后自动蒸馏记忆（ZCode auto-memory 同款）：默认开启，设置页可关
-    memoryExtraction: true,
+    // 记忆总开关：开 = 自动蒸馏 + 注入记忆索引 + 下发记忆工具；关 = 全部停用（记忆文件仍保留）
+    memoryEnabled: true,
     // 自我学习（技能 / 项目经验 / 用户模型）：实验性能力，默认关闭，设置页可开
     selfLearning: false,
     // 命令沙箱（Windows 受限令牌 + ACL）：默认关闭，设置页显式开启
@@ -614,9 +624,14 @@ function migrateSettings(raw) {
     // 全新安装走 defaultSettings() 回退（显式 false）；已有 settings.json 缺字段的老用户补 true
     onboardingCompleted:
       typeof parsed.onboardingCompleted === "boolean" ? parsed.onboardingCompleted : true,
-    // 记忆自动蒸馏：缺字段的老用户补 true（与 defaultSettings 对齐）
-    memoryExtraction:
-      typeof parsed.memoryExtraction === "boolean" ? parsed.memoryExtraction : true,
+    // 记忆总开关：缺字段的老用户补 true；早期版本只有 memoryExtraction（只关蒸馏），
+    // 沿用它的值——用户当时关掉过，就当作现在关掉整个记忆
+    memoryEnabled:
+      typeof parsed.memoryEnabled === "boolean"
+        ? parsed.memoryEnabled
+        : typeof parsed.memoryExtraction === "boolean"
+          ? parsed.memoryExtraction
+          : true,
     // 自我学习：缺字段的老用户补 false（实验性，默认关闭）
     selfLearning: typeof parsed.selfLearning === "boolean" ? parsed.selfLearning : false,
     // 网络代理：缺字段的老用户补直连（保持原有网络行为）
@@ -771,8 +786,13 @@ function publicSettings(settings) {
     language: LANGUAGE_PREFERENCES.includes(settings.language) ? settings.language : "system",
     speechStyle: SPEECH_STYLES.includes(settings.speechStyle) ? settings.speechStyle : "normal",
     onboardingCompleted: typeof settings.onboardingCompleted === "boolean" ? settings.onboardingCompleted : true,
-    /** 回合后自动蒸馏记忆：默认开 */
-    memoryExtraction: typeof settings.memoryExtraction === "boolean" ? settings.memoryExtraction : true,
+    /** 记忆总开关：默认开（关掉后不蒸馏、不注入、不下发记忆工具） */
+    memoryEnabled:
+      typeof settings.memoryEnabled === "boolean"
+        ? settings.memoryEnabled
+        : typeof settings.memoryExtraction === "boolean"
+          ? settings.memoryExtraction
+          : true,
     /** 自我学习：实验性，默认关 */
     selfLearning: typeof settings.selfLearning === "boolean" ? settings.selfLearning : false,
     /** 网络代理：direct / system / manual */
@@ -1217,8 +1237,8 @@ function buildServerEnv(settings) {
     MEOWCODE_WORKSPACE: settings.workspace ?? "",
     MEOWCODE_PROVIDER_ID: settings.providerId ?? "",
     MEOWCODE_PROVIDERS: JSON.stringify(providers),
-    // 记忆自动蒸馏开关：server 只认 env，不读 settings 文件
-    MEOWCODE_MEMORY_EXTRACTION: settings.memoryExtraction === false ? "0" : "1",
+    // 记忆总开关：server 只认 env，不读 settings 文件
+    MEOWCODE_MEMORY: settings.memoryEnabled === false ? "0" : "1",
     // 自我学习开关：同上，运行中切换走 /config/learning（默认关）
     MEOWCODE_SELF_LEARNING: settings.selfLearning === true ? "1" : "0",
     // 网络代理：system 模式在启动时把系统代理解析成具体地址传给 server
@@ -1268,6 +1288,12 @@ function buildServerEnv(settings) {
       ? {
           MEOWCODE_COMPUTER_HOST: computerHost.baseUrl,
           MEOWCODE_COMPUTER_HOST_TOKEN: computerHost.token,
+        }
+      : {}),
+    ...(jobHost.baseUrl
+      ? {
+          MEOWCODE_JOB_HOST: jobHost.baseUrl,
+          MEOWCODE_JOB_HOST_TOKEN: jobHost.token,
         }
       : {}),
     ELECTRON_RUN_AS_NODE: "1",
@@ -1788,6 +1814,8 @@ async function bootServerOnce() {
   if (!fs.existsSync(script)) {
     throw new Error(`Agent server is not built. Missing: ${script}`);
   }
+  // 后台任务控制面必须在 fork 前就绪：agent 通过 env 拿到 baseUrl/token
+  await jobHost.start().catch(() => undefined);
   const spawn = () =>
     new Promise((resolve, reject) => {
       const child = fork(script, [], {
@@ -2379,8 +2407,9 @@ function startIslandPoll() {
     if (!win || win.isDestroyed() || !islandHoverRect) return;
     const pt = screen.getCursorScreenPoint();
     const rect = islandHoverRect;
-    // 进 14 / 出 26 的回差边距，避免在边缘来回翻转
-    const margin = islandCursorInside ? 26 : 14;
+    // 进入只留 4px（给 60ms 轮询一点提前量），离开 8px 回差避免边缘抖动。
+    // 旧值 14/26 会在胶囊周围形成一圈可拦截点击的透明区域。
+    const margin = islandCursorInside ? 8 : 4;
     const inside =
       pt.x >= rect.x - margin &&
       pt.x <= rect.x + rect.width + margin &&
@@ -3117,6 +3146,53 @@ ipcMain.handle("meow:pick-workspace", async () => {
   return result.canceled || !result.filePaths.length ? null : result.filePaths[0];
 });
 
+ipcMain.handle("meow:get-data-location", () => ({
+  path: app.getPath("userData"),
+  defaultPath: DEFAULT_DATA_DIR,
+}));
+
+ipcMain.handle("meow:pick-data-directory", async () => {
+  const result = await dialog.showOpenDialog(mainWindow, {
+    properties: ["openDirectory", "createDirectory"],
+  });
+  return result.canceled || !result.filePaths.length ? null : result.filePaths[0];
+});
+
+ipcMain.handle("meow:change-data-location", async (_event, target) => {
+  const current = app.getPath("userData");
+  const invalid = validateDataTarget({ current, target, defaultDir: DEFAULT_DATA_DIR });
+  if (invalid) return { ok: false, code: invalid };
+  try {
+    // 先 flush 再关 server：保证 ui-state / 窗口尺寸和会话收尾都写进被复制的目录
+    flushWindowState();
+    flushUiState();
+    await stopServer();
+    const result = migrateData({
+      current,
+      target,
+      defaultDir: DEFAULT_DATA_DIR,
+      pointerPath: locationPointerPath(APP_DATA_DIR),
+    });
+    if (!result.ok) {
+      // 迁移失败不把应用留在「server 已停」状态
+      void startServer().catch(() => undefined);
+      return result;
+    }
+    setTimeout(() => {
+      app.relaunch();
+      app.exit(0);
+    }, 350);
+    return { ok: true, restarting: true };
+  } catch (error) {
+    void startServer().catch(() => undefined);
+    return {
+      ok: false,
+      code: "copy_failed",
+      message: error instanceof Error ? error.message : String(error),
+    };
+  }
+});
+
 // ---- 自绘标题栏的窗口操作（frame: false 后由渲染层调用）----
 ipcMain.handle("meow:window-minimize", () => {
   mainWindow?.minimize();
@@ -3144,6 +3220,376 @@ ipcMain.handle("meow:open-path", async (_event, target) => {
   return message || null;
 });
 
+/** 文件关联检测结果缓存：同一扩展名只查一次注册表 + 取一次图标。 */
+const openWithCache = new Map();
+
+function runPowerShell(script) {
+  return new Promise((resolve, reject) => {
+    execFile(
+      "powershell.exe",
+      ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", script],
+      { windowsHide: true, maxBuffer: 2 * 1024 * 1024, encoding: "utf8" },
+      (error, stdout) => (error ? reject(error) : resolve(stdout)),
+    );
+  });
+}
+
+/**
+ * 扫描系统里能打开该扩展名的应用（参考 OpenMD 的 detect_editors）：
+ * Windows 注册表取 UserChoice / 扩展名默认 ProgID / OpenWithProgids /
+ * OpenWithList，解析出 exe 与友好名称，再取 exe 图标。
+ */
+async function scanOpenWithApps(ext) {
+  const safeExt = ext.replace(/'/g, "''");
+  const script = String.raw`
+$ErrorActionPreference='SilentlyContinue'
+[Console]::OutputEncoding=[System.Text.Encoding]::UTF8
+Add-Type -AssemblyName System.Drawing
+$ext='${safeExt}'
+$items=New-Object System.Collections.ArrayList
+$seen=@{}
+function Get-Default([string]$key){
+  try { return (Get-ItemProperty -LiteralPath $key -ErrorAction Stop).'(default)' } catch { return $null }
+}
+function Get-Exe([string]$progId){
+  $cmd=Get-Default "Registry::HKEY_CLASSES_ROOT\$progId\shell\open\command"
+  if(-not $cmd){ return $null }
+  if($cmd -match '^\s*"([^"]+)"'){ return $matches[1] }
+  return ($cmd -split '\s+')[0]
+}
+function Get-AppName([string]$exe){
+  $base=[System.IO.Path]::GetFileName($exe)
+  $props=Get-ItemProperty -LiteralPath "Registry::HKEY_CLASSES_ROOT\Applications\$base" -ErrorAction SilentlyContinue
+  if($props -and $props.FriendlyAppName){ return $props.FriendlyAppName }
+  try {
+    $vi=(Get-Item -LiteralPath $exe -ErrorAction Stop).VersionInfo
+    if($vi.ProductName){ return $vi.ProductName }
+    if($vi.FileDescription){ return $vi.FileDescription }
+  } catch {}
+  return [System.IO.Path]::GetFileNameWithoutExtension($exe)
+}
+function Get-IconData([string]$path){
+  try {
+    $icon=[System.Drawing.Icon]::ExtractAssociatedIcon($path)
+    if(-not $icon){ return $null }
+    $bmp=$icon.ToBitmap()
+    $ms=New-Object System.IO.MemoryStream
+    $bmp.Save($ms,[System.Drawing.Imaging.ImageFormat]::Png)
+    $data='data:image/png;base64,'+[Convert]::ToBase64String($ms.ToArray())
+    $bmp.Dispose(); $ms.Dispose(); $icon.Dispose()
+    return $data
+  } catch { return $null }
+}
+function Add-App([string]$exe,[bool]$isDefault){
+  if(-not $exe){ return }
+  $exe=[Environment]::ExpandEnvironmentVariables($exe.Trim('"'))
+  if(-not (Test-Path -LiteralPath $exe -PathType Leaf)){ return }
+  $key=$exe.ToLowerInvariant()
+  if($seen.ContainsKey($key)){
+    if($isDefault){ $seen[$key].default=$true }
+    return
+  }
+  $name=Get-AppName $exe
+  $entry=[pscustomobject]@{name=$name;exe=$exe;default=$isDefault;recommended=$isDefault;icon=(Get-IconData $exe)}
+  $seen[$key]=$entry
+  [void]$items.Add($entry)
+}
+$uc=Get-ItemProperty -LiteralPath "Registry::HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\$ext\UserChoice" -ErrorAction SilentlyContinue
+if($uc -and $uc.ProgId){ $p=$uc.ProgId; $e=Get-Exe $p; Add-App $e $true }
+$p=Get-Default "Registry::HKEY_CLASSES_ROOT\$ext"
+if($p){ $e=Get-Exe $p; Add-App $e $true }
+foreach($root in @("Registry::HKEY_CLASSES_ROOT\$ext\OpenWithProgids","Registry::HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\$ext\OpenWithProgids")){
+  $props=Get-ItemProperty -LiteralPath $root -ErrorAction SilentlyContinue
+  if($props){
+    foreach($prop in $props.PSObject.Properties){
+      if($prop.Name -like 'PS*'){ continue }
+      $e=Get-Exe $prop.Name
+      Add-App $e $false
+    }
+  }
+}
+$keys=Get-ChildItem -LiteralPath "Registry::HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\$ext\OpenWithList" -ErrorAction SilentlyContinue
+if($keys){
+  foreach($k in $keys){
+    $exeName=$k.PSChildName
+    if($exeName -eq 'MRUList'){ continue }
+    $e=Get-Exe "Applications\$exeName"
+    if(-not $e){ $e=Get-Default "Registry::HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\$exeName" }
+    Add-App $e $false
+  }
+}
+$explorerIcon=Get-IconData ([Environment]::ExpandEnvironmentVariables('%SystemRoot%\explorer.exe'))
+$result=[pscustomobject]@{apps=$items;explorerIcon=$explorerIcon}
+$result | ConvertTo-Json -Compress -Depth 4
+`;
+
+  try {
+    const raw = (await runPowerShell(script)).trim();
+    const parsed = raw ? JSON.parse(raw) : {};
+    const list = (
+      Array.isArray(parsed) ? parsed : Array.isArray(parsed.apps) ? parsed.apps : []
+    ).filter((item) => item && typeof item.exe === "string" && typeof item.name === "string");
+    list.sort(
+      (a, b) =>
+        Number(Boolean(b.recommended)) - Number(Boolean(a.recommended)) ||
+        String(a.name).localeCompare(String(b.name), "zh-CN"),
+    );
+    return {
+      default: list.find((item) => item.default) ?? null,
+      apps: list.slice(0, 12),
+      explorerIcon: typeof parsed.explorerIcon === "string" ? parsed.explorerIcon : null,
+    };
+  } catch {
+    // 不缓存失败结果：注册表查询可能因临时权限/进程问题失败，下次打开再试
+    return { default: null, apps: [], explorerIcon: null };
+  }
+}
+
+// ---- 打开方式缓存：注册表扫描结果 + 图标，落盘跨进程复用 ----
+
+const OPEN_WITH_CACHE_VERSION = 2;
+const OPEN_WITH_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+let openWithDisk = null;
+
+function openWithCacheFile() {
+  return path.join(app.getPath("userData"), "open-with-cache.json");
+}
+
+function loadOpenWithDisk() {
+  if (openWithDisk) return openWithDisk;
+  try {
+    const parsed = JSON.parse(fs.readFileSync(openWithCacheFile(), "utf8"));
+    openWithDisk =
+      parsed && parsed.version === OPEN_WITH_CACHE_VERSION
+        ? parsed
+        : { version: OPEN_WITH_CACHE_VERSION, extensions: {}, icons: {} };
+  } catch {
+    openWithDisk = { version: OPEN_WITH_CACHE_VERSION, extensions: {}, icons: {} };
+  }
+  return openWithDisk;
+}
+
+function saveOpenWithDisk() {
+  try {
+    const file = openWithCacheFile();
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    const temp = `${file}.tmp`;
+    fs.writeFileSync(temp, JSON.stringify(loadOpenWithDisk()), "utf8");
+    fs.renameSync(temp, file);
+  } catch {
+    // 缓存写失败不影响本次使用
+  }
+}
+
+/**
+ * 从 exe 直接提取图标（与 OpenMD 的 SHGetFileInfo 同源结果）。
+ * Electron 的 app.getFileIcon 对部分应用会回退成通用蓝色图标，不能用于这里。
+ */
+async function extractIconsViaPowerShell(exes) {
+  if (!exes.length) return {};
+  const encoded = Buffer.from(JSON.stringify(exes), "utf8").toString("base64");
+  const script = String.raw`
+Add-Type -AssemblyName System.Drawing
+$json=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${encoded}'))
+$paths=$json | ConvertFrom-Json
+if($paths -isnot [array]){ $paths=@($paths) }
+$out=@{}
+foreach($p in $paths){
+  try {
+    $icon=[System.Drawing.Icon]::ExtractAssociatedIcon($p)
+    if($icon){
+      $bmp=$icon.ToBitmap()
+      $ms=New-Object System.IO.MemoryStream
+      $bmp.Save($ms,[System.Drawing.Imaging.ImageFormat]::Png)
+      $out[$p]='data:image/png;base64,'+[Convert]::ToBase64String($ms.ToArray())
+      $bmp.Dispose(); $ms.Dispose(); $icon.Dispose()
+    }
+  } catch {}
+}
+$out | ConvertTo-Json -Compress
+`;
+  try {
+    const raw = (await runPowerShell(script)).trim();
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function cachedResult(ext) {
+  const disk = loadOpenWithDisk();
+  const entry = disk.extensions[ext];
+  if (!entry || !Array.isArray(entry.apps)) return null;
+  const apps = entry.apps.map((app) => ({
+    ...app,
+    icon: disk.icons[String(app.exe).toLowerCase()] ?? null,
+  }));
+  return {
+    default: apps.find((app) => app.default) ?? null,
+    apps,
+    explorerIcon: entry.explorerIcon ?? null,
+    stale: Date.now() - Number(entry.at || 0) > OPEN_WITH_CACHE_TTL_MS,
+  };
+}
+
+async function scanAndCache(ext) {
+  const scanned = await scanOpenWithApps(ext);
+  const disk = loadOpenWithDisk();
+  const explorerKey = path
+    .join(process.env.SystemRoot || "C:\\Windows", "explorer.exe")
+    .toLowerCase();
+  for (const app of scanned.apps) {
+    if (typeof app.icon === "string") disk.icons[app.exe.toLowerCase()] = app.icon;
+  }
+  if (typeof scanned.explorerIcon === "string") {
+    disk.icons[explorerKey] = scanned.explorerIcon;
+  }
+  const explorerIcon = scanned.explorerIcon ?? disk.icons[explorerKey] ?? null;
+  disk.extensions[ext] = {
+    apps: scanned.apps.map(({ name, exe, default: isDefault, recommended }) => ({
+      name,
+      exe,
+      ...(isDefault ? { default: true } : {}),
+      ...(recommended ? { recommended: true } : {}),
+    })),
+    explorerIcon,
+    at: Date.now(),
+  };
+  saveOpenWithDisk();
+  return {
+    default: scanned.default,
+    apps: scanned.apps.map((app) => ({
+      ...app,
+      icon: app.icon ?? disk.icons[String(app.exe).toLowerCase()] ?? null,
+    })),
+    explorerIcon,
+  };
+}
+
+async function detectOpenWithApps(target) {
+  if (process.platform !== "win32") return { default: null, apps: [], explorerIcon: null };
+  const ext = path.extname(target).toLowerCase();
+  if (!ext) return { default: null, apps: [], explorerIcon: null };
+  const cached = openWithCache.get(ext);
+  if (cached) return cached;
+
+  const stored = cachedResult(ext);
+  if (stored) {
+    const { stale, ...result } = stored;
+    openWithCache.set(ext, result);
+    // 过期时先用旧缓存秒开，后台刷新，下次打开自然更新
+    if (stale) {
+      void scanAndCache(ext)
+        .then((refreshed) => openWithCache.set(ext, refreshed))
+        .catch(() => undefined);
+    }
+    return result;
+  }
+
+  const result = await scanAndCache(ext);
+  openWithCache.set(ext, result);
+  return result;
+}
+
+ipcMain.handle("meow:detect-open-with", async (_event, target) => {
+  if (typeof target !== "string" || !target.trim() || !fs.existsSync(target)) {
+    return { default: null, apps: [], explorerIcon: null };
+  }
+  return await detectOpenWithApps(target);
+});
+
+/** 图标异步补全：菜单先用名称秒开，图标批量提取后回填。 */
+ipcMain.handle("meow:open-with-icons", async (_event, exes) => {
+  if (!Array.isArray(exes)) return {};
+  const unique = [...new Set(exes.filter((exe) => typeof exe === "string" && exe))].slice(0, 24);
+  const disk = loadOpenWithDisk();
+  const missing = unique.filter((exe) => typeof disk.icons[exe.toLowerCase()] !== "string");
+  if (missing.length) {
+    const extracted = await extractIconsViaPowerShell(missing);
+    for (const [exe, icon] of Object.entries(extracted)) {
+      if (typeof icon === "string") disk.icons[exe.toLowerCase()] = icon;
+    }
+    saveOpenWithDisk();
+  }
+  return Object.fromEntries(
+    unique.map((exe) => [exe, disk.icons[exe.toLowerCase()] ?? null]),
+  );
+});
+
+/** 用检测到的具体应用打开文件（Windows）。 */
+ipcMain.handle("meow:open-with-app", (_event, exe, target) => {
+  if (typeof exe !== "string" || !fs.existsSync(exe)) return "app not found";
+  if (process.platform === "win32" && path.extname(exe).toLowerCase() !== ".exe") {
+    return "not an executable";
+  }
+  if (typeof target !== "string" || !fs.existsSync(target)) return "file not found";
+  const { spawn } = require("node:child_process");
+  try {
+    const child = spawn(exe, [target], { detached: true, stdio: "ignore" });
+    child.unref();
+    return null;
+  } catch (error) {
+    return error instanceof Error ? error.message : String(error);
+  }
+});
+
+/**
+ * 「打开方式」：调用系统原生的应用选择器。
+ * - Windows：rundll32 OpenAs_RunDLL，对应右键「打开方式」的完整应用列表；
+ * - macOS：osascript 弹出选择应用对话框，失败回退默认应用；
+ * - Linux：优先 mimeopen -a，未安装时回退 xdg-open。
+ */
+ipcMain.handle("meow:open-with", async (_event, target) => {
+  if (typeof target !== "string" || !target.trim()) return "invalid path";
+  if (!fs.existsSync(target)) return "file not found";
+  const { spawn } = require("node:child_process");
+  try {
+    if (process.platform === "win32") {
+      const child = spawn("rundll32.exe", ["shell32.dll,OpenAs_RunDLL", target], {
+        detached: true,
+        stdio: "ignore",
+      });
+      child.unref();
+      return null;
+    }
+    if (process.platform === "darwin") {
+      const script = [
+        "on run argv",
+        "set targetPath to item 1 of argv",
+        "set chosenApp to choose application",
+        "set appPath to POSIX path of chosenApp",
+        'do shell script "open -a " & quoted form of appPath & " " & quoted form of targetPath',
+        "end run",
+      ];
+      const child = spawn("osascript", script.flatMap((line) => ["-e", line]).concat(target), {
+        detached: true,
+        stdio: "ignore",
+      });
+      child.unref();
+      return null;
+    }
+    const child = spawn("mimeopen", ["-a", target], { detached: true, stdio: "ignore" });
+    child.on("error", () => {
+      const fallback = spawn("xdg-open", [target], { detached: true, stdio: "ignore" });
+      fallback.unref();
+    });
+    child.unref();
+    return null;
+  } catch (error) {
+    return error instanceof Error ? error.message : String(error);
+  }
+});
+
+/** 在系统文件管理器中定位文件。 */
+ipcMain.handle("meow:show-in-folder", (_event, target) => {
+  if (typeof target !== "string" || !target.trim()) return "invalid path";
+  if (!fs.existsSync(target)) return "file not found";
+  shell.showItemInFolder(target);
+  return null;
+});
+
 /** 用系统默认浏览器打开链接（聊天里的外链、内嵌浏览器的新窗口请求） */
 ipcMain.handle("meow:open-external", async (_event, url) => {
   if (typeof url !== "string" || !/^https?:\/\//i.test(url)) return "invalid url";
@@ -3169,8 +3615,29 @@ app.on("web-contents-created", (_event, contents) => {
 
 /** 终端 PTY 管理器（右侧面板终端页签）；退出前全量释放，防止 conpty 残留阻塞退出 */
 const terminalManager = registerTerminalIpc(ipcMain, () => mainWindow);
+/**
+ * agent 后台任务控制面：与浏览器桥同款 loopback HTTP + token。
+ * 任务在同一个终端 PTY 里跑，渲染层收到 ensure-tab 后按 id 打开终端页签即可接管输入。
+ */
+const jobHost = createJobHost({
+  terminals: terminalManager,
+  notify: (event) => {
+    if (event.type !== "start" || !event.id) return;
+    const win = mainWindow;
+    if (win && !win.isDestroyed()) {
+      win.webContents.send("meow:job-ensure-tab", {
+        id: event.id,
+        command: event.command ?? "",
+      });
+    }
+  },
+});
+void jobHost.start().catch((error) => {
+  console.error(`[meowcode] job host failed: ${error?.message ?? error}`);
+});
 app.on("before-quit", () => {
   terminalManager.disposeAll();
+  jobHost.close();
   clearGithubRefresh();
   githubFlows.clear();
   for (const timer of platformOauthRefreshTimers.values()) clearTimeout(timer);
@@ -3203,10 +3670,10 @@ ipcMain.handle("meow:save-provider-prefs", (_event, prefs) => {
   if (typeof prefs?.providerId === "string" && prefs.providerId) {
     next.providerId = prefs.providerId;
   }
-  // 记忆自动蒸馏开关：只写盘（启动时经 MEOWCODE_MEMORY_EXTRACTION 传给 server），
-  // 实时生效走 /config/memory-extraction，由渲染层另行调用——绝不走 saveSettings
-  if (typeof prefs?.memoryExtraction === "boolean") {
-    next.memoryExtraction = prefs.memoryExtraction;
+  // 记忆总开关：只写盘（启动时经 MEOWCODE_MEMORY 传给 server），
+  // 实时生效走 /config/memory，由渲染层另行调用——绝不走 saveSettings
+  if (typeof prefs?.memoryEnabled === "boolean") {
+    next.memoryEnabled = prefs.memoryEnabled;
   }
   // 自我学习开关：同款双通道 —— 落盘供下次启动，实时生效走 /config/learning
   if (typeof prefs?.selfLearning === "boolean") {
@@ -3627,17 +4094,6 @@ ipcMain.handle("meow:island-rect", (_event, rect) => {
   if (![x, y, width, height].every(Number.isFinite)) return;
   const bounds = win.getContentBounds();
   islandHoverRect = { x: bounds.x + x, y: bounds.y + y, width, height };
-});
-
-/** 点击胶囊 → 显示/聚焦主窗口 */
-ipcMain.handle("meow:island-open-main", () => {
-  if (!mainWindow || mainWindow.isDestroyed()) {
-    createWindow();
-    return;
-  }
-  if (mainWindow.isMinimized()) mainWindow.restore();
-  mainWindow.show();
-  mainWindow.focus();
 });
 
 /** 悬浮岛发出的 prompt 广播给主窗口：当前会话命中时由渲染层补用户气泡（服务端事件不带用户消息文本） */

@@ -44,7 +44,14 @@
     "sandboxEvidence": "Sandbox-Beleg",
     "sandboxNote": "Ein erneuter Versuch außerhalb der Sandbox führt diesen Befehl mit Ihren Benutzerrechten aus. Er wird nur einmal erlaubt; die Sandbox bleibt aktiv.",
     "sandboxDeny": "Sandbox beibehalten",
-    "sandboxRetry": "Außerhalb der Sandbox wiederholen"
+    "sandboxRetry": "Außerhalb der Sandbox wiederholen",
+    "feedbackLabel": "Begründung (optional)",
+    "feedbackPlaceholder": "Sagen Sie dem Agent, was nicht stimmt",
+    "rememberCommand": "Diesen Befehl in diesem Projekt nicht mehr fragen",
+    "rememberPath": "Änderungen an dieser Datei in diesem Projekt nicht mehr fragen",
+    "rememberTool": "Dieses Werkzeug in diesem Projekt nicht mehr fragen",
+    "rememberExact": "Nur dieser Befehl",
+    "rememberPrefix": "Befehle mit diesem Anfang"
   },
   "plan": {
     "aria": "Aufgabenplan",
@@ -224,7 +231,6 @@
     "empty": "Noch keine Nachrichten",
     "stop": "Stopp",
     "send": "Senden",
-    "openMain": "Hauptfenster öffnen",
     "inputPlaceholder": "Nachricht tippen, Enter zum Senden",
     "inputIdle": "Diese Sitzung läuft nicht. Im Hauptfenster fortsetzen.",
     "dropHint": "Zum Anhängen ablegen"

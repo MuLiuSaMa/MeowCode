@@ -1,4 +1,4 @@
-import type { CSSProperties, ReactNode } from "react";
+import type { CSSProperties, ReactNode, RefObject } from "react";
 import { TitleBar } from "./TitleBar";
 import "./AppShell.css";
 
@@ -15,6 +15,7 @@ export function AppShell({
   inspector,
   listWidth,
   listResizer,
+  listColRef,
 }: {
   rail: ReactNode;
   conversations: ReactNode;
@@ -24,6 +25,8 @@ export function AppShell({
   listWidth?: number;
   /** 左栏右边缘的拖拽条 */
   listResizer?: ReactNode;
+  /** 左栏列容器的 ref：拖拽时直接改宽度样式，绕过 React 重渲染 */
+  listColRef?: RefObject<HTMLDivElement | null>;
 }) {
   return (
     <div className="mc-root">
@@ -32,6 +35,7 @@ export function AppShell({
         {rail}
         <div className="mc-columns">
           <div
+            ref={listColRef}
             className="mc-listcol"
             style={listWidth ? ({ width: `${listWidth}px` } as CSSProperties) : undefined}
           >

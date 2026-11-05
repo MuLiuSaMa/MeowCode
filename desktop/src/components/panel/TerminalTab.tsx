@@ -6,10 +6,18 @@ import "./TerminalTab.css";
 
 /**
  * 终端页签：xterm + FitAddon；PTY 在 Electron main（desktop/terminals.cjs）。
- * 常挂载保活（非激活 display:none），卸载即 kill pty。
- * fit 守卫：收起动画 / 隐藏期间容器宽度为 0，此时 fit 会坏列数——去抖 + 宽度检查。
+ * 常挂载保活（非激活 display:none）；用户终端卸载即 kill，agent 任务终端只断开不 kill。
  */
-export function TerminalTab({ active, cwd }: { active: boolean; cwd?: string }) {
+export function TerminalTab({
+  active,
+  cwd,
+  termId,
+}: {
+  active: boolean;
+  cwd?: string;
+  /** agent 后台任务：attach 到已有 PTY，不新建也不在卸载时销毁 */
+  termId?: string;
+}) {
   const { t } = useTranslation("panel");
   /** 译文只用于退出提示：用 ref 取值，切语言时不重建终端（会杀 PTY） */
   const tRef = useRef(t);
@@ -42,6 +50,7 @@ export function TerminalTab({ active, cwd }: { active: boolean; cwd?: string }) 
 
     let disposed = false;
     let createdId: string | null = null;
+    const ownsSession = !termId;
 
     const syncSize = () => {
       if (container.clientWidth < 40 || container.clientHeight < 40) return;
@@ -59,19 +68,38 @@ export function TerminalTab({ active, cwd }: { active: boolean; cwd?: string }) 
     } catch {
       // 容器尚未布局，使用默认尺寸
     }
-    void window.meow
-      .termCreate({ cwd, cols: term.cols, rows: term.rows })
-      .then(({ id }) => {
+    void (async () => {
+      if (termId) {
+        const attached = await window.meow.termAttach(termId).catch(() => null);
+        if (disposed) return;
+        if (!attached) {
+          term.writeln(`\x1b[90m${tRef.current("terminal.ended")}\x1b[0m`);
+          return;
+        }
+        createdId = termId;
+        termIdRef.current = termId;
+        if (attached.data) term.write(attached.data);
+        if (attached.exited) {
+          term.writeln(`\r\n\x1b[90m${tRef.current("terminal.exited")}\x1b[0m`);
+        }
+        syncSize();
+        return;
+      }
+      try {
+        const { id } = await window.meow.termCreate({ cwd, cols: term.cols, rows: term.rows });
         if (disposed) {
           void window.meow.termKill(id);
           return;
         }
         createdId = id;
         termIdRef.current = id;
-      })
-      .catch((error) => {
-        term.writeln(`\x1b[31m${error instanceof Error ? error.message : String(error)}\x1b[0m`);
-      });
+        syncSize();
+      } catch (error) {
+        term.writeln(
+          `\x1b[31m${error instanceof Error ? error.message : String(error)}\x1b[0m`,
+        );
+      }
+    })();
 
     const offData = window.meow.onTermData((payload) => {
       if (payload.id === createdId) term.write(payload.data);
@@ -102,13 +130,13 @@ export function TerminalTab({ active, cwd }: { active: boolean; cwd?: string }) 
       offData();
       offExit();
       dataSub.dispose();
-      if (createdId) void window.meow.termKill(createdId);
+      if (createdId && ownsSession) void window.meow.termKill(createdId);
       termIdRef.current = null;
       term.dispose();
       termRef.current = null;
       fitRef.current = null;
     };
-  }, [cwd]);
+  }, [cwd, termId]);
 
   // 页签激活时（含从隐藏恢复）补一次 fit 并聚焦
   useEffect(() => {

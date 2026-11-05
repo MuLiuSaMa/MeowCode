@@ -16,6 +16,18 @@ import {
 } from "../agent/agent-profiles.js";
 import { toolDefinitions } from "../agent/tools.js";
 import { isSpeechStyle, readSpeechStyleFromEnv } from "../agent/speech-style.js";
+import { createAgentLogger, pruneAgentLogs } from "../agent/logging.js";
+import type { TraceSpan } from "../agent/trace.js";
+import {
+  clearApprovalRules,
+  readApprovalRules,
+  removeApprovalRule,
+} from "../agent/approval-rules.js";
+import type { ApprovalDecision } from "../agent/types.js";
+import {
+  createWorkspaceWatcher,
+  type WorkspaceWatcher,
+} from "../agent/workspace-watcher.js";
 import {
   getProxyConfig,
   isProxyMode,
@@ -58,6 +70,7 @@ import { renderMarkdown } from "../agent/session-export-markdown.js";
 import { renderHtml } from "../agent/session-export-html.js";
 import { readJsonFile, writeJsonAtomic } from "../agent/atomic-json.js";
 import {
+  clearMemories,
   deleteMemory,
   isValidMemoryName,
   listMemoryItems,
@@ -80,8 +93,10 @@ import { planFallbacks } from "../agent/provider-fallback.js";
 import {
   GitError,
   createGitService,
+  getDiff,
+  getStatus,
   type GitErrorCode,
-} from "./git.js";
+} from "../git/git.js";
 import {
   createSessionWorktree,
   pruneSessionWorktrees,
@@ -94,7 +109,6 @@ import {
   MAX_LIMIT,
   MAX_QUERY_CHARS,
   invalidateSearchIndex,
-  searchIndexPath,
   searchSessions,
 } from "../agent/session-search.js";
 import {
@@ -233,8 +247,9 @@ function readPluginsConfigFromEnv(): { disabled: string[] } {
  * 初始值。未设置视为开（服务端直跑/测试场景跟随默认）。运行中可经
  * PUT /config/memory-extraction 实时切换，settings.json 由桌面端另行落盘。
  */
-function readMemoryExtractionFromEnv(): boolean {
-  const raw = process.env.MEOWCODE_MEMORY_EXTRACTION;
+function readMemoryFromEnv(): boolean {
+  // 兼容旧的 MEOWCODE_MEMORY_EXTRACTION（语义是现在的一个子集：只关蒸馏）
+  const raw = process.env.MEOWCODE_MEMORY ?? process.env.MEOWCODE_MEMORY_EXTRACTION;
   if (raw === undefined || raw.trim() === "") return true;
   const normalized = raw.trim().toLowerCase();
   return normalized !== "0" && normalized !== "false";
@@ -469,12 +484,23 @@ export async function startServer(options: { port?: number; token?: string } = {
   // 密钥只留在内存：删掉环境变量后，模型通过 run_command 读 env 也拿不到。
   delete process.env.MEOWCODE_PROVIDERS;
   const sessionsDir = process.env.MEOWCODE_SESSIONS_DIR ?? DEFAULT_SESSIONS_DIR;
+  /** 诊断日志与 sessions 同级：<agent>/logs，随数据目录迁移一起搬走 */
+  const agentLogDir = process.env.MEOWCODE_LOG_DIR ?? path.join(path.dirname(sessionsDir), "logs");
+  const agentLogger = createAgentLogger({ dir: agentLogDir });
+  void pruneAgentLogs(agentLogDir).catch(() => undefined);
+  const traceSink = (span: TraceSpan): void => {
+    agentLogger.log({
+      level: span.status === "error" ? "error" : "info",
+      event: "span",
+      ...span,
+    });
+  };
   const worktreesDir =
     process.env.MEOWCODE_WORKTREES_DIR ?? path.join(path.dirname(sessionsDir), "worktrees");
   const providerId = process.env.MEOWCODE_PROVIDER_ID;
   const workspace = process.env.MEOWCODE_WORKSPACE;
   // 回合后记忆蒸馏：env 给初值，PUT /config/memory-extraction 运行中实时切换
-  let memoryExtractionEnabled = readMemoryExtractionFromEnv();
+  let memoryEnabled = readMemoryFromEnv();
   // 自我学习：env 给初值，PUT /config/learning 运行中实时切换
   let learningEnabled = readLearningFromEnv();
   // 网络代理：env 给初值，PUT /config/proxy 运行中实时切换。
@@ -597,17 +623,56 @@ export async function startServer(options: { port?: number; token?: string } = {
       ...(experimental ? { experimental } : {}),
       plugins: pluginSystem.registry,
       mcpReady: pluginSystem.mcpReady,
-      memoryExtraction: memoryExtractionEnabled,
+      memory: memoryEnabled,
       learning: learningEnabled,
       instructionSettings,
       speechStyle,
+      traceSink,
     });
-    instance.onEvent(broadcast);
+    instance.onEvent((event) => broadcast({ ...event, traceId: instance.getTraceId() }));
     return instance;
   };
   let runtime = createRuntime(workspace, providers, providerId);
   /** sessionId → 后台 runtime（只在有运行/排队/审批/错误时保留） */
   const backgroundRuntimes = new Map<string, AgentRuntime>();
+
+  /**
+   * 工作区监听：外部编辑器/终端改动 → workspace_changed；.git 变化额外发一次
+   * git_changed（2s 节流，避免 git 写操作风暴）。会话切换由 5s 守护重新绑定。
+   */
+  let workspaceWatcher: WorkspaceWatcher | null = null;
+  let lastGitBroadcast = 0;
+  const syncWorkspaceWatcher = (): void => {
+    const root = runtime.current?.cwd;
+    const resolved = root ? path.resolve(root) : "";
+    if (workspaceWatcher && workspaceWatcher.root === resolved) return;
+    workspaceWatcher?.close();
+    workspaceWatcher = null;
+    if (!resolved) return;
+    const sessionId = runtime.current?.id;
+    workspaceWatcher = createWorkspaceWatcher({
+      root: resolved,
+      onChange: (change) => {
+        broadcast({
+          type: "workspace_changed",
+          ...(sessionId ? { sessionId } : {}),
+          root: change.root,
+          paths: change.paths,
+          ...(change.degraded ? { degraded: true } : {}),
+        });
+        if (change.git) {
+          const now = Date.now();
+          if (now - lastGitBroadcast >= 2_000) {
+            lastGitBroadcast = now;
+            broadcast({ type: "git_changed" });
+          }
+        }
+      },
+    });
+  };
+  syncWorkspaceWatcher();
+  const workspaceWatcherGuard = setInterval(syncWorkspaceWatcher, 5_000);
+  workspaceWatcherGuard.unref?.();
 
   /**
    * 会话控制路由的目标 runtime：不带 sessionId 时就是前台会话。
@@ -830,12 +895,15 @@ export async function startServer(options: { port?: number; token?: string } = {
         browserHost,
         // 侧边聊天不参与子 Agent 体系：避免派生出不可见的子会话
         enableTaskTool: false,
-        memoryExtraction: memoryExtractionEnabled,
+        memory: memoryEnabled,
         learning: learningEnabled,
         instructionSettings,
         speechStyle,
+        traceSink,
       });
-      sideRuntime.onEvent((event) => broadcast({ ...event, side: true }));
+      sideRuntime.onEvent((event) =>
+        broadcast({ ...event, side: true, traceId: sideRuntime?.getTraceId() }),
+      );
     }
     return sideRuntime;
   };
@@ -1012,12 +1080,92 @@ export async function startServer(options: { port?: number; token?: string } = {
         return;
       }
 
+      // 诊断摘要：日志目录 + 当前链路 id + span 汇总；范围可选 sessionId
+      if (pathname === "/diagnostics/summary" && request.method === "GET") {
+        const target = resolveRuntime(url.searchParams.get("session") ?? undefined) ?? runtime;
+        sendJson(response, 200, {
+          logDir: agentLogDir,
+          logFile: agentLogger.filePath(),
+          traceId: target.getTraceId(),
+          summary: target.getTraceSummary(),
+          spans: target.getTraceSpans(50),
+        });
+        return;
+      }
+
+      if (pathname === "/diagnostics/traces" && request.method === "GET") {
+        const target = resolveRuntime(url.searchParams.get("session") ?? undefined) ?? runtime;
+        const raw = Number(url.searchParams.get("limit"));
+        const limit = Number.isFinite(raw) ? Math.min(500, Math.max(1, Math.floor(raw))) : 100;
+        sendJson(response, 200, {
+          traceId: target.getTraceId(),
+          spans: target.getTraceSpans(limit),
+        });
+        return;
+      }
+
+      // 一键审查：把未提交改动交给 reviewer 子 Agent，返回 findings 文本
+      if (pathname === "/review/start" && request.method === "POST") {
+        const body = await readJsonBody<{ sessionId?: string }>(request);
+        const target = resolveRuntime(body.sessionId) ?? runtime;
+        const session = target.current;
+        if (!session) {
+          sendError(response, 400, "no_session", "No active session.");
+          return;
+        }
+        const status = await getStatus(session.cwd);
+        if (!status.isRepo) {
+          sendError(response, 400, "not_a_repo", "The workspace is not a git repository.");
+          return;
+        }
+        if (!status.staged.length && !status.unstaged.length) {
+          sendError(response, 400, "no_changes", "There are no uncommitted changes to review.");
+          return;
+        }
+        const [stagedDiff, worktreeDiff] = await Promise.all([
+          getDiff(session.cwd, { scope: "index" }).catch(() => null),
+          getDiff(session.cwd, { scope: "worktree" }).catch(() => null),
+        ]);
+        const patch = [stagedDiff?.patch ?? "", worktreeDiff?.patch ?? ""]
+          .filter(Boolean)
+          .join("\n")
+          .slice(0, 60_000);
+        const files = [...status.staged, ...status.unstaged]
+          .slice(0, 40)
+          .map((entry) => `${entry.path} (${entry.index ?? entry.worktree ?? "?"})`)
+          .join("\n");
+        const prompt = [
+          "Review the uncommitted changes below. Read the affected files for context when needed.",
+          "Report findings grouped by file: severity (critical/major/minor), file:line, the problem, and a concrete fix.",
+          "Only report real defects (correctness, security, data loss, regressions). Do not restate the diff or praise the code.",
+          "If nothing is wrong, say \"No blocking issues found\" and list any minor notes.",
+          "",
+          "Changed files:",
+          files,
+          "",
+          "Diff:",
+          patch || "(binary or too large to inline; open the files)",
+        ].join("\n");
+        try {
+          const result = await target.reviewChanges(prompt);
+          sendJson(response, 200, result);
+        } catch (error) {
+          sendError(
+            response,
+            500,
+            "review_failed",
+            error instanceof Error ? error.message : String(error),
+          );
+        }
+        return;
+      }
+
       // 本会话 Agent 改过的文件（审阅面板数据源）：按文件聚合，最新在前
       if (pathname === "/session/changes" && request.method === "GET") {        const session = runtime.current;
         const summaryOnly = url.searchParams.get("summary") === "1";
         type ChangeSummary = {
           path: string;
-          operation: "write_file" | "edit_file";
+          operation: "write_file" | "edit_file" | "delete_file" | "move_file";
           changeCount: number;
           added: number;
           removed: number;
@@ -1897,6 +2045,7 @@ export async function startServer(options: { port?: number; token?: string } = {
             compaction: null,
             compactions: [],
             checkpoints: [],
+            turnChanges: [],
             compactionQuality: null,
           });
           return;
@@ -1906,6 +2055,8 @@ export async function startServer(options: { port?: number; token?: string } = {
           compaction: session.lastCompaction,
           compactions: session.compactionPoints,
           checkpoints: session.checkpoints,
+          // 按回合聚合的文件改动：历史回放时在每轮末尾重建「已编辑 N 个文件」卡片
+          turnChanges: session.turnFileChangeGroups,
           compactionQuality: session.lastCompactionQuality,
         });
         return;
@@ -2687,17 +2838,74 @@ export async function startServer(options: { port?: number; token?: string } = {
       }
 
       if (pathname === "/approval/response" && request.method === "POST") {
-        const body = await readJsonBody<{ callId: string; approved: boolean }>(request);
+        const body = await readJsonBody<{
+          callId: string;
+          approved: boolean;
+          feedback?: string;
+          remember?: string;
+        }>(request);
+        const remember =
+          body.remember === "tool" ||
+          body.remember === "path" ||
+          body.remember === "command-exact" ||
+          body.remember === "command-prefix"
+            ? body.remember
+            : undefined;
+        const decision: ApprovalDecision = {
+          approved: Boolean(body.approved),
+          ...(typeof body.feedback === "string" && body.feedback.trim()
+            ? { feedback: body.feedback }
+            : {}),
+          ...(remember ? { remember } : {}),
+        };
         // 审批可能属于后台会话，也可能属于某个子 Agent；按 callId 让各 runtime 级联查找。
         let handled = false;
         for (const instance of [runtime, ...backgroundRuntimes.values()]) {
-          if (instance.respondToApproval(body.callId, Boolean(body.approved))) {
+          if (instance.respondToApproval(body.callId, decision)) {
             handled = true;
             break;
           }
         }
         sendJson(response, 200, { success: true, handled });
         return;
+      }
+
+      // 项目级审批规则：只允许当前/后台会话已知的工作区，避免任意路径读写
+      if (pathname === "/approval-rules") {
+        const known = [...new Set(
+          [runtime, ...backgroundRuntimes.values()]
+            .map((instance) => instance.current?.cwd)
+            .filter((cwd): cwd is string => Boolean(cwd)),
+        )];
+        const requested = url.searchParams.get("workspace");
+        const workspace = requested && known.includes(requested) ? requested : known[0];
+        if (request.method === "GET") {
+          if (!workspace) {
+            sendJson(response, 200, { workspace: null, rules: [] });
+            return;
+          }
+          sendJson(response, 200, { workspace, rules: await readApprovalRules(workspace) });
+          return;
+        }
+        if (request.method === "DELETE") {
+          if (!workspace) {
+            sendError(response, 400, "no_workspace", "No workspace is open.");
+            return;
+          }
+          if (url.searchParams.get("all") === "1") {
+            const cleared = await clearApprovalRules(workspace);
+            sendJson(response, 200, { workspace, cleared });
+            return;
+          }
+          const id = url.searchParams.get("id");
+          if (!id) {
+            sendError(response, 400, "invalid_id", "Rule id is required.");
+            return;
+          }
+          const removed = await removeApprovalRule(workspace, id);
+          sendJson(response, 200, { workspace, removed });
+          return;
+        }
       }
 
       // 工具审批模式：read-only = 只读；ask = 每次询问；auto = 可写根内自动；full = 完全访问（自动放行）
@@ -3625,25 +3833,32 @@ export async function startServer(options: { port?: number; token?: string } = {
         return;
       }
 
-      // 回合后记忆蒸馏开关：GET 查询；PUT 实时切换（新会话 runtime + 存活的
+      // 记忆总开关：GET 查询；PUT 实时切换（新会话 runtime + 存活的
       // 前台/后台/侧边 runtime 全部生效）。settings.json 的落盘由桌面端负责。
-      if (pathname === "/config/memory-extraction" && request.method === "GET") {
-        sendJson(response, 200, { enabled: memoryExtractionEnabled });
+      // 旧路径 /config/memory-extraction 保留为别名（当时只关蒸馏，语义是现在的子集）。
+      if (
+        (pathname === "/config/memory" || pathname === "/config/memory-extraction") &&
+        request.method === "GET"
+      ) {
+        sendJson(response, 200, { enabled: memoryEnabled });
         return;
       }
-      if (pathname === "/config/memory-extraction" && request.method === "PUT") {
+      if (
+        (pathname === "/config/memory" || pathname === "/config/memory-extraction") &&
+        request.method === "PUT"
+      ) {
         const body = await readJsonBody<{ enabled?: unknown }>(request);
         if (typeof body.enabled !== "boolean") {
           sendError(response, 400, "invalid_request", "enabled must be a boolean");
           return;
         }
-        memoryExtractionEnabled = body.enabled;
-        runtime.memoryExtraction = body.enabled;
-        if (sideRuntime) sideRuntime.memoryExtraction = body.enabled;
+        memoryEnabled = body.enabled;
+        runtime.memoryEnabled = body.enabled;
+        if (sideRuntime) sideRuntime.memoryEnabled = body.enabled;
         for (const instance of backgroundRuntimes.values()) {
-          instance.memoryExtraction = body.enabled;
+          instance.memoryEnabled = body.enabled;
         }
-        sendJson(response, 200, { enabled: memoryExtractionEnabled });
+        sendJson(response, 200, { enabled: memoryEnabled });
         return;
       }
 
@@ -4227,6 +4442,19 @@ export async function startServer(options: { port?: number; token?: string } = {
         return;
       }
 
+      if (pathname === "/memory" && request.method === "DELETE") {
+        const query = new URL(request.url ?? "/", "http://localhost").searchParams;
+        const scope = parseMemoryScopeParam(query.get("scope"));
+        const cwd = query.get("cwd")?.trim() || pluginsWorkspace;
+        if (!scope) {
+          sendError(response, 400, "invalid_scope", 'scope must be "user" or "project".');
+          return;
+        }
+        const cleared = await clearMemories(memoryDirFor(scope, cwd, homeDir));
+        sendJson(response, 200, { scope, cleared });
+        return;
+      }
+
       if (pathname === "/memory/file" && request.method === "GET") {
         const query = new URL(request.url ?? "/", "http://localhost").searchParams;
         const scope = parseMemoryScopeParam(query.get("scope"));
@@ -4449,6 +4677,9 @@ export async function startServer(options: { port?: number; token?: string } = {
     await stateWriteChain.catch(() => undefined);
     await pluginSystem.dispose().catch(() => undefined);
     getLspManager().disposeAll();
+    clearInterval(workspaceWatcherGuard);
+    workspaceWatcher?.close();
+    await agentLogger.close().catch(() => undefined);
   };
 
   const onProcessMessage = (message: unknown): void => {

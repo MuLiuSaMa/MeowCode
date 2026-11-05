@@ -1,10 +1,12 @@
 /* 子 Agent 只读页签：头栏状态 + 复用主对话消息区（无 Composer） */
 
 .mc-subagent {
+  position: absolute;
+  inset: 0;
   display: flex;
   flex-direction: column;
-  height: 100%;
   min-height: 0;
+  overflow: hidden;
 }
 
 .mc-subagent__head {
@@ -54,27 +56,6 @@
 .mc-subagent__bg {
   border-color: transparent;
   background: var(--surface-hover);
-}
-
-.mc-subagent__stop {
-  display: inline-flex;
-  flex: none;
-  align-items: center;
-  justify-content: center;
-  width: 24px;
-  height: 24px;
-  margin-left: auto;
-  border: 0;
-  border-radius: var(--radius-sm);
-  background: transparent;
-  color: var(--fg-subtlest);
-  cursor: pointer;
-  transition: background-color var(--dur) var(--ease), color var(--dur) var(--ease);
-}
-
-.mc-subagent__stop:hover {
-  background: var(--danger-surface);
-  color: var(--danger);
 }
 
 .mc-subagent__status {
@@ -233,4 +214,9 @@
 .mc-subagent__send:disabled {
   opacity: 0.35;
   cursor: default;
+}
+
+.mc-subagent__send--stop:hover {
+  background: var(--danger-surface);
+  color: var(--danger);
 }

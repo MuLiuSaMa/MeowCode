@@ -71,6 +71,12 @@ export type MeowEvent = {
   status?: SubagentStatus;
   usage?: UsageSummary;
   error?: string;
+  /** turn_complete：本轮改过的文件（按路径聚合，含增删行数） */
+  files?: TurnFileChangeStat[];
+  /** turn_complete：本轮 id（同一回合重复投递时前端按它去重） */
+  turnId?: string;
+  /** turn_complete：该检查点是否带文件快照（false = 只能回滚对话，撤销按钮禁用） */
+  canRewind?: boolean;
   /** tool_call_progress：已生成的工具调用数量/名字/参数字符数 */
   count?: number;
   names?: string[];
@@ -138,11 +144,14 @@ export type MeowEvent = {
   by?: "user" | "hook" | "abort";
   /** file_changed 事件：Agent 改动的文件（工作区相对路径）与操作 */
   path?: string;
-  /** checkpoint_created 事件：回合开始打的可回滚点（流式用户气泡据此挂回退入口） */
+  /**
+   * checkpoint_created：回合开始打的可回滚点（流式用户气泡据此挂回退入口）；
+   * turn_complete：本轮起始检查点（编辑汇总卡片的「撤销」目标）。
+   */
   checkpointId?: string;
   /** checkpoint_created 事件：该点是否有文件快照 */
   hasSnapshot?: boolean;
-  operation?: "write_file" | "edit_file";
+  operation?: "write_file" | "edit_file" | "delete_file" | "move_file";
   /** provider_switched 事件：切换前后的服务商 id 与原因（timeout/rate_limit/server） */
   from?: string;
   to?: string;
@@ -257,6 +266,26 @@ export type CompactionQuality = {
   baselineCount: number;
   rereadPaths: string[];
   windowTurns: number;
+};
+
+/** 单个文件的回合级改动统计（路径已聚合） */
+export type TurnFileChangeStat = {
+  /** 工作区相对路径 */
+  path: string;
+  added: number;
+  removed: number;
+};
+
+/** GET /session/messages 的 turnChanges：历史回放按回合插回「已编辑 N 个文件」卡片 */
+export type TurnFileChangeGroup = {
+  turnId: string;
+  /** 该回合结束时的消息下标（与 checkpoints 同口径） */
+  messageIndex: number;
+  /** 回合起始检查点（撤销目标） */
+  checkpointId?: string;
+  /** 检查点是否带文件快照 */
+  canRewind: boolean;
+  files: TurnFileChangeStat[];
 };
 
 /** 会话检查点（GET /session/messages 的 checkpoints 与 GET /session/checkpoints 共用） */
@@ -472,7 +501,7 @@ export type SessionSummary = {
 /** 当前会话已修改文件（GET /session/changes?summary=1）：不含 diff，供输入框悬浮胶囊统计 */
 export type SessionChangeSummary = {
   path: string;
-  operation: "write_file" | "edit_file";
+  operation: "write_file" | "edit_file" | "delete_file" | "move_file";
   changeCount: number;
   added: number;
   removed: number;
@@ -1144,13 +1173,30 @@ export async function deleteMemoryFile(
   await api(`/memory/file?${params.toString()}`, { method: "DELETE" });
 }
 
-/** 回合后记忆蒸馏开关（运行中实时生效；落盘走 saveProviderPrefs） */
-export async function getMemoryExtraction(): Promise<{ enabled: boolean }> {
-  return api<{ enabled: boolean }>("/config/memory-extraction");
+/** 清空某一层记忆（user / project）；返回清掉的条目数。 */
+export async function clearAllMemories(
+  scope: MemoryScopeId,
+  workspace?: string,
+): Promise<number> {
+  const params = new URLSearchParams({ scope });
+  if (workspace) params.set("cwd", workspace);
+  const result = await api<{ cleared: number }>(`/memory?${params.toString()}`, {
+    method: "DELETE",
+  });
+  return result.cleared;
 }
 
-export async function setMemoryExtraction(enabled: boolean): Promise<{ enabled: boolean }> {
-  return api<{ enabled: boolean }>("/config/memory-extraction", {
+/**
+ * 记忆总开关（运行中实时生效；落盘走 saveProviderPrefs）。
+ * 关闭后：不自动蒸馏、不注入记忆索引、不下发 memory_* 工具；
+ * 记忆文件仍留在 ~/.meowcode/memory 与 .meowcode/memory，可用普通文件操作读取。
+ */
+export async function getMemoryEnabled(): Promise<{ enabled: boolean }> {
+  return api<{ enabled: boolean }>("/config/memory");
+}
+
+export async function setMemoryEnabled(enabled: boolean): Promise<{ enabled: boolean }> {
+  return api<{ enabled: boolean }>("/config/memory", {
     method: "PUT",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ enabled }),
@@ -1926,6 +1972,9 @@ type TimelineTool = {
   ok?: boolean;
   /** 历史回放重建的条目：没有实时的 ok/output，按已完成展示 */
   replayed?: true;
+  /** 本次写/改文件新增、删除行数（来自 file_changed 事件，回合内实时显示） */
+  added?: number;
+  removed?: number;
 };
 
 /** 报错条目：跟在消息流里展示（类似模型发出的报错），不再是顶部横幅 */
@@ -2010,13 +2059,27 @@ export type UndoableRewind = {
 
 export type RewindMode = "both" | "conversation" | "code";
 
+/**
+ * 回合结束的编辑汇总卡片：有文件改动才出现，列出本轮改过的文件与增删行数。
+ * 「撤销」= 回滚到本回合起始检查点（仅代码），「审阅」= 打开右侧审阅页签。
+ */
+type TimelineTurnChanges = {
+  kind: "turn-changes";
+  key: string;
+  turnId?: string;
+  checkpointId?: string;
+  canRewind?: boolean;
+  files: TurnFileChangeStat[];
+};
+
 type TimelineItem =
   | TimelineMessage
   | TimelineTool
   | TimelineError
   | TimelineNotice
   | TimelineCompaction
-  | TimelineCheckpoint;
+  | TimelineCheckpoint
+  | TimelineTurnChanges;
 
 /** 子 Agent 在渲染层累积的只读运行状态 */
 export type SubagentRun = SubagentSummary & {
@@ -2074,6 +2137,7 @@ export type {
   TimelineMessage,
   TimelineNotice,
   TimelineTool,
+  TimelineTurnChanges,
 };
 
 // ---- Git 管理 ----
@@ -2280,4 +2344,67 @@ export async function polishPrompt(
     "/prompt/polish",
     jsonPost({ text, ...(options.side ? { side: true } : {}) }),
   );
+}
+
+// ---- 诊断（设置 → 诊断）----
+
+export type DiagnosticsSpanKind = "turn" | "llm" | "tool" | "subagent" | "approval";
+export type DiagnosticsSpan = {
+  traceId: string;
+  spanId: string;
+  parentSpanId?: string;
+  kind: DiagnosticsSpanKind;
+  name: string;
+  startedAt: number;
+  endedAt: number;
+  durationMs: number;
+  status: "ok" | "error" | "aborted";
+  attributes?: Record<string, unknown>;
+  error?: string;
+};
+
+export type DiagnosticsSummary = {
+  logDir: string;
+  logFile: string;
+  traceId: string | null;
+  summary: {
+    total: number;
+    errors: number;
+    aborted: number;
+    averageMs: number;
+    maxMs: number;
+    byKind: Partial<Record<DiagnosticsSpanKind, number>>;
+  };
+  spans: DiagnosticsSpan[];
+};
+
+export async function getDiagnostics(sessionId?: string): Promise<DiagnosticsSummary> {
+  const query = sessionId ? `?session=${encodeURIComponent(sessionId)}` : "";
+  return api<DiagnosticsSummary>(`/diagnostics/summary${query}`);
+}
+
+// ---- 项目级审批规则（设置 → 审批规则）----
+
+export type ApprovalRuleKind = "tool" | "path" | "command-exact" | "command-prefix";
+
+export type ApprovalRule = {
+  id: string;
+  tool: string;
+  match: { kind: ApprovalRuleKind; value: string; fileSha?: string };
+  createdAt: string;
+};
+
+export async function getApprovalRules(): Promise<{
+  workspace: string | null;
+  rules: ApprovalRule[];
+}> {
+  return api<{ workspace: string | null; rules: ApprovalRule[] }>("/approval-rules");
+}
+
+export async function deleteApprovalRule(id: string): Promise<void> {
+  await api<unknown>(`/approval-rules?id=${encodeURIComponent(id)}`, { method: "DELETE" });
+}
+
+export async function clearApprovalRules(): Promise<{ cleared: number }> {
+  return api<{ cleared: number }>("/approval-rules?all=1", { method: "DELETE" });
 }

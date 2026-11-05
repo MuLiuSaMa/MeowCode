@@ -46,11 +46,46 @@
   cursor: default;
 }
 
+.mc-preview__viewtoggle {
+  display: inline-flex;
+  flex-shrink: 0;
+  padding: 2px;
+  gap: 2px;
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+.mc-preview__viewtoggle button {
+  height: 22px;
+  padding: 0 9px;
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--fg-subtle);
+  font-size: var(--fs-xs);
+  cursor: pointer;
+  transition: background-color var(--dur) var(--ease), color var(--dur) var(--ease);
+}
+.mc-preview__viewtoggle button:hover {
+  color: var(--fg);
+}
+.mc-preview__viewtoggle button[data-active="true"] {
+  background: var(--bg-elevated);
+  color: var(--fg);
+}
+
 .mc-preview__empty {
   padding: 20px 12px;
   text-align: center;
   font-size: var(--fs-sm);
   color: var(--fg-subtlest);
+}
+
+/* Markdown 预览 */
+.mc-preview__doc {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 18px 22px 40px;
 }
 
 /* 文本 */

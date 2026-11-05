@@ -1,27 +1,33 @@
 {
   "empty": {
     "setup": "모델 제공자를 설정하고 작업 공간을 선택하면 시작할 수 있습니다.",
-    "phrase": {
-      "createSomething": "뭔가 대단한 것을 만들어 봐요",
-      "fixBugs": "버그 수정을 도와드릴게요",
-      "dreams": "꿈을 실현하도록 도와드릴게요",
-      "ideas": "아이디어를 현실로",
-      "automate": "반복 작업을 자동화",
-      "hardProblems": "어려운 문제를 함께 해결",
-      "handyTool": "쓸모 있는 작은 도구 만들기",
-      "nextProject": "다음 프로젝트 시작하기",
-      "tidyCode": "어지러운 코드 정리",
-      "funProduct": "재미있는 작은 제품 만들기",
-      "clearLogic": "복잡한 로직 정리",
-      "saveTime": "시간을 조금 아껴 드릴게요",
-      "newDirection": "새로운 방향 탐색",
-      "inspiration": "영감을 코드로",
-      "annoyance": "그 짜증나는 문제 고치기",
-      "newFeature": "프로젝트에 새 기능 추가",
-      "elegantCode": "우아한 구현 작성",
-      "mergePr": "PR을 머지 가능한 상태로",
-      "together": "이 코드를 끝까지 함께",
-      "usable": "제품을 조금 더 쓰기 좋게"
+    "title": "함께 무언가 만들어 볼까요?",
+    "suggestions": {
+      "idea": "자전거를 타는 펠리컨 만들기",
+      "readme": "프로젝트 README 작성하기",
+      "bug": "이 오류를 찾아서 수정하기",
+      "tests": "기존 기능에 테스트 추가하기",
+      "api": "간결한 API 설계하기",
+      "refactor": "긴 함수를 작은 모듈로 나누기",
+      "script": "작은 자동화 스크립트 작성하기",
+      "dashboard": "데이터 시각화 패널 만들기",
+      "risk": "최근 변경 사항의 위험 확인하기",
+      "steps": "요구 사항을 실행 단계로 나누기",
+      "setting": "설정 페이지에 토글 추가하기",
+      "release": "릴리스 체크리스트 정리하기",
+      "label": "제안",
+      "ideaPrompt": "이 프로젝트에 가장 적합한 기술로 '자전거를 타는 펠리컨' 작품을 만들어 주세요. SVG, Canvas 애니메이션, 웹 페이지 모두 가능합니다. 먼저 출력 형식을 정하고 비율과 동작에 신경 써서 한눈에 펠리컨이 자전거를 탄 모습으로 보이게 구현한 뒤 미리보기 방법을 알려 주세요.",
+      "readmePrompt": "프로젝트 구조와 핵심 설정을 읽고 소개, 기술 스택, 설치/실행, 디렉터리 구조, 주요 스크립트, FAQ를 담은 명확한 README를 작성해 주세요. 존재하지 않는 명령은 만들지 마세요.",
+      "bugPrompt": "오류가 발생했어요. 먼저 재현하고 근본 원인을 증거와 함께 찾은 뒤 수정해 주세요. 표면적인 증상만 고치지 마세요. 변경점, 영향 범위, 검증 방법도 설명해 주세요.",
+      "testsPrompt": "기존 테스트 구성과 커버리지 부족을 확인하고 이 기능에 의미 있는 테스트를 추가해 주세요. 정상 경로와 핵심 실패 경로를 다루고, 실행해서 드러난 문제를 고쳐 주세요.",
+      "apiPrompt": "작고 안정적인 API를 설계해 주세요. 먼저 리소스, 요청/응답 필드, 오류 코드, 인증 방식을 제시하고 기존 스타일을 따르며 최소 구현이나 인터페이스 초안을 주세요.",
+      "refactorPrompt": "너무 길거나 책임이 섞인 함수를 하나 찾아 동작을 바꾸지 않고 작은 모듈로 나눠 주세요. 먼저 경계를 설명하고 변경한 뒤 관련 테스트를 실행해 주세요.",
+      "scriptPrompt": "반복 작업을 줄이는 작은 스크립트를 작성해 주세요. 자동화할 흐름을 먼저 물어보고 구현, 사용법 설명, 현재 환경에서 실제 실행 검증까지 해 주세요.",
+      "dashboardPrompt": "프로젝트의 기존 데이터 소스로 데이터 시각화 패널을 만들어 주세요. 지표와 정의를 먼저 확인하고 최소 의존성으로 구현하며 빈 데이터, 로딩, 오류 상태를 처리해 주세요.",
+      "riskPrompt": "커밋하지 않은 변경 사항을 검토해 주세요. 동작 회귀, 경계 조건, 보안, 성능 관점에서 위험 순으로 문제를 나열하고 파일/줄 번호와 수정안을 제시해 주세요. 스타일 지적만 하지 마세요.",
+      "stepsPrompt": "제 요구 사항을 실행 가능한 단계로 나눠 주세요. 각 단계의 목표, 수정 파일, 완료 기준, 의존 관계를 적고 먼저 계획을 보여 주세요. 제가 확인한 뒤 코드를 바꿔 주세요.",
+      "settingPrompt": "설정 페이지에 저장되는 토글을 추가해 주세요. 기존 설정 폼과 저장 경로를 재사용하고 대기/비활성/저장 실패 상태를 처리하며 재시작 후에도 유지되는지 확인해 주세요.",
+      "releasePrompt": "버전, 빌드, 테스트, 마이그레이션, 롤백, 릴리스 노트를 포함한 릴리스 체크리스트를 정리해 주세요. 일반적인 문구가 아니라 이 프로젝트의 실제 명령을 사용해 주세요."
     }
   },
   "waiting": {
@@ -100,6 +106,15 @@
       "title": "대화 삭제",
       "description": "‘{{name}}’ 및 모든 메시지가 디스크에서 삭제되며 되돌릴 수 없습니다."
     },
+    "multiSelect": "다중 선택",
+    "selectedCount": "{{count}}개 선택됨",
+    "selectAll": "모두 선택",
+    "selectNone": "선택 해제",
+    "exitSelection": "다중 선택 종료",
+    "deleteSelected": {
+      "title": "선택한 대화 삭제",
+      "description": "선택한 대화 {{count}}개와 모든 메시지가 디스크에서 삭제됩니다. 되돌릴 수 없습니다."
+    },
     "searchTitle": "대화 전문 검색",
     "searchPlaceholder": "모든 대화 검색…",
     "searchHitCount": "{{count}}개 일치",
@@ -152,6 +167,21 @@
     "cardDeleted": "삭제",
     "cardUnchanged": "변경 없음"
   },
+  "turnChanges": {
+    "title_one": "{{count}}개 파일 편집됨",
+    "title_other": "{{count}}개 파일 편집됨",
+    "title_few": "{{count}}개 파일 편집됨",
+    "title_many": "{{count}}개 파일 편집됨",
+    "undo": "실행 취소",
+    "undoHint": "이번 턴의 파일 변경을 되돌립니다(대화는 유지됩니다)",
+    "undoUnavailable": "이번 턴에는 파일 스냅샷이 없습니다",
+    "review": "검토",
+    "showMore_one": "{{count}}개 파일 더 보기",
+    "showMore_other": "{{count}}개 파일 더 보기",
+    "showMore_few": "{{count}}개 파일 더 보기",
+    "showMore_many": "{{count}}개 파일 더 보기",
+    "collapse": "접기"
+  },
   "tool": {
     "state": {
       "running": "실행 중",
@@ -185,12 +215,6 @@
     "stepCount_other": "{{count}}단계",
     "stepCount_few": "{{count}}단계",
     "stepCount_many": "{{count}}단계",
-    "section": {
-      "input": "입력",
-      "output": "출력",
-      "outputSpilled": "출력 · 디스크에 저장됨",
-      "outputTruncated": "출력 · 잘림"
-    },
     "emptyOutput": "(출력 없음)",
     "waitingOutput": "출력 대기 중…",
     "outputNotSaved": "기록에 출력이 저장되지 않았습니다",
@@ -225,7 +249,29 @@
     "computerClipboard": "클립보드",
     "computerWait": "대기",
     "computerAction": "PC 제어",
-    "toolSearch": "도구 검색"
+    "toolSearch": "도구 검색",
+    "webSearch": "웹 검색",
+    "webFetch": "웹 페이지 가져오기",
+    "deleteFile": "파일 삭제",
+    "moveFile": "파일 이동",
+    "applyPatch": "패치 적용",
+    "git": "Git",
+    "job": "백그라운드 작업",
+    "view": {
+      "open": "열기",
+      "unanswered": "(답변 없음)",
+      "waitingAnswer": "답변 대기 중…",
+      "params": "매개변수",
+      "noChanges": "(변경 없음)",
+      "replaceAll": "일치 항목 모두 바꾸기",
+      "truncated": "내용이 잘렸습니다",
+      "spilled": "전체 내용이 {{path}}에 저장되었습니다",
+      "moreLines": "{{count}}줄 더 있음",
+      "background": "백그라운드 실행",
+      "added": "추가됨",
+      "updated": "업데이트됨",
+      "deleted": "삭제됨"
+    }
   },
   "role": {
     "general": "일반",

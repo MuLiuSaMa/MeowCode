@@ -26,6 +26,19 @@ const KNOWN_TOOLS = new Set([
   "browser_screenshot",
   "browser_back",
   "browser_reload",
+  "web_search",
+  "web_fetch",
+  "git",
+  "job",
+  "delete_file",
+  "move_file",
+  "apply_patch",
+  "read_video",
+  "tool_search",
+  "memory_read",
+  "memory_write",
+  "memory_delete",
+  "admit",
 ]);
 
 describe("agent-definition 角色注册表", () => {

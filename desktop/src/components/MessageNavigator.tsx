@@ -109,7 +109,10 @@ export function MessageNavigator({
     (key: string) => {
       const el = scrollRef.current;
       const anchor = el?.querySelector<HTMLElement>(`[data-nl-key="${CSS.escape(key)}"]`);
-      anchor?.scrollIntoView({ behavior: "smooth", block: "start" });
+      if (!el || !anchor) return;
+      // 只滚消息流自己：scrollIntoView 会连带滚动 overflow:hidden 的祖先（聊天面板会被带偏）
+      const top = anchor.getBoundingClientRect().top - el.getBoundingClientRect().top + el.scrollTop;
+      el.scrollTo({ top, behavior: "smooth" });
     },
     [scrollRef],
   );

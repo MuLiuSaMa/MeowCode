@@ -699,7 +699,7 @@
   position: absolute;
   left: 0;
   bottom: calc(100% + 8px);
-  width: 264px;
+  width: 288px;
   padding: 4px;
   background: var(--bg-elevated);
   border: 1px solid var(--border);
@@ -751,6 +751,10 @@
 .mc-permmenu__desc {
   grid-row: 2;
   grid-column: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
   font-size: var(--fs-xs);
   line-height: var(--lh-normal);
   color: var(--fg-subtlest);

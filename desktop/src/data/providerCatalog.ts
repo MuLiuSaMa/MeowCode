@@ -353,7 +353,7 @@ const ZCODE_TEMPLATES: ProviderTemplate[] = [
     name: "火山方舟 API", // i18n-allow 服务商品牌名，按厂商官方叫法原样展示
     baseUrl: "https://ark.cn-beijing.volces.com/api/compatible",
     protocol: "anthropic-messages",
-    iconKey: "doubao",
+    iconKey: "volcengine",
     models: [
       "doubao-seed-evolving",
       "doubao-seed-2-1-pro-260915",
@@ -367,7 +367,7 @@ const ZCODE_TEMPLATES: ProviderTemplate[] = [
     name: "火山方舟 Coding Plan", // i18n-allow 服务商品牌名，按厂商官方叫法原样展示
     baseUrl: "https://ark.cn-beijing.volces.com/api/coding",
     protocol: "anthropic-messages",
-    iconKey: "doubao",
+    iconKey: "volcengine",
     models: ["doubao-seed-2.1-pro", "doubao-seed-2.1-lite"],
     source: "zcode",
   },
@@ -376,7 +376,7 @@ const ZCODE_TEMPLATES: ProviderTemplate[] = [
     name: "火山方舟 Agent Plan", // i18n-allow 服务商品牌名，按厂商官方叫法原样展示
     baseUrl: "https://ark.cn-beijing.volces.com/api/plan",
     protocol: "anthropic-messages",
-    iconKey: "doubao",
+    iconKey: "volcengine",
     models: ["doubao-seed-2.1-pro", "doubao-seed-2.1-lite"],
     source: "zcode",
   },

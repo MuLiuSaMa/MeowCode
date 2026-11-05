@@ -174,8 +174,27 @@ export function WorkspaceTab({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workspace]);
 
-  const toggleDir = (dirPath: string) => {
-    setExpanded((current) => {
+  // 外部编辑器/终端改动：把已展开的目录重新拉一遍（300ms 合并事件风暴）
+  useEffect(() => {
+    let timer: number | null = null;
+    const off = window.meow.onEvent((event) => {
+      if ((event as { type?: string }).type !== "workspace_changed") return;
+      if (timer) window.clearTimeout(timer);
+      timer = window.setTimeout(() => {
+        timer = null;
+        const dirs = Object.keys(childrenByDir);
+        for (const dir of dirs.length ? dirs : [""]) void loadDir(dir);
+        setAllFiles(null);
+      }, 300);
+    });
+    return () => {
+      off();
+      if (timer) window.clearTimeout(timer);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [childrenByDir, workspace]);
+
+  const toggleDir = (dirPath: string) => {    setExpanded((current) => {
       const next = new Set(current);
       if (next.has(dirPath)) {
         next.delete(dirPath);

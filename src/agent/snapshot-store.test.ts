@@ -192,7 +192,6 @@ describe("SnapshotStore checkpoints", () => {
 describe("SnapshotStore gc", () => {
   it("keeps the newest N indexes, drops expired journals, and reclaims unreferenced blobs", async () => {
     const { root, file } = await makeWorkspaceFile("a.ts", "v0");
-    const store = makeStore(root, { maxBlobBytes: DEFAULT_MAX_BLOB_BYTES });
     const keep = 3;
     const dir = path.join(root, "snapshots", "gc-owner");
     const gcStore = new SnapshotStore({ dir, cwd: root, gcInterval: 0, keepCheckpoints: keep });

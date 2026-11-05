@@ -39,7 +39,8 @@
     "worktree": "Worktrees",
     "learning": "Aprendizaje autónomo",
     "rewind": "Reversión de sesión",
-    "sandbox": "Sandbox"
+    "sandbox": "Sandbox",
+    "approvals": "Reglas de aprobación"
   },
   "close": {
     "section": "Cierre de la ventana",
@@ -96,10 +97,6 @@
     }
   },
   "memory": {
-    "extractionTitle": "Destilación automática de memoria",
-    "extractionDesc": "Tras cada turno, una petición ligera en segundo plano repasa la conversación nueva y guarda en la memoria lo que merece recordarse a largo plazo (preferencias, correcciones, decisiones del proyecto). Al desactivarla, solo quedan las entradas manuales y lo que la propia IA escriba con sus herramientas de memoria.",
-    "extractionField": "Destilar memoria al terminar cada turno",
-    "extractionFailed": "No se pudo guardar el interruptor",
     "scope": {
       "user": "Memoria personal",
       "project": "Memoria del proyecto"
@@ -129,7 +126,15 @@
     "loadFailed": "No se pudo cargar la memoria",
     "readFailed": "No se pudo leer la memoria",
     "saveFailed": "No se pudo guardar la memoria",
-    "deleteFailed": "No se pudo eliminar la memoria"
+    "deleteFailed": "No se pudo eliminar la memoria",
+    "toggleTitle": "Destilación automática de memoria",
+    "toggleDesc": "Tras cada turno, una petición ligera en segundo plano repasa la conversación nueva y guarda en la memoria lo que merece recordarse a largo plazo (preferencias, correcciones, decisiones del proyecto). Al desactivarla, solo quedan las entradas manuales y lo que la propia IA escriba con sus herramientas de memoria.",
+    "toggleField": "Destilar memoria al terminar cada turno",
+    "toggleFailed": "No se pudo guardar el interruptor",
+    "clearAction": "Eliminar todo",
+    "clearConfirm": "¿Eliminar todo?",
+    "clearDone": "Se eliminaron todos los recuerdos",
+    "clearFailed": "No se pudieron borrar los recuerdos"
   },
   "archive": {
     "section": "Archivo",
@@ -152,7 +157,6 @@
     "website": "Sitio web",
     "repo": "Repositorio",
     "openInBrowser": "Abrir en el navegador",
-    "credits": "Créditos",
     "sponsor": "Colaborar",
     "sponsorHint": "Si MeowCode te resulta útil, puedes apoyar al autor escaneando un código QR.",
     "qrAlt": "Código QR de pago de {{name}}",
@@ -161,7 +165,8 @@
       "alipay": "Alipay"
     },
     "upToDate": "Ya tienes la última versión",
-    "checkFailed": "Error al comprobar la versión: {{error}}"
+    "checkFailed": "Error al comprobar la versión: {{error}}",
+    "sponsorList": "Patrocinadores (MeowCode, NexBox, OpenMD, LingTab)"
   },
   "actions": {
     "add": "Añadir",
@@ -580,5 +585,40 @@
     "enabled": "Cambiado a escritura en el espacio de trabajo (primera autorización {{ms}} ms)",
     "saveFailed": "No se pudo guardar la configuración de la sandbox",
     "loadFailed": "No se pudo cargar la configuración de la sandbox"
+  },
+  "dataLocation": {
+    "section": "Datos locales",
+    "desc": "Ubicación de los ajustes, las conversaciones y las fuentes locales.",
+    "field": "Ubicación de los datos",
+    "open": "Abrir carpeta",
+    "change": "Cambiar ubicación...",
+    "loading": "Cargando…",
+    "confirmTitle": "¿Cambiar la ubicación de los datos?",
+    "confirmDesc": "Los datos actuales se copiarán a la nueva ubicación y la aplicación se reiniciará. Los datos originales se conservarán.",
+    "move": "Mover y reiniciar",
+    "moving": "Moviendo…",
+    "restarting": "Datos movidos: reiniciando la aplicación…",
+    "errors": {
+      "same_path": "La nueva ubicación es la misma que la actual.",
+      "not_empty": "La carpeta de destino no está vacía. Elige una carpeta vacía.",
+      "failed": "No se pudo cambiar la ubicación de los datos."
+    }
+  },
+  "approvals": {
+    "section": "Reglas de aprobación",
+    "desc": "Acciones aprobadas con «No volver a preguntar» en este proyecto. Al revocar una regla, la próxima vez se preguntará; las reglas de archivo caducan al cambiar el archivo.",
+    "empty": "Aún no hay reglas de aprobación",
+    "clearAll": "Borrar todo",
+    "remove": "Eliminar regla",
+    "cleared": "Se borraron todas las reglas de aprobación del proyecto",
+    "clearConfirmTitle": "¿Borrar todas las reglas de aprobación?",
+    "clearConfirmDesc": "Estas acciones volverán a pedir aprobación. Las reglas de archivo ya caducan automáticamente al cambiar el archivo.",
+    "kind": {
+      "tool": "Herramienta",
+      "path": "Archivo",
+      "command-exact": "Comando exacto",
+      "command-prefix": "Prefijo de comando"
+    },
+    "loading": "Cargando…"
   }
 }

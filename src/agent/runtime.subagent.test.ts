@@ -190,7 +190,8 @@ describe("AgentRuntime subagents", () => {
       .map((call) => call[0] as { messages: ChatMessage[]; tools: Array<{ function: { name: string } }> })
       .find((request) => isChildRequest(request.messages));
     expect(childRequest).toBeTruthy();
-    expect(childRequest!.tools.map((tool) => tool.function.name)).not.toContain("task");
+    // 标准档允许再嵌套一层（depth 1 < max 2）；深度用尽由执行器拒绝，见 runtime.subagent-modes
+    expect(childRequest!.tools.map((tool) => tool.function.name)).toContain("task");
 
     const parentRequest = streamMock.mock.calls[0][0] as {
       tools: Array<{ function: { name: string } }>;
@@ -505,12 +506,14 @@ describe("AgentRuntime subagents", () => {
     expect(childTools).toEqual([
       "context_status",
       "diagnostics",
+      "git",
       "glob",
       "grep",
       "list_dir",
       "read_file",
       "read_many",
       "run_code",
+      "web_fetch",
     ]);
     expect(childSystem).not.toContain("SECRET PROJECT RULE");
     const started = events.find(
@@ -905,17 +908,28 @@ describe("AgentRuntime subagents", () => {
     const readOnlyTools = [
       "context_status",
       "diagnostics",
+      "git",
       "glob",
       "grep",
       "list_dir",
       "read_file",
       "read_many",
       "run_code",
+      "web_fetch",
     ];
     const implementer = captures.find((item) => item.type === "implementer")!;
     expect(implementer.system).toContain("Implementer subagent");
     expect(implementer.tools).toEqual(
-      [...readOnlyTools, "edit_file", "multi_edit", "run_command", "write_file"].sort(),
+      [
+        ...readOnlyTools,
+        "apply_patch",
+        "delete_file",
+        "edit_file",
+        "move_file",
+        "multi_edit",
+        "run_command",
+        "write_file",
+      ].sort(),
     );
     expect(implementer.tools).not.toContain("task");
 

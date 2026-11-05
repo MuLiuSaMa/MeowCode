@@ -48,6 +48,7 @@ import sensenova from "../assets/provider-icons/model-provider-sensenova.png";
 import siliconcloud from "../assets/provider-icons/model-provider-siliconcloud.png";
 import spark from "../assets/provider-icons/model-provider-spark.png";
 import stepfun from "../assets/provider-icons/model-provider-stepfun.png";
+import volcengine from "../assets/provider-icons/model-provider-volcengine.webp";
 import wenxin from "../assets/provider-icons/model-provider-wenxin.png";
 import appIcon from "../assets/icon.png";
 // OpenCode 的服务商品牌 SVG（单色黑标，深色主题反色）
@@ -94,6 +95,7 @@ const ICONS: Record<string, IconSpec> = {
   // lobehub 彩色标（@lobehub/icons-static-png）
   siliconcloud: { kind: "single", src: siliconcloud },
   doubao: { kind: "single", src: doubao },
+  volcengine: { kind: "single", src: volcengine },
   hunyuan: { kind: "single", src: hunyuan },
   spark: { kind: "single", src: spark },
   baichuan: { kind: "single", src: baichuan },

@@ -1,0 +1,2 @@
+# 第三方技能包（含 Excalidraw 单文件编辑器等编译产物），不计入 GitHub 语言统计
+resources/marketplace/** linguist-vendored

@@ -20,16 +20,20 @@ describe("prompt budget", () => {
     expect(tokens).toBeLessThan(420);
   });
 
-  it("tool schemas stay under 3400 tokens", () => {
+  it("tool schemas stay under 5200 tokens", () => {
     // 2200 → 2350：新增 run_code（PTC code mode）的定义。它每次使用省掉的是
     // 整轮多工具往返的全上下文重发，每请求 ~150 token 的固定成本明确划算。
     // 2350 → 2700：read_file 增加 PDF 页范围、新增 read_video（9 帧拼图 ~1.5k
     // token/次，替掉"整段视频进上下文"的不可行方案），两者合计 ~220 token。
     // 2700 → 3400：新增 memory_read/write/delete 三件（跨会话记忆）。索引注入
     // + 按需读取替代"每会话全量回放"，~500 token 固定成本换长期记忆能力。
-    // 上限仍兜住"描述悄悄膨胀"的回归。
+    // 3400 → 3700：新增 web_search/web_fetch（服务商原生联网搜索 + 页面抓取），
+    // 两者合计 ~210 token；省掉的是"不知道就说不知道"或整页 HTML 的往返。
+    // 3700 → 5200：新增 job（后台任务）、git（结构化 git）、delete_file、
+    // move_file、apply_patch，task 同时扩了 resume/fork；实测 4781 token。
+    // 再往上应优先走 tool_search 延迟加载，而不是继续堆常驻 schema。
     const tokens = estimateTokens(JSON.stringify(toolDefinitions));
-    expect(tokens).toBeLessThan(3_400);
+    expect(tokens).toBeLessThan(5_200);
   });
 
   it("compaction prompts stay under 2500 chars", () => {

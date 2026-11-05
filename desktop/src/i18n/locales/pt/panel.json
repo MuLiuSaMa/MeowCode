@@ -119,7 +119,16 @@
   },
   "filePreview": {
     "copyPath": "Copiar caminho",
-    "openInEditor": "Abrir no editor",
+    "preview": "Prévia",
+    "source": "Código-fonte",
+    "openInEditor": "Abrir com o aplicativo do sistema",
+    "openWith": "Abrir com",
+    "systemDefault": "Aplicativo padrão",
+    "chooseApp": "Escolher outro aplicativo…",
+    "showInFolder": "Mostrar na pasta",
+    "openWithApp": "Abrir com {{name}}",
+    "explorerShort": "Explorador",
+    "detectingApps": "Detectando aplicativos…",
     "loading": "Carregando…",
     "truncated": "Mostrando as primeiras {{shown}} de {{total}} linhas"
   },
@@ -158,7 +167,11 @@
     "changeCount_other": "Alterado {{count}} vezes",
     "changeCount_few": "Alterado {{count}} vezes",
     "changeCount_many": "Alterado {{count}} vezes",
-    "diffAria": "Alterações em {{path}}"
+    "diffAria": "Alterações em {{path}}",
+    "review": "Revisar alterações",
+    "reviewing": "Revisando…",
+    "resultTitle": "Revisão da IA",
+    "close": "Fechar"
   },
   "workspace": {
     "loading": "Carregando…",
@@ -171,6 +184,7 @@
     "noMatch": "Nenhum arquivo correspondente"
   },
   "terminal": {
-    "exited": "[Processo encerrado]"
+    "exited": "[Processo encerrado]",
+    "ended": "A tarefa terminou ou este terminal não está mais disponível"
   }
 }

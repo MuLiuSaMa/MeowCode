@@ -6,6 +6,7 @@ import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js"
 import { McpOAuthProvider } from "./mcp-oauth.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { hasDynamicTool, registerDynamicTool, unregisterDynamicTool } from "../agent/tools.js";
+import type { ToolContract } from "../agent/tool-contract.js";
 import type { ToolDefinition, ToolImage, ToolResult } from "../agent/types.js";
 
 // ---------------------------------------------------------------------------
@@ -114,6 +115,8 @@ type McpToolInfo = {
   name: string;
   description?: string;
   inputSchema?: { type?: string; properties?: Record<string, unknown>; required?: unknown };
+  /** MCP 规范的行为提示；只有 readOnlyHint === true 才允许并发 */
+  annotations?: { readOnlyHint?: boolean };
 };
 
 type McpContentBlock = {
@@ -569,9 +572,19 @@ export class McpManager {
           tool.description ?? `(MCP tool ${name}/${tool.name})`,
           tool.inputSchema,
         );
+        // annotations 是服务端自述，不可全信：只有 readOnlyHint 明确为 true 才并发；
+        // 未声明时按「有副作用、串行」处理。超时用 server 配置（默认 60s）。
+        const readOnly = tool.annotations?.readOnlyHint === true;
+        const contract: ToolContract = {
+          readOnly,
+          parallelSafe: readOnly,
+          sideEffects: readOnly ? "network" : "system",
+          timeoutMs: entry.config.timeoutMs ?? CALL_TOOL_DEFAULT_TIMEOUT_MS,
+        };
         registerDynamicTool(dynamicName, {
           definition,
           requiresApproval: entry.config.trust === false,
+          contract,
           execute: async (input, _workspace, options) =>
             this.callTool(name, tool.name, (input ?? {}) as Record<string, unknown>, options.signal),
         });

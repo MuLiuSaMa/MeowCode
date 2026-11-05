@@ -119,7 +119,16 @@
   },
   "filePreview": {
     "copyPath": "Pfad kopieren",
-    "openInEditor": "Im Editor öffnen",
+    "preview": "Vorschau",
+    "source": "Quelltext",
+    "openInEditor": "Mit System-App öffnen",
+    "openWith": "Öffnen mit",
+    "systemDefault": "Systemstandard",
+    "chooseApp": "Andere App auswählen…",
+    "showInFolder": "Im Ordner anzeigen",
+    "openWithApp": "Mit {{name}} öffnen",
+    "explorerShort": "Explorer",
+    "detectingApps": "Apps werden erkannt…",
     "loading": "Wird geladen…",
     "truncated": "Nur die ersten {{shown}} von {{total}} Zeilen"
   },
@@ -158,7 +167,11 @@
     "changeCount_other": "{{count}} Mal geändert",
     "changeCount_few": "{{count}} Mal geändert",
     "changeCount_many": "{{count}} Mal geändert",
-    "diffAria": "Änderungen in {{path}}"
+    "diffAria": "Änderungen in {{path}}",
+    "review": "Änderungen prüfen",
+    "reviewing": "Prüfung läuft…",
+    "resultTitle": "KI-Prüfergebnis",
+    "close": "Schließen"
   },
   "workspace": {
     "loading": "Wird geladen…",
@@ -171,6 +184,7 @@
     "noMatch": "Keine passenden Dateien"
   },
   "terminal": {
-    "exited": "[Prozess beendet]"
+    "exited": "[Prozess beendet]",
+    "ended": "Der Auftrag ist beendet oder dieses Terminal wurde bereits freigegeben"
   }
 }

@@ -119,7 +119,16 @@
   },
   "filePreview": {
     "copyPath": "पाथ कॉपी करें",
-    "openInEditor": "एडिटर में खोलें",
+    "preview": "पूर्वावलोकन",
+    "source": "स्रोत",
+    "openInEditor": "सिस्टम ऐप से खोलें",
+    "openWith": "इसके साथ खोलें",
+    "systemDefault": "सिस्टम डिफ़ॉल्ट ऐप",
+    "chooseApp": "दूसरा ऐप चुनें…",
+    "showInFolder": "फ़ोल्डर में दिखाएँ",
+    "openWithApp": "{{name}} से खोलें",
+    "explorerShort": "एक्सप्लोरर",
+    "detectingApps": "ऐप्स का पता लगाया जा रहा है…",
     "loading": "लोड हो रहा है…",
     "truncated": "केवल पहली {{shown}} पंक्तियाँ दिखाई जा रही हैं (कुल {{total}})"
   },
@@ -158,7 +167,11 @@
     "changeCount_other": "{{count}} बार बदला",
     "changeCount_few": "{{count}} बार बदला",
     "changeCount_many": "{{count}} बार बदला",
-    "diffAria": "{{path}} में बदलाव"
+    "diffAria": "{{path}} में बदलाव",
+    "review": "बदलाव की समीक्षा",
+    "reviewing": "समीक्षा हो रही है…",
+    "resultTitle": "AI समीक्षा परिणाम",
+    "close": "बंद करें"
   },
   "workspace": {
     "loading": "लोड हो रहा है…",
@@ -171,6 +184,7 @@
     "noMatch": "कोई मिलती फ़ाइल नहीं"
   },
   "terminal": {
-    "exited": "[प्रक्रिया समाप्त हुई]"
+    "exited": "[प्रक्रिया समाप्त हुई]",
+    "ended": "कार्य समाप्त हो गया या यह टर्मिनल अब उपलब्ध नहीं है"
   }
 }

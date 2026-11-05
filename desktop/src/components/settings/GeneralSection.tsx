@@ -6,6 +6,7 @@ import { SegmentedControl } from "../ui/SegmentedControl";
 import { Toggle } from "../ui/Toggle";
 import type { CloseAction, LanguagePreference, SpeechStyle } from "../../api";
 import { UI_LANGUAGES } from "../../i18n/languages";
+import { DataLocationSection } from "./DataLocationSection";
 import { ProxyRows } from "./ProxyRows";
 
 /** 表里只存 key 与值：标签在组件里查表，切语言才会跟着刷新。 */
@@ -104,6 +105,8 @@ export function GeneralSection({
         </FieldRow>
         <ProxyRows onToast={onToast} />
       </Section>
+
+      <DataLocationSection onToast={onToast} />
     </div>
   );
 }

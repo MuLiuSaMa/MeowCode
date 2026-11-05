@@ -125,17 +125,6 @@ export function SubagentTab({
           </span>
           {run?.background ? <span className="mc-subagent__bg">{t("subagent.background")}</span> : null}
         </span>
-        {status === "running" && onStop ? (
-          <button
-            type="button"
-            className="mc-subagent__stop"
-            title={t("subagent.stop")}
-            aria-label={t("subagent.stop")}
-            onClick={() => onStop(agentId)}
-          >
-            <LuSquare size={12} />
-          </button>
-        ) : null}
         <span className="mc-subagent__status" data-status={status}>
           {t(STATUS_KEYS[status])}
         </span>
@@ -229,15 +218,27 @@ export function SubagentTab({
             }}
             disabled={sending}
           />
-          <button
-            type="submit"
-            className="mc-subagent__send"
-            aria-label={t("subagent.steer")}
-            title={t("subagent.steerTitle")}
-            disabled={!input.trim() || sending}
-          >
-            <LuArrowUp size={14} />
-          </button>
+          {onStop ? (
+            <button
+              type="button"
+              className="mc-subagent__send mc-subagent__send--stop"
+              aria-label={t("subagent.stop")}
+              title={t("subagent.stop")}
+              onClick={() => onStop(agentId)}
+            >
+              <LuSquare size={12} />
+            </button>
+          ) : (
+            <button
+              type="submit"
+              className="mc-subagent__send"
+              aria-label={t("subagent.steer")}
+              title={t("subagent.steerTitle")}
+              disabled={!input.trim() || sending}
+            >
+              <LuArrowUp size={14} />
+            </button>
+          )}
         </form>
       ) : onContinue ? (
         status === "running" ? (

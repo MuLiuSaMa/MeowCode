@@ -77,6 +77,12 @@ contextBridge.exposeInMainWorld("meow", {
   getUiState: () => ipcRenderer.invoke("meow:get-ui-state"),
   saveUiState: (patch) => ipcRenderer.invoke("meow:save-ui-state", patch),
   pickWorkspace: () => ipcRenderer.invoke("meow:pick-workspace"),
+  /** 应用数据目录；改过位置时返回当前生效的自定义目录 */
+  getDataLocation: () => ipcRenderer.invoke("meow:get-data-location"),
+  /** 选择新的数据目录（原生文件夹选择框）；取消返回 null */
+  pickDataDirectory: () => ipcRenderer.invoke("meow:pick-data-directory"),
+  /** 复制必要数据并重启应用；失败返回错误码 */
+  changeDataLocation: (target) => ipcRenderer.invoke("meow:change-data-location", target),
   /** 工作区目录是否仍然存在（被删除时输入框上方回退成「选择工作区」） */
   workspaceExists: (target) => ipcRenderer.invoke("meow:workspace-exists", target),
   /** 只写 provider 偏好（思考强度），不重启 agent server */
@@ -124,8 +130,6 @@ contextBridge.exposeInMainWorld("meow", {
     ipcRenderer.on("meow:island-cursor", wrapped);
     return () => ipcRenderer.removeListener("meow:island-cursor", wrapped);
   },
-  /** 点击胶囊 → 显示/聚焦主窗口 */
-  openMainFromIsland: () => ipcRenderer.invoke("meow:island-open-main"),
   /** 岛内发出的 prompt 回报主进程广播（主窗口当前会话命中时补用户气泡） */
   notifyIslandPrompt: (payload) => ipcRenderer.invoke("meow:island-notify-prompt", payload),
   /** 悬浮岛发出 prompt 的广播（仅主窗口消费） */
@@ -200,6 +204,11 @@ contextBridge.exposeInMainWorld("meow", {
 
   /** 在资源管理器中打开目录（项目行菜单），返回错误信息或 null */
   openPath: (target) => ipcRenderer.invoke("meow:open-path", target),
+  openWith: (target) => ipcRenderer.invoke("meow:open-with", target),
+  detectOpenWith: (target) => ipcRenderer.invoke("meow:detect-open-with", target),
+  openWithIcons: (exes) => ipcRenderer.invoke("meow:open-with-icons", exes),
+  openWithApp: (exe, target) => ipcRenderer.invoke("meow:open-with-app", exe, target),
+  showInFolder: (target) => ipcRenderer.invoke("meow:show-in-folder", target),
 
   /** 用系统默认浏览器打开 http/https 链接，返回错误信息或 null */
   openExternal: (url) => ipcRenderer.invoke("meow:open-external", url),
@@ -225,6 +234,13 @@ contextBridge.exposeInMainWorld("meow", {
   termWrite: (id, data) => ipcRenderer.invoke("meow:term-write", id, data),
   termResize: (id, cols, rows) => ipcRenderer.invoke("meow:term-resize", id, cols, rows),
   termKill: (id) => ipcRenderer.invoke("meow:term-kill", id),
+  termAttach: (id) => ipcRenderer.invoke("meow:term-attach", id),
+  termRead: (id, offset) => ipcRenderer.invoke("meow:term-read", id, offset),
+  onEnsureJobTab: (listener) => {
+    const wrapped = (_event, payload) => listener(payload);
+    ipcRenderer.on("meow:job-ensure-tab", wrapped);
+    return () => ipcRenderer.removeListener("meow:job-ensure-tab", wrapped);
+  },
   onTermData: (listener) => {
     const wrapped = (_event, payload) => listener(payload);
     ipcRenderer.on("meow:term-data", wrapped);

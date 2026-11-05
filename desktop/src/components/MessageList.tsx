@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { LuCircleAlert, LuInfo } from "react-icons/lu";
 import type { SubagentRun, TimelineItem, TimelineMessage } from "../api";
@@ -8,36 +8,12 @@ import { AssistantStatusLine, type AssistantStatus } from "./AssistantStatusLine
 import { CheckpointMarker } from "./CheckpointMarker";
 import { CompactionBanner } from "./CompactionBanner";
 import { MessageNavigator } from "./MessageNavigator";
+import { Spinner } from "./ui/Spinner";
 import { TaskToolRow } from "./TaskToolRow";
 import { ToolRow } from "./ToolRow";
+import { TurnChangesCard } from "./TurnChangesCard";
 import { UserBubble } from "./UserBubble";
 import "./MessageList.css";
-
-/** 表里只存 key：译文在组件里查，切语言才会跟着刷新。 */
-const EMPTY_PHRASE_KEYS = [
-  "empty.phrase.createSomething",
-  "empty.phrase.fixBugs",
-  "empty.phrase.dreams",
-  "empty.phrase.ideas",
-  "empty.phrase.automate",
-  "empty.phrase.hardProblems",
-  "empty.phrase.handyTool",
-  "empty.phrase.nextProject",
-  "empty.phrase.tidyCode",
-  "empty.phrase.funProduct",
-  "empty.phrase.clearLogic",
-  "empty.phrase.saveTime",
-  "empty.phrase.newDirection",
-  "empty.phrase.inspiration",
-  "empty.phrase.annoyance",
-  "empty.phrase.newFeature",
-  "empty.phrase.elegantCode",
-  "empty.phrase.mergePr",
-  "empty.phrase.together",
-  "empty.phrase.usable",
-] as const;
-
-const EMPTY_EFFECTS = ["wipe", "glow", "slide"] as const;
 
 /** 状态行锚点：跳过 notice / checkpoint / error，取最后一条对话项。 */
 function lastStatusAnchor(items: TimelineItem[]): TimelineItem | undefined {
@@ -52,46 +28,12 @@ function lastStatusAnchor(items: TimelineItem[]): TimelineItem | undefined {
 
 function EmptyState({ canUse }: { canUse: boolean }) {
   const { t } = useTranslation("chat");
-  const phrases = useMemo(() => EMPTY_PHRASE_KEYS.map((key) => t(key)), [t]);
-  const [phraseIndex, setPhraseIndex] = useState(() =>
-    Math.floor(Math.random() * EMPTY_PHRASE_KEYS.length),
-  );
-
-  useEffect(() => {
-    const timer = window.setInterval(() => {
-      setPhraseIndex((index) => {
-        const next = Math.floor(Math.random() * (EMPTY_PHRASE_KEYS.length - 1));
-        return next >= index ? next + 1 : next;
-      });
-    }, 5_000);
-    return () => window.clearInterval(timer);
-  }, []);
+  const text = canUse ? t("empty.title") : t("empty.setup");
 
   return (
-    <div className="mc-empty" aria-label={phrases[phraseIndex]}>
+    <div className="mc-empty" aria-label={text}>
       <img src={logo} alt="" className="mc-empty__logo" />
-      {canUse ? (
-        <p className="mc-empty__text">
-          <span className="mc-empty__words">
-            {phrases.map((phrase, index) => {
-              const active = index === phraseIndex;
-              return (
-                <span
-                  key={phrase}
-                  className="mc-empty__word"
-                  data-effect={EMPTY_EFFECTS[index % EMPTY_EFFECTS.length]}
-                  data-active={active}
-                  aria-hidden={!active}
-                >
-                  {phrase}
-                </span>
-              );
-            })}
-          </span>
-        </p>
-      ) : (
-        <p className="mc-empty__text">{t("empty.setup")}</p>
-      )}
+      <p className="mc-empty__text">{text}</p>
     </div>
   );
 }
@@ -108,6 +50,7 @@ export function MessageList({
   onOpenFile,
   onRestoreCheckpoint,
   onRewindCheckpoint,
+  onOpenReview,
   focus,
 }: {
   items: TimelineItem[];
@@ -118,7 +61,7 @@ export function MessageList({
   preparing?: string | null;
   /** 正在生成写/改文件的参数：先渲染一条「写入中 / 修改中」的工具行占位 */
   preparingTool?: {
-    tool: "write_file" | "edit_file";
+    tool: "write_file" | "edit_file" | "delete_file" | "move_file";
     path?: string;
     /** 参数里还没读到 path 时的兜底文件名（计划模式下的计划文档） */
     fallbackPath?: string | null;
@@ -134,6 +77,8 @@ export function MessageList({
   onRestoreCheckpoint?: (checkpointId: string) => void;
   /** 预览式回滚（对话与代码 / 仅代码）：先出预览对话框再执行 */
   onRewindCheckpoint?: (checkpointId: string, mode: "both" | "code") => void;
+  /** 编辑汇总卡片的「审阅」：打开右侧审阅页签 */
+  onOpenReview?: () => void;
   /** 会话全文检索跳转意图：滚动到指定消息并短暂高亮（token 变化触发重播） */
   focus?: { messageIndex: number; token: number } | null;
 }) {
@@ -203,7 +148,9 @@ export function MessageList({
         if (allowRetry) raf = requestAnimationFrame(() => locate(false));
         return;
       }
-      anchor.scrollIntoView({ block: "center" });
+      // 只滚消息流自己（scrollIntoView 会连带滚动 overflow:hidden 的祖先）
+      const top = anchor.getBoundingClientRect().top - el.getBoundingClientRect().top + el.scrollTop;
+      el.scrollTo({ top: top - Math.max(0, (el.clientHeight - anchor.offsetHeight) / 2) });
       const token = String(focus.token);
       anchor.dataset.flash = token;
       window.setTimeout(() => {
@@ -226,7 +173,14 @@ export function MessageList({
       <div className="mc-stream" ref={scrollRef} onScroll={handleScroll}>
         <div className="mc-stream__inner">
           {!items.length ? (
-            loading ? null : <EmptyState canUse={canUse} />
+            loading ? (
+              // 切换会话期间：清空时间线但还没加载完，给个加载态而不是空白
+              <div className="mc-stream__switching">
+                <Spinner size={22} />
+              </div>
+            ) : (
+              <EmptyState canUse={canUse} />
+            )
           ) : (
             <div className="mc-stream__list">
               {items.map((item, _itemIndex) =>
@@ -244,6 +198,13 @@ export function MessageList({
                     item={item}
                     onRestore={onRestoreCheckpoint}
                     onRewind={onRewindCheckpoint}
+                  />
+                ) : item.kind === "turn-changes" ? (
+                  <TurnChangesCard
+                    key={item.key}
+                    item={item}
+                    onUndo={onRewindCheckpoint}
+                    onReview={onOpenReview}
                   />
                 ) : item.kind === "tool" ? (
                   (() => {
@@ -298,6 +259,7 @@ export function MessageList({
                     content={item.content}
                     thinking={item.thinking}
                     messageIndex={item.messageIndex}
+                    streaming={item.streaming}
                   />
                 ),
               )}

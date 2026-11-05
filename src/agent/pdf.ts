@@ -6,7 +6,7 @@
  * 便宜两个数量级。只有**扫描件**（几乎没有文本层）才回退到原文件上传。
  *
  * 三条约束：
- *  - 单次最多 20 页、2 万字符（对齐 read_file 的输出预算），超出给续读提示；
+ *  - 单次最多 20 页、4k tokens（对齐 read_file 的输出预算），超出给续读提示；
  *  - 结果按 sha256 + 页范围缓存到 `.meowcode/cache/pdf/`，二次读取不再解析；
  *  - pdfjs 只在真正读 PDF 时动态 import（legacy 构建，Node 侧 fake worker）。
  */
@@ -14,13 +14,15 @@ import { createHash } from "node:crypto";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { readJsonFile, writeJsonAtomic } from "./atomic-json.js";
+import { estimateTokens } from "./context.js";
+import { sliceHeadToTokens } from "./tool-budget.js";
 
 /** 单次最多抽多少页 */
 export const MAX_PDF_PAGES = 20;
-/** 单次输出字符预算（对齐 MAX_OUTPUT_CHARS） */
-export const PDF_CHARS_PER_CALL = 20_000;
-/** 单页字符上限：超长页（整本排版成单页的报表）按页截断，保其余页 */
-export const PDF_CHARS_PER_PAGE = 6_000;
+/** 单次输出 token 预算（与工具输出口径一致） */
+export const PDF_TOKENS_PER_CALL = 4_000;
+/** 单页 token 上限：超长页（整本排版成单页的报表）按页截断，保其余页 */
+export const PDF_TOKENS_PER_PAGE = 1_200;
 /** 扫描件判据：抽到的页平均字符数低于这个值，就认为没有可用文本层 */
 export const SCANNED_CHARS_PER_PAGE = 50;
 /** 单页少于这个字符数视为空页（页眉/页码噪声），直接跳过 */
@@ -124,13 +126,13 @@ export function renderPdfText(input: {
   stats: PdfStats;
   requested: number[];
   pages: PdfPage[];
-  /** 单次预算，默认 PDF_CHARS_PER_CALL */
+  /** 单次 token 预算，默认 PDF_TOKENS_PER_CALL */
   budget?: number;
-  /** 单页上限，默认 PDF_CHARS_PER_PAGE */
+  /** 单页 token 上限，默认 PDF_TOKENS_PER_PAGE */
   pageBudget?: number;
 }): { text: string; truncatedPages: number; omittedPages: number } {
-  const budget = input.budget ?? PDF_CHARS_PER_CALL;
-  const pageBudget = input.pageBudget ?? PDF_CHARS_PER_PAGE;
+  const budget = input.budget ?? PDF_TOKENS_PER_CALL;
+  const pageBudget = input.pageBudget ?? PDF_TOKENS_PER_PAGE;
   const shown: string[] = [];
   let used = 0;
   let truncatedPages = 0;
@@ -141,34 +143,37 @@ export function renderPdfText(input: {
     if (!text) {
       // 空页只留一行标记：让模型知道这一页确实没有文本，而不是被吞掉
       const line = `[page ${page.page}] (no extractable text)`;
-      if (used + line.length > budget) {
+      if (used + estimateTokens(line) > budget) {
         omittedPages += 1;
         continue;
       }
       shown.push(line);
-      used += line.length;
+      used += estimateTokens(line);
       continue;
     }
     const head = `[page ${page.page}]`;
-    if (used + head.length + text.length > budget) {
-      const room = budget - used - head.length - 40;
-      if (room <= 200) {
+    const textTokens = estimateTokens(text);
+    if (used + estimateTokens(head) + textTokens > budget) {
+      const room = budget - used - estimateTokens(head) - 20;
+      if (room <= 80) {
         omittedPages += 1;
         continue;
       }
-      shown.push(`${head}\n${text.slice(0, Math.min(room, pageBudget))}\n... [page truncated by output budget]`);
+      const kept = sliceHeadToTokens(text, Math.min(room, pageBudget));
+      shown.push(`${head}\n${kept}\n... [page truncated by output budget]`);
       used = budget;
       truncatedPages += 1;
       continue;
     }
-    if (text.length > pageBudget) {
-      shown.push(`${head}\n${text.slice(0, pageBudget)}\n... [page truncated at ${pageBudget} chars]`);
-      used += head.length + pageBudget;
+    if (textTokens > pageBudget) {
+      const kept = sliceHeadToTokens(text, pageBudget);
+      shown.push(`${head}\n${kept}\n... [page truncated at ${pageBudget} tokens]`);
+      used += estimateTokens(head) + pageBudget;
       truncatedPages += 1;
       continue;
     }
     shown.push(`${head}\n${text}`);
-    used += head.length + text.length;
+    used += estimateTokens(head) + textTokens;
   }
 
   const requested = input.requested.length

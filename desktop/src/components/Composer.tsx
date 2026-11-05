@@ -338,6 +338,7 @@ function ProjectMenu({
 export function Composer({
   value,
   onChange,
+  focusToken = 0,
   polishTarget = "main",
   chips,
   onRemoveChip,
@@ -402,6 +403,8 @@ export function Composer({
 }: {
   value: string;
   onChange: (value: string) => void;
+  /** 递增时把焦点交给输入框（新对话建议点选后使用） */
+  focusToken?: number;
   /** 美化提示词调用哪个 runtime：侧边聊传 "side"，缺省主聊天 */
   polishTarget?: "main" | "side";
   /** 已引用的技能 / 插件 / 插件命令（可多选） */
@@ -512,6 +515,10 @@ export function Composer({
   const projectDisplayCwd = projectCwd ?? workspace;
   const { t } = useTranslation("composer");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => {
+    if (!focusToken) return;
+    requestAnimationFrame(() => textareaRef.current?.focus());
+  }, [focusToken]);
   const modelButtonRef = useRef<HTMLButtonElement>(null);
   const ctxButtonRef = useRef<HTMLButtonElement>(null);
   const accessButtonRef = useRef<HTMLButtonElement>(null);

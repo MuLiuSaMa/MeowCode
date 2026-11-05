@@ -39,7 +39,8 @@
     "worktree": "Worktrees",
     "learning": "Selbstlernen",
     "rewind": "Sitzungs-Zurücksetzen",
-    "sandbox": "Sandbox"
+    "sandbox": "Sandbox",
+    "approvals": "Freigaberegeln"
   },
   "close": {
     "section": "Fenster schließen",
@@ -96,10 +97,6 @@
     }
   },
   "memory": {
-    "extractionTitle": "Automatische Speicher-Destillation",
-    "extractionDesc": "Nach jedem Zug prüft eine leichte Hintergrundanfrage den neuen Gesprächsverlauf und speichert langfristig Wichtiges (Präferenzen, Korrekturen, Projektentscheidungen) automatisch im Speicher. Bei Aus bleiben nur manuelle Einträge und die eigenen Speicher-Schreibvorgänge der KI.",
-    "extractionField": "Nach jedem Zug automatisch destillieren",
-    "extractionFailed": "Speichern des Schalters fehlgeschlagen",
     "scope": {
       "user": "Persönlicher Speicher",
       "project": "Projektspeicher"
@@ -129,7 +126,15 @@
     "loadFailed": "Speicher konnte nicht geladen werden",
     "readFailed": "Eintrag konnte nicht gelesen werden",
     "saveFailed": "Eintrag konnte nicht gespeichert werden",
-    "deleteFailed": "Eintrag konnte nicht gelöscht werden"
+    "deleteFailed": "Eintrag konnte nicht gelöscht werden",
+    "toggleTitle": "Automatische Speicher-Destillation",
+    "toggleDesc": "Nach jedem Zug prüft eine leichte Hintergrundanfrage den neuen Gesprächsverlauf und speichert langfristig Wichtiges (Präferenzen, Korrekturen, Projektentscheidungen) automatisch im Speicher. Bei Aus bleiben nur manuelle Einträge und die eigenen Speicher-Schreibvorgänge der KI.",
+    "toggleField": "Nach jedem Zug automatisch destillieren",
+    "toggleFailed": "Speichern des Schalters fehlgeschlagen",
+    "clearAction": "Alle löschen",
+    "clearConfirm": "Wirklich alles löschen?",
+    "clearDone": "Alle Erinnerungen gelöscht",
+    "clearFailed": "Erinnerungen konnten nicht gelöscht werden"
   },
   "archive": {
     "section": "Archiv",
@@ -152,7 +157,6 @@
     "website": "Website",
     "repo": "Repository",
     "openInBrowser": "Im Browser öffnen",
-    "credits": "Dank an",
     "sponsor": "Unterstützen",
     "sponsorHint": "Wenn MeowCode Ihnen hilft, können Sie den Autor mit einem QR-Code unterstützen.",
     "qrAlt": "Zahlungs-QR-Code für {{name}}",
@@ -161,7 +165,8 @@
       "alipay": "Alipay"
     },
     "upToDate": "Sie haben bereits die neueste Version",
-    "checkFailed": "Versionsprüfung fehlgeschlagen: {{error}}"
+    "checkFailed": "Versionsprüfung fehlgeschlagen: {{error}}",
+    "sponsorList": "Unterstützer (MeowCode, NexBox, OpenMD, LingTab)"
   },
   "actions": {
     "add": "Hinzufügen",
@@ -580,5 +585,40 @@
     "enabled": "Auf Workspace-Schreibzugriff umgeschaltet (erste Freigabe {{ms}} ms)",
     "saveFailed": "Sandbox-Einstellungen konnten nicht gespeichert werden",
     "loadFailed": "Sandbox-Einstellungen konnten nicht geladen werden"
+  },
+  "dataLocation": {
+    "section": "Lokale Daten",
+    "desc": "Speicherort für Einstellungen, Unterhaltungen und lokale Schriftarten.",
+    "field": "Datenort",
+    "open": "Ordner öffnen",
+    "change": "Ort ändern...",
+    "loading": "Wird geladen…",
+    "confirmTitle": "Datenort ändern?",
+    "confirmDesc": "Die aktuellen Daten werden an den neuen Ort kopiert und die App wird neu gestartet. Die Originaldaten bleiben erhalten.",
+    "move": "Verschieben und neu starten",
+    "moving": "Wird verschoben…",
+    "restarting": "Daten verschoben — App wird neu gestartet…",
+    "errors": {
+      "same_path": "Der neue Ort entspricht dem aktuellen.",
+      "not_empty": "Der Zielordner ist nicht leer. Wähle einen leeren Ordner.",
+      "failed": "Der Datenort konnte nicht geändert werden."
+    }
+  },
+  "approvals": {
+    "section": "Freigaberegeln",
+    "desc": "Aktionen, die Sie in diesem Projekt mit „Nicht mehr fragen“ freigegeben haben. Nach dem Entfernen wird wieder gefragt; Dateiregeln verfallen automatisch bei Änderungen.",
+    "empty": "Noch keine Freigaberegeln",
+    "clearAll": "Alle löschen",
+    "remove": "Regel löschen",
+    "cleared": "Alle Freigaberegeln des Projekts gelöscht",
+    "clearConfirmTitle": "Alle Freigaberegeln löschen?",
+    "clearConfirmDesc": "Diese Aktionen fragen wieder nach einer Freigabe. Dateiregeln verfallen bei Änderungen automatisch.",
+    "kind": {
+      "tool": "Werkzeug",
+      "path": "Datei",
+      "command-exact": "Exakter Befehl",
+      "command-prefix": "Befehlspräfix"
+    },
+    "loading": "Wird geladen…"
   }
 }

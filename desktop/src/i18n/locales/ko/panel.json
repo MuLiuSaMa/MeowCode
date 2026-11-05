@@ -119,7 +119,16 @@
   },
   "filePreview": {
     "copyPath": "경로 복사",
-    "openInEditor": "편집기에서 열기",
+    "preview": "미리보기",
+    "source": "소스",
+    "openInEditor": "시스템 기본 앱으로 열기",
+    "openWith": "열기 방식",
+    "systemDefault": "시스템 기본 앱",
+    "chooseApp": "다른 앱 선택…",
+    "showInFolder": "폴더에서 보기",
+    "openWithApp": "{{name}}(으)로 열기",
+    "explorerShort": "탐색기",
+    "detectingApps": "열 수 있는 앱 감지 중…",
     "loading": "불러오는 중…",
     "truncated": "처음 {{shown}}줄만 표시(전체 {{total}}줄)"
   },
@@ -158,7 +167,11 @@
     "changeCount_other": "{{count}}회 변경",
     "changeCount_few": "{{count}}회 변경",
     "changeCount_many": "{{count}}회 변경",
-    "diffAria": "{{path}}의 변경"
+    "diffAria": "{{path}}의 변경",
+    "review": "변경 검토",
+    "reviewing": "검토 중…",
+    "resultTitle": "AI 검토 결과",
+    "close": "닫기"
   },
   "workspace": {
     "loading": "불러오는 중…",
@@ -171,6 +184,7 @@
     "noMatch": "일치하는 파일 없음"
   },
   "terminal": {
-    "exited": "[프로세스가 종료되었습니다]"
+    "exited": "[프로세스가 종료되었습니다]",
+    "ended": "작업이 끝났거나 이 터미널이 이미 정리되었습니다"
   }
 }

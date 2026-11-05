@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { completionUrl, streamChatCompletion } from "./provider";
+import type { ChatMessage } from "./types";
 
 describe("completionUrl", () => {
   it("supports OpenAI-compatible v1 endpoints", () => {
@@ -61,6 +62,34 @@ const baseOptions = {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+});
+
+describe("chat completions request body", () => {
+  it("does not replay archived reasoning or anthropic thinking", async () => {
+    let body: { messages?: Array<Record<string, unknown>> } | undefined;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: string, init?: RequestInit) => {
+        body = JSON.parse(String(init?.body)) as typeof body;
+        return sseResponse([{ choices: [{ delta: { content: "ok" }, finish_reason: "stop" }] }]);
+      }),
+    );
+    const messages: ChatMessage[] = [
+      { role: "user", content: "hi" },
+      {
+        role: "assistant",
+        content: "done",
+        reasoning: "private thinking",
+        anthropic_thinking: [{ type: "thinking", thinking: "x", signature: "s" }],
+      },
+      { role: "user", content: "again" },
+    ];
+    await streamChatCompletion({ ...baseOptions, messages });
+    const assistant = body?.messages?.find((message) => message.role === "assistant");
+    expect(assistant?.content).toBe("done");
+    expect(assistant).not.toHaveProperty("reasoning");
+    expect(assistant).not.toHaveProperty("anthropic_thinking");
+  });
 });
 
 describe("streamChatCompletion usage reporting", () => {

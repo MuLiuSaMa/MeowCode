@@ -199,3 +199,40 @@
 .mc-contentview[data-hidden="true"] {
   display: none;
 }
+
+/*
+ * 新对话空态：消息流（Logo + 标题）、输入框、建议作为一组垂直居中；
+ * 普通会话下仍然占满剩余高度，消息流滚动。
+ */
+.mc-chatflow {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+.mc-chatflow[data-empty="true"] {
+  justify-content: center;
+  /* 底部留白把整组内容再往上托一些，输入框落在视觉中心偏上 */
+  padding: 0 0 clamp(24px, 14vh, 140px);
+}
+.mc-chatflow[data-empty="true"] .mc-streamwrap {
+  flex: 0 0 auto;
+  min-height: 0;
+}
+.mc-chatflow[data-empty="true"] .mc-stream {
+  flex: none;
+  overflow: visible;
+  padding: 0 20px;
+}
+.mc-chatflow[data-empty="true"] .mc-stream__inner {
+  min-height: 0;
+}
+.mc-chatflow[data-empty="true"] .mc-empty {
+  flex: none;
+  padding: 0 0 20px;
+  gap: 16px;
+}
+.mc-chatflow[data-empty="true"] .mc-composerwrap {
+  padding-top: 0;
+  padding-bottom: 10px;
+}

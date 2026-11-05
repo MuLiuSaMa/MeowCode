@@ -13,7 +13,8 @@ import {
   type TextFileFailure,
 } from "./edit-content.js";
 import { DEFAULT_AGENT_TYPES } from "./agent-definition.js";
-import { estimateToolDefinitionsTokens } from "./context.js";
+import { estimateTokens, estimateToolDefinitionsTokens } from "./context.js";
+import { truncateToTokens } from "./tool-budget.js";
 import { renderChangeSnippet } from "./diff.js";
 import { readMultiEditGroups } from "./multi-edit.js";
 import { readPdfBase64, readPdfText } from "./pdf.js";
@@ -34,42 +35,54 @@ import {
   type MemoryScope,
 } from "./memory.js";
 import type { ToolDefinition, ToolResult } from "./types.js";
+import { formatWebSearchResult, type WebSearchResult } from "./web-search.js";
+import type { WebFetchOutcome } from "./web-fetch.js";
 import { classifySandboxDenial } from "./sandbox/denial.js";
 import { getSandboxSettings } from "./sandbox/policy.js";
 import { runShellCommand } from "./exec/shell.js";
 import { MAX_COMMAND_OUTPUT_BYTES } from "./exec/types.js";
+import {
+  builtinToolContract,
+  isParallelSafeContract,
+  type ToolContract,
+} from "./tool-contract.js";
+import { executeJobTool, jobToolDefinition, startBackgroundCommand } from "./job-tools.js";
+import type { JobManager } from "./jobs.js";
+import { executeGitTool, gitToolDefinition } from "./git-tools.js";
+import { applyPatch, PatchError } from "./patch.js";
 
 // 执行面已抽到 ./exec；这里保留旧导出，git 服务与既有单测的导入路径不变。
 export { commandEnv } from "./exec/env.js";
 export { decodeCommandOutput } from "./exec/encoding.js";
 export { killProcessTree } from "./exec/process-tree.js";
 
-const MAX_OUTPUT_CHARS = 20000;
-/** 结构化搜索结果（grep/glob）超过这个长度就先落盘再降级，模型按需续读。 */
-const STRUCTURED_OUTPUT_CHARS = 8_000;
-const STRUCTURED_HEAD_CHARS = 4_000;
-const MAX_COMMAND_OUTPUT_CHARS = 12000;
-const MAX_COMMAND_HEAD_CHARS = 4000;
+// 工具输出按 token 预算，而不是字符：中文 1 字 ≈ 1 token，按字符会让中文仓库
+// 的单次输出膨胀约 4 倍（Codex 默认也是 10KB bytes + 头尾截断）。
+const MAX_OUTPUT_TOKENS = 3_000;
+/** 结构化搜索结果（grep/glob）超过这个预算就先落盘再降级，模型按需续读。 */
+const STRUCTURED_OUTPUT_TOKENS = 2_000;
+const MAX_COMMAND_TOKENS = 3_000;
 const MAX_READ_LINES = 400;
 /**
- * read_file 超长文件落盘阈值：文件超过这个字符数且一屏读不完时，
+ * read_file 超长文件落盘阈值：文件超过这个预算且一屏读不完时，
  * 只内联头尾预览、全文落盘，避免模型靠 offset 一页页翻大文件
  * （每翻一页都是一次全上下文重发）。
  */
-const READ_SAVE_THRESHOLD_CHARS = 8_000;
+const READ_SAVE_THRESHOLD_TOKENS = 2_000;
 const READ_HEAD_PREVIEW_LINES = 100;
 const READ_TAIL_PREVIEW_LINES = 40;
-const READ_TAIL_PREVIEW_CHARS = 4_000;
+const READ_TAIL_PREVIEW_TOKENS = 800;
 const MAX_LIST_ENTRIES = 500;
+const MAX_LIST_DIR_TOKENS = 1_000;
+const MAX_READ_TOKENS = 4_000;
+const MAX_READ_MANY_TOKENS = 4_000;
 
-export function truncateOutput(text: string, max = MAX_OUTPUT_CHARS): { output: string; truncated: boolean } {
-  if (text.length <= max) {
-    return { output: text, truncated: false };
-  }
-  return {
-    output: `${text.slice(0, max)}\n... [truncated ${text.length - max} characters]`,
-    truncated: true,
-  };
+export function truncateOutput(
+  text: string,
+  maxTokens = MAX_OUTPUT_TOKENS,
+): { output: string; truncated: boolean } {
+  const truncated = truncateToTokens(text, maxTokens);
+  return { output: truncated.text, truncated: truncated.truncated };
 }
 
 /**
@@ -78,17 +91,17 @@ export function truncateOutput(text: string, max = MAX_OUTPUT_CHARS): { output: 
  */
 export function truncateMiddle(
   text: string,
-  max = MAX_COMMAND_OUTPUT_CHARS,
+  maxTokens = MAX_COMMAND_TOKENS,
 ): { output: string; truncated: boolean; omitted: number; lines: number } {
   const lines = text.split(/\r?\n/).length;
-  if (text.length <= max) return { output: text, truncated: false, omitted: 0, lines };
-  const head = Math.min(MAX_COMMAND_HEAD_CHARS, Math.floor(max / 3));
-  const tail = max - head;
-  const omitted = text.length - max;
+  const truncated = truncateToTokens(text, maxTokens, {
+    headRatio: 1 / 3,
+    note: (omitted) => `... [truncated ${omitted} tokens in the middle; ${lines} lines total]`,
+  });
   return {
-    output: `${text.slice(0, head)}\n... [truncated ${omitted} characters in the middle; ${lines} lines total]\n${text.slice(-tail)}`,
-    truncated: true,
-    omitted,
+    output: truncated.text,
+    truncated: truncated.truncated,
+    omitted: truncated.omittedTokens,
     lines,
   };
 }
@@ -155,7 +168,7 @@ function parseMemoryScope(value: unknown): MemoryScope | null {
 }
 
 /**
- * 结构化搜索结果降级：超过预算时只留头部，完整结果落盘并给分页提示。
+ * 结构化搜索结果降级：超过 token 预算时头尾保留，完整结果落盘并给分页提示。
  *
  * 模型拿到落盘路径后可以用 read_file + offset 续读，不必重跑同一次搜索 ——
  * 重跑一次的成本（整个上下文重发）远高于读落盘文件。
@@ -167,23 +180,33 @@ export async function degradeStructuredOutput(
   output: string,
   spillText?: string,
 ): Promise<{ output: string; truncated: boolean; spilled?: string }> {
-  if (output.length <= STRUCTURED_OUTPUT_CHARS) {
+  const alreadyCapped = spillText !== undefined && spillText !== output;
+  if (estimateTokens(output) <= STRUCTURED_OUTPUT_TOKENS && !alreadyCapped) {
     return { output, truncated: false };
   }
   // 尾部 "... [truncated ...]" / "... [no matches]" 之类的提示行要保留，否则模型不知道结果被截过
   const noticeMatch = output.match(/(\n\.\.\. \[[^\n]*\])+$/);
   const body = noticeMatch ? output.slice(0, noticeMatch.index) : output;
   const notice = noticeMatch ? noticeMatch[1] : "";
-  const head = body.slice(0, STRUCTURED_HEAD_CHARS);
-  // 落盘写完整结果：搜索层的内联裁剪（12k）不该影响 artifact 的完整性
+  // 落盘写完整结果：搜索层的内联裁剪不该影响 artifact 的完整性
   const full = spillText ?? output;
-  const omitted = Math.max(0, full.length - head.length);
   const saved = await persistToolOutput(workspace, tool, full).catch(() => null);
-  const hint = saved
-    ? `\n... [${omitted} more characters omitted; full result saved to ${saved} — page it with read_file (offset/limit) instead of re-running this search]`
-    : `\n... [${omitted} more characters omitted; narrow the pattern to see more]`;
+  const over = estimateTokens(body) > STRUCTURED_OUTPUT_TOKENS;
+  const bounded = over
+    ? truncateToTokens(body, STRUCTURED_OUTPUT_TOKENS, {
+        note: (omitted) =>
+          saved
+            ? `... [${omitted} tokens omitted; full result saved to ${saved} — page it with read_file (offset/limit) instead of re-running this search]`
+            : `... [${omitted} tokens omitted; narrow the pattern to see more]`,
+      }).text
+    : body;
+  // 搜索层已经裁过、但正文仍在预算内：保留截断回执，不能因为“够短”丢掉落盘路径
+  const spillHint =
+    !over && saved && alreadyCapped
+      ? `\n... [full result saved to ${saved} — page it with read_file (offset/limit) instead of re-running this search]`
+      : "";
   return {
-    output: head + hint + notice,
+    output: bounded + spillHint + notice,
     truncated: true,
     ...(saved ? { spilled: saved } : {}),
   };
@@ -340,6 +363,38 @@ export const toolDefinitions: ToolDefinition[] = [
   {
     type: "function",
     function: {
+      name: "web_search",
+      description:
+        "Search the public web for current information. Use when the answer depends on recent events, releases, prices, or facts past your knowledge cutoff. Returns titles, URLs, and summaries; cite the URLs you use. Available only when the current model provider offers search.",
+      parameters: {
+        type: "object",
+        properties: {
+          query: { type: "string", description: "Natural-language search query." },
+        },
+        required: ["query"],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "web_fetch",
+      description:
+        "Fetch a public web page and return its readable text as Markdown. Use after web_search when snippets are not enough. HTML/text only; binary files and localhost/private hosts are rejected.",
+      parameters: {
+        type: "object",
+        properties: {
+          url: { type: "string", description: "Absolute http(s) URL." },
+        },
+        required: ["url"],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
       name: "run_code",
       description:
         "Sandboxed JS for batched reads/searches/edits; only the return value is billed. `meow`: read/readMany/grep/glob/listDir (grep→[{path,line,text}], glob→[paths]); write(path,content)/edit(path,old,new)/multiEdit(edits)/run(command) use host tools and their approvals (denial→{ok:false,output}). No require/process/fetch; 30s/200 calls. Return a short excerpt.",
@@ -432,11 +487,16 @@ export const toolDefinitions: ToolDefinition[] = [
     function: {
       name: "run_command",
       description:
-        "Run a PowerShell command in the workspace. Routine commands run automatically; only destructive ones (disk, registry, shutdown) ask first. Long output keeps head and tail; full log is saved under .meowcode/tool-output/. When the command sandbox is enabled, writes outside the workspace and configured extra roots are blocked; a blocked command may ask once to retry outside the sandbox.",
+        "Run a PowerShell command in the workspace. Routine commands run automatically; only destructive ones (disk, registry, shutdown) ask first. Long output keeps head and tail; full log is saved under .meowcode/tool-output/. When the command sandbox is enabled, writes outside the workspace and configured extra roots are blocked; a blocked command may ask once to retry outside the sandbox. background=true starts a long-running job (dev server, watcher) in a terminal and returns immediately; read it with the job tool.",
       parameters: {
         type: "object",
         properties: {
           command: { type: "string", description: "PowerShell command." },
+          background: {
+            type: "boolean",
+            description:
+              "Start as a background job in a terminal and return immediately (default false). The user can take over in the terminal tab.",
+          },
         },
         required: ["command"],
         additionalProperties: false,
@@ -448,13 +508,28 @@ export const toolDefinitions: ToolDefinition[] = [
     function: {
       name: "task",
       description:
-        "Spawn a subagent for one self-contained task; only its report returns. Use proactively for multi-file exploration or independent implementation. It gets the current user request and plan itself — give a short description plus scope constraints; pick the role via agent_type. background=true returns immediately and notifies later. Max 3 per turn; batch related work. Writes follow the approval mode.",
+        "Spawn a subagent for one self-contained task; only its report returns. Use proactively for multi-file exploration or independent implementation. It gets the current user request and plan itself — give a short description plus scope constraints; pick the role via agent_type. background=true returns immediately and notifies later. mode=resume continues an earlier subagent by agent_id (its history is kept); mode=fork starts a general subagent with a copy of this conversation prefix so it can reuse the prompt cache. Max 3 per turn; batch related work. Writes follow the approval mode.",
       parameters: {
         type: "object",
         properties: {
           description: {
             type: "string",
             description: "Short label shown in the UI.",
+          },
+          prompt: {
+            type: "string",
+            description:
+              "Initial instruction (spawn) or follow-up message (resume). Omit on spawn to derive it from the current request and plan.",
+          },
+          mode: {
+            type: "string",
+            enum: ["spawn", "resume", "fork"],
+            description:
+              "spawn = new fresh subagent (default); resume = continue agent_id; fork = copy this conversation prefix into a general subagent.",
+          },
+          agent_id: {
+            type: "string",
+            description: "Existing subagent id for mode=resume.",
           },
           agent_type: {
             type: "string",
@@ -680,6 +755,56 @@ export const toolDefinitions: ToolDefinition[] = [
       },
     },
   },
+  jobToolDefinition,
+  gitToolDefinition,
+  {
+    type: "function",
+    function: {
+      name: "delete_file",
+      description:
+        "Delete one file (or a symbolic link itself). Directories are not supported. The file is snapshotted before deletion so session rewind can restore it.",
+      parameters: {
+        type: "object",
+        properties: { path: { type: "string", description: "File path." } },
+        required: ["path"],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "move_file",
+      description:
+        "Move or rename a file, preserving bytes, BOM and line endings. Refuses to overwrite an existing target unless overwrite=true.",
+      parameters: {
+        type: "object",
+        properties: {
+          from: { type: "string", description: "Source path." },
+          to: { type: "string", description: "Destination path." },
+          overwrite: { type: "boolean", description: "Replace an existing destination (default false)." },
+        },
+        required: ["from", "to"],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "apply_patch",
+      description:
+        "Apply a Codex-style patch with *** Begin Patch / *** Update File / *** Add File / *** Delete File and @@ hunks. All hunks must match or nothing is written.",
+      parameters: {
+        type: "object",
+        properties: {
+          patch: { type: "string", description: "The patch text." },
+        },
+        required: ["patch"],
+        additionalProperties: false,
+      },
+    },
+  },
 ];
 
 /**
@@ -749,6 +874,8 @@ export type DynamicTool = {
   definition: ToolDefinition;
   /** true 则每次调用先走审批流（runtime 的 requiresApproval 判定会追加本项） */
   requiresApproval?: boolean;
+  /** 并发/只读/超时契约；缺省按「串行、有副作用」保守处理 */
+  contract?: ToolContract;
   execute: (input: unknown, workspace: string, options: ToolRunOptions) => Promise<ToolResult>;
 };
 
@@ -906,6 +1033,16 @@ export function unregisterDynamicTool(name: string): void {
   }
 }
 
+/** 工具契约查询：动态工具优先（MCP 的 readOnlyHint 等），否则回落到内置表。 */
+export function toolContractOf(name: string): ToolContract | undefined {
+  return dynamicTools.get(name)?.contract ?? builtinToolContract(name);
+}
+
+/** 并发资格：只有 readOnly && parallelSafe 的契约才允许进 agent-loop 的并发批。 */
+export function isToolParallelSafe(name: string): boolean {
+  return isParallelSafeContract(toolContractOf(name));
+}
+
 /** 超预算被延迟展示的动态工具：注册在册、可按名调用，但 schema 不进 tools 段。 */
 const deferredDynamicTools = new Set<string>();
 /** tool_search 命中后被固定展示的工具（会话生命周期内保持可见，FIFO 淘汰最旧）。 */
@@ -1047,7 +1184,61 @@ export type ToolRunOptions = {
    * 缺省（工具单测直调）时行为与之前完全一致。
    */
   readCoverage?: (target: string) => Promise<boolean>;
+  /**
+   * 当前模型可用的联网搜索（runtime 按 provider 解析）。
+   * 缺省 = 该服务商没有自己的搜索能力，此时 web_search 应被撤下。
+   */
+  webSearch?: (query: string, signal?: AbortSignal) => Promise<WebSearchResult>;
+  /** 网页抓取：DeepSeek 走官方 Fetch API，其余走本地 HTTP。 */
+  webFetch?: (url: string, signal?: AbortSignal) => Promise<WebFetchOutcome>;
+  /** 后台任务管理器（桌面端走 job-host，CLI/测试走本地子进程） */
+  jobs?: JobManager;
 };
+
+/**
+ * 动态工具（MCP/插件）的宿主级超时：它们接收 AbortSignal，所以可以真中断。
+ * 内置工具不经过这里——超时由各自实现负责，避免写操作被「假失败真写入」。
+ */
+async function executeDynamicTool(
+  name: string,
+  dynamic: DynamicTool,
+  input: unknown,
+  workspace: string,
+  options: ToolRunOptions,
+): Promise<ToolResult> {
+  const timeoutMs = dynamic.contract?.timeoutMs;
+  if (!timeoutMs || timeoutMs <= 0) return dynamic.execute(input, workspace, options);
+
+  const controller = new AbortController();
+  const parent = options.signal;
+  const onParentAbort = () => controller.abort(parent?.reason);
+  if (parent) {
+    if (parent.aborted) controller.abort(parent.reason);
+    else parent.addEventListener("abort", onParentAbort, { once: true });
+  }
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let timedOut = false;
+  try {
+    return await Promise.race([
+      dynamic.execute(input, workspace, { ...options, signal: controller.signal }),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => {
+          timedOut = true;
+          const error = new Error(`${name} timed out after ${timeoutMs}ms`);
+          controller.abort(error);
+          reject(error);
+        }, timeoutMs);
+      }),
+    ]);
+  } catch (error) {
+    // abort 会先让工具自己的监听器抛错，这里统一归一到超时原因
+    if (timedOut) throw new Error(`${name} timed out after ${timeoutMs}ms`);
+    throw error;
+  } finally {
+    if (timer) clearTimeout(timer);
+    parent?.removeEventListener("abort", onParentAbort);
+  }
+}
 
 export async function executeTool(
   name: string,
@@ -1060,7 +1251,7 @@ export async function executeTool(
   try {
     const dynamic = dynamicTools.get(name);
     if (dynamic) {
-      const result = await dynamic.execute(input, workspace, options);
+      const result = await executeDynamicTool(name, dynamic, input, workspace, options);
       const shaped = truncateOutput(result.output);
       return { ...result, output: shaped.output, truncated: shaped.truncated };
     }
@@ -1073,6 +1264,38 @@ export async function executeTool(
     switch (name) {
       case "tool_search":
         return searchDynamicTools(args);
+      case "web_search": {
+        const query = typeof args.query === "string" ? args.query.trim() : "";
+        if (!query) return { ok: false, output: 'web_search requires a non-empty "query".' };
+        if (!options.webSearch) {
+          return { ok: false, output: "Web search is not available for the current model." };
+        }
+        const result = await options.webSearch(query, signal);
+        const body = formatWebSearchResult(query, result);
+        const degraded = await degradeStructuredOutput(workspace, "web_search", body, body);
+        return {
+          ok: true,
+          output: degraded.output,
+          ...(degraded.truncated ? { truncated: true } : {}),
+          ...(degraded.spilled ? { spilled: degraded.spilled } : {}),
+          ...(result.usage ? { usage: result.usage } : {}),
+        };
+      }
+      case "web_fetch": {
+        const url = typeof args.url === "string" ? args.url.trim() : "";
+        if (!url) return { ok: false, output: 'web_fetch requires a non-empty "url".' };
+        if (!options.webFetch) {
+          return { ok: false, output: "Web fetch is not available." };
+        }
+        const result = await options.webFetch(url, signal);
+        const degraded = await degradeStructuredOutput(workspace, "web_fetch", result.output, result.output);
+        return {
+          ok: true,
+          output: degraded.output,
+          ...(degraded.truncated || result.truncated ? { truncated: true } : {}),
+          ...(degraded.spilled ? { spilled: degraded.spilled } : {}),
+        };
+      }
       case "list_dir":
         return await listDir(workspace, typeof args.path === "string" ? args.path : ".", allowOutsideWorkspace);
       case "read_file":
@@ -1216,7 +1439,83 @@ export async function executeTool(
       case "multi_edit":
         return await multiEdit(workspace, input, allowOutsideWorkspace);
       case "run_command":
+        if (args.background === true) {
+          if (!options.jobs) {
+            return { ok: false, output: "Background jobs are not available in this environment." };
+          }
+          return await startBackgroundCommand(options.jobs, String(args.command ?? ""), workspace);
+        }
         return await runCommand(workspace, String(args.command ?? ""), signal, options.sandbox);
+      case "job":
+        if (!options.jobs) {
+          return { ok: false, output: "Background jobs are not available in this environment." };
+        }
+        return await executeJobTool(options.jobs, args);
+      case "git":
+        return await executeGitTool(args, workspace);
+      case "delete_file": {
+        const target = String(args.path ?? "").trim();
+        if (!target) return { ok: false, output: "delete_file requires path." };
+        const file = await resolveToolPath(workspace, target, allowOutsideWorkspace);
+        const stat = await fs.lstat(file);
+        if (stat.isDirectory()) {
+          return {
+            ok: false,
+            output: "delete_file only deletes files; directories are not supported.",
+          };
+        }
+        await fs.unlink(file);
+        return { ok: true, output: `Deleted ${target}.` };
+      }
+      case "move_file": {
+        const from = String(args.from ?? "").trim();
+        const to = String(args.to ?? "").trim();
+        if (!from || !to) return { ok: false, output: "move_file requires from and to." };
+        const source = await resolveToolPath(workspace, from, allowOutsideWorkspace);
+        const destination = await resolveToolPath(workspace, to, allowOutsideWorkspace);
+        if (source === destination) {
+          return { ok: false, output: "move_file source and destination are the same path." };
+        }
+        const stat = await fs.lstat(source);
+        if (stat.isDirectory()) {
+          return { ok: false, output: "move_file only moves files; directories are not supported." };
+        }
+        const existing = await fs.lstat(destination).catch(() => null);
+        if (existing && args.overwrite !== true) {
+          return {
+            ok: false,
+            output: `${to} already exists; pass overwrite=true to replace it.`,
+          };
+        }
+        await fs.mkdir(path.dirname(destination), { recursive: true });
+        if (existing) await fs.unlink(destination);
+        try {
+          await fs.rename(source, destination);
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code !== "EXDEV") throw error;
+          await fs.copyFile(source, destination);
+          await fs.unlink(source);
+        }
+        return { ok: true, output: `Moved ${from} → ${to}.` };
+      }
+      case "apply_patch": {
+        const patchText = String(args.patch ?? "");
+        if (!patchText.trim()) return { ok: false, output: "apply_patch requires patch." };
+        try {
+          const result = await applyPatch(workspace, patchText, { allowOutsideWorkspace });
+          const parts = [
+            ...result.changed.map((file) => `updated ${file}`),
+            ...result.added.map((file) => `added ${file}`),
+            ...result.deleted.map((file) => `deleted ${file}`),
+          ];
+          return { ok: true, output: `Patch applied.\n${parts.join("\n")}` };
+        } catch (error) {
+          if (error instanceof PatchError) {
+            return { ok: false, output: `Patch not applied: ${error.message}` };
+          }
+          throw error;
+        }
+      }
       case "diagnostics":
         return await runDiagnosticsTool({
           workspace,
@@ -1312,12 +1611,12 @@ async function listDir(workspace: string, target: string, allowOutsideWorkspace 
   if (!lines.length) {
     lines.push("(empty)");
   }
-  const budget = MAX_OUTPUT_CHARS - 300;
+  const budget = MAX_LIST_DIR_TOKENS - 100;
   let shown = 0;
   let used = 0;
   for (const line of lines) {
-    if (shown >= MAX_LIST_ENTRIES || used + line.length + 1 > budget) break;
-    used += line.length + 1;
+    if (shown >= MAX_LIST_ENTRIES || used + estimateTokens(line) + 1 > budget) break;
+    used += estimateTokens(line) + 1;
     shown += 1;
   }
   if (shown === lines.length) {
@@ -1492,7 +1791,8 @@ async function readFile(options: {
   const maxLines = Math.max(1, Number(limit ?? MAX_READ_LINES) || MAX_READ_LINES);
   // 与 @文件注入共用切片器：两条通道给模型的格式必须一致
   const slice = sliceLinesForModel(read.file.content, {
-    budget: MAX_OUTPUT_CHARS - 300,
+    budget: MAX_READ_TOKENS - 300,
+    cost: estimateTokens,
     start,
     maxLines,
   });
@@ -1502,7 +1802,7 @@ async function readFile(options: {
 
   // 超长文件且一屏读不完：头尾预览 + 全文落盘。模型拿到落盘路径后用
   // read_file (offset/limit) 续读，不必对原文件一页页 offset 翻。
-  if (read.file.content.length > READ_SAVE_THRESHOLD_CHARS && slice.shown < slice.total) {
+  if (estimateTokens(read.file.content) > READ_SAVE_THRESHOLD_TOKENS && slice.shown < slice.total) {
     const saved = await persistToolOutput(workspace, "read_file", read.file.content).catch(
       () => null,
     );
@@ -1513,16 +1813,13 @@ async function readFile(options: {
       .slice(tailStart - 1)
       .map((line, index) => `${tailStart + index}: ${line}`)
       .join("\n");
-    // 尾部预览只保留最后若干字符：尾部也可能有超长行（压缩过的构建产物）
-    const tail =
-      tailText.length > READ_TAIL_PREVIEW_CHARS ? tailText.slice(-READ_TAIL_PREVIEW_CHARS) : tailText;
+    // 尾部预览只保留最后若干 token：尾部也可能有超长行（压缩过的构建产物）
+    const tail = truncateToTokens(tailText, READ_TAIL_PREVIEW_TOKENS, { headRatio: 0 }).text;
     // 头段预算 = 总预算 - 尾段实际占用，保证头尾加起来不超过单次工具输出上限
-    const headBudget = Math.max(
-      2_000,
-      MAX_OUTPUT_CHARS - 300 - tail.length - 400,
-    );
+    const headBudget = Math.max(500, MAX_READ_TOKENS - 300 - estimateTokens(tail) - 200);
     const head = sliceLinesForModel(read.file.content, {
       budget: headBudget,
+      cost: estimateTokens,
       start,
       // 尊重调用方显式给的 limit；默认情形才用 100 行预览
       maxLines: Math.min(maxLines, READ_HEAD_PREVIEW_LINES),
@@ -1596,8 +1893,8 @@ async function readPdfFile(options: {
 
 /** read_many 单次最多读多少个文件：超过就要求模型分批，避免一次性灌爆输出预算。 */
 export const READ_MANY_MAX_PATHS = 12;
-/** read_many 单个文件的最低预算：低于这个数宁可跳过该文件（读了也是碎片）。 */
-const READ_MANY_MIN_FILE_BUDGET = 1_500;
+/** read_many 单个文件的最低预算（tokens）：低于这个数宁可跳过该文件（读了也是碎片）。 */
+const READ_MANY_MIN_FILE_TOKENS = 600;
 
 /**
  * 批量读的「预算已耗尽」分支：给头几行 + 全文落盘。
@@ -1612,7 +1909,7 @@ async function overflowSection(
   remaining: number,
 ): Promise<string> {
   const fallback = `=== ${target} ===\n[skipped: output budget exhausted — use read_file for this path]`;
-  const previewBudget = Math.min(800, remaining - 120);
+  const previewBudget = Math.min(600, remaining - 100);
   if (previewBudget < 200) return fallback;
   const ext = path.extname(file).toLowerCase();
   // 图片/PDF 走 read_file 专用通道，批量切片会读成乱码
@@ -1620,7 +1917,11 @@ async function overflowSection(
   const read = await readTextFile(file, { headOnly: true });
   if (!read.ok) return `=== ${target} ===\n${textFileProblem(path.basename(file), read).output}`;
   await recordRead(file);
-  const preview = sliceLinesForModel(read.file.content, { budget: previewBudget, maxLines: 20 });
+  const preview = sliceLinesForModel(read.file.content, {
+    budget: previewBudget,
+    cost: estimateTokens,
+    maxLines: 20,
+  });
   const saved = await persistToolOutput(workspace, "read_many", read.file.content).catch(() => null);
   const rest = Math.max(0, preview.total - preview.lastLine);
   const hint = saved
@@ -1658,10 +1959,10 @@ async function readMany(
     return { ok: false, output: "read_many requires a non-empty \"paths\" array." };
   }
 
-  const totalBudget = MAX_OUTPUT_CHARS - 300;
+  const totalBudget = MAX_READ_MANY_TOKENS - 200;
   // 公平分摊：每个文件预算 = 总预算 / 文件数；调用方显式 limit 会进一步收紧单文件行数
   const perFileBudget = Math.max(
-    READ_MANY_MIN_FILE_BUDGET,
+    READ_MANY_MIN_FILE_TOKENS,
     Math.floor(totalBudget / paths.length),
   );
   const maxLines = Math.max(1, Number(limit ?? 0) || Number.MAX_SAFE_INTEGER);
@@ -1680,7 +1981,7 @@ async function readMany(
     if (!file) {
       const section = `=== ${target} ===\nError: path is outside the workspace.`;
       sections.push(section);
-      used += section.length;
+      used += estimateTokens(section);
       continue;
     }
     // 去重放在预算判断之前：重复路径不该在「预算耗尽」分支被预览 + 落盘两次
@@ -1688,38 +1989,38 @@ async function readMany(
     seenFiles.add(file);
     // 剩余预算不够再读一个文件：给头几行 + 全文落盘。
     // 只回一句「自己用 read_file」会逼模型为看开头再发一次调用，那是整轮上下文重发。
-    if (sections.length && remaining < READ_MANY_MIN_FILE_BUDGET) {
+    if (sections.length && remaining < READ_MANY_MIN_FILE_TOKENS) {
       const section = await overflowSection(workspace, target, file, remaining);
       sections.push(section);
-      used += section.length;
+      used += estimateTokens(section);
       continue;
     }
     // 之前已完整读过且文件没变：正文不必再发一遍（省 token，不省 I/O）
     if (options?.readCoverage && (await options.readCoverage(target).catch(() => false))) {
       const section = `=== ${target} ===\n[already read in full earlier this session and unchanged — reuse that result]`;
       sections.push(section);
-      used += section.length;
+      used += estimateTokens(section);
       continue;
     }
     // 图片/二进制不在批量通道里处理：read_file 才有图片附加与缩图逻辑
     if (IMAGE_MIME_BY_EXT[path.extname(file).toLowerCase()]) {
       const section = `=== ${target} ===\n[image file — use read_file to attach it as a picture]`;
       sections.push(section);
-      used += section.length;
+      used += estimateTokens(section);
       continue;
     }
     // PDF 同理：批量通道按行切片会读出乱码，必须走 read_file 的文本层通道
     if (path.extname(file).toLowerCase() === ".pdf") {
       const section = `=== ${target} ===\n[PDF — use read_file with pages="1-20" to extract its text layer]`;
       sections.push(section);
-      used += section.length;
+      used += estimateTokens(section);
       continue;
     }
     const read = await readTextFile(file, { headOnly: true });
     if (!read.ok) {
       const section = `=== ${target} ===\n${textFileProblem(name, read).output}`;
       sections.push(section);
-      used += section.length;
+      used += estimateTokens(section);
       continue;
     }
     // 登记逐文件读状态：之后 edit_file 才能判断「模型看到的版本是否最新」
@@ -1727,6 +2028,7 @@ async function readMany(
     const fileBudget = Math.min(perFileBudget, remaining);
     const slice = sliceLinesForModel(read.file.content, {
       budget: fileBudget,
+      cost: estimateTokens,
       maxLines,
     });
     const oversizedNotice = read.file.oversized
@@ -1739,7 +2041,7 @@ async function readMany(
     const section = `=== ${target} ===\n${slice.text}${continuation}${oversizedNotice}`;
     sections.push(section);
     // 预算按实际输出长度记账：估算值会让后续文件的可读空间漂移
-    used += section.length;
+    used += estimateTokens(section);
     if (slice.lastLine >= 1) {
       readRanges.push({ path: target, start: 1, end: slice.lastLine, total: slice.total });
     }

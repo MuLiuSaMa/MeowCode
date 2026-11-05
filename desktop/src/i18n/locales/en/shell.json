@@ -44,7 +44,14 @@
     "sandboxEvidence": "Sandbox evidence",
     "sandboxNote": "Retrying outside the sandbox runs this command with your user privileges. This allows one attempt only and does not disable the sandbox.",
     "sandboxDeny": "Keep sandbox",
-    "sandboxRetry": "Retry outside sandbox"
+    "sandboxRetry": "Retry outside sandbox",
+    "feedbackLabel": "Reason (optional)",
+    "feedbackPlaceholder": "Tell the AI what is wrong so it can adjust",
+    "rememberCommand": "Don't ask again for this command in this project",
+    "rememberPath": "Don't ask again for changes to this file in this project",
+    "rememberTool": "Don't ask again for this tool in this project",
+    "rememberExact": "This command only",
+    "rememberPrefix": "Commands starting with this"
   },
   "plan": {
     "aria": "Task plan",
@@ -224,7 +231,6 @@
     "empty": "No messages yet",
     "stop": "Stop",
     "send": "Send",
-    "openMain": "Open main window",
     "inputPlaceholder": "Type a message, Enter to send",
     "inputIdle": "This session is not running. Open it in the main window to continue.",
     "dropHint": "Drop to attach"

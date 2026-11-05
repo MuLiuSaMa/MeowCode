@@ -39,7 +39,8 @@
     "worktree": "Worktrees",
     "learning": "Aprendizado autônomo",
     "rewind": "Reversão de sessão",
-    "sandbox": "Sandbox"
+    "sandbox": "Sandbox",
+    "approvals": "Regras de aprovação"
   },
   "close": {
     "section": "Fechamento da janela",
@@ -96,10 +97,6 @@
     }
   },
   "memory": {
-    "extractionTitle": "Destilação automática de memória",
-    "extractionDesc": "Após cada turno, uma requisição leve em segundo plano revisa a nova conversa e guarda na memória o que vale a pena lembrar a longo prazo (preferências, correções, decisões do projeto). Desligada, restam apenas as entradas manuais e o que a própria IA escrever com as ferramentas de memória.",
-    "extractionField": "Destilar memória ao fim de cada turno",
-    "extractionFailed": "Falha ao salvar a opção",
     "scope": {
       "user": "Memória pessoal",
       "project": "Memória do projeto"
@@ -129,7 +126,15 @@
     "loadFailed": "Não foi possível carregar a memória",
     "readFailed": "Não foi possível ler a memória",
     "saveFailed": "Não foi possível salvar a memória",
-    "deleteFailed": "Não foi possível excluir a memória"
+    "deleteFailed": "Não foi possível excluir a memória",
+    "toggleTitle": "Destilação automática de memória",
+    "toggleDesc": "Após cada turno, uma requisição leve em segundo plano revisa a nova conversa e guarda na memória o que vale a pena lembrar a longo prazo (preferências, correções, decisões do projeto). Desligada, restam apenas as entradas manuais e o que a própria IA escrever com as ferramentas de memória.",
+    "toggleField": "Destilar memória ao fim de cada turno",
+    "toggleFailed": "Falha ao salvar a opção",
+    "clearAction": "Excluir tudo",
+    "clearConfirm": "Excluir tudo?",
+    "clearDone": "Todas as memórias foram excluídas",
+    "clearFailed": "Não foi possível limpar as memórias"
   },
   "archive": {
     "section": "Arquivo",
@@ -152,7 +157,6 @@
     "website": "Site",
     "repo": "Repositório",
     "openInBrowser": "Abrir no navegador",
-    "credits": "Créditos",
     "sponsor": "Apoiar",
     "sponsorHint": "Se o MeowCode é útil para você, apoie o autor lendo o QR code.",
     "qrAlt": "QR code de pagamento do {{name}}",
@@ -161,7 +165,8 @@
       "alipay": "Alipay"
     },
     "upToDate": "Você já está na versão mais recente",
-    "checkFailed": "Falha ao verificar a versão: {{error}}"
+    "checkFailed": "Falha ao verificar a versão: {{error}}",
+    "sponsorList": "Apoiadores (MeowCode, NexBox, OpenMD, LingTab)"
   },
   "actions": {
     "add": "Adicionar",
@@ -580,5 +585,40 @@
     "enabled": "Mudado para gravação no workspace (primeira autorização {{ms}} ms)",
     "saveFailed": "Falha ao salvar as configurações da sandbox",
     "loadFailed": "Falha ao carregar as configurações da sandbox"
+  },
+  "dataLocation": {
+    "section": "Dados locais",
+    "desc": "Onde ficam as configurações, as conversas e as fontes locais.",
+    "field": "Local dos dados",
+    "open": "Abrir pasta",
+    "change": "Alterar local...",
+    "loading": "Carregando…",
+    "confirmTitle": "Alterar o local dos dados?",
+    "confirmDesc": "Os dados atuais serão copiados para o novo local e o aplicativo será reiniciado. Os dados originais serão mantidos.",
+    "move": "Mover e reiniciar",
+    "moving": "Movendo…",
+    "restarting": "Dados movidos — reiniciando o aplicativo…",
+    "errors": {
+      "same_path": "O novo local é igual ao atual.",
+      "not_empty": "A pasta de destino não está vazia. Escolha uma pasta vazia.",
+      "failed": "Não foi possível alterar o local dos dados."
+    }
+  },
+  "approvals": {
+    "section": "Regras de aprovação",
+    "desc": "Ações aprovadas com \"Não perguntar novamente\" neste projeto. Ao revogar uma regra, a próxima tentativa pergunta de novo; regras de arquivo expiram quando o arquivo muda.",
+    "empty": "Ainda não há regras de aprovação",
+    "clearAll": "Limpar tudo",
+    "remove": "Excluir regra",
+    "cleared": "Todas as regras de aprovação do projeto foram limpas",
+    "clearConfirmTitle": "Limpar todas as regras de aprovação?",
+    "clearConfirmDesc": "Essas ações voltarão a pedir aprovação. Regras de arquivo já expiram automaticamente quando o arquivo muda.",
+    "kind": {
+      "tool": "Ferramenta",
+      "path": "Arquivo",
+      "command-exact": "Comando exato",
+      "command-prefix": "Prefixo do comando"
+    },
+    "loading": "Carregando…"
   }
 }

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import type { DragEvent as ReactDragEvent, KeyboardEvent as ReactKeyboardEvent } from "react";
 import { useTranslation } from "react-i18next";
-import { LuArrowUp, LuBrain, LuChevronDown, LuExternalLink, LuFileText, LuPaperclip, LuSquare, LuX } from "react-icons/lu";
+import { LuArrowUp, LuBrain, LuChevronDown, LuFileText, LuPaperclip, LuSquare, LuX } from "react-icons/lu";
 import { applyLanguage } from "../i18n";
 import { api, type ChatMessage, type MeowEvent, type TimelineTool } from "../api";
 import { timelineFromHistory } from "../timeline";
@@ -1029,30 +1029,30 @@ export default function IslandApp() {
                 >
                   <LuPaperclip size={15} />
                 </button>
-                {selected?.running && (
-                  <button type="button" className="mc-sendbtn" onClick={() => void onStop()} title={t("island.stop")} aria-label={t("island.stop")}>
+                {selected?.running ? (
+                  <button
+                    type="button"
+                    className="mc-sendbtn"
+                    onClick={() => void onStop()}
+                    title={t("island.stop")}
+                    aria-label={t("island.stop")}
+                  >
                     <LuSquare size={13} />
                   </button>
+                ) : (
+                  <button
+                    type="button"
+                    className="mc-sendbtn"
+                    onClick={() => void onSend()}
+                    disabled={
+                      (!draft.trim() && !pendingFiles.length && !pendingImages.length) || !canSend
+                    }
+                    title={t("island.send")}
+                    aria-label={t("island.send")}
+                  >
+                    <LuArrowUp size={17} />
+                  </button>
                 )}
-                <button
-                  type="button"
-                  className="mc-sendbtn"
-                  onClick={() => void onSend()}
-                  disabled={!draft.trim() || !canSend}
-                  title={t("island.send")}
-                  aria-label={t("island.send")}
-                >
-                  <LuArrowUp size={17} />
-                </button>
-                <button
-                  type="button"
-                  className="mc-composer__icon"
-                  onClick={() => void window.meow.openMainFromIsland()}
-                  title={t("island.openMain")}
-                  aria-label={t("island.openMain")}
-                >
-                  <LuExternalLink size={15} />
-                </button>
               </div>
             </div>
             {sendError && <div className="island-senderror">{sendError}</div>}

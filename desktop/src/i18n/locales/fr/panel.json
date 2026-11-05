@@ -119,7 +119,16 @@
   },
   "filePreview": {
     "copyPath": "Copier le chemin",
-    "openInEditor": "Ouvrir dans l'éditeur",
+    "preview": "Aperçu",
+    "source": "Source",
+    "openInEditor": "Ouvrir avec l'application système",
+    "openWith": "Ouvrir avec",
+    "systemDefault": "Application par défaut",
+    "chooseApp": "Choisir une autre application…",
+    "showInFolder": "Afficher dans le dossier",
+    "openWithApp": "Ouvrir avec {{name}}",
+    "explorerShort": "Explorateur",
+    "detectingApps": "Détection des applications…",
     "loading": "Chargement…",
     "truncated": "Seules les {{shown}} premières lignes sur {{total}} sont affichées"
   },
@@ -158,7 +167,11 @@
     "changeCount_other": "Modifié {{count}} fois",
     "changeCount_few": "Modifié {{count}} fois",
     "changeCount_many": "Modifié {{count}} fois",
-    "diffAria": "Modifications de {{path}}"
+    "diffAria": "Modifications de {{path}}",
+    "review": "Vérifier les modifications",
+    "reviewing": "Vérification…",
+    "resultTitle": "Résultat de la revue IA",
+    "close": "Fermer"
   },
   "workspace": {
     "loading": "Chargement…",
@@ -171,6 +184,7 @@
     "noMatch": "Aucun fichier correspondant"
   },
   "terminal": {
-    "exited": "[Processus terminé]"
+    "exited": "[Processus terminé]",
+    "ended": "La tâche est terminée ou ce terminal a été libéré"
   }
 }

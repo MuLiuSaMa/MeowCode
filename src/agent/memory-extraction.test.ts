@@ -2,6 +2,7 @@ import { mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import { estimateTokens } from "./context";
 import { MEMORY_INDEX_NAME, listMemories, memoryDirFor } from "./memory";
 import {
   applyMemoryOps,
@@ -11,6 +12,7 @@ import {
   hasNewUserMessage,
   lastRealUserMessageIndex,
   serializeMessages,
+  shouldExtractMemory,
   wroteMemoryDirectly,
   type MemoryOp,
 } from "./memory-extraction";
@@ -33,6 +35,27 @@ async function makeDir(prefix: string): Promise<string> {
 function user(text: string): ChatMessage {
   return { role: "user", content: text };
 }
+
+describe("shouldExtractMemory", () => {
+  it("每 3 个回合触发一次，单回合增量大时提前触发", () => {
+    expect(shouldExtractMemory({ pendingTurns: 1, transcriptTokens: 500 })).toBe(false);
+    expect(shouldExtractMemory({ pendingTurns: 2, transcriptTokens: 3_999 })).toBe(false);
+    expect(shouldExtractMemory({ pendingTurns: 3, transcriptTokens: 500 })).toBe(true);
+    expect(shouldExtractMemory({ pendingTurns: 1, transcriptTokens: 4_000 })).toBe(true);
+  });
+});
+
+describe("serializeMessages token budget", () => {
+  it("中文增量按 token 截断，不会把 3 条长中文消息全塞进去", () => {
+    const messages = Array.from({ length: 4 }, (_, index) =>
+      user(`第${index}轮：${"中".repeat(4_000)}`),
+    );
+    const serialized = serializeMessages(messages);
+    expect(estimateTokens(serialized)).toBeLessThanOrEqual(8_200);
+    // 保最新：最后一轮在，最旧一轮被丢
+    expect(serialized).toContain("第3轮");
+  });
+});
 
 describe("serializeMessages", () => {
   it("renders user, assistant, tool calls and results with role labels", () => {

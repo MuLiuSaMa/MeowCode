@@ -39,7 +39,8 @@
     "dataImport": "Data Import",
     "learning": "Self-learning",
     "rewind": "Session rewind",
-    "sandbox": "Sandbox"
+    "sandbox": "Sandbox",
+    "approvals": "Approval rules"
   },
   "island": {
     "section": "AI Floating Island",
@@ -156,10 +157,10 @@
     }
   },
   "memory": {
-    "extractionTitle": "Automatic memory extraction",
-    "extractionDesc": "After each turn, a lightweight background request reviews the new conversation and saves what is worth remembering long-term (preferences, corrections, project decisions) into memory. When off, only manual entries and the AI's own memory tool writes remain.",
-    "extractionField": "Extract memories after each turn",
-    "extractionFailed": "Failed to save the toggle",
+    "toggleTitle": "Memory",
+    "toggleDesc": "When on, each finished turn runs a light background pass that records what is worth remembering (preferences, corrections, project decisions); the memory index is injected into every conversation and the AI can read or write memory files on demand. When off, all three stop — existing memory files are kept on disk and can still be read as plain files.",
+    "toggleField": "Enable memory",
+    "toggleFailed": "Failed to save the switch",
     "scope": {
       "user": "Personal memory",
       "project": "Project memory"
@@ -189,7 +190,11 @@
     "loadFailed": "Couldn't load memories",
     "readFailed": "Couldn't read the memory",
     "saveFailed": "Couldn't save the memory",
-    "deleteFailed": "Couldn't delete the memory"
+    "deleteFailed": "Couldn't delete the memory",
+    "clearAction": "Delete all",
+    "clearConfirm": "Delete everything?",
+    "clearDone": "All memories deleted",
+    "clearFailed": "Couldn't clear memories"
   },
   "archive": {
     "section": "Archive",
@@ -212,7 +217,6 @@
     "website": "Website",
     "repo": "Repository",
     "openInBrowser": "Open in browser",
-    "credits": "Credits",
     "sponsor": "Support",
     "sponsorHint": "If MeowCode has been useful to you, feel free to support the author by scanning a QR code.",
     "qrAlt": "{{name}} payment QR code",
@@ -221,7 +225,8 @@
       "alipay": "Alipay"
     },
     "upToDate": "You're already on the latest version",
-    "checkFailed": "Update check failed: {{error}}"
+    "checkFailed": "Update check failed: {{error}}",
+    "sponsorList": "Sponsors (MeowCode, NexBox, OpenMD, LingTab)"
   },
   "actions": {
     "add": "Add",
@@ -580,5 +585,40 @@
     "enabled": "Switched to workspace-write (first grant {{ms}} ms)",
     "saveFailed": "Failed to save sandbox settings",
     "loadFailed": "Failed to load sandbox settings"
+  },
+  "dataLocation": {
+    "section": "Local data",
+    "desc": "Where settings, conversations, and local fonts are stored.",
+    "field": "Data location",
+    "open": "Open folder",
+    "change": "Change location...",
+    "loading": "Loading…",
+    "confirmTitle": "Change data location?",
+    "confirmDesc": "Your current data will be copied to the new location and the app will restart. The original data will be kept.",
+    "move": "Move and restart",
+    "moving": "Moving…",
+    "restarting": "Data moved — restarting the app…",
+    "errors": {
+      "same_path": "The new location is the same as the current one.",
+      "not_empty": "The target folder isn't empty. Choose an empty folder.",
+      "failed": "Couldn't change the data location."
+    }
+  },
+  "approvals": {
+    "section": "Approval rules",
+    "desc": "Actions you approved with \"Don't ask again\" in this project. Revoking a rule makes the next attempt ask again; file rules expire automatically once the file changes.",
+    "empty": "No project approval rules yet",
+    "clearAll": "Clear all",
+    "remove": "Delete rule",
+    "cleared": "All project approval rules cleared",
+    "clearConfirmTitle": "Clear all approval rules?",
+    "clearConfirmDesc": "These actions will ask for approval again. File rules already expire automatically when the file changes.",
+    "kind": {
+      "tool": "Tool",
+      "path": "File",
+      "command-exact": "Exact command",
+      "command-prefix": "Command prefix"
+    },
+    "loading": "Loading…"
   }
 }

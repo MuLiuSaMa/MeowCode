@@ -9,7 +9,7 @@ import {
   createCompactionSummary,
   summarizeToolOutputs,
 } from "./compaction.js";
-import { previewDiff, renderDiff } from "./diff.js";
+import { countDiffStats, previewDiff, renderDiff } from "./diff.js";
 import {
   buildFileMentionContext,
   collectInjectedPaths,
@@ -30,6 +30,7 @@ import {
   hasNewUserMessage,
   lastRealUserMessageIndex,
   serializeMessages,
+  shouldExtractMemory,
   wroteMemoryDirectly,
 } from "./memory-extraction.js";
 import { isAbortError } from "./http.js";
@@ -37,6 +38,8 @@ import { LearningController, type LearningSnapshot } from "./learning/index.js";
 import { formatLearningNotice } from "./learning/recall.js";
 import { createTurnTrace, recordToolCall, type TurnTrace } from "./learning/signals.js";
 import { canReplayNativeCompaction, nativeCompactionMode, requestNativeCompaction } from "./native-compaction.js";
+import { createWebSearchBackend, WEB_SEARCH_MAX_RESULTS, type WebSearchResult } from "./web-search.js";
+import { fetchWebPage, type WebFetchOutcome } from "./web-fetch.js";
 import { multiEditPaths, readMultiEditGroups } from "./multi-edit.js";
 import { displayPath, isWithinWorkspace, resolveToolPath, resolveWithinWorkspace } from "./paths.js";
 import { captureVersion } from "./read-state.js";
@@ -44,9 +47,21 @@ import { LoopGuard } from "./loop-guard.js";
 import { SessionStore, listSessions, sessionFileName, type SessionSummary } from "./session-store.js";
 import { SnapshotStore, type SnapshotTarget } from "./snapshot-store.js";
 import { recoverSession } from "./session-recovery.js";
+import { TraceRecorder, type TraceSpan, type TraceSummary } from "./trace.js";
+import {
+  addApprovalRule,
+  commandPrefix,
+  matchApprovalRule,
+  readApprovalRules,
+  toRulePath,
+} from "./approval-rules.js";
+import { createJobManager, type JobManager } from "./jobs.js";
+import { isForceApprovalGitAction, isMutatingGitAction } from "./git-tools.js";
+import { patchPaths } from "./patch.js";
 import {
   executeTool,
   isDynamicToolRequiringApproval,
+  isToolParallelSafe,
   listDynamicToolDefinitions,
   dynamicToolDefinitionsTrimmed,
   dynamicToolsVersion,
@@ -102,7 +117,6 @@ import {
   type MessageBreakdown,
 } from "./context.js";
 import {
-  READ_ONLY_PARALLEL_TOOLS,
   runAgentLoop,
   type AgentLoopHost,
   type AgentLoopHooks,
@@ -136,6 +150,8 @@ import {
   type AgentProfileId,
   type ApprovalMode,
   type ApprovalModeInput,
+  type ApprovalDecision,
+  type ApprovalRememberScope,
   type ChatMessage,
   type CommandRisk,
   type CommandRiskCategory,
@@ -156,6 +172,7 @@ import {
   type ToolDocument,
   type ToolImage,
   type ToolResult,
+  type TurnFileChangeStat,
   type TurnStatus,
   type UsageSummary,
 } from "./types.js";
@@ -249,7 +266,15 @@ Start by calling admit to declare the task shape (T0 trivial / T1 single lane / 
 Work lane by lane: implement (yourself or via an implementer subagent), then close every gate in the order your architecture graph defines, dispatching exactly the role each gate names (G4 implement → G5 review → G6 verification, plus the extra gates your graph adds). Never weaken a failing test — a regression is a signal.
 Stop only when every lane has passed G6 (the run completes itself), or you are blocked on a decision that truly needs the user. When stopping, state what is done, what remains, and what you need.`;
 
-const APPROVAL_TOOLS = new Set(["write_file", "edit_file", "multi_edit", "run_command"]);
+const APPROVAL_TOOLS = new Set([
+  "write_file",
+  "edit_file",
+  "multi_edit",
+  "delete_file",
+  "move_file",
+  "apply_patch",
+  "run_command",
+]);
 
 /** 桌面端技能 chip 的固定前缀：命中时该回合按完全访问执行，技能不受会话权限模式约束。 */
 const SKILL_REFERENCE_PREFIX = "【技能引用】";
@@ -338,6 +363,13 @@ const TOOL_ARGUMENTS: Record<string, ToolArgumentSpec> = {
   browser_type: { required: ["text"], nonEmpty: ["text"] },
   task: { required: ["description"], nonEmpty: ["description"] },
   admit: { required: ["tier", "task_shape"], nonEmpty: ["tier", "task_shape"] },
+  job: { required: ["action"], nonEmpty: ["action"] },
+  git: { required: ["action"], nonEmpty: ["action"] },
+  delete_file: { required: ["path"], nonEmpty: ["path"] },
+  move_file: { required: ["from", "to"], nonEmpty: ["from", "to"] },
+  apply_patch: { required: ["patch"], nonEmpty: ["patch"] },
+  web_search: { required: ["query"], nonEmpty: ["query"] },
+  web_fetch: { required: ["url"], nonEmpty: ["url"] },
 };
 
 /** 门禁拦截事件的 input 回显：尽力解析参数，解析失败给空对象 */
@@ -411,7 +443,14 @@ function validateToolArguments(
 export { isApprovalMode, normalizeApprovalMode, isSessionMode, normalizeSessionMode };
 
 /** 只有写类工具参与"可写根"判定；命令走独立的高危判定，见 autoApprovalReason。 */
-const WRITABLE_ROOT_TOOLS = new Set(["write_file", "edit_file", "multi_edit"]);
+const WRITABLE_ROOT_TOOLS = new Set([
+  "write_file",
+  "edit_file",
+  "multi_edit",
+  "delete_file",
+  "move_file",
+  "apply_patch",
+]);
 
 /**
  * auto 模式下这次调用能否自动批准，以及归到哪一类留痕原因。
@@ -463,6 +502,14 @@ function writablePaths(tool: string, input: unknown): string[] {
   if (tool === "multi_edit") {
     const paths = multiEditPaths(input);
     if (paths.length) return paths;
+  }
+  if (tool === "move_file") {
+    const from = String(args.from ?? "").trim();
+    const to = String(args.to ?? "").trim();
+    return [from, to].filter(Boolean);
+  }
+  if (tool === "apply_patch") {
+    return patchPaths(String(args.patch ?? ""));
   }
   const target = String(args.path ?? "").trim();
   return target ? [target] : [];
@@ -570,8 +617,12 @@ const COMPACTION_QUALITY_WINDOW_TURNS = 5;
  * 保活实现，只有 hermes 用「按请求来源选 TTL」替代。
  */
 const CACHE_KEEPALIVE_DELAY_MS = 290_000;
-/** 连续保活上限：约 1.5 小时空档覆盖；再往后多半是人真的走了，省钱要紧。 */
-const CACHE_KEEPALIVE_MAX_PINGS = 18;
+/**
+ * 连续保活上限：约 20 分钟空档覆盖。
+ * 18 次保活 ≈ 1.8 倍前缀的 cache-read，长空档反而比让它过期后重写一次更贵；
+ * Codex 也不做定时重放。超过 20 分钟允许下一轮重新写缓存。
+ */
+const CACHE_KEEPALIVE_MAX_PINGS = 4;
 
 /**
  * 空闲压缩：1h TTL 的会话空到 ~54min 缓存已死（CC v2.1.299 的 idle compaction ~54min
@@ -707,16 +758,50 @@ async function buildFileChangeDiff(
       after = null;
     }
   }
-  if (after == null) return undefined;
+  // 删除/移动源：文件已不在，用「before → 空」表达删除
+  if (after == null) {
+    if (capture.before == null) return undefined;
+    return renderDiff(capture.target, capture.before, "");
+  }
   return renderDiff(capture.target, capture.before ?? "", after);
 }
 
+/** 审阅面板的操作类型：删除/移动单独标记，其它写工具按 write/edit 区分。 */
+function fileChangeOperation(tool: string): "write_file" | "edit_file" | "delete_file" | "move_file" {
+  if (tool === "write_file") return "write_file";
+  if (tool === "delete_file") return "delete_file";
+  if (tool === "move_file") return "move_file";
+  return "edit_file";
+}
+
+/** 记忆总开关关闭时要撤下的工具：读写删除三条一起，避免「关了但还能写」 */
+const MEMORY_TOOL_NAMES: ReadonlySet<string> = new Set([
+  "memory_read",
+  "memory_write",
+  "memory_delete",
+]);
+
 /**
- * 回合后记忆蒸馏的环境默认值：桌面端经 MEOWCODE_MEMORY_EXTRACTION 传入
- * settings.json 的开关；测试环境在 vitest.setup.ts 里统一置 0。
+ * 记忆总开关的环境默认值：桌面端经 MEOWCODE_MEMORY 传入 settings.json 的开关。
+ * 兼容旧的 MEOWCODE_MEMORY_EXTRACTION（那时候只关蒸馏，语义是现在的一个子集）。
+ * 测试环境在 vitest.setup.ts 里统一置 0。
  */
-function readMemoryExtractionEnvDefault(): boolean {
-  const raw = process.env.MEOWCODE_MEMORY_EXTRACTION;
+function readMemoryEnvDefault(): boolean {
+  const raw = process.env.MEOWCODE_MEMORY ?? process.env.MEOWCODE_MEMORY_EXTRACTION;
+  if (raw === undefined || raw.trim() === "") return true;
+  const normalized = raw.trim().toLowerCase();
+  return normalized !== "0" && normalized !== "false";
+}
+
+/**
+ * 回合后蒸馏的环境开关（MEOWCODE_MEMORY_DISTILL，默认开）。
+ *
+ * 只在「记忆总开关开着、但不想付蒸馏请求」的场合需要单独关：测试环境就是这么用的——
+ * 记忆工具与索引要保留（用例断言它们常驻），后台蒸馏却会吃掉排队的 mock 响应。
+ * 产品界面不暴露它：用户关记忆就是整体关。
+ */
+function readMemoryDistillEnvDefault(): boolean {
+  const raw = process.env.MEOWCODE_MEMORY_DISTILL;
   if (raw === undefined || raw.trim() === "") return true;
   const normalized = raw.trim().toLowerCase();
   return normalized !== "0" && normalized !== "false";
@@ -747,10 +832,27 @@ function readLearningEnvDefault(): boolean {  const raw = process.env.MEOWCODE_S
 type ApprovalBy = "user" | "hook" | "abort";
 
 type ApprovalHandle = {
-  wait: Promise<boolean>;
+  wait: Promise<ApprovalDecision>;
   /** 返回 false 表示已被更早的结算（用户/hook/中止）抢先，本次不生效 */
-  settle: (approved: boolean, by?: ApprovalBy) => boolean;
+  settle: (decision: ApprovalDecision | boolean, by?: ApprovalBy) => boolean;
 };
+
+function normalizeApprovalDecision(decision: ApprovalDecision | boolean): ApprovalDecision {
+  if (typeof decision === "boolean") return { approved: decision };
+  const feedback = decision.feedback?.trim().slice(0, 2000);
+  return {
+    approved: decision.approved,
+    ...(feedback ? { feedback } : {}),
+    ...(decision.approved && decision.remember ? { remember: decision.remember } : {}),
+  };
+}
+
+/** 拒绝文案：带用户理由时一并回灌，模型下一轮可直接据此修正。 */
+function denialOutput(decision: ApprovalDecision): string {
+  return decision.feedback
+    ? `User denied this tool call. Reason: ${decision.feedback}`
+    : "User denied this tool call.";
+}
 
 export class AgentRuntime {
   private providers: ProviderConfig[];
@@ -833,7 +935,7 @@ export class AgentRuntime {
   private harnessArchitecture: string | null = null;
   private pendingApprovals = new Map<
     string,
-    { details: PendingApproval; resolve: (approved: boolean) => void; settled: boolean }
+    { details: PendingApproval; resolve: (decision: ApprovalDecision) => void; settled: boolean }
   >();
 
   /** ask_user 虚拟工具：挂起中的澄清问题（callId → resolver），回答文本作为工具结果 */
@@ -909,6 +1011,13 @@ export class AgentRuntime {
   private asyncTasks = 0;
   private shuttingDown = false;
   private listeners = new Set<(event: MeowEvent) => void>();
+  /** 诊断：turn/llm/tool 三层 span，环形缓冲；日志由 server 注入 sink 落盘 */
+  private readonly traceRecorder: TraceRecorder;
+  /** 后台任务：桌面端走主进程 job-host（PTY 可在终端页签接管），CLI/测试走本地子进程 */
+  private readonly jobManager: JobManager = createJobManager();
+  /** 子 Agent 树深度（顶层 0）与该 trace 剩余配额（含嵌套） */
+  private readonly subagentDepth: number;
+  private subagentBudget: number;
   /** 当前工作区的 AGENTS.md 内容（每轮重新读取，内容变化时下一轮生效） */
   private instructions: string | undefined;
   /** AGENTS.md / CLAUDE.md 读取开关：设置页切换后实时生效 */
@@ -930,7 +1039,7 @@ export class AgentRuntime {
   /** 子 Agent 写/改文件后回写父会话（审阅聚合） */
   private onFileChange?: (change: {
     path: string;
-    operation: "write_file" | "edit_file";
+    operation: "write_file" | "edit_file" | "delete_file" | "move_file";
     diff: string;
   }) => void | Promise<void>;
   /** 工具白名单：Explore 子 Agent 只挂只读工具 */
@@ -953,6 +1062,8 @@ export class AgentRuntime {
   private pendingSteers: Array<{ id: string; text: string }> = [];
   /** 当前回合内真实改动过的文件（宿主观测）：审阅面板与快照归因用 */
   private turnFileChanges = new Set<string>();
+  /** 当前回合改动的行数统计（按路径聚合）：回合末汇总卡片数据源 */
+  private turnFileStats = new Map<string, TurnFileChangeStat>();
   /** 文件快照开关与参数（会话回滚）；关闭时所有打点 no-op，checkpoint 不带 snapshot */
   private readonly snapshotOptions: {
     enabled: boolean;
@@ -963,8 +1074,28 @@ export class AgentRuntime {
   private readonly snapshotStores = new Map<string, SnapshotStore>();
   /** 有后台子 Agent 时暂缓标题生成，等它们结束后再补 */
   private pendingTitle: { session: SessionStore; text: string } | null = null;
-  /** 回合后自动蒸馏开关（ZCode 同款）：server 的 /config/memory-extraction 可实时切换 */
-  memoryExtraction = true;
+  /**
+   * 记忆总开关（server 的 /config/memory 可实时切换）：
+   *  - 开：回合后自动蒸馏 + 记忆索引注入系统指令 + 下发 memory_read/write/delete
+   *  - 关：三件事全部停掉，但记忆文件仍留在磁盘上，需要时用普通 read_file 读
+   * 用 getter/setter 而不是裸字段：切换要同时让工具目录与指令快照失效，
+   * 否则这一轮还挂旧工具、下一轮还在注旧索引，等于开关没关干净。
+   */
+  private memoryEnabledState = true;
+  /** 蒸馏子开关：总开关开着时仍可单独关（测试用；产品 UI 不暴露） */
+  private distillEnabled = true;
+  get memoryEnabled(): boolean {
+    return this.memoryEnabledState;
+  }
+  set memoryEnabled(value: boolean) {
+    if (this.memoryEnabledState === value) return;
+    this.memoryEnabledState = value;
+    // 工具表 / 系统指令各有快照：一起置空，下一轮按新状态重建
+    this.toolCatalog = null;
+    this.rawToolsCache = null;
+    this.instructionsSessionId = null;
+    this.instructions = undefined;
+  }
   /** 用户可见回复的语色：server 的 /config/speech-style 可实时切换；子 Agent 不生效 */
   speechStyle: SpeechStyle = "normal";
   /** 蒸馏一次只跑一个：请求在途时的新增量并入下回合（游标已推进到当次快照末尾） */
@@ -973,9 +1104,11 @@ export class AgentRuntime {
   private memoryNoticePending: { sessionId: string; text: string } | null = null;
   /** 每会话蒸馏游标（messages 下标）：进程内存级，重启后从最后一个用户回合重计 */
   private memoryCursors = new Map<string, number>();
+  /** 距上次蒸馏累积的完成回合数：未达阈值时不推进游标，下轮把增量一起带上 */
+  private memoryPendingTurns = new Map<string, number>();
   /**
    * 自我学习（观察 → 学习 → 召回 → 评估）：server 的 /config/learning 可实时切换。
-   * 与 memoryExtraction 是两条独立通道 —— 记忆存「事实」，学习存「怎么做」。
+   * 与记忆总开关是两条独立通道 —— 记忆存「事实」，学习存「怎么做」。
    *
    * 用 getter/setter 而不是裸字段：开关必须同步到 LearningController，
    * 否则「关掉了」但控制器里仍认为开启，子 Agent 也会跟着学。
@@ -1069,8 +1202,10 @@ export class AgentRuntime {
     };
     /** MCP 就绪信号（plugins.mcpReady）：首个模型请求前等它（≤10s），避免工具中途追加整段重算 */
     mcpReady?: Promise<void> | null;
-    /** 回合后自动蒸馏（记忆）：缺省开启；server 从设置/env 传入初始值 */
-    memoryExtraction?: boolean;
+    /** 记忆总开关：缺省开启；server 从设置/env 传入初始值（关掉后不蒸馏、不注入、不下发记忆工具） */
+    memory?: boolean;
+    /** 只关回合后蒸馏（记忆工具与索引保留）：缺省按 MEOWCODE_MEMORY_DISTILL，测试用它 */
+    distill?: boolean;
     /** 会话回滚的文件快照（缺省按 MEOWCODE_REWIND* env，默认开启）；关闭后打点 no-op */
     snapshots?: { enabled?: boolean; maxBlobBytes?: number; keepCheckpoints?: number };
     /** 自我学习（技能/经验/用户模型）：缺省开启；server 从设置/env 传入 */
@@ -1084,9 +1219,15 @@ export class AgentRuntime {
     governance?: GovernanceMode;
     onFileChange?: (change: {
       path: string;
-      operation: "write_file" | "edit_file";
+      operation: "write_file" | "edit_file" | "delete_file" | "move_file";
       diff: string;
     }) => void | Promise<void>;
+    /** 诊断 span 落盘回调（server 注入 agent 日志）；缺省只进环形缓冲 */
+    traceSink?: (span: TraceSpan) => void;
+    /** 子 Agent 树深度（顶层 0）；决定是否还能继续嵌套 */
+    subagentDepth?: number;
+    /** 该 trace 剩余可派发的子 Agent 数（含嵌套）；缺省 8 */
+    subagentBudget?: number;
   }) {
     this.providers = options.providers;
     this.providerId = options.providerId ?? options.providers[0]?.id ?? "";
@@ -1104,7 +1245,8 @@ export class AgentRuntime {
     this.plugins = options.plugins ?? null;
     this.hookScope = options.hookScope ?? null;
     this.mcpReady = options.mcpReady ?? null;
-    this.memoryExtraction = options.memoryExtraction ?? readMemoryExtractionEnvDefault();
+    this.memoryEnabled = options.memory ?? readMemoryEnvDefault();
+    this.distillEnabled = options.distill ?? readMemoryDistillEnvDefault();
     const envRewind = readRewindEnvDefaults();
     this.snapshotOptions = {
       enabled: options.snapshots?.enabled ?? envRewind.enabled,
@@ -1125,6 +1267,11 @@ export class AgentRuntime {
     this.speechStyle = normalizeSpeechStyle(options.speechStyle ?? readSpeechStyleFromEnv());
     this.governance = options.governance ?? "goal";
     this.onFileChange = options.onFileChange;
+    this.traceRecorder = new TraceRecorder(
+      options.traceSink ? { sink: options.traceSink } : {},
+    );
+    this.subagentDepth = options.subagentDepth ?? 0;
+    this.subagentBudget = options.subagentBudget ?? 8;
   }
 
   /**
@@ -1198,10 +1345,78 @@ export class AgentRuntime {
     return files;
   }
 
+  /** 命中项目级规则则跳过弹窗；高危命令、文件版本已变都不算命中。 */
+  private async tryRememberedApproval(
+    session: SessionStore,
+    tool: string,
+    input: unknown,
+    risk: CommandRisk | undefined,
+  ): Promise<ReturnType<typeof matchApprovalRule>> {
+    if (risk?.level === "high") return undefined;
+    const rules = await readApprovalRules(session.cwd);
+    if (!rules.length) return undefined;
+    if (tool === "run_command") {
+      const command = String(((input ?? {}) as Record<string, unknown>).command ?? "");
+      return matchApprovalRule(rules, { tool, command });
+    }
+    if (WRITABLE_ROOT_TOOLS.has(tool)) {
+      const files = await this.approvalTargetFiles(session, tool, input);
+      const targets = await Promise.all(
+        files.map(async (file) => ({
+          path: toRulePath(session.cwd, file),
+          version: await captureVersion(file),
+        })),
+      );
+      return matchApprovalRule(rules, { tool, targets });
+    }
+    return matchApprovalRule(rules, { tool });
+  }
+
+  /** 用户批准时勾选「本项目不再询问」：按工具类型落一条规则。 */
+  private async rememberApproval(
+    session: SessionStore,
+    tool: string,
+    input: unknown,
+    scope: ApprovalRememberScope,
+    targets: string[],
+    versions: string[],
+  ): Promise<string | undefined> {
+    if (WRITABLE_ROOT_TOOLS.has(tool)) {
+      if (scope !== "path" || !targets.length) return undefined;
+      let lastId: string | undefined;
+      for (let index = 0; index < targets.length; index += 1) {
+        const rule = await addApprovalRule(session.cwd, {
+          tool,
+          kind: "path",
+          value: toRulePath(session.cwd, targets[index]),
+          fileSha: versions[index],
+        });
+        lastId = rule.id;
+      }
+      return lastId;
+    }
+    if (tool === "run_command") {
+      const command = String(((input ?? {}) as Record<string, unknown>).command ?? "").trim();
+      if (!command) return undefined;
+      if (scope === "command-prefix") {
+        const prefix = commandPrefix(command);
+        if (!prefix) return undefined;
+        return (
+          await addApprovalRule(session.cwd, { tool, kind: "command-prefix", value: prefix })
+        ).id;
+      }
+      return (
+        await addApprovalRule(session.cwd, { tool, kind: "command-exact", value: command })
+      ).id;
+    }
+    if (scope !== "tool") return undefined;
+    return (await addApprovalRule(session.cwd, { tool, kind: "tool", value: tool })).id;
+  }
+
   /** 登记审批并广播；hook 审批不进会话历史（kind!=="tool"）。 */
   private registerApproval(details: PendingApproval): ApprovalHandle {
-    let resolveWait: (approved: boolean) => void = () => {};
-    const wait = new Promise<boolean>((resolve) => {
+    let resolveWait: (decision: ApprovalDecision) => void = () => {};
+    const wait = new Promise<ApprovalDecision>((resolve) => {
       resolveWait = resolve;
     });
     this.pendingApprovals.set(details.callId, {
@@ -1212,24 +1427,30 @@ export class AgentRuntime {
     this.emit({ type: "approval_required", ...details });
     return {
       wait,
-      settle: (approved, by = "user") => this.settleApproval(details.callId, approved, by),
+      settle: (decision, by = "user") => this.settleApproval(details.callId, decision, by),
     };
   }
 
   /** 结算一条审批：只生效一次，并广播 approval_resolved 用于关闭弹窗。 */
-  private settleApproval(callId: string, approved: boolean, by: ApprovalBy): boolean {
+  private settleApproval(
+    callId: string,
+    decision: ApprovalDecision | boolean,
+    by: ApprovalBy,
+  ): boolean {
     const entry = this.pendingApprovals.get(callId);
     if (!entry || entry.settled) return false;
     entry.settled = true;
     this.pendingApprovals.delete(callId);
+    const normalized = normalizeApprovalDecision(decision);
     this.emit({
       type: "approval_resolved",
       sessionId: entry.details.sessionId,
       callId,
-      approved,
+      approved: normalized.approved,
       by,
+      ...(normalized.feedback ? { feedback: normalized.feedback } : {}),
     });
-    entry.resolve(approved);
+    entry.resolve(normalized);
     return true;
   }
 
@@ -1244,7 +1465,7 @@ export class AgentRuntime {
     turnId: string | null,
     stale: boolean,
     hookReason?: string,
-  ): Promise<boolean> {
+  ): Promise<ApprovalDecision> {
     if (turnId) {
       await session.appendApprovalRequested({
         turnId,
@@ -1256,10 +1477,11 @@ export class AgentRuntime {
       });
       await session.flush();
     }
-    if (this.turnAbort?.signal.aborted) return false;
+    if (this.turnAbort?.signal.aborted) return { approved: false };
     const handle = this.registerApproval({
       callId: call.id,
       sessionId: session.id,
+      workspace: session.cwd,
       tool,
       input,
       ...(diff ? { diff } : {}),
@@ -1283,7 +1505,7 @@ export class AgentRuntime {
     risk: CommandRisk | undefined,
     turnId: string | null,
     hookReason?: string,
-  ): Promise<{ approved: boolean; byHook: boolean; reason?: string }> {
+  ): Promise<{ decision: ApprovalDecision; byHook: boolean; reason?: string }> {
     if (turnId) {
       await session.appendApprovalRequested({
         turnId,
@@ -1295,10 +1517,13 @@ export class AgentRuntime {
       });
       await session.flush();
     }
-    if (this.turnAbort?.signal.aborted) return { approved: false, byHook: false };
+    if (this.turnAbort?.signal.aborted) {
+      return { decision: { approved: false }, byHook: false };
+    }
     const handle = this.registerApproval({
       callId: call.id,
       sessionId: session.id,
+      workspace: session.cwd,
       tool,
       input,
       ...(diff ? { diff } : {}),
@@ -1306,7 +1531,7 @@ export class AgentRuntime {
       ...(hookReason ? { hookReason } : {}),
     });
     if (!this.plugins?.hasHooks("permission_request")) {
-      return { approved: await handle.wait, byHook: false };
+      return { decision: await handle.wait, byHook: false };
     }
 
     const hookAbort = new AbortController();
@@ -1326,27 +1551,27 @@ export class AgentRuntime {
     )
       .then((result) => ({ source: "hook" as const, result }))
       .catch(() => ({ source: "hook" as const, result: undefined }));
-    const userRun = handle.wait.then((approved) => ({ source: "user" as const, approved }));
+    const userRun = handle.wait.then((decision) => ({ source: "user" as const, decision }));
 
     const first = await Promise.race([hookRun, userRun]);
     if (first.source === "user") {
       hookAbort.abort();
-      return { approved: first.approved, byHook: false };
+      return { decision: first.decision, byHook: false };
     }
     if (first.result?.permission === "allow" || first.result?.permission === "deny") {
       const approved = first.result.permission === "allow";
       if (handle.settle(approved, "hook")) {
         return {
-          approved,
+          decision: { approved },
           byHook: true,
           ...(first.result.reason ? { reason: first.result.reason } : {}),
         };
       }
       // 用户抢先结算：以用户为准
-      return { approved: await handle.wait, byHook: false };
+      return { decision: await handle.wait, byHook: false };
     }
     // hook 没有决定：继续等用户
-    return { approved: await handle.wait, byHook: false };
+    return { decision: await handle.wait, byHook: false };
   }
 
   /**
@@ -1380,11 +1605,13 @@ export class AgentRuntime {
     const handle = this.registerApproval({
       callId: escapeCallId,
       sessionId: session.id,
+      workspace: session.cwd,
       tool,
       input,
       sandboxEscape,
     });
-    return handle.wait;
+    const decision = await handle.wait;
+    return decision.approved;
   }
 
   /**
@@ -1446,16 +1673,16 @@ export class AgentRuntime {
       ...(request.matcher ? { matcher: request.matcher } : {}),
       ...(request.source ? { source: request.source } : {}),
     });
-    if (!signal) return handle.wait;
+    if (!signal) return (await handle.wait).approved;
     let onAbort: (() => void) | undefined;
-    const aborted = new Promise<boolean>((resolve) => {
-      onAbort = () => resolve(false);
+    const aborted = new Promise<ApprovalDecision>((resolve) => {
+      onAbort = () => resolve({ approved: false });
       signal.addEventListener("abort", onAbort, { once: true });
     });
-    const approved = await Promise.race([handle.wait, aborted]);
+    const decision = await Promise.race([handle.wait, aborted]);
     if (onAbort) signal.removeEventListener("abort", onAbort);
-    if (!approved) handle.settle(false, "abort");
-    return approved;
+    if (!decision.approved) handle.settle(false, "abort");
+    return decision.approved;
   }
 
   /** PreToolUse ask 的统一落地：审批 + 记录；返回拒绝时的工具结果文案。 */
@@ -1477,16 +1704,16 @@ export class AgentRuntime {
       turnId,
       hookReason,
     );
-    await session.appendApproval(call.id, tool, input, decision.approved, {
+    await session.appendApproval(call.id, tool, input, decision.decision.approved, {
       ...(turnId ? { turnId } : {}),
       ...(decision.byHook ? { reason: "permission_request_hook" } : {}),
     });
-    if (decision.approved) return { approved: true };
+    if (decision.decision.approved) return { approved: true };
     return {
       approved: false,
       output: decision.byHook
         ? `Permission denied by hook: ${decision.reason ?? "PermissionRequest hook"}`
-        : "User denied this tool call.",
+        : denialOutput(decision.decision),
     };
   }
 
@@ -1639,9 +1866,17 @@ export class AgentRuntime {
 
   /** 原始工具表：桌面端注入了浏览器桥才挂 browser_* 工具；子 Agent / side 不挂 task。 */
   private computeTools(): ToolDefinition[] {
-    let base = this.enableTaskTool
+    // 记忆总开关关闭：memory_* 一并撤下。记忆文件仍在磁盘，模型要读就用普通 read_file
+    const available = this.memoryEnabled
       ? toolDefinitions
-      : toolDefinitions.filter((definition) => definition.function.name !== "task");
+      : toolDefinitions.filter((definition) => !MEMORY_TOOL_NAMES.has(definition.function.name));
+    // 没有对应服务商搜索能力的模型不暴露 web_search（web_fetch 走本地 HTTP，始终保留）
+    const withWebSearch = this.webSearchSupported()
+      ? available
+      : available.filter((definition) => definition.function.name !== "web_search");
+    let base = this.enableTaskTool
+      ? withWebSearch
+      : withWebSearch.filter((definition) => definition.function.name !== "task");
     // 治理开启的根 runtime 才挂 admit（只读/子代理会话不付这份 schema 预算）
     if (this.governance !== "off" && this.enableTaskTool) {
       base = [...base, admitToolDefinition];
@@ -1687,11 +1922,17 @@ export class AgentRuntime {
       dynamicToolsVersion(),
       this.agentProfile,
       this.enableTaskTool ? 1 : 0,
+      this.memoryEnabled ? 1 : 0,
       this.browserHost ? 1 : 0,
       this.governance,
       this.allowedTools ? [...this.allowedTools].sort().join(",") : "",
       this.providers
-        .map((provider) => `${provider.id}:${provider.model}:${provider.enabled === false ? 0 : 1}`)
+        .map(
+          (provider) =>
+            `${provider.id}:${provider.model}:${provider.enabled === false ? 0 : 1}:${provider.baseUrl}:${
+              provider.protocol ?? ""
+            }:${provider.apiKey ? 1 : 0}`,
+        )
         .join(","),
     ].join("|");
   }
@@ -1801,6 +2042,19 @@ export class AgentRuntime {
   /** 是否有回合正在执行（SSE 重连后前端用它判断是否还在等事件）。 */
   get isRunning(): boolean {
     return this.turnAbort !== null;
+  }
+
+  /** 当前会话的诊断链路 id；无会话时为 null。子 Agent 继承父会话的 traceId。 */
+  getTraceId(): string | null {
+    return this.currentSession?.traceId ?? null;
+  }
+
+  getTraceSpans(limit = 100): TraceSpan[] {
+    return this.traceRecorder.list(limit);
+  }
+
+  getTraceSummary(): TraceSummary {
+    return this.traceRecorder.summary();
   }
 
   get activeTurnSessionId(): string | null {
@@ -2170,12 +2424,12 @@ export class AgentRuntime {
     });
   }
 
-  respondToApproval(callId: string, approved: boolean): boolean {
+  respondToApproval(callId: string, decision: ApprovalDecision | boolean): boolean {
     if (this.pendingApprovals.has(callId)) {
-      return this.settleApproval(callId, approved, "user");
+      return this.settleApproval(callId, decision, "user");
     }
     for (const live of this.liveSubagents.values()) {
-      if (live.runtime.respondToApproval(callId, approved)) return true;
+      if (live.runtime.respondToApproval(callId, decision)) return true;
     }
     return false;
   }
@@ -2872,6 +3126,7 @@ export class AgentRuntime {
     this.verifyFailuresThisTurn = 0;
     this.lspFeedbackThisTurn = 0;
     this.turnFileChanges.clear();
+    this.turnFileStats.clear();
     // 学习轨迹：本回合的工具/命令成败，回合末交给学习层做门禁与归因
     this.learningTrace = createTurnTrace();
     this.learningTrace.userTexts.push(text);
@@ -2879,6 +3134,21 @@ export class AgentRuntime {
     const provider = this.activeProvider();
     let status: TurnStatus = "completed";
     let errorMessage: string | undefined;
+    /** 本轮开始时的检查点：「已编辑 N 个文件」卡片的撤销目标 */
+    let turnCheckpointId: string | undefined;
+    let turnCheckpointHasSnapshot = false;
+    /** 收尾时 finally 会清空累计，turn_complete 需要这份快照 */
+    let turnFiles: TurnFileChangeStat[] = [];
+    const turnSpan = this.traceRecorder.startSpan({
+      traceId: session.traceId,
+      kind: "turn",
+      name: "prompt",
+      attributes: {
+        provider: provider.id,
+        model: provider.model,
+        approvalMode: this.turnApprovalMode ?? this.approvalMode,
+      },
+    });
     try {
       // 插件 hook：prompt_submit（可 block / 改写文本）。改写后的文本参与落盘与请求；
       // blocked → 落盘用户消息后直接给一条 assistant 说明，回合正常收尾。
@@ -2901,6 +3171,16 @@ export class AgentRuntime {
       // 若打在之后，回滚派生的会话会带一个孤立 turn_start，switchSession 的崩溃
       // 恢复会把它重放成一条假用户消息并报「上次生成被中断」，回滚结果直接被污染。
       const turnCheckpoint = await this.writeTurnCheckpoint(session, turnId, text);
+      turnCheckpointId = turnCheckpoint?.id;
+      turnCheckpointHasSnapshot = Boolean(turnCheckpoint?.hasSnapshot);
+      if (!turnCheckpointId) {
+        // 2s 内同位置被去重：复用该位置最后一条检查点（快照语义等价，仍可撤销本轮）
+        const anchor = session.checkpoints.at(-1);
+        if (anchor && anchor.messageIndex === session.messages.length) {
+          turnCheckpointId = anchor.id;
+          turnCheckpointHasSnapshot = Boolean(anchor.hasSnapshot);
+        }
+      }
       await session.appendTurnStart({
         turnId,
         ...(queuedId ? { queueId: queuedId } : { text }),
@@ -3072,6 +3352,8 @@ export class AgentRuntime {
         this.emit({ type: "error", sessionId: session.id, message: errorMessage });
       }
     } finally {
+      // 先留快照：下面可能清空累计、也可能落盘失败，但 turn_complete 仍要带上本轮统计
+      turnFiles = [...this.turnFileStats.values()];
       try {
         await this.finalizePartial(session);
         await session.appendTurnEnd({
@@ -3082,6 +3364,7 @@ export class AgentRuntime {
         // 压缩质量观测窗口按回合推进（纯观测，失败不影响收尾）
         await this.tickCompactionQuality(session);
         this.turnFileChanges.clear();
+        this.turnFileStats.clear();
         await session.flush();
       } catch {
         // 落盘失败也必须发出 turn_complete，否则前端一直显示生成中
@@ -3112,7 +3395,21 @@ export class AgentRuntime {
       } catch {
         // 收尾阶段的 hook 异常一律吞掉
       }
-      this.emit({ type: "turn_complete", sessionId: session.id, status });
+      this.emit({
+        type: "turn_complete",
+        sessionId: session.id,
+        status,
+        turnId,
+        // 有文件改动才带：前端据此在本轮末尾显示「已编辑 N 个文件」卡片
+        ...(turnFiles.length ? { files: turnFiles } : {}),
+        ...(turnCheckpointId ? { checkpointId: turnCheckpointId } : {}),
+        ...(turnCheckpointId ? { canRewind: turnCheckpointHasSnapshot } : {}),
+      });
+      this.traceRecorder.endSpan(turnSpan, {
+        status: status === "completed" ? "ok" : status === "aborted" ? "aborted" : "error",
+        ...(errorMessage ? { error: errorMessage } : {}),
+        attributes: { files: turnFiles.length },
+      });
       // 回合结束 = 蒸馏时机（ZCode turn.completed 同款）：只分析本轮增量
       this.scheduleMemoryExtraction(session, status);
       // 回合结束 = 学习时机：先落 outcome + 归因，再判断值不值得调用学习器
@@ -3205,7 +3502,7 @@ export class AgentRuntime {
    * 静默运行：失败不影响对话，成功有变更时挂一条下回合注入的 [memory] 通知。
    */
   private scheduleMemoryExtraction(session: SessionStore, status: string): void {
-    if (!this.memoryExtraction) return;
+    if (!this.memoryEnabled || !this.distillEnabled) return;
     if (status !== "completed" || this.memoryExtractionBusy) return;
     const messages = session.messages;
     let cursor = this.memoryCursors.get(session.id) ?? -1;
@@ -3215,11 +3512,27 @@ export class AgentRuntime {
       if (cursor < 0) return;
     }
     if (!hasNewUserMessage(messages, cursor)) return;
-    // 游标先推进再发请求：在途期间的新消息并入下回合，同一增量绝不蒸馏两次
-    this.memoryCursors.set(session.id, messages.length);
-    if (wroteMemoryDirectly(messages, cursor)) return;
+    if (wroteMemoryDirectly(messages, cursor)) {
+      // 模型本回合直接写过记忆：推进游标并清计数，不必再蒸馏
+      this.memoryCursors.set(session.id, messages.length);
+      this.memoryPendingTurns.set(session.id, 0);
+      return;
+    }
     const transcript = serializeMessages(messages.slice(cursor));
-    if (!transcript.trim()) return;
+    if (!transcript.trim()) {
+      this.memoryCursors.set(session.id, messages.length);
+      this.memoryPendingTurns.set(session.id, 0);
+      return;
+    }
+    const pendingTurns = (this.memoryPendingTurns.get(session.id) ?? 0) + 1;
+    if (!shouldExtractMemory({ pendingTurns, transcriptTokens: estimateTokens(transcript) })) {
+      // 未达阈值：只记计数，游标不动；下轮蒸馏会把这几轮增量一起带上
+      this.memoryPendingTurns.set(session.id, pendingTurns);
+      return;
+    }
+    // 游标先推进再发请求：在途期间的新消息并入下回合，同一增量绝不蒸馏两次
+    this.memoryPendingTurns.set(session.id, 0);
+    this.memoryCursors.set(session.id, messages.length);
     const workspace = session.cwd;
     if (!workspace) return;
     const provider = this.activeProvider();
@@ -3498,6 +3811,17 @@ export class AgentRuntime {
   /** 回滚引擎用：取会话的快照存储（与打点共用同一实例，内存 state 才一致）。 */
   snapshotStoreOf(session: SessionStore): SnapshotStore | null {
     return this.snapshotFor(session);
+  }
+
+  /** 回合级改动记账：同一文件多次编辑累加行数，供 turn_complete 的「已编辑 N 个文件」卡片使用。 */
+  private recordTurnFileChange(filePath: string, stats: { added: number; removed: number }): void {
+    const existing = this.turnFileStats.get(filePath);
+    if (existing) {
+      existing.added += stats.added;
+      existing.removed += stats.removed;
+      return;
+    }
+    this.turnFileStats.set(filePath, { path: filePath, added: stats.added, removed: stats.removed });
   }
 
   /**
@@ -3811,10 +4135,47 @@ export class AgentRuntime {
             // 改写失败按原请求走，宁可少一个 hook 也不能打断请求
           }
         }
-        return streamChatCompletion({
-          ...requestOptions,
-          onUsage: (usage) => this.emitUsageSample(session, roundId, usage),
+        const llmSpan = this.traceRecorder.startSpan({
+          traceId: session.traceId,
+          kind: "llm",
+          name: requestOptions.provider.model,
+          attributes: {
+            provider: requestOptions.provider.id,
+            protocol: requestOptions.provider.protocol ?? "openai-chat-completions",
+            messages: requestOptions.messages.length,
+            tools: requestOptions.tools.length,
+          },
         });
+        try {
+          const result = await streamChatCompletion({
+            ...requestOptions,
+            onUsage: (usage) => this.emitUsageSample(session, roundId, usage),
+          });
+          this.traceRecorder.endSpan(llmSpan, {
+            attributes: {
+              ...(result.finishReason ? { finishReason: result.finishReason } : {}),
+              ...(result.usage?.inputTokens !== undefined
+                ? { inputTokens: result.usage.inputTokens }
+                : {}),
+              ...(result.usage?.outputTokens !== undefined
+                ? { outputTokens: result.usage.outputTokens }
+                : {}),
+              ...(result.usage?.cacheReadTokens !== undefined
+                ? { cacheReadTokens: result.usage.cacheReadTokens }
+                : {}),
+              ...(result.usage?.cacheWriteTokens !== undefined
+                ? { cacheWriteTokens: result.usage.cacheWriteTokens }
+                : {}),
+            },
+          });
+          return result;
+        } catch (error) {
+          this.traceRecorder.endSpan(llmSpan, {
+            status: isAbortError(error) ? "aborted" : "error",
+            error,
+          });
+          throw error;
+        }
       },
       persistAssistantMessage: async (message) => {
         await session.appendMessage(message);
@@ -3943,11 +4304,12 @@ export class AgentRuntime {
       executeToolCall: (call, messages) => this.executeToolCallTracked(session, messages, call),
       executeTaskToolCall: (call) => this.executeTaskToolCall(session, call),
       executeReadOnlyToolCall: (call, messages) =>
-        this.executeReadOnlyToolCall(session, call, messages),
+        this.executeReadOnlyToolCallTraced(session, call, messages),
       pushToolMessage: async (messages, message) => {
         await this.pushToolMessage(session, messages, message);
       },
       earlyRun: (callId) => this.earlyToolRuns.get(callId),
+      isParallelSafe: (toolName) => isToolParallelSafe(toolName),
       pushUserMessage: (messages, content) => this.pushUserMessage(session, messages, content),
       onToolBlocked: (call, message) => {
         // 门禁拦截也要有完整 UI 事件（与插件 block 的形态一致）
@@ -4206,12 +4568,12 @@ export class AgentRuntime {
     messages: ChatMessage[],
   ): void {
     if (!this.experimental?.midstreamToolExec) return;
-    if (!READ_ONLY_PARALLEL_TOOLS.has(call.function.name)) return;
+    if (!isToolParallelSafe(call.function.name)) return;
     // 有 tool_call hook 时不能提前执行：流中启动发生在分派前，hook 无法拦截。
     if (this.plugins?.hasHooks("tool_call")) return;
     if (!call.id || this.earlyToolRuns.has(call.id)) return;
     if (this.turnAbort?.signal.aborted) return;
-    this.earlyToolRuns.set(call.id, this.executeReadOnlyToolCall(session, call, messages));
+    this.earlyToolRuns.set(call.id, this.executeReadOnlyToolCallTraced(session, call, messages));
   }
 
   private async executeReadOnlyToolCall(
@@ -4349,17 +4711,33 @@ export class AgentRuntime {
       session,
       this.turnAbort?.signal,
     );
+    // 只读并行分支也必须注入联网工具：web_fetch 在 READ_ONLY_PARALLEL_TOOLS 里，
+    // 漏注入会让模型拿到 "Web fetch is not available."（而不是真正抓取失败）。
+    const webTools = this.webToolsForTurn(session);
     let result = await executeTool(tool, input, session.cwd, {
       allowOutsideWorkspace,
       signal: this.turnAbort?.signal,
       vision: this.toolVisionEnabled(),
       shrinkImage: this.imageShrinker(),
+      jobs: this.jobManager,
       // 批量读复用已读区间：整份读过的文件只回一行占位
       readCoverage: (target) =>
         this.loopGuard.fullyCovered(session.cwd, messages, target, allowOutsideWorkspace),
       hostToolBridge: (bridgeTool, bridgeArgs) =>
         this.runCodeHostTool(session, call.id, bridgeTool, bridgeArgs),
+      ...(webTools.search ? { webSearch: webTools.search } : {}),
+      ...(webTools.fetch ? { webFetch: webTools.fetch } : {}),
     });
+    if (result.usage) {
+      const sideProvider = this.activeProviderOrNull();
+      this.emitUsageSample(session, `tool:${call.id}`, result.usage);
+      await session.appendUsage({
+        ...result.usage,
+        source: "web_search",
+        ...(this.currentTurnId ? { turnId: this.currentTurnId } : {}),
+        ...(sideProvider ? { providerId: sideProvider.id, model: sideProvider.model } : {}),
+      });
+    }
     this.fireHook(
       "tool_execution_end",
       {
@@ -4619,7 +4997,12 @@ export class AgentRuntime {
       sessionsDir: path.join(this.sessionsDir, "subagents", params.parentSessionId),
       workspace: params.cwd,
       browserHost: this.browserHost,
-      enableTaskTool: false,
+      // 嵌套深度与 trace 总配额同时限制；只读角色没有 task（白名单不含），不会走到这里
+      enableTaskTool:
+        this.subagentDepth + 1 < this.activeProfile.maxSubagentDepth &&
+        this.subagentBudget - 1 > 0,
+      subagentDepth: this.subagentDepth + 1,
+      subagentBudget: Math.max(0, this.subagentBudget - 1),
       // 插件 hooks 在子 Agent 内同样生效（SubagentStop / 子会话工具 hook）；
       // hookScope 提供 root session 与 agent_id，审批仍由父会话聚合。
       plugins: this.plugins,
@@ -4639,9 +5022,11 @@ export class AgentRuntime {
         // 宿主观测：子 Agent 的文件改动即 ground truth（不信任自述）
         params.observations.filesChanged.add(change.path);
         await params.session.appendFileChange(change.path, change.operation, change.diff);
-        // 后台子 Agent 结束时父回合可能已收尾：只在父回合活跃时计入其检查点
+        const stats = countDiffStats(change.diff);
+        // 后台子 Agent 结束时父回合可能已收尾：只在父回合活跃时计入其检查点与汇总
         if (this.runningSessionId === params.parentSessionId) {
           this.turnFileChanges.add(change.path);
+          this.recordTurnFileChange(change.path, stats);
         }
         await params.session.flush();
         // 不带 agentId：父级 file_changed 要触发主界面审阅，而不是被当成子事件过滤掉。
@@ -4650,11 +5035,12 @@ export class AgentRuntime {
           sessionId: params.parentSessionId,
           path: change.path,
           operation: change.operation,
+          ...stats,
         });
       },
     });
     // 子 Agent 的会话不蒸馏记忆：长期事实只在主会话沉淀（ZCode 只对 main taskType 跑）
-    child.memoryExtraction = false;
+    child.memoryEnabled = false;
     // 同理不学习：子 Agent 的任务是被父级切碎的片段，从里面总结「经验」只会得到噪音
     child.learning = false;
     child.onEvent((event) => {
@@ -4691,6 +5077,7 @@ export class AgentRuntime {
     const args = (input ?? {}) as Record<string, unknown>;
     const description = String(args.description ?? "").trim().slice(0, 100);
     const promptInput = String(args.prompt ?? "").trim();
+    const mode: "spawn" | "fork" = args.mode === "fork" ? "fork" : "spawn";
     const requestedRole = args.agent_type;
     const allowedRoles = this.activeProfile.roles;
     if (requestedRole !== undefined && !allowedRoles.includes(requestedRole as SubagentType)) {
@@ -4699,16 +5086,21 @@ export class AgentRuntime {
       );
     }
     const agentType: SubagentType = isAgentRole(requestedRole) ? requestedRole : "general";
+    if (mode === "fork" && agentType !== "general") {
+      throw new Error('mode "fork" only supports agent_type "general".');
+    }
     const background = args.background === true;
     const laneId = typeof args.lane_id === "string" ? args.lane_id.trim().slice(0, 64) : undefined;
     const parentGoal = lastUserMessage(session);
     const prompt =
       promptInput ||
-      buildSubagentPrompt({
-        description,
-        ...(parentGoal ? { parentGoal } : {}),
-        plan: session.currentPlan,
-      });
+      (mode === "fork"
+        ? description
+        : buildSubagentPrompt({
+            description,
+            ...(parentGoal ? { parentGoal } : {}),
+            plan: session.currentPlan,
+          }));
     const { providers, providerId } = this.resolveSubagentProvider(input);
     const agentId = randomUUID();
     const parentSessionId = session.id;
@@ -4732,7 +5124,7 @@ export class AgentRuntime {
     };
 
     try {
-      await SessionStore.create(filePath, session.cwd, {
+      const childStore = await SessionStore.create(filePath, session.cwd, {
         id: agentId,
         parentSessionId,
         rootSessionId: session.id,
@@ -4740,7 +5132,19 @@ export class AgentRuntime {
         agentType,
         parentCallId: call.id,
         description,
+        // 子 Agent 与父会话共享一条诊断链路
+        traceId: session.traceId,
+        ...(mode === "fork" ? { forkedFrom: session.id } : {}),
       });
+      if (mode === "fork") {
+        // fork 的价值是复用父前缀缓存：历史超过窗口 60% 就退回 spawn，避免一次超长请求
+        const history = session.effectiveMessages;
+        const window = this.activeProviderOrNull()?.contextWindow ?? 128_000;
+        if (estimateMessagesTokens(history) <= window * 0.6) {
+          for (const message of history) await childStore.appendMessage(message);
+          await childStore.flush();
+        }
+      }
       child = this.createSubagentRuntime({
         session,
         agentId,
@@ -5048,6 +5452,9 @@ export class AgentRuntime {
       else parts.push("Subagent finished without a final report.");
       if (childResult) parts.push(renderChildResult(childResult));
       if (gateMessage) parts.push(`[workflow] ${gateMessage}`);
+      parts.push(
+        `[agent id: ${ctx.agentId}] Use this id with task mode "resume" to continue this subagent later.`,
+      );
       return {
         output: parts.join("\n\n"),
         ok: true,
@@ -5081,9 +5488,53 @@ export class AgentRuntime {
   ): Promise<SubagentTaskResult> {
     const args = (input ?? {}) as Record<string, unknown>;
     const description = String(args.description ?? "").trim().slice(0, 100);
+    const mode =
+      args.mode === "resume" ? "resume" : args.mode === "fork" ? "fork" : "spawn";
+    if (mode === "resume") {
+      const agentId = String(args.agent_id ?? "").trim();
+      if (!agentId) {
+        return {
+          output: 'Tool call rejected: mode "resume" requires agent_id (the id of a previous subagent).',
+          ok: false,
+          status: "failed",
+          error: "missing agent_id",
+        };
+      }
+      const message = String(args.prompt ?? "").trim() || description;
+      if (!message) {
+        return {
+          output: 'Tool call rejected: mode "resume" requires prompt or description.',
+          ok: false,
+          status: "failed",
+          error: "missing resume message",
+        };
+      }
+      try {
+        const resumed = await this.startSubagentResume(agentId, message, {
+          wait: true,
+          background: false,
+          ...(this.turnAbort?.signal ? { parentSignal: this.turnAbort.signal } : {}),
+        });
+        return (
+          resumed ?? {
+            output: "Subagent resume did not start.",
+            ok: false,
+            status: "failed" as const,
+            error: "resume did not start",
+          }
+        );
+      } catch (error) {
+        return {
+          output: `Subagent resume failed: ${error instanceof Error ? error.message : String(error)}`,
+          ok: false,
+          status: "failed" as const,
+          error: error instanceof Error ? error.message : String(error),
+        };
+      }
+    }
     if (!this.enableTaskTool) {
       return {
-        output: "Subagents cannot spawn other subagents.",
+        output: `Subagent nesting depth reached for ${this.activeProfile.name}. Finish the remaining work in the current agent.`,
         ok: false,
         status: "failed",
         error: "nested subagent rejected",
@@ -5097,6 +5548,15 @@ export class AgentRuntime {
         error: "missing task description",
       };
     }
+    if (this.subagentBudget <= 0) {
+      return {
+        output:
+          "Subagent budget for this task is exhausted (8 agents including nested ones). Handle the remaining work yourself.",
+        ok: false,
+        status: "failed",
+        error: "subagent budget exhausted",
+      };
+    }
     if (this.subagentsStartedThisTurn >= this.activeProfile.maxSubagents) {
       const limit = this.activeProfile.maxSubagents;
       return {
@@ -5108,6 +5568,7 @@ export class AgentRuntime {
     }
     // 先同步占位再 await：并行的多个 task 调用也不能突破上限
     this.subagentsStartedThisTurn += 1;
+    this.subagentBudget -= 1;
 
     try {
       const started = await this.beginSubagent(session, call, input);
@@ -5121,6 +5582,8 @@ export class AgentRuntime {
       }
       return await started.completion;
     } catch (error) {
+      // 没真正启动：把配额还回去
+      this.subagentBudget += 1;
       return {
         output: `Subagent failed to start: ${
           error instanceof Error ? error.message : String(error)
@@ -5130,6 +5593,24 @@ export class AgentRuntime {
         error: error instanceof Error ? error.message : String(error),
       };
     }
+  }
+
+  /** 一键审查：用 reviewer 子 Agent 审当前工作区未提交改动（prompt 由服务端拼好）。 */
+  async reviewChanges(prompt: string): Promise<{ ok: boolean; output: string }> {
+    const session = this.currentSession;
+    if (!session) throw new Error("No active session.");
+    const args = {
+      description: "Review changes",
+      prompt,
+      agent_type: "reviewer",
+    };
+    const call: ToolCall = {
+      id: randomUUID(),
+      type: "function",
+      function: { name: "task", arguments: JSON.stringify(args) },
+    };
+    const result = await this.runSubagentTask(session, call, args);
+    return { ok: result.ok, output: result.output };
   }
 
   /** 停止单个子 Agent；返回是否命中正在运行的子 Agent。 */
@@ -5200,6 +5681,18 @@ export class AgentRuntime {
 
   /** 用户对一个已结束的子 Agent 继续发消息：恢复子会话并启动新回合。 */
   async continueSubagent(agentId: string, message: string): Promise<void> {
+    await this.startSubagentResume(agentId, message, { wait: false });
+  }
+
+  /**
+   * 续聊一个已完成的子 Agent。wait=true 时等待本轮结束并返回结果（模型 tool 调用用），
+   * wait=false 保持原来的后台语义（UI 续聊按钮用）。
+   */
+  private async startSubagentResume(
+    agentId: string,
+    message: string,
+    options: { wait: boolean; background?: boolean; parentSignal?: AbortSignal },
+  ): Promise<SubagentTaskResult | null> {
     const session = this.currentSession;
     if (!session) throw new Error("No active session.");
     const text = message.trim();
@@ -5274,7 +5767,7 @@ export class AgentRuntime {
         callId,
         description,
         agentType,
-        background: true,
+        background: options.background ?? true,
         startedAt,
         startedAtMs,
       });
@@ -5283,7 +5776,7 @@ export class AgentRuntime {
         callId,
         description,
         agentType,
-        background: true,
+        background: options.background ?? true,
         status: "running",
         startedAt,
       });
@@ -5296,7 +5789,7 @@ export class AgentRuntime {
         callId,
         description,
         agentType,
-        background: true,
+        background: options.background ?? true,
         prompt: text,
         startedAt,
       });
@@ -5307,13 +5800,16 @@ export class AgentRuntime {
         callId,
         description,
         agentType,
-        background: true,
+        background: options.background ?? true,
+        ...(options.parentSignal ? { parentSignal: options.parentSignal } : {}),
         prompt: text,
         startedAt,
         startedAtMs,
         observations,
       });
+      if (options.wait) return completion;
       void completion.catch(() => undefined);
+      return null;
     } catch (error) {
       this.liveSubagents.delete(agentId);
       if (child) await child.closeSession().catch(() => undefined);
@@ -6189,7 +6685,7 @@ export class AgentRuntime {
   private async runCodeHostTool(
     session: SessionStore,
     parentCallId: string,
-    tool: "write_file" | "edit_file" | "multi_edit" | "run_command",
+    tool: "write_file" | "edit_file" | "delete_file" | "move_file" | "multi_edit" | "run_command",
     args: Record<string, unknown>,
   ): Promise<{ ok: boolean; output: string }> {
     const approvalMode = this.turnApprovalMode ?? this.approvalMode;
@@ -6240,7 +6736,17 @@ export class AgentRuntime {
       const diff = await previewDiff(tool, args, session.cwd, allowOutsideWorkspace).catch(
         () => undefined,
       );
-      approved = await this.awaitApproval(session, call, tool, args, diff, commandRisk, turnId, false);
+      const forceDecision = await this.awaitApproval(
+        session,
+        call,
+        tool,
+        args,
+        diff,
+        commandRisk,
+        turnId,
+        false,
+      );
+      approved = forceDecision.approved;
       await session.appendApproval(call.id, tool, args, approved, (turnId ? { turnId } : {}));
     } else if (!approved && approvalMode === "full") {
       approved = true;
@@ -6252,12 +6758,32 @@ export class AgentRuntime {
         reason: autoReason,
       });
     } else if (!approved) {
-      const risk = commandRisk;
-      const diff = await previewDiff(tool, args, session.cwd, allowOutsideWorkspace).catch(
-        () => undefined,
-      );
-      approved = await this.awaitApproval(session, call, tool, args, diff, risk, turnId, false);
-      await session.appendApproval(call.id, tool, args, approved, (turnId ? { turnId } : {}));
+      const remembered = await this.tryRememberedApproval(session, tool, args, commandRisk);
+      if (remembered) {
+        approved = true;
+        await session.appendApproval(call.id, tool, args, true, {
+          ...(turnId ? { turnId } : {}),
+          reason: "rule",
+        });
+      } else {
+        const risk = commandRisk;
+        const diff = await previewDiff(tool, args, session.cwd, allowOutsideWorkspace).catch(
+          () => undefined,
+        );
+        const decision = await this.awaitApproval(
+          session,
+          call,
+          tool,
+          args,
+          diff,
+          risk,
+          turnId,
+          false,
+        );
+        approved = decision.approved;
+        await session.appendApproval(call.id, tool, args, approved, (turnId ? { turnId } : {}));
+        if (!approved) return reject(denialOutput(decision));
+      }
     }
     if (!approved) return reject("User denied this tool call.");
 
@@ -6283,24 +6809,27 @@ export class AgentRuntime {
           vision: this.toolVisionEnabled(),
           shrinkImage: this.imageShrinker(),
           sandbox,
+          jobs: this.jobManager,
           // 不把宿主桥再传下去：防止 run_code → run_code 的递归
         }),
     );
     if (result.ok) await this.noteMutatedPath(session, tool, args);
     if (result.ok && reviewCaptures.length) {
       await this.snapshotFor(session)?.noteAfter(snapshotTargets);
-      const operation: "write_file" | "edit_file" =
-        tool === "write_file" ? "write_file" : "edit_file";
+      const operation = fileChangeOperation(tool);
       for (const capture of reviewCaptures) {
         const diff = await buildFileChangeDiff(tool, args, capture);
         if (!diff) continue;
         await session.appendFileChange(capture.target, operation, diff);
         this.turnFileChanges.add(capture.target);
+        const stats = countDiffStats(diff);
+        this.recordTurnFileChange(capture.target, stats);
         this.emit({
           type: "file_changed",
           sessionId: session.id,
           path: capture.target,
           operation,
+          ...stats,
         });
         await this.onFileChange?.({ path: capture.target, operation, diff });
       }
@@ -6318,12 +6847,61 @@ export class AgentRuntime {
     messages: ChatMessage[],
     call: ToolCall,
   ): Promise<ToolResultMessage> {
-    await this.executeToolCall(session, messages, call);
+    const span = this.traceRecorder.startSpan({
+      traceId: session.traceId,
+      kind: "tool",
+      name: call.function.name,
+      attributes: { callId: call.id },
+    });
+    try {
+      await this.executeToolCall(session, messages, call);
+      const message = this.findToolResult(messages, call);
+      this.traceRecorder.endSpan(span, {
+        status: this.toolOutcomes.get(call.id) === false ? "error" : "ok",
+      });
+      return message;
+    } catch (error) {
+      this.traceRecorder.endSpan(span, {
+        status: isAbortError(error) ? "aborted" : "error",
+        error,
+      });
+      throw error;
+    }
+  }
+
+  private findToolResult(messages: ChatMessage[], call: ToolCall): ToolResultMessage {
     for (let index = messages.length - 1; index >= 0; index -= 1) {
       const message = messages[index];
       if (message.role === "tool" && message.tool_call_id === call.id) return message;
     }
     return { role: "tool", content: "", tool_call_id: call.id, name: call.function.name };
+  }
+
+  /** 只读批的 trace 包装：执行与状态口径和串行工具一致。 */
+  private async executeReadOnlyToolCallTraced(
+    session: SessionStore,
+    call: ToolCall,
+    messages: ChatMessage[],
+  ): Promise<ToolResultMessage> {
+    const span = this.traceRecorder.startSpan({
+      traceId: session.traceId,
+      kind: "tool",
+      name: call.function.name,
+      attributes: { callId: call.id, parallel: true },
+    });
+    try {
+      const message = await this.executeReadOnlyToolCall(session, call, messages);
+      this.traceRecorder.endSpan(span, {
+        status: this.toolOutcomes.get(call.id) === false ? "error" : "ok",
+      });
+      return message;
+    } catch (error) {
+      this.traceRecorder.endSpan(span, {
+        status: isAbortError(error) ? "aborted" : "error",
+        error,
+      });
+      throw error;
+    }
   }
 
   private async executeToolCall(
@@ -6701,7 +7279,10 @@ export class AgentRuntime {
     // 插件/MCP 动态工具按注册时的 requiresApproval 声明走审批（MCP 工具默认免审批）
     const dynamicNeedsApproval = isDynamicToolRequiringApproval(tool);
     const mcpTool = tool.startsWith("mcp__");
-    const requiresApproval = APPROVAL_TOOLS.has(tool) || browserNeedsApproval || dynamicNeedsApproval;
+    // git 的只读 action 免审批；写 action（stage/commit/discard/push…）按审批模式走
+    const gitMutating = tool === "git" && isMutatingGitAction(input);
+    const requiresApproval =
+      APPROVAL_TOOLS.has(tool) || browserNeedsApproval || dynamicNeedsApproval || gitMutating;
 
     // plan 模式下除 plans/ 内的写操作外，其余需要审批的（写/命令/浏览器写/MCP）一律直接拒绝
     if (chatMode === "plan" && !planPaths && (requiresApproval || mcpTool)) {
@@ -6761,16 +7342,46 @@ export class AgentRuntime {
     }
 
     const forceDeleteConfirm =
+      (tool === "delete_file" && approvalMode !== "full") ||
+      (tool === "run_command" &&
+        shouldConfirmFileDelete() &&
+        isFileDeletionCommand(
+          String(((input ?? {}) as Record<string, unknown>).command ?? ""),
+        ));
+    // 后台任务跑在主进程 PTY 里，不受命令沙箱约束：除非 full 模式，一律显式确认一次
+    const forceBackgroundConfirm =
       tool === "run_command" &&
-      shouldConfirmFileDelete() &&
-      isFileDeletionCommand(
-        String(((input ?? {}) as Record<string, unknown>).command ?? ""),
-      );
-    if (!approved && forceDeleteConfirm) {
+      ((input ?? {}) as Record<string, unknown>).background === true &&
+      approvalMode !== "full";
+    // discard / push / pull 影响工作区或远端且不可逆：任何审批模式都显式确认一次
+    const forceGitConfirm = tool === "git" && isForceApprovalGitAction(input);
+    // 项目级规则：只覆盖普通审批路径；删除确认、后台任务、高危 git、plan/read-only、hookAsk 与沙箱逃逸都不受影响
+    const rememberedRule =
+      !approved &&
+      !forceDeleteConfirm &&
+      !forceBackgroundConfirm &&
+      !forceGitConfirm &&
+      !hookAsk &&
+      approvalMode !== "read-only"
+        ? await this.tryRememberedApproval(session, tool, input, commandRisk)
+        : undefined;
+    let denialFeedback: string | undefined;
+    if (!approved && (forceDeleteConfirm || forceBackgroundConfirm || forceGitConfirm)) {
       const diff = await previewDiff(tool, input, session.cwd, allowOutsideWorkspace).catch(
         () => undefined,
       );
-      approved = await this.awaitApproval(session, call, tool, input, diff, commandRisk, turnId, false);
+      const forceDecision = await this.awaitApproval(
+        session,
+        call,
+        tool,
+        input,
+        diff,
+        commandRisk,
+        turnId,
+        false,
+      );
+      approved = forceDecision.approved;
+      denialFeedback = forceDecision.feedback;
       await session.appendApproval(call.id, tool, input, approved, (turnId ? { turnId } : {}));
     } else if (!approved && approvalMode === "full" && !hookAsk) {
       // 完全访问：不弹审批直接放行，仍写一条 approved 记录到会话文件留痕
@@ -6782,6 +7393,12 @@ export class AgentRuntime {
       await session.appendApproval(call.id, tool, input, true, {
         ...(turnId ? { turnId } : {}),
         reason: autoReason,
+      });
+    } else if (!approved && rememberedRule) {
+      approved = true;
+      await session.appendApproval(call.id, tool, input, true, {
+        ...(turnId ? { turnId } : {}),
+        reason: "rule",
       });
     } else if (!approved) {
       const risk = commandRisk;
@@ -6804,7 +7421,8 @@ export class AgentRuntime {
         turnId,
         hookReason,
       );
-      approved = decision.approved;
+      approved = decision.decision.approved;
+      denialFeedback = decision.decision.feedback;
       const byHook = decision.byHook;
       const hookDeniedReason =
         !approved && byHook
@@ -6821,7 +7439,7 @@ export class AgentRuntime {
           diff = await previewDiff(tool, input, session.cwd, allowOutsideWorkspace).catch(
             () => undefined,
           );
-          approved = await this.awaitApproval(
+          const staleDecision = await this.awaitApproval(
             session,
             call,
             tool,
@@ -6832,6 +7450,8 @@ export class AgentRuntime {
             true,
             hookReason,
           );
+          approved = staleDecision.approved;
+          if (!approved) denialFeedback = staleDecision.feedback;
           if (approved) {
             const settled = await Promise.all(targets.map((file) => captureVersion(file)));
             if (settled.some((version, index) => version !== current[index])) {
@@ -6860,6 +7480,17 @@ export class AgentRuntime {
             }
           }
         }
+      }
+      // 批准后可落一条项目级规则：文件按路径+版本，命令按精确/前缀，其它按工具
+      if (approved && !byHook && !rechecked && decision.decision.remember) {
+        await this.rememberApproval(
+          session,
+          tool,
+          input,
+          decision.decision.remember,
+          targets,
+          versions,
+        ).catch(() => undefined);
       }
       await session.appendApproval(call.id, tool, input, approved, {
         ...(turnId ? { turnId } : {}),
@@ -6890,7 +7521,7 @@ export class AgentRuntime {
     }
 
     if (!approved) {
-      const output = "User denied this tool call.";
+      const output = denialOutput({ approved, ...(denialFeedback ? { feedback: denialFeedback } : {}) });
       await this.pushToolMessage(session, messages, {
         role: "tool",
         content: output,
@@ -6983,9 +7614,8 @@ export class AgentRuntime {
       tool === "write_file" || tool === "edit_file" || tool === "multi_edit"
         ? await captureBeforeAll(session.cwd, tool, input, allowOutsideWorkspace)
         : [];
-    // 审阅页签只有 write_file / edit_file 两种操作，批量编辑归入 edit_file
-    const reviewOperation: "write_file" | "edit_file" =
-      tool === "write_file" ? "write_file" : "edit_file";
+    // 审阅面板按实际工具标记：删除/移动单独展示，批量编辑归入 edit_file
+    const reviewOperation = fileChangeOperation(tool);
     // 快照打点（写前）：state 记下「磁盘此刻」；写失败时 noteAfter 不会被调用，state 保持 before
     const snapshotTargets: SnapshotTarget[] = reviewCaptures.map((capture) => ({
       path: capture.target,
@@ -7008,6 +7638,7 @@ export class AgentRuntime {
       session,
       this.turnAbort?.signal,
     );
+    const webTools = this.webToolsForTurn(session);
     let result = await this.runToolWithSandboxEscape(
       session,
       call,
@@ -7021,15 +7652,31 @@ export class AgentRuntime {
           vision: this.toolVisionEnabled(),
           pdfDocuments: this.toolPdfEnabled(),
           shrinkImage: this.imageShrinker(),
+          jobs: this.jobManager,
           // 批量读复用已读区间：整份读过的文件只回一行占位
           readCoverage: (target) =>
             this.loopGuard.fullyCovered(session.cwd, messages, target, allowOutsideWorkspace),
           // run_code 的 meow.write/edit/multiEdit/run 走宿主审批链（同一次调用内可多次触发）
           hostToolBridge: (bridgeTool, bridgeArgs) =>
             this.runCodeHostTool(session, call.id, bridgeTool, bridgeArgs),
+          ...(webTools.search ? { webSearch: webTools.search } : {}),
+          ...(webTools.fetch ? { webFetch: webTools.fetch } : {}),
           sandbox,
         }),
     );
+    // 旁路搜索请求的 token 用独立 roundId 上报：计入真实总量，但不覆盖主回合样本，
+    // 也不带 cache 字段，因此不会污染前缀缓存命中率。落盘用独立 source，
+    // 重启后会话累计仍能对上，同时 lastChatUsage 不会把它当上下文锚点。
+    if (result.usage) {
+      const sideProvider = this.activeProviderOrNull();
+      this.emitUsageSample(session, `tool:${call.id}`, result.usage);
+      await session.appendUsage({
+        ...result.usage,
+        source: "web_search",
+        ...(this.currentTurnId ? { turnId: this.currentTurnId } : {}),
+        ...(sideProvider ? { providerId: sideProvider.id, model: sideProvider.model } : {}),
+      });
+    }
     this.fireHook(
       "tool_execution_end",
       {
@@ -7061,6 +7708,10 @@ export class AgentRuntime {
     }
     // 写成功就标记：下一轮 @ 同一文件时不能再用"已读"占位（内容是旧的）
     if (result.ok) await this.noteMutatedPath(session, tool, input);
+    // git 写操作后让 git 面板/胶囊立即刷新（HTTP 路由已有同样的广播）
+    if (result.ok && tool === "git" && isMutatingGitAction(input)) {
+      this.emit({ type: "git_changed", sessionId: session.id });
+    }
     // 计划文档落盘成功：通知前端弹出「开始执行 / 调整计划」确认面板
     if (result.ok && planPaths) {
       this.emit({
@@ -7076,11 +7727,15 @@ export class AgentRuntime {
         if (!diff) continue;
         await session.appendFileChange(capture.target, reviewOperation, diff);
         this.turnFileChanges.add(capture.target);
+        const stats = countDiffStats(diff);
+        this.recordTurnFileChange(capture.target, stats);
         this.emit({
           type: "file_changed",
           sessionId: session.id,
+          callId: call.id,
           path: capture.target,
           operation: reviewOperation,
+          ...stats,
         });
         await this.onFileChange?.({
           path: capture.target,
@@ -7431,11 +8086,11 @@ export class AgentRuntime {
     if (this.instructionsSessionId === session.id) return;
     this.instructionsSessionId = session.id;
     const detail = this.injectInstructions
-      ? await loadWorkspaceInstructionsDetail(
-          session.cwd,
-          this.homeDir,
-          this.instructionSettings,
-        )
+      ? await loadWorkspaceInstructionsDetail(session.cwd, this.homeDir, {
+          ...this.instructionSettings,
+          // 记忆总开关优先：关闭时不注入记忆索引，但 AGENTS.md / 规则照常
+          includeMemory: this.memoryEnabled,
+        })
       : undefined;
     this.instructions = detail?.text;
     this.instructionSkills = {
@@ -7514,6 +8169,43 @@ export class AgentRuntime {
     } catch {
       return false;
     }
+  }
+
+  /** 当前 provider 是否有自己的搜索后端（决定 web_search 是否出现在工具表）。 */
+  private webSearchSupported(): boolean {
+    const provider = this.activeProviderOrNull();
+    return provider !== null && createWebSearchBackend(provider) !== null;
+  }
+
+  /** 按当前 provider 构造本轮网页工具；web_fetch 本地始终可用。 */
+  private webToolsForTurn(session: SessionStore): {
+    search?: (query: string, signal?: AbortSignal) => Promise<WebSearchResult>;
+    fetch?: (url: string, signal?: AbortSignal) => Promise<WebFetchOutcome>;
+  } {
+    const provider = this.activeProviderOrNull();
+    if (!provider) return {};
+    const backend = createWebSearchBackend(provider);
+    const originalQuestion = this.lastUserQuestion(session);
+    return {
+      ...(backend
+        ? {
+            search: (query: string, signal?: AbortSignal) =>
+              backend.search(query, { originalQuestion, maxResults: WEB_SEARCH_MAX_RESULTS }, signal),
+          }
+        : {}),
+      fetch: (url: string, signal?: AbortSignal) => fetchWebPage(provider, url, signal),
+    };
+  }
+
+  /** DeepSeek Search API 的 ori_question：最近一条真实用户文本（跳过合成/工具消息）。 */
+  private lastUserQuestion(session: SessionStore): string | undefined {
+    const messages = session.effectiveMessages;
+    const index = lastRealUserMessageIndex(messages);
+    if (index === -1) return undefined;
+    const message = messages[index];
+    return message.role === "user" && typeof message.content === "string"
+      ? message.content
+      : undefined;
   }
 
   private activeProvider(): ProviderConfig {

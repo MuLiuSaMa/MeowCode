@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { LuExternalLink, LuFileText, LuListChecks, LuRotateCw } from "react-icons/lu";
+import { LuFileText, LuListChecks, LuRotateCw } from "react-icons/lu";
 import { api, type WorkflowRoadmap } from "../../api";
-import { Markdown } from "../ui/Markdown";
+import { MarkdownDocument } from "../ui/MarkdownDocument";
+import { OpenWithButton } from "./OpenWithButton";
 import "./PlanTab.css";
 
 function joinWorkspacePath(workspace: string, relative: string): string {
@@ -170,18 +171,10 @@ export function PlanTab({
         >
           <LuRotateCw size={13} />
         </button>
-        <button
-          type="button"
-          className="mc-plan__btn"
-          aria-label={t("filePreview.openInEditor")}
-          title={t("filePreview.openInEditor")}
+        <OpenWithButton
+          target={workspace ? joinWorkspacePath(workspace, path) : null}
           disabled={!workspace}
-          onClick={() => {
-            if (workspace) void window.meow.openPath(joinWorkspacePath(workspace, path));
-          }}
-        >
-          <LuExternalLink size={13} />
-        </button>
+        />
       </div>
 
       <div className="mc-plan__body">
@@ -192,7 +185,12 @@ export function PlanTab({
         ) : state.status === "loading" ? (
           <p className="mc-plan__hint">{t("plan.loadingBody")}</p>
         ) : (
-          <Markdown content={state.content ?? ""} className="mc-plan__markdown" />
+          <MarkdownDocument
+            content={state.content ?? ""}
+            docPath={path}
+            workspace={workspace}
+            className="mc-plan__markdown"
+          />
         )}
       </div>
     </div>

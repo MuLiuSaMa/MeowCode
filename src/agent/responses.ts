@@ -104,18 +104,24 @@ export function toResponsesInput(messages: ChatMessage[]): Array<Record<string, 
   return out;
 }
 
+type ResponsesFunctionCallItem = {
+  type?: string;
+  /** output item id：部分网关只在终态给 call_id，先用它兜底 */
+  id?: string;
+  call_id?: string;
+  name?: string;
+  arguments?: string;
+};
+
 type ResponsesChunk = {
   type?: string;
   delta?: string;
-  item?: {
-    type?: string;
-    call_id?: string;
-    name?: string;
-    arguments?: string;
-  };
+  item?: ResponsesFunctionCallItem;
   response?: {
     /** 服务端留存的响应 id（store:true 时返回）；增量链用它续接 */
     id?: string;
+    /** 终态响应里的完整 output：网关不流 added/delta 时从这里的 function_call 兜底 */
+    output?: ResponsesFunctionCallItem[];
     usage?: {
       input_tokens?: number;
       output_tokens?: number;
@@ -262,6 +268,57 @@ export async function streamResponses(options: {
   // 只有 store:true 的成功请求才回传 responseId —— 调用方据此决定增量链是否延续
   let storedResponseId: string | undefined;
 
+  /**
+   * 注册或合并 function call。MiMo 等网关有时不流 output_item.added /
+   * arguments.delta，只在 output_item.done 或 response.completed.output 里
+   * 给出完整调用；按 call_id/id 合并，避免同一次调用被执行两遍。
+   */
+  const registerToolCall = (item: ResponsesFunctionCallItem, complete: boolean): void => {
+    const primaryId = item.call_id ?? item.id ?? "";
+    if (!primaryId) return;
+    let existing = toolCalls.get(primaryId);
+    let existingKey = primaryId;
+    if (!existing) {
+      for (const key of [item.call_id, item.id]) {
+        if (!key) continue;
+        const candidate = toolCalls.get(key);
+        if (!candidate) continue;
+        existing = candidate;
+        existingKey = key;
+        break;
+      }
+    }
+    if (existing) {
+      if (existingKey !== primaryId) toolCalls.delete(existingKey);
+      if (item.call_id) existing.id = item.call_id;
+      if (item.name) existing.function.name = item.name;
+      if (complete && item.arguments !== undefined) existing.function.arguments = item.arguments;
+      toolCalls.set(existing.id, existing);
+    } else {
+      toolCalls.set(primaryId, {
+        id: item.call_id ?? primaryId,
+        type: "function",
+        function: {
+          name: item.name ?? "",
+          arguments: complete ? (item.arguments ?? "") : "",
+        },
+      });
+    }
+    options.onToolCall?.(summarizeToolCalls(toolCalls.values()));
+    const call = toolCalls.get(item.call_id ?? primaryId) ?? toolCalls.get(primaryId);
+    // 只有拿到真实 call_id 才允许提前执行：item.id 不是 function_call_output 的配对键
+    if (
+      call &&
+      item.call_id &&
+      options.onToolCallComplete &&
+      !completedCalls.has(call.id) &&
+      isToolCallComplete(call)
+    ) {
+      completedCalls.add(call.id);
+      options.onToolCallComplete({ ...call, function: { ...call.function } });
+    }
+  };
+
   await readSseFrames(
     response.body,
     (data) => {
@@ -291,14 +348,18 @@ export async function streamResponses(options: {
         return;
       }
       if (chunk.type === "response.output_item.added" && chunk.item?.type === "function_call") {
-        const callId = chunk.item.call_id ?? "";
-        toolCalls.set(callId, {
-          id: callId,
-          type: "function",
-          function: { name: chunk.item.name ?? "", arguments: "" },
-        });
-        options.onToolCall?.(summarizeToolCalls(toolCalls.values()));
+        registerToolCall(chunk.item, false);
         return;
+      }
+      if (chunk.type === "response.output_item.done" && chunk.item?.type === "function_call") {
+        registerToolCall(chunk.item, true);
+        return;
+      }
+      if (chunk.type === "response.completed" || chunk.type === "response.incomplete") {
+        // 终态 output 兜底：部分网关不流 added/delta，只在 completed 里给完整调用
+        for (const item of chunk.response?.output ?? []) {
+          if (item.type === "function_call") registerToolCall(item, true);
+        }
       }
       if (chunk.type === "response.function_call_arguments.delta" && chunk.delta) {
         const current = [...toolCalls.values()].at(-1);

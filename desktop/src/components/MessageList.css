@@ -10,6 +10,8 @@
   flex: 1;
   min-height: 0;
   overflow-y: auto;
+  /* 滚到底继续滚滚轮时不再链给外层：.mc-panel 是 overflow:hidden，被滚了会把页签栏顶出视口、底部露空白 */
+  overscroll-behavior: contain;
   padding: 14px 20px 8px;
 }
 .mc-stream__inner {
@@ -37,6 +39,14 @@
 .mc-stream__list > .mc-toolrow + .mc-toolrow {
   margin-top: 2px;
 }
+/* 切换会话的加载态：时间线被清空、目标会话还没到，居中转圈代替空白 */
+.mc-stream__switching {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 40vh;
+}
 
 .mc-empty {
   flex: 1;
@@ -55,69 +65,13 @@
   filter: drop-shadow(0 2px 12px rgb(0 0 0 / 0.28));
 }
 .mc-empty__text {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: center;
-  gap: 2px;
   max-width: 520px;
   margin: 0;
+  font-family: var(--font-sans);
   font-size: clamp(24px, 5vw, 34px);
+  font-weight: var(--fw-medium);
   color: var(--fg-subtle);
   line-height: var(--lh-normal);
-}
-.mc-empty__words {
-  display: grid;
-  grid-auto-columns: max-content;
-  grid-template-columns: max-content;
-  align-items: center;
-  justify-content: start;
-}
-.mc-empty__word {
-  grid-area: 1 / 1;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-family: "Noto Serif SC", "Source Han Serif SC", "SimSun", serif;
-  font-size: inherit;
-  font-weight: 700;
-  letter-spacing: 0;
-  line-height: var(--lh-normal);
-  opacity: 0;
-  transition:
-    opacity 520ms var(--ease),
-    transform 520ms var(--ease),
-    filter 520ms var(--ease);
-}
-.mc-empty__word[data-active="true"] {
-  opacity: 1;
-}
-.mc-empty__word[data-effect="wipe"] {
-  color: var(--brand);
-  transform: translateX(18px) scale(0.98);
-  filter: blur(3px);
-}
-.mc-empty__word[data-effect="wipe"][data-active="true"] {
-  transform: translateX(0) scale(1);
-  filter: blur(0);
-}
-.mc-empty__word[data-effect="glow"] {
-  color: var(--brand);
-  transform: scale(0.92);
-  filter: blur(2px) drop-shadow(0 0 12px color-mix(in oklab, var(--brand) 34%, transparent));
-}
-.mc-empty__word[data-effect="glow"][data-active="true"] {
-  transform: scale(1);
-  filter: blur(0) drop-shadow(0 0 12px color-mix(in oklab, var(--brand) 28%, transparent));
-}
-.mc-empty__word[data-effect="slide"] {
-  color: var(--brand);
-  transform: translateY(16px) scale(0.98);
-  filter: blur(3px);
-}
-.mc-empty__word[data-effect="slide"][data-active="true"] {
-  transform: translateY(0) scale(1);
-  filter: blur(0);
 }
 
 /* ---- 报错条目：跟着消息流展示（替代旧顶部横幅），低饱和红面板 ---- */
@@ -184,15 +138,6 @@
 }
 .mc-noticeitem__action:hover {
   background: var(--surface-hover);
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .mc-empty__word {
-    animation: none;
-    background-image: none;
-    color: var(--brand);
-    filter: none;
-  }
 }
 
 /* 检索跳转描边：滚到命中消息后短暂高亮一次（由 data-flash 挂载/卸载驱动） */

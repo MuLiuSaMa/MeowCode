@@ -209,7 +209,14 @@ export function useGitView(options: { workspace?: string; active: boolean }): Gi
     let debounce: ReturnType<typeof setTimeout> | null = null;
     const off = window.meow.onEvent((event) => {
       const type = (event as { type?: string }).type;
-      if (type !== "git_changed" && type !== "file_changed" && type !== "turn_complete") return;
+      if (
+        type !== "git_changed" &&
+        type !== "file_changed" &&
+        type !== "turn_complete" &&
+        type !== "workspace_changed"
+      ) {
+        return;
+      }
       if (debounce) clearTimeout(debounce);
       debounce = setTimeout(() => {
         debounce = null;

@@ -36,7 +36,6 @@ import {
   RETIRE_HURT,
   adaptationId,
   isRetiredStatus,
-  type Guideline,
   type GuidelineTrigger,
   type GuidelinesFile,
   type JournalEntry,
@@ -50,7 +49,6 @@ import {
   type ProfileFile,
   type TraitDimension,
   type TurnOutcomeRecord,
-  type UserTrait,
 } from "./types.js";
 
 // ---------------------------------------------------------------------------

@@ -35,7 +35,8 @@ describe("run_code sandbox", () => {
     }, root);
     expect(result.ok).toBe(true);
     // 只有最终值进入对话：内部读到的文件内容绝不出现
-    expect(result.output).toContain("10");
+    // ("alpha".length + "beta".length = 9；摘要行之后才是返回值，用它定位避免撞到耗时/日志里的数字)
+    expect(result.output).toContain("\n9");
     expect(result.output).not.toContain("alpha");
     expect(result.output).not.toContain("beta");
     expect(result.output).toContain("2 internal call(s)");

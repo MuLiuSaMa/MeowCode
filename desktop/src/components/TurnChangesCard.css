@@ -1,0 +1,162 @@
+/* 回合编辑汇总卡片：对话末尾的「已编辑 N 个文件」，带撤销 / 审阅入口 */
+.mc-turnchanges {
+  display: flex;
+  flex-direction: column;
+  margin: 4px 0 2px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--card);
+  overflow: hidden;
+}
+
+.mc-turnchanges__head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 13px;
+}
+
+.mc-turnchanges__icon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--fg-subtle);
+}
+
+.mc-turnchanges__heading {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.mc-turnchanges__title {
+  font-size: var(--fs-caption);
+  font-weight: var(--fw-semibold);
+  color: var(--fg);
+  line-height: var(--lh-tight);
+}
+
+.mc-turnchanges__stats {
+  display: flex;
+  gap: 8px;
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  line-height: var(--lh-tight);
+}
+
+.mc-turnchanges__add {
+  color: var(--diff-add);
+}
+
+.mc-turnchanges__del {
+  color: var(--diff-del);
+}
+
+.mc-turnchanges__actions {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.mc-turnchanges__action {
+  border: none;
+  background: transparent;
+  padding: 5px 10px;
+  border-radius: var(--radius-sm);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+  color: var(--fg-subtle);
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease;
+}
+
+.mc-turnchanges__action:hover:not(:disabled) {
+  background: var(--surface);
+  color: var(--fg);
+}
+
+.mc-turnchanges__action:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+/* 「审阅」是主操作：描边按钮，和左侧的弱化「撤销」拉开层级 */
+.mc-turnchanges__action--solid {
+  border: 1px solid var(--border-strong);
+  color: var(--fg);
+}
+
+.mc-turnchanges__action--solid:hover {
+  background: var(--surface-hover);
+}
+
+.mc-turnchanges__list {
+  list-style: none;
+  margin: 0;
+  padding: 4px 0;
+  border-top: 1px solid var(--line-soft);
+}
+
+.mc-turnchanges__row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 7px 14px;
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+}
+
+.mc-turnchanges__row:hover {
+  background: var(--surface);
+}
+
+.mc-turnchanges__path {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--fg-subtle);
+}
+
+.mc-turnchanges__delta {
+  flex: none;
+  display: flex;
+  gap: 8px;
+  font-size: var(--fs-xs);
+}
+
+.mc-turnchanges__more {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  padding: 7px 14px 9px;
+  border: none;
+  background: transparent;
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+  color: var(--fg-subtle);
+  text-align: left;
+  cursor: pointer;
+}
+
+.mc-turnchanges__more:hover {
+  color: var(--fg);
+}
+
+.mc-turnchanges__chevron {
+  flex: none;
+  transition: transform 140ms ease;
+}
+
+.mc-turnchanges__chevron[data-open="true"] {
+  transform: rotate(180deg);
+}

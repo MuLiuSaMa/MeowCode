@@ -13,7 +13,8 @@ export type SideTab =
   | { id: "home"; kind: "home"; title: string }
   | { id: string; kind: "browser"; title: string; url: string; agent?: boolean }
   | { id: string; kind: "workspace"; title: string; path?: string }
-  | { id: string; kind: "review" | "sidechat" | "terminal" | "plan" | "subagents"; title: string }
+  | { id: string; kind: "review" | "sidechat" | "plan" | "subagents"; title: string }
+  | { id: string; kind: "terminal"; title: string; termId?: string }
   | { id: string; kind: "plugin"; title: string; pluginId: string }
   | {
       id: string;
@@ -82,12 +83,19 @@ function resolveTitle(tab: SideTab, t: TFunction<"panel">): SideTab {
   if (tab.kind === "home") return { ...tab, title: t("tabs.home") };
   // 插件页签的标题是插件名（用户数据），不参与 i18n
   if (tab.kind === "plugin") return tab;
+  // 后台任务终端用命令作为标题
+  if (tab.kind === "terminal" && tab.termId) return tab;
   return { ...tab, title: t(SINGLETON_TITLE_KEYS[tab.kind]) };
 }
 
 /** 用户数据的页签保留 title；其余页签的 title 由 key 现算，恢复时清掉旧译文。 */
 function isDataTitleTab(tab: SideTab): boolean {
-  return tab.kind === "browser" || tab.kind === "subagent" || tab.kind === "plugin";
+  return (
+    tab.kind === "browser" ||
+    tab.kind === "subagent" ||
+    tab.kind === "plugin" ||
+    (tab.kind === "terminal" && Boolean(tab.termId))
+  );
 }
 
 export function useSideTabs() {
@@ -103,6 +111,8 @@ export function useSideTabs() {
     const unique: SideTab[] = [];
     for (const tab of restored) {
       if (!tab || tab.id === "home" || seen.has(tab.id)) continue;
+      // PTY 不跨应用重启：昨天的后台任务终端恢复出来只剩空壳
+      if (tab.kind === "terminal" && tab.termId) continue;
       seen.add(tab.id);
       // 持久化的是上次的译文：非用户数据的页签清掉，渲染时按当前语言重算
       unique.push(isDataTitleTab(tab) ? tab : { ...tab, title: "" });
@@ -281,6 +291,21 @@ export function useSideTabs() {
     [tabs],
   );
 
+  /** 后台任务终端：按 termId 去重；已存在时只激活并刷新标题（不抢用户手动开的终端）。 */
+  const openJobTerminal = useCallback((termId: string, command: string) => {
+    const id = `terminal-${termId}`;
+    const title = command.length > 64 ? `${command.slice(0, 61)}…` : command;
+    setTabs((current) => {
+      if (current.some((tab) => tab.id === id)) {
+        return current.map((tab) =>
+          tab.id === id ? { ...tab, title: title || tab.title } : tab,
+        );
+      }
+      return [...current, { id, kind: "terminal", title, termId }];
+    });
+    setActiveId(id);
+  }, []);
+
   const close = useCallback(
     (id: string) => {
       if (id === "home") return;
@@ -319,6 +344,7 @@ export function useSideTabs() {
       prepareSubagent,
       prepareSubagentsDirectory,
       ensureAgentBrowserTab,
+      openJobTerminal,
       close,
       activate,
       patchTab,
@@ -336,6 +362,7 @@ export function useSideTabs() {
       prepareSubagent,
       prepareSubagentsDirectory,
       ensureAgentBrowserTab,
+      openJobTerminal,
       close,
       activate,
       patchTab,

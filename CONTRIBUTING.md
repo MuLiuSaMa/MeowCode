@@ -99,6 +99,34 @@ style(diff): diff 增删色换成更鲜艳的绿/红
 
 提交前扫一眼暂存区，别把 `.env` 或调试用的临时脚本带进去。
 
+## 发布与更新令牌
+
+自动更新走 GitCode Releases（`api.gitcode.com/api/v5/repos/.../releases/latest`）。匿名调用很快会被限流，所以需要一个只读令牌。
+
+**令牌永不进仓库**。`desktop/update-check.cjs` 按这个顺序查找：
+
+1. 环境变量 `MEOWCODE_GITCODE_UPDATE_TOKEN`
+2. `resources/gitcode-update-token.txt`（打包时随 `resources` 进安装包，`.gitignore` 已挡）
+3. `~/.meowcode/gitcode-update-token.txt`（仅本机生效）
+
+三者都没有时退回匿名请求，功能可用但容易撞限流，错误提示会说明原因。
+
+发版流程：
+
+1. 改 `desktop/package.json` 的 `version`
+2. `pnpm package`
+3. 在 GitCode 建 Release，tag 用 `v<version>`，上传 `MeowCode-Setup-<version>.exe`
+4. 客户端拿 `app.getVersion()` 和 release 的 `tag_name` 按数字段比较
+
+内置令牌会随安装包分发，拿到安装包的人都能提取出来。请只授予该仓库的**只读**权限，不要用带写权限的私钥。
+
+打包相关的两处配置在 `desktop/package.json` 的 `build` 里，都是踩坑之后加的：
+
+- `npmRebuild: false`：`node-pty` 用的是 N-API 预编译（`prebuilds/win32-x64/*.node`），不重编译也能被 Electron 加载。而重编译要求本机装了 Visual Studio 的 Spectre 缓解库，缺了会以 `MSB8040` 直接失败。
+- `electronDownload.mirror`：electron 二进制走 npmmirror，避免 GitHub 直连超时。
+
+以后如果新增了别的原生依赖，`npmRebuild: false` 需要重新评估——它会让所有原生模块都跳过针对 Electron ABI 的重编译。
+
 ## 报告问题
 
 开 Issue 前先搜一下有没有重复。写的时候尽量包含：

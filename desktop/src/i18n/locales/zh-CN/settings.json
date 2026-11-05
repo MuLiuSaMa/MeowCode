@@ -39,7 +39,8 @@
     "dataImport": "数据导入",
     "learning": "自我学习",
     "rewind": "会话回滚",
-    "sandbox": "沙箱"
+    "sandbox": "沙箱",
+    "approvals": "审批规则"
   },
   "island": {
     "section": "AI 悬浮岛",
@@ -156,10 +157,10 @@
     }
   },
   "memory": {
-    "extractionTitle": "自动蒸馏记忆",
-    "extractionDesc": "每个回合结束后，后台用一次轻量请求回顾新对话，把值得长期记住的事（偏好、纠正、项目决策）自动写进记忆。关闭后只保留手动新建与对话中 AI 的主动写入。",
-    "extractionField": "回合结束自动蒸馏",
-    "extractionFailed": "开关保存失败",
+    "toggleTitle": "记忆",
+    "toggleDesc": "开启后，每个回合结束会用一次轻量请求回顾新对话，把值得长期记住的事（偏好、纠正、项目决策）写进记忆；记忆索引也会注入每次对话，AI 可按需读写。关闭后这三件事都会停止——但已有记忆文件不会被删除，需要时仍可用普通文件方式读取。",
+    "toggleField": "启用记忆",
+    "toggleFailed": "开关保存失败",
     "scope": {
       "user": "个人记忆",
       "project": "项目记忆"
@@ -189,7 +190,11 @@
     "loadFailed": "记忆加载失败",
     "readFailed": "记忆读取失败",
     "saveFailed": "记忆保存失败",
-    "deleteFailed": "记忆删除失败"
+    "deleteFailed": "记忆删除失败",
+    "clearAction": "全部删除",
+    "clearConfirm": "确认全部删除？",
+    "clearDone": "已删除全部记忆",
+    "clearFailed": "记忆清空失败"
   },
   "archive": {
     "section": "归档",
@@ -212,7 +217,6 @@
     "website": "官网",
     "repo": "开源仓库",
     "openInBrowser": "用浏览器打开",
-    "credits": "鸣谢",
     "sponsor": "赞助",
     "sponsorHint": "如果 MeowCode 对你有帮助，欢迎扫码支持作者",
     "qrAlt": "{{name}}赞助二维码",
@@ -221,7 +225,8 @@
       "alipay": "支付宝"
     },
     "upToDate": "已是最新版本",
-    "checkFailed": "版本检查失败：{{error}}"
+    "checkFailed": "版本检查失败：{{error}}",
+    "sponsorList": "赞助者名单（MeowCode、新境盒、OpenMD、LingTab）"
   },
   "actions": {
     "add": "添加",
@@ -580,5 +585,40 @@
     "enabled": "已切换到工作区写入（首次授权 {{ms}} ms）",
     "saveFailed": "保存沙箱设置失败",
     "loadFailed": "读取沙箱设置失败"
+  },
+  "dataLocation": {
+    "section": "本地数据",
+    "desc": "设置、会话记录和本地字体的存放位置。",
+    "field": "数据位置",
+    "open": "打开文件夹",
+    "change": "更改位置...",
+    "loading": "读取中…",
+    "confirmTitle": "更改数据位置？",
+    "confirmDesc": "将把当前数据复制到新位置并重启应用。原位置的数据会保留。",
+    "move": "迁移并重启",
+    "moving": "正在迁移…",
+    "restarting": "数据已迁移，正在重启应用…",
+    "errors": {
+      "same_path": "新位置与当前位置相同。",
+      "not_empty": "目标文件夹不是空的，请选择空文件夹。",
+      "failed": "更改数据位置失败。"
+    }
+  },
+  "approvals": {
+    "section": "审批规则",
+    "desc": "本项目内批准过并勾选「不再询问」的操作。撤销后下次会重新弹窗；文件类规则在文件改动后自动失效。",
+    "empty": "暂无项目级审批规则",
+    "clearAll": "全部清除",
+    "remove": "删除规则",
+    "cleared": "已清除本项目全部审批规则",
+    "clearConfirmTitle": "清除全部审批规则？",
+    "clearConfirmDesc": "之后这些操作会重新弹出审批。文件类规则在文件改动后本来就会自动失效。",
+    "kind": {
+      "tool": "工具",
+      "path": "文件",
+      "command-exact": "精确命令",
+      "command-prefix": "命令前缀"
+    },
+    "loading": "读取中…"
   }
 }

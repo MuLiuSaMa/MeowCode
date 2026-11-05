@@ -3,6 +3,23 @@
   flex-direction: column;
   gap: 8px;
   max-width: 100%;
+  /* 新消息落到时间线时淡入上浮（只在节点首次挂载时跑一次；流式期间不再重播，避免闪字） */
+  animation: mc-assistant-in 200ms var(--ease) both;
+}
+@keyframes mc-assistant-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mc-assistant {
+    animation: none;
+  }
 }
 .mc-assistant__body {
   position: relative;

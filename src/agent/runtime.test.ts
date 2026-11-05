@@ -809,7 +809,9 @@ describe("AgentRuntime active provider", () => {
 describe("AgentRuntime context usage", () => {  it("falls back to estimates, then prefers real input tokens", async () => {
     const dir = await mkdtemp(path.join(tmpdir(), "meowcode-runtime-"));
     const runtime = makeRuntime(dir);
-    await runtime.newSession();
+    // 工作区也用临时目录：否则会扫到仓库里 .meowcode/learning/skills 的学习产物，
+    // skillCount 随本机使用记录漂移（这条断言要的是「没有技能」）
+    await runtime.newSession(dir);
 
     // 未设窗口、未发过请求 → 估算路径
     const before = runtime.getContextUsage();
@@ -1336,7 +1338,9 @@ describe("AgentRuntime browser tools", () => {
     // 治理默认 goal：根 runtime 多挂 admit 控制面工具
     expect(plainTools.map((tool) => tool.function.name)).toContain("admit");
     // 14 个内置工具 + admit + read_video + diagnostics + memory 三件 + tool_search
-    expect(plainTools).toHaveLength(21);
+    // + web_fetch（localhost 没有搜索后端，web_search 被撤下）
+    // + job / git / delete_file / move_file / apply_patch
+    expect(plainTools).toHaveLength(27);
   });
 
   it("dispatches browser tool calls to the host without approval and emits tool events", async () => {
@@ -1935,6 +1939,11 @@ describe("turn ownership", () => {
     const runtime = makeRuntime(dir);
     await runtime.newSession();
     streamMock.mockImplementation((options: { signal?: AbortSignal }) => {
+      // 真实 provider 在已中止的信号上会立即失败；mock 也要这样，
+      // 否则「中止发生在请求发出之前」的表象会变成永久挂起。
+      if (options.signal?.aborted) {
+        return Promise.reject(new DOMException("Aborted", "AbortError"));
+      }
       return new Promise<never>((_resolve, reject) => {
         options.signal?.addEventListener("abort", () =>
           reject(new DOMException("Aborted", "AbortError")),
@@ -2185,6 +2194,60 @@ describe("parallel read-only tools", () => {
       )
       .map((event) => event.callId);
     expect(started).toEqual(["a", "b"]);
+  });
+
+  it("injects web fetch on the parallel read-only path", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "meowcode-runtime-"));
+    const workspace = await mkdtemp(path.join(tmpdir(), "meowcode-ws-"));
+    await writeFile(path.join(workspace, "a.txt"), "AAA");
+    const runtime = makeRuntime(dir);
+    await runtime.newSession(workspace);
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response("<h1>Fetched</h1>", {
+          status: 200,
+          headers: { "content-type": "text/html" },
+        }),
+      ),
+    );
+    try {
+      streamMock
+        .mockResolvedValueOnce({
+          message: {
+            role: "assistant",
+            content: null,
+            tool_calls: [
+              {
+                id: "w",
+                type: "function",
+                function: {
+                  name: "web_fetch",
+                  arguments: JSON.stringify({ url: "https://example.com/page" }),
+                },
+              },
+              {
+                id: "r",
+                type: "function",
+                function: { name: "read_file", arguments: JSON.stringify({ path: "a.txt" }) },
+              },
+            ],
+          },
+        })
+        .mockResolvedValueOnce({ message: { role: "assistant", content: "done" } });
+
+      await runtime.prompt("fetch it");
+
+      const toolMessages = (streamMock.mock.calls[1][0].messages as ChatMessage[]).filter(
+        (message): message is Extract<ChatMessage, { role: "tool" }> => message.role === "tool",
+      );
+      const fetched = toolMessages.find((message) => message.tool_call_id === "w");
+      expect(fetched?.content).toContain("# Fetched");
+      expect(fetched?.content).not.toContain("not available");
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });
 
@@ -3863,5 +3926,68 @@ describe("AgentRuntime compaction quality", () => {
     expect(
       runtime.current?.entries.some((entry) => entry.type === "compaction_quality"),
     ).toBe(false);
+  });
+});
+
+describe("turn file change summary", () => {
+  it("reports this turn's edited files with line stats and a rewind target", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "meowcode-runtime-"));
+    const workspace = await mkdtemp(path.join(tmpdir(), "meowcode-ws-"));
+    const runtime = makeRuntime(dir);
+    await runtime.newSession(workspace);
+    runtime.setApprovalMode("full");
+    const events = await collectEvents(runtime);
+    streamMock
+      .mockResolvedValueOnce({
+        message: {
+          role: "assistant",
+          content: null,
+          tool_calls: [
+            {
+              id: "write-note",
+              type: "function",
+              function: {
+                name: "write_file",
+                arguments: JSON.stringify({ path: "note.md", content: "line one\nline two\n" }),
+              },
+            },
+          ],
+        },
+      })
+      .mockResolvedValueOnce({ message: { role: "assistant", content: "done" } });
+
+    await runtime.prompt("go");
+
+    const changed = events.find((event) => event.type === "file_changed") as Extract<
+      MeowEvent,
+      { type: "file_changed" }
+    >;
+    expect(changed).toMatchObject({ path: "note.md", added: 2, removed: 0 });
+
+    const complete = events.find((event) => event.type === "turn_complete") as Extract<
+      MeowEvent,
+      { type: "turn_complete" }
+    >;
+    expect(complete.files).toEqual([{ path: "note.md", added: 2, removed: 0 }]);
+    expect(complete.turnId).toBeTruthy();
+    // 快照开关取决于宿主设置：只要求给出明确的可用性，而不是盲目乐观
+    expect(complete.checkpointId).toBeTruthy();
+    expect(typeof complete.canRewind).toBe("boolean");
+  });
+
+  it("omits files for a turn that touched nothing", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "meowcode-runtime-"));
+    const runtime = makeRuntime(dir);
+    await runtime.newSession();
+    const events = await collectEvents(runtime);
+    streamMock.mockResolvedValueOnce({ message: { role: "assistant", content: "hi" } });
+
+    await runtime.prompt("hello");
+
+    const complete = events.find((event) => event.type === "turn_complete") as Extract<
+      MeowEvent,
+      { type: "turn_complete" }
+    >;
+    expect(complete.files).toBeUndefined();
   });
 });

@@ -38,7 +38,7 @@ export function useWorkspaceGit(options: {
     if (!workspace) return;
     let debounce: number | null = null;
     const off = window.meow.onEvent((event) => {
-      if (event.type !== "git_changed") return;
+      if (event.type !== "git_changed" && event.type !== "workspace_changed") return;
       if (debounce !== null) window.clearTimeout(debounce);
       debounce = window.setTimeout(() => {
         debounce = null;

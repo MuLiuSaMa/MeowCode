@@ -26,8 +26,8 @@ beforeAll(async () => {
   ]);
   process.env.MEOWCODE_BROWSER_HOST_TOKEN = "browser-secret";
   process.env.MEOWCODE_SERVER_TOKEN = TOKEN;
-  // 记忆蒸馏初值走 env：模拟桌面端关闭开关后启动 server（PUT 用例再实时打开）
-  process.env.MEOWCODE_MEMORY_EXTRACTION = "0";
+  // 记忆总开关初值走 env：模拟桌面端关闭开关后启动 server（PUT 用例再实时打开）
+  process.env.MEOWCODE_MEMORY = "0";
 
   server = await startServer({ port: 0 });
   const address = server.address();
@@ -43,7 +43,7 @@ afterAll(async () => {
   delete process.env.MEOWCODE_PROVIDER_ID;
   delete process.env.MEOWCODE_WORKSPACE;
   delete process.env.MEOWCODE_HOME_DIR;
-  delete process.env.MEOWCODE_MEMORY_EXTRACTION;
+  delete process.env.MEOWCODE_MEMORY;
 });
 
 describe("agent server auth", () => {
@@ -160,10 +160,10 @@ describe("agent server auth", () => {
   });
 });
 
-describe("memory extraction config", () => {
+describe("memory config", () => {
   it("GET reflects the env boot value", async () => {
-    // beforeAll 里 MEOWCODE_MEMORY_EXTRACTION="0"：桌面端关掉开关后重启 server 的形态
-    const response = await fetch(`${baseUrl}/config/memory-extraction`, {
+    // beforeAll 里 MEOWCODE_MEMORY="0"：桌面端关掉开关后重启 server 的形态
+    const response = await fetch(`${baseUrl}/config/memory`, {
       headers: { authorization: `Bearer ${TOKEN}` },
     });
     expect(response.status).toBe(200);
@@ -171,7 +171,7 @@ describe("memory extraction config", () => {
   });
 
   it("PUT switches the flag live and rejects non-boolean values", async () => {
-    const put = await fetch(`${baseUrl}/config/memory-extraction`, {
+    const put = await fetch(`${baseUrl}/config/memory`, {
       method: "PUT",
       headers: { authorization: `Bearer ${TOKEN}`, "content-type": "application/json" },
       body: JSON.stringify({ enabled: true }),
@@ -179,12 +179,12 @@ describe("memory extraction config", () => {
     expect(put.status).toBe(200);
     expect(await put.json()).toEqual({ enabled: true });
 
-    const get = await fetch(`${baseUrl}/config/memory-extraction`, {
+    const get = await fetch(`${baseUrl}/config/memory`, {
       headers: { authorization: `Bearer ${TOKEN}` },
     });
     expect(await get.json()).toEqual({ enabled: true });
 
-    const invalid = await fetch(`${baseUrl}/config/memory-extraction`, {
+    const invalid = await fetch(`${baseUrl}/config/memory`, {
       method: "PUT",
       headers: { authorization: `Bearer ${TOKEN}`, "content-type": "application/json" },
       body: JSON.stringify({ enabled: "yes" }),
@@ -1153,7 +1153,7 @@ describe("prompt attachments (PDF)", () => {
 });
 
 /** git 是否可用：没装 git 的机器跳过整个路由用例（模块顶层才能用 await）。 */
-const gitAvailable = await (await import("./git.js")).isGitAvailable();
+const gitAvailable = await (await import("../git/git.js")).isGitAvailable();
 
 describe("git routes", () => {
   const headers = { authorization: `Bearer ${TOKEN}`, "content-type": "application/json" };
@@ -1166,7 +1166,7 @@ describe("git routes", () => {
 
   describeGit("with a real repository", () => {
     beforeAll(async () => {
-      const { runGit } = await import("./git.js");
+      const { runGit } = await import("../git/git.js");
       repo = await mkdtemp(path.join(tmpdir(), "meowcode-server-git-"));
       process.env.GIT_AUTHOR_NAME = "MeowCode Test";
       process.env.GIT_AUTHOR_EMAIL = "test@example.com";
@@ -1388,6 +1388,71 @@ describe("memory routes", () => {
         { method: "DELETE", headers: auth },
       );
       expect(again.status).toBe(404);
+    } finally {
+      await rm(workspace, { recursive: true, force: true });
+    }
+  });
+
+  it("clears each memory scope independently", async () => {
+    const workspace = await mkdtemp(path.join(tmpdir(), "meowcode-memory-ws-"));
+    const auth = { authorization: `Bearer ${TOKEN}`, "content-type": "application/json" };
+    try {
+      for (const [scope, name] of [
+        ["user", "clear-user"],
+        ["project", "clear-project"],
+      ] as const) {
+        const put = await fetch(`${baseUrl}/memory/file`, {
+          method: "PUT",
+          headers: auth,
+          body: JSON.stringify({
+            scope,
+            name,
+            content: "---\ndescription: 清空测试\n---\n内容",
+            cwd: workspace,
+          }),
+        });
+        expect(put.status).toBe(200);
+      }
+
+      const missingScope = await fetch(`${baseUrl}/memory?cwd=${encodeURIComponent(workspace)}`, {
+        method: "DELETE",
+        headers: auth,
+      });
+      expect(missingScope.status).toBe(400);
+      expect(((await missingScope.json()) as { error: { code: string } }).error.code).toBe(
+        "invalid_scope",
+      );
+
+      const clearedProject = await fetch(
+        `${baseUrl}/memory?scope=project&cwd=${encodeURIComponent(workspace)}`,
+        { method: "DELETE", headers: auth },
+      );
+      expect(clearedProject.status).toBe(200);
+      const projectBody = (await clearedProject.json()) as { scope: string; cleared: number };
+      expect(projectBody.scope).toBe("project");
+      expect(projectBody.cleared).toBe(1);
+
+      const afterProject = (await (
+        await fetch(`${baseUrl}/memory?cwd=${encodeURIComponent(workspace)}`, { headers: auth })
+      ).json()) as { user: Array<{ name: string }>; project: unknown[] };
+      expect(afterProject.project).toEqual([]);
+      expect(afterProject.user.some((item) => item.name === "clear-user")).toBe(true);
+
+      const clearedUser = await fetch(
+        `${baseUrl}/memory?scope=user&cwd=${encodeURIComponent(workspace)}`,
+        { method: "DELETE", headers: auth },
+      );
+      expect(clearedUser.status).toBe(200);
+      const userBody = (await clearedUser.json()) as { scope: string; cleared: number };
+      expect(userBody.scope).toBe("user");
+      // 用户层是测试进程的临时 home，可能已有别的用例写入的条目；只要求至少清掉本次这条
+      expect(userBody.cleared).toBeGreaterThanOrEqual(1);
+
+      const afterUser = (await (
+        await fetch(`${baseUrl}/memory?cwd=${encodeURIComponent(workspace)}`, { headers: auth })
+      ).json()) as { user: unknown[]; project: unknown[] };
+      expect(afterUser.user).toEqual([]);
+      expect(afterUser.project).toEqual([]);
     } finally {
       await rm(workspace, { recursive: true, force: true });
     }

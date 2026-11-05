@@ -39,7 +39,8 @@
     "worktree": "Worktrees",
     "learning": "自我學習",
     "rewind": "會話回滾",
-    "sandbox": "沙箱"
+    "sandbox": "沙箱",
+    "approvals": "審批規則"
   },
   "close": {
     "section": "關閉方式",
@@ -96,10 +97,6 @@
     }
   },
   "memory": {
-    "extractionTitle": "自動蒸餾記憶",
-    "extractionDesc": "每個回合結束後，背景以一次輕量請求回顧新對話，把值得長期記住的事（偏好、糾正、專案決策）自動寫進記憶。關閉後僅保留手動新建與對話中 AI 的主動寫入。",
-    "extractionField": "回合結束自動蒸餾",
-    "extractionFailed": "開關儲存失敗",
     "scope": {
       "user": "個人記憶",
       "project": "專案記憶"
@@ -129,7 +126,15 @@
     "loadFailed": "記憶載入失敗",
     "readFailed": "記憶讀取失敗",
     "saveFailed": "記憶儲存失敗",
-    "deleteFailed": "記憶刪除失敗"
+    "deleteFailed": "記憶刪除失敗",
+    "toggleTitle": "自動蒸餾記憶",
+    "toggleDesc": "每個回合結束後，背景以一次輕量請求回顧新對話，把值得長期記住的事（偏好、糾正、專案決策）自動寫進記憶。關閉後僅保留手動新建與對話中 AI 的主動寫入。",
+    "toggleField": "回合結束自動蒸餾",
+    "toggleFailed": "開關儲存失敗",
+    "clearAction": "全部刪除",
+    "clearConfirm": "確認全部刪除？",
+    "clearDone": "已刪除全部記憶",
+    "clearFailed": "記憶清空失敗"
   },
   "archive": {
     "section": "歸檔",
@@ -152,7 +157,6 @@
     "website": "官網",
     "repo": "開源存放庫",
     "openInBrowser": "用瀏覽器開啟",
-    "credits": "鳴謝",
     "sponsor": "贊助",
     "sponsorHint": "如果 MeowCode 對你有幫助，歡迎掃碼支持作者",
     "qrAlt": "{{name}}贊助 QR Code",
@@ -161,7 +165,8 @@
       "alipay": "支付寶"
     },
     "upToDate": "已是最新版本",
-    "checkFailed": "版本檢查失敗：{{error}}"
+    "checkFailed": "版本檢查失敗：{{error}}",
+    "sponsorList": "贊助者名單（MeowCode、新境盒、OpenMD、LingTab）"
   },
   "actions": {
     "add": "新增",
@@ -580,5 +585,40 @@
     "enabled": "已切換到工作區寫入（首次授權 {{ms}} ms）",
     "saveFailed": "儲存沙箱設定失敗",
     "loadFailed": "讀取沙箱設定失敗"
+  },
+  "dataLocation": {
+    "section": "本機資料",
+    "desc": "設定、會話記錄與本機字型的存放位置。",
+    "field": "資料位置",
+    "open": "開啟資料夾",
+    "change": "變更位置...",
+    "loading": "讀取中…",
+    "confirmTitle": "變更資料位置？",
+    "confirmDesc": "會將目前資料複製到新位置並重新啟動應用程式。原位置的資料會保留。",
+    "move": "遷移並重新啟動",
+    "moving": "正在遷移…",
+    "restarting": "資料已遷移，正在重新啟動應用程式…",
+    "errors": {
+      "same_path": "新位置與目前位置相同。",
+      "not_empty": "目標資料夾不是空的，請選擇空資料夾。",
+      "failed": "變更資料位置失敗。"
+    }
+  },
+  "approvals": {
+    "section": "審批規則",
+    "desc": "本專案內批准過並勾選「不再詢問」的操作。撤銷後下次會重新彈窗；檔案類規則在檔案變更後自動失效。",
+    "empty": "尚無專案級審批規則",
+    "clearAll": "全部清除",
+    "remove": "刪除規則",
+    "cleared": "已清除本專案全部審批規則",
+    "clearConfirmTitle": "清除全部審批規則？",
+    "clearConfirmDesc": "之後這些操作會重新彈出審批。檔案類規則在檔案變更後本來就會自動失效。",
+    "kind": {
+      "tool": "工具",
+      "path": "檔案",
+      "command-exact": "精確命令",
+      "command-prefix": "命令前綴"
+    },
+    "loading": "讀取中…"
   }
 }

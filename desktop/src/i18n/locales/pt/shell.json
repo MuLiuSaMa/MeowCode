@@ -44,7 +44,14 @@
     "sandboxEvidence": "Evidência do bloqueio",
     "sandboxNote": "Tentar novamente fora da sandbox executa este comando com os privilégios do seu usuário. Apenas uma tentativa é permitida; a sandbox não é desativada.",
     "sandboxDeny": "Manter a sandbox",
-    "sandboxRetry": "Tentar novamente fora da sandbox"
+    "sandboxRetry": "Tentar novamente fora da sandbox",
+    "feedbackLabel": "Motivo (opcional)",
+    "feedbackPlaceholder": "Diga ao agente o que está errado para ele ajustar",
+    "rememberCommand": "Não perguntar mais por este comando neste projeto",
+    "rememberPath": "Não perguntar mais por alterações neste arquivo neste projeto",
+    "rememberTool": "Não perguntar mais por esta ferramenta neste projeto",
+    "rememberExact": "Somente este comando",
+    "rememberPrefix": "Comandos que começam assim"
   },
   "plan": {
     "aria": "Plano de tarefas",
@@ -224,7 +231,6 @@
     "empty": "Ainda não há mensagens",
     "stop": "Parar",
     "send": "Enviar",
-    "openMain": "Abrir janela principal",
     "inputPlaceholder": "Digite uma mensagem, Enter para enviar",
     "inputIdle": "Esta sessão não está em execução. Continue na janela principal.",
     "dropHint": "Solte para anexar"

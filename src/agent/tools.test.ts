@@ -3,6 +3,7 @@ import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promis
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
+import { estimateTokens } from "./context";
 import { previewEditDiff } from "./diff";
 import {
   commandEnv,
@@ -287,6 +288,22 @@ describe("tools", () => {
     expect(savedPath).toContain(".meowcode/tool-output/read_file-");
     const saved = await readFile(path.join(root, ...savedPath.split("/")), "utf8");
     expect(saved).toBe(content);
+  });
+
+  it("按 token 截断中文读取，不按字符放大四倍", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "meowcode-tools-"));
+    const content = Array.from(
+      { length: 600 },
+      (_, index) => `第${index + 1}行：${"中".repeat(40)}`,
+    ).join("\n");
+    await writeFile(path.join(root, "zh.txt"), content);
+
+    const result = await executeTool("read_file", { path: "zh.txt" }, root);
+    expect(result.ok).toBe(true);
+    // 4k token 预算：中文约 4k 字符，不能再按 20k 字符灌满
+    expect(estimateTokens(result.output)).toBeLessThanOrEqual(4_500);
+    expect(result.output).toContain("full content of zh.txt saved to");
+    expect(result.output).toContain("600: 第600行");
   });
 
   it("keeps small files fully inline without saving to disk", async () => {
@@ -699,7 +716,8 @@ describe("structured search output degradation", () => {
 
     const result = await degradeStructuredOutput(root, "grep", body);
     expect(result.truncated).toBe(true);
-    expect(result.output.length).toBeLessThan(5_000);
+    // 预算按 token 计：2k 预算下英文约 8k 字符，不能再按旧的 5k 字符断言
+    expect(estimateTokens(result.output)).toBeLessThanOrEqual(2_300);
     expect(result.output).toContain("full result saved to .meowcode/tool-output/");
     expect(result.output).toContain("read_file (offset/limit)");
     // 落盘的是完整内容，模型可以分页续读

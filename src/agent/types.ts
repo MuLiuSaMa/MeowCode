@@ -67,6 +67,7 @@ export type AgentEventMeta = {
 export type MeowEvent = AgentEventMeta &
   (
   | { type: "server.connected"; version: string }
+  | { type: "git_changed"; sessionId?: string }
   | {
       type: "message_start";
       sessionId: string;
@@ -137,6 +138,8 @@ export type MeowEvent = AgentEventMeta &
       approved: boolean;
       /** user = 用户点选；hook = PermissionRequest 自动应答；abort = 回合中止 */
       by: "user" | "hook" | "abort";
+      /** 用户拒绝时填写的理由（已回灌模型） */
+      feedback?: string;
     }
   | { type: "error"; sessionId: string; message: string }
   /**
@@ -192,6 +195,14 @@ export type MeowEvent = AgentEventMeta &
       sessionId: string;
       /** 回合收尾状态：桌面端据此区分「正常完成 / 被用户中断 / 出错」并决定通知文案 */
       status?: TurnStatus;
+      /** 回合 id：前端插入编辑汇总卡片时按它去重（SSE 重连可能补发终态） */
+      turnId?: string;
+      /** 本轮改过的文件（按路径聚合）；为空/缺省时前端不显示「已编辑 N 个文件」卡片 */
+      files?: TurnFileChangeStat[];
+      /** 本轮开始时的自动检查点：「撤销」按钮的回滚目标 */
+      checkpointId?: string;
+      /** 该检查点是否带文件快照（false/缺省 = 无法回滚代码，撤销按钮禁用） */
+      canRewind?: boolean;
     }
   /**
    * 供应商故障转移：可重试错误（超时 / 429 / 5xx）触发了 fallback 链切换。
@@ -242,7 +253,17 @@ export type MeowEvent = AgentEventMeta &
   /** 会话标题已生成 / 已更新（AI 自动生成或用户手动改名） */
   | { type: "session_title"; sessionId: string; title: string }
   /** 文件被 Agent 修改（审阅面板数据源） */
-  | { type: "file_changed"; sessionId: string; path: string; operation: "write_file" | "edit_file" }
+  | {
+      type: "file_changed";
+      sessionId: string;
+      /** 触发这次改动的工具调用 id（工具行据此显示 +N -N） */
+      callId?: string;
+      path: string;
+      operation: "write_file" | "edit_file" | "delete_file" | "move_file";
+      /** 本次改动的增删行数（回合末汇总卡片累加用；旧服务端不带） */
+      added?: number;
+      removed?: number;
+    }
   /** 模型正在流式生成工具调用参数（只用于进度提示，不落盘） */
   | {
       type: "tool_call_progress";
@@ -630,6 +651,18 @@ export type ToolDocument = {
  */
 export type ApprovalMode = "read-only" | "ask" | "auto" | "full";
 
+/** 项目级「不再询问」的匹配范围；与 approval-rules 的规则 kind 一一对应。 */
+export type ApprovalRememberScope = "tool" | "path" | "command-exact" | "command-prefix";
+
+/** 一次审批的用户决定：拒绝可带理由，批准可同时落一条项目规则。 */
+export type ApprovalDecision = {
+  approved: boolean;
+  /** 拒绝理由，回灌给模型（≤ 2000 字符） */
+  feedback?: string;
+  /** 批准后在本项目内记住的范围 */
+  remember?: ApprovalRememberScope;
+};
+
 /** 旧客户端/旧会话仍可能传 "default"，语义等于 "ask"。 */
 export type ApprovalModeInput = ApprovalMode | "default";
 
@@ -679,8 +712,31 @@ export type AgentProfileId = "standard" | "minimal" | "complex";
 /** 一个用户回合的最终状态；interrupted 表示进程在回合中途退出。 */
 export type TurnStatus = "completed" | "aborted" | "error" | "interrupted";
 
+/**
+ * 回合级文件改动统计（路径已聚合：同一文件多次编辑累加行数）。
+ * turn_complete 事件与历史回放（按回合分组）共用同一形状。
+ */
+export type TurnFileChangeStat = {
+  /** 工作区相对路径 */
+  path: string;
+  added: number;
+  removed: number;
+};
+
+/** 一个回合的文件改动汇总（历史回放时按 messageIndex 插回时间线）。 */
+export type TurnFileChangeGroup = {
+  turnId: string;
+  /** 该回合 turn_end 之前有多少条消息（与 checkpoints 的时间线定位同口径） */
+  messageIndex: number;
+  /** 回合开始时的自动检查点（卡片「撤销」目标） */
+  checkpointId?: string;
+  /** 该检查点是否带文件快照（false = 撤销按钮禁用） */
+  canRewind: boolean;
+  files: TurnFileChangeStat[];
+};
+
 /** 模型调用的来源：主对话 / 自动标题 / 上下文压缩。 */
-export type UsageSource = "chat" | "title" | "compaction" | "memory" | "learning";
+export type UsageSource = "chat" | "title" | "compaction" | "memory" | "learning" | "web_search";
 
 export type SessionSettings = {
   approvalMode?: ApprovalMode;
@@ -772,6 +828,8 @@ export type PendingApproval = {
   callId: string;
   /** 归属会话：子 Agent 的审批统一记在父会话上 */
   sessionId: string;
+  /** 发起审批的工作区（用于项目级规则的读写；缺省用 runtime 当前会话） */
+  workspace?: string;
   /** 子 Agent 审批时指向发起它的父会话 */
   parentSessionId?: string;
   agentId?: string;
@@ -807,6 +865,11 @@ export type ToolResult = {
   truncated?: boolean;
   /** 完整内容已落盘的相对路径；UI 用「已落盘」区分于「已截断」。 */
   spilled?: string;
+  /**
+   * 工具内部旁路模型请求的用量（如 provider-native 联网搜索）。
+   * runtime 用独立 roundId 上报，避免覆盖主回合样本或污染缓存命中率。
+   */
+  usage?: TokenUsage;
   /** 内部用：run_command 被写沙箱拒绝的证据；不进入模型可见输出。 */
   sandboxDenial?: SandboxDenial;
   /**
@@ -881,6 +944,8 @@ export type SessionHeader = {
   rootSessionId?: string;
   /** 子 Agent 子会话标记；普通会话/分支不带 */
   agentKind?: "subagent";
+  /** fork 模式的子会话：来源会话 id（父历史已复制到本会话） */
+  forkedFrom?: string;
   /** 子 Agent 类型；旧子会话缺省视为 general */
   agentType?: SubagentType;
   /** 派发该子 Agent 的父会话 task 工具 callId */
@@ -889,6 +954,11 @@ export type SessionHeader = {
   description?: string;
   /** 该会话在独立 git worktree 中运行时的元数据 */
   worktree?: SessionWorktree;
+  /**
+   * 诊断链路 id：一次顶层任务（含子 Agent/侧聊）共享同一个值。
+   * 旧会话没有该字段时按会话 id 派生。
+   */
+  traceId?: string;
   /**
    * 文件快照目录的归属会话 id（<sessionsDir>/snapshots/<snapshotOwnerId>/）。
    * 派生/恢复出的会话沿用源会话的 owner 以共享 blob；缺省 = 自己的 id。
@@ -1048,7 +1118,8 @@ export type SessionEntry =
         | "stale_rechecked"
         | "permission_request_hook"
         | "sandbox_escape"
-        | "sandbox_denied";
+        | "sandbox_denied"
+        | "rule";
       turnId?: string;
     }
   | {
@@ -1178,7 +1249,7 @@ export type SessionEntry =
       parentId: string | null;
       timestamp: string;
       path: string;
-      operation: "write_file" | "edit_file";
+      operation: "write_file" | "edit_file" | "delete_file" | "move_file";
       diff: string;
     }
   | {

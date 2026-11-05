@@ -265,6 +265,27 @@ export async function deleteMemory(dir: string, name: string): Promise<boolean> 
   return removed || indexChanged;
 }
 
+/**
+ * 清空一层记忆：删除索引与本层所有可识别的记忆文件。
+ * 只处理 listMemories 能识别的条目，避免误删目录里的其它文件。
+ */
+export async function clearMemories(dir: string): Promise<number> {
+  const entries = await listMemories(dir);
+  for (const entry of entries) {
+    try {
+      await fs.unlink(memoryFilePath(dir, entry.name));
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    }
+  }
+  try {
+    await fs.unlink(path.join(dir, MEMORY_INDEX_NAME));
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+  }
+  return entries.length;
+}
+
 // ---------------------------------------------------------------------------
 // MEMORY.md 重写（保留非条目行；同名多行去重为一行）
 // ---------------------------------------------------------------------------

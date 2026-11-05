@@ -2,6 +2,7 @@ import path from "node:path";
 import { applyTextEdit, readTextFile, shapeForWrite, withBom } from "./edit-content.js";
 import { readMultiEditGroups } from "./multi-edit.js";
 import { displayPath, resolveToolPath } from "./paths.js";
+import { planPatch } from "./patch.js";
 
 const MAX_DIFF_CHARS = 20_000;
 /** DP 表的单元格上限：超过后只给行数摘要，避免大文件卡死 agent server */
@@ -117,6 +118,23 @@ function diffLines(before: string, after: string): DiffLine[] {
   }
   pushTrailingContext(result, left, endLeft);
   return result;
+}
+
+/** 增删行数（回合末「已编辑 N 个文件」与审阅面板共用同一口径）。 */
+export type DiffStats = { added: number; removed: number };
+
+/**
+ * 统计统一 diff 的增删行数：只数 `+ ` / `- ` 正文行，
+ * 跳过 `---` / `+++` 文件头、`@@` 段头与截断提示行。
+ */
+export function countDiffStats(diff: string): DiffStats {
+  let added = 0;
+  let removed = 0;
+  for (const line of diff.split("\n")) {
+    if (line.startsWith("+ ")) added += 1;
+    else if (line.startsWith("- ")) removed += 1;
+  }
+  return { added, removed };
 }
 
 /**
@@ -258,6 +276,39 @@ export async function previewDiff(
   }
   if (tool === "multi_edit") {
     return previewMultiEditDiff(workspace, input, allowOutsideWorkspace);
+  }
+  if (tool === "delete_file") {
+    const target = String(args.path ?? "").trim();
+    if (!target) return undefined;
+    const file = await resolveToolPath(workspace, target, allowOutsideWorkspace);
+    const read = await readTextFile(file, {}).catch(() => null);
+    if (!read?.ok) return `delete ${target}`;
+    return renderDiff(target, read.file.content, "");
+  }
+  if (tool === "move_file") {
+    const from = String(args.from ?? "").trim();
+    const to = String(args.to ?? "").trim();
+    if (!from || !to) return undefined;
+    const source = await resolveToolPath(workspace, from, allowOutsideWorkspace);
+    const read = await readTextFile(source, {}).catch(() => null);
+    if (!read?.ok) return `move ${from} → ${to}`;
+    return [
+      `move ${from} → ${to}`,
+      renderDiff(from, read.file.content, ""),
+      renderDiff(to, "", read.file.content),
+    ].join("\n");
+  }
+  if (tool === "apply_patch") {
+    try {
+      const planned = await planPatch(workspace, String(args.patch ?? ""), {
+        allowOutsideWorkspace,
+      });
+      return planned
+        .map((item) => renderDiff(item.target, item.before ?? "", item.after ?? ""))
+        .join("\n");
+    } catch {
+      return undefined;
+    }
   }
   return undefined;
 }

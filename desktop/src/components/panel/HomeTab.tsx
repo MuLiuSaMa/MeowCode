@@ -6,6 +6,7 @@ import {
   LuCpu,
   LuDatabase,
   LuEllipsis,
+  LuFile,
   LuFolder,
   LuFolderOpen,
   LuGauge,
@@ -31,7 +32,7 @@ const CARDS: Array<{
   shortcut?: string;
   icon: ReactNode;
 }> = [
-  { kind: "workspace", labelKey: "home.card.workspace", shortcut: "Ctrl+P", icon: <LuFolder size={15} /> },
+  { kind: "workspace", labelKey: "home.card.workspace", shortcut: "Ctrl+P", icon: <LuFile size={15} /> },
   { kind: "search", labelKey: "home.card.search", shortcut: "Ctrl+K", icon: <LuSearch size={15} /> },
   { kind: "sidechat", labelKey: "home.card.sidechat", shortcut: "Ctrl+Alt+S", icon: <LuMessageSquare size={15} /> },
   { kind: "terminal", labelKey: "home.card.terminal", shortcut: "Ctrl+`", icon: <LuTerminal size={15} /> },
@@ -130,29 +131,6 @@ export function HomeTab({
     typeof metrics?.inputTokens === "number"
       ? Math.max(0, metrics.inputTokens - (metrics.cacheReadTokens ?? 0))
       : null;
-  /** 缓存归属：Anthropic 断点由本地控制；OpenAI 兼容网关的 TTL/逐出由服务端决定。 */
-  const cacheStatus = (() => {
-    if (!provider) return "—";
-    const protocol = provider.protocol ?? "openai-chat-completions";
-    const ttl =
-      provider.cacheTtl === "1h"
-        ? "1h"
-        : provider.cacheTtl === "auto"
-          ? t("home.cache.autoTtl")
-          : "5m";
-    const base =
-      protocol === "anthropic-messages"
-        ? t("home.cache.localBreakpoint", { ttl })
-        : protocol === "openai-responses"
-          ? t("home.cache.serverManaged")
-          : t("home.cache.serverManagedUncontrolled");
-    if (!metrics || metrics.inputTokens == null) return base;
-    if (metrics.cacheHitRate == null) return t("home.cache.notReported", { base });
-    return metrics.cacheHitRate === 0
-      ? t("home.cache.miss", { base })
-      : t("home.cache.hitting", { base });
-  })();
-
   return (
     <div className="mc-rtp__home">
       <p className="mc-rtp__section">{t("home.toolsSection")}</p>
@@ -240,7 +218,6 @@ export function HomeTab({
               : tokenValue(metrics?.cacheReadTokens)
           }
         />
-        <Field icon={<LuHourglass size={13} />} label={t("home.field.cacheStatus")} value={cacheStatus} />
         <Field
           icon={<LuDatabase size={13} />}
           label={t("home.field.cacheWrite")}

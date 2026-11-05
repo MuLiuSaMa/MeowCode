@@ -104,6 +104,142 @@ describe("streamResponses", () => {
       }),
     ).rejects.toThrow(/ended before completion/);
   });
+
+  it("parses a function call delivered only in output_item.done", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        sseResponse([
+          { type: "response.output_text.delta", delta: "问题找到了，改成这样：" },
+          {
+            type: "response.output_item.done",
+            item: {
+              type: "function_call",
+              id: "fc_1",
+              call_id: "call_1",
+              name: "edit_file",
+              arguments: '{"path":"a.ts"}',
+            },
+          },
+          {
+            type: "response.completed",
+            response: { usage: { input_tokens: 3, output_tokens: 4 } },
+          },
+        ]),
+      ),
+    );
+
+    const result = await streamResponses({
+      url: "https://example.test/v1/responses",
+      model: "m",
+      instructions: "",
+      input: [],
+      tools: [],
+      onDelta: () => undefined,
+    });
+
+    expect(result.message.content).toBe("问题找到了，改成这样：");
+    expect(result.message.tool_calls).toEqual([
+      {
+        id: "call_1",
+        type: "function",
+        function: { name: "edit_file", arguments: '{"path":"a.ts"}' },
+      },
+    ]);
+  });
+
+  it("parses a function call from the completed response output", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        sseResponse([
+          { type: "response.output_text.delta", delta: "再看一下：" },
+          {
+            type: "response.completed",
+            response: {
+              usage: { input_tokens: 3, output_tokens: 4 },
+              output: [
+                {
+                  type: "function_call",
+                  id: "fc_2",
+                  call_id: "call_2",
+                  name: "read_file",
+                  arguments: '{"path":"b.ts"}',
+                },
+              ],
+            },
+          },
+        ]),
+      ),
+    );
+
+    const result = await streamResponses({
+      url: "https://example.test/v1/responses",
+      model: "m",
+      instructions: "",
+      input: [],
+      tools: [],
+      onDelta: () => undefined,
+    });
+
+    expect(result.message.tool_calls).toEqual([
+      {
+        id: "call_2",
+        type: "function",
+        function: { name: "read_file", arguments: '{"path":"b.ts"}' },
+      },
+    ]);
+  });
+
+  it("does not duplicate a streamed function call also present in the completed output", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        sseResponse([
+          {
+            type: "response.output_item.added",
+            item: {
+              type: "function_call",
+              id: "fc_3",
+              call_id: "call_3",
+              name: "edit_file",
+            },
+          },
+          { type: "response.function_call_arguments.delta", delta: '{"path":"c.ts"}' },
+          {
+            type: "response.completed",
+            response: {
+              usage: { input_tokens: 3, output_tokens: 4 },
+              output: [
+                {
+                  type: "function_call",
+                  id: "fc_3",
+                  call_id: "call_3",
+                  name: "edit_file",
+                  arguments: '{"path":"c.ts"}',
+                },
+              ],
+            },
+          },
+        ]),
+      ),
+    );
+
+    const result = await streamResponses({
+      url: "https://example.test/v1/responses",
+      model: "m",
+      instructions: "",
+      input: [],
+      tools: [],
+      onDelta: () => undefined,
+    });
+
+    expect(result.message.tool_calls).toHaveLength(1);
+    expect(result.message.tool_calls?.[0]).toMatchObject({
+      id: "call_3",
+      function: { name: "edit_file", arguments: '{"path":"c.ts"}' },
+    });
+  });
 });
 
 describe("Responses request privacy", () => {

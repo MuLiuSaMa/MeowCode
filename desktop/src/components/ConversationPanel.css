@@ -154,9 +154,13 @@
   cursor: pointer;
   transition: background-color var(--dur) var(--ease), color var(--dur) var(--ease);
 }
-.mc-convpanel__groupbtn:hover {
+.mc-convpanel__groupbtn:hover:not(:disabled) {
   background: var(--surface-hover);
   color: var(--fg);
+}
+.mc-convpanel__groupbtn:disabled {
+  opacity: 0.4;
+  cursor: default;
 }
 
 /* 项目菜单：贴在行下方，自绘（不用原生） */
@@ -270,6 +274,11 @@
   color: var(--fg);
 }
 .mc-convpanel__item[data-active="true"] {
+  background: var(--surface);
+  color: var(--fg);
+}
+/* 多选模式：勾选行与当前会话一样实底，未勾选的保持淡色 */
+.mc-convpanel__item[data-selected="true"] {
   background: var(--surface);
   color: var(--fg);
 }
@@ -418,4 +427,73 @@
 .mc-convpanel__menuitem--danger,
 .mc-convpanel__menuitem--danger > svg {
   color: var(--danger);
+}
+
+/* ---- 多选：顶部操作条 ---- */
+.mc-convpanel__selectbar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px 4px 4px 10px;
+  border-radius: var(--radius-md);
+  corner-shape: superellipse(1.5);
+  background: var(--surface-hover);
+}
+.mc-convpanel__selectcount {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--fs-caption);
+  font-weight: var(--fw-medium);
+  color: var(--fg);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.mc-convpanel__selectall {
+  flex-shrink: 0;
+  padding: 3px 5px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--fg-subtle);
+  font-family: inherit;
+  font-size: var(--fs-caption);
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background-color var(--dur) var(--ease), color var(--dur) var(--ease);
+}
+.mc-convpanel__selectall:hover {
+  background: var(--surface-hover);
+  color: var(--fg);
+}
+.mc-convpanel__groupbtn--danger {
+  color: var(--danger);
+}
+.mc-convpanel__groupbtn--danger:hover:not(:disabled) {
+  background: var(--danger-surface);
+  color: var(--danger);
+}
+
+/* ---- 多选：行内勾选框 ---- */
+/* 用负边距把勾选框塞进行首 32px 缩进里：它在 flex 行内居中（与标题同一套垂直居中），
+   标题的 x 位置（padding 32px）完全不变，也不需要绝对定位猜基线 */
+.mc-convpanel__check {
+  flex: none;
+  margin-left: -21px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  color: var(--brand-fg);
+  transition: background-color var(--dur) var(--ease), border-color var(--dur) var(--ease);
+}
+.mc-convpanel__check[data-checked="true"] {
+  border-color: var(--brand);
+  background: var(--brand);
+}
+.mc-convpanel__itemrow[data-selecting="true"] .mc-convpanel__rowbtn {
+  display: none;
 }

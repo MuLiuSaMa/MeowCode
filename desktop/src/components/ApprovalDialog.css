@@ -1,0 +1,44 @@
+.mc-approval__extras {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.mc-approval__label {
+  font-size: var(--fs-caption);
+  color: var(--fg-subtle);
+}
+
+.mc-approval__feedback {
+  width: 100%;
+  min-height: 56px;
+  resize: vertical;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  color: var(--fg);
+  font: inherit;
+  font-size: var(--fs-sm);
+}
+.mc-approval__feedback::placeholder {
+  color: var(--fg-subtlest);
+}
+.mc-approval__feedback:focus-visible {
+  outline: 2px solid var(--accent, currentColor);
+  outline-offset: -1px;
+}
+
+.mc-approval__remember {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--fs-caption);
+  color: var(--fg-subtle);
+  cursor: pointer;
+}
+
+/* 自绘下拉：只限宽，边框/配色由 CustomSelect 统一提供 */
+.mc-approval__scope {
+  max-width: 240px;
+}

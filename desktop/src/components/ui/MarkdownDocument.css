@@ -1,0 +1,202 @@
+/* 文档级 Markdown：在 .mc-markdown 基础排版上补 KaTeX / 告警 / 脚注 / 原始标签 */
+
+.mc-md-doc {
+  /* 长公式、宽表格不能把面板撑破 */
+  max-width: 100%;
+  overflow-wrap: break-word;
+}
+
+/* ---------- KaTeX ---------- */
+.mc-md-doc .katex {
+  font-size: 1.05em;
+}
+.mc-md-doc .katex-display {
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 0.45em 0;
+}
+.mc-md-doc .katex-display > .katex {
+  white-space: nowrap;
+}
+
+/* ---------- 原始 HTML 标签 ---------- */
+.mc-md-doc kbd {
+  display: inline-block;
+  padding: 1px 6px;
+  border: 1px solid var(--border-strong);
+  border-bottom-width: 2px;
+  border-radius: var(--radius-xs);
+  background: var(--surface);
+  font-family: var(--font-mono);
+  font-size: 0.88em;
+  line-height: 1.5;
+}
+.mc-md-doc mark {
+  padding: 0 2px;
+  border-radius: 3px;
+  background: color-mix(in oklab, var(--warning) 26%, transparent);
+  color: inherit;
+}
+.mc-md-doc abbr[title] {
+  text-decoration: underline dotted;
+  text-underline-offset: 3px;
+  cursor: help;
+}
+.mc-md-doc details {
+  margin: 12px 0;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: color-mix(in oklab, var(--fg) 2.5%, transparent);
+}
+.mc-md-doc summary {
+  cursor: pointer;
+  font-weight: var(--fw-medium);
+}
+.mc-md-doc details > :last-child {
+  margin-bottom: 0;
+}
+.mc-md-doc center,
+.mc-md-doc [align="center"] {
+  text-align: center;
+}
+.mc-md-doc img {
+  display: inline-block;
+  vertical-align: middle;
+  max-width: 100%;
+  height: auto;
+}
+
+/* ---------- 脚注 / 定义列表 ---------- */
+.mc-md-doc .footnotes {
+  margin-top: 24px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+  font-size: var(--fs-caption);
+  color: var(--fg-subtle);
+}
+.mc-md-doc .footnote-ref a,
+.mc-md-doc .footnote-backref {
+  text-decoration: none;
+}
+.mc-md-doc dl {
+  margin: 12px 0;
+}
+.mc-md-doc dt {
+  font-weight: var(--fw-medium);
+}
+.mc-md-doc dd {
+  margin: 2px 0 10px 22px;
+  color: var(--fg-subtle);
+}
+
+/* ---------- GitHub Alerts / 自定义容器 ---------- */
+.mc-md-doc .markdown-alert,
+.mc-md-doc .admonition {
+  --alert-color: var(--fg-subtle);
+  margin: 14px 0;
+  padding: 10px 14px;
+  border-left: 3px solid var(--alert-color);
+  border-radius: 0 var(--radius-md) var(--radius-md) 0;
+  background: color-mix(in oklab, var(--alert-color) 9%, transparent);
+}
+.mc-md-doc .markdown-alert-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+  color: var(--alert-color);
+  font-weight: var(--fw-semibold);
+}
+.mc-md-doc .markdown-alert-note,
+.mc-md-doc .markdown-alert-info,
+.mc-md-doc .markdown-alert-question {
+  --alert-color: var(--accent);
+}
+.mc-md-doc .markdown-alert-tip,
+.mc-md-doc .markdown-alert-success {
+  --alert-color: var(--success);
+}
+.mc-md-doc .markdown-alert-important {
+  --alert-color: var(--accent-violet);
+}
+.mc-md-doc .markdown-alert-warning {
+  --alert-color: var(--warning);
+}
+.mc-md-doc .markdown-alert-caution,
+.mc-md-doc .markdown-alert-danger,
+.mc-md-doc .markdown-alert-failure {
+  --alert-color: var(--danger);
+}
+.mc-md-doc .markdown-alert-bug {
+  --alert-color: var(--warning);
+}
+.mc-md-doc .markdown-alert-example,
+.mc-md-doc .markdown-alert-quote {
+  --alert-color: var(--fg-subtler, var(--fg-subtle));
+}
+.mc-md-doc .markdown-alert > :last-child,
+.mc-md-doc .admonition > :last-child {
+  margin-bottom: 0;
+}
+
+/* ---------- 表格 / 图片 / 任务列表 ---------- */
+.mc-md-doc table {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+}
+.mc-md-doc table caption {
+  margin-bottom: 6px;
+  color: var(--fg-subtle);
+  font-size: var(--fs-caption);
+}
+.mc-md-doc figure {
+  margin: 14px 0;
+}
+.mc-md-doc figcaption {
+  margin-top: 6px;
+  color: var(--fg-subtle);
+  font-size: var(--fs-caption);
+  text-align: center;
+}
+.mc-md-doc .task-list-item {
+  list-style: none;
+}
+.mc-md-doc .task-list-item-checkbox {
+  margin: 0 6px 0 -18px;
+  vertical-align: middle;
+}
+.mc-md-doc input[type="checkbox"] {
+  accent-color: var(--fg);
+}
+
+/* ---------- Mermaid ---------- */
+.mc-md-doc .mc-md-mermaid {
+  margin: 16px 0;
+  overflow-x: auto;
+}
+.mc-md-doc .mc-md-mermaid svg {
+  max-width: 100%;
+  height: auto;
+}
+.mc-md-doc .mc-md-mermaid-error {
+  padding: 10px 12px;
+  border: 1px solid var(--danger);
+  border-radius: var(--radius-md);
+  background: var(--danger-surface);
+  color: var(--danger);
+  font-size: var(--fs-caption);
+}
+.mc-md-doc .mc-md-mermaid-error-label {
+  font-weight: var(--fw-semibold);
+  margin-bottom: 4px;
+}
+.mc-md-doc .mc-md-mermaid-error pre {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  white-space: pre-wrap;
+}

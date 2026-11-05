@@ -1,27 +1,33 @@
 {
   "empty": {
     "setup": "Configura un proveedor de modelos y elige un espacio de trabajo para empezar.",
-    "phrase": {
-      "createSomething": "Crear algo extraordinario",
-      "fixBugs": "Ayudarte a corregir errores",
-      "dreams": "Ayudarte a cumplir tus sueños",
-      "ideas": "Convertir ideas en realidad",
-      "automate": "Automatizar el trabajo repetitivo",
-      "hardProblems": "Resolver juntos los problemas difíciles",
-      "handyTool": "Escribir una pequeña herramienta práctica",
-      "nextProject": "Montar tu próximo proyecto",
-      "tidyCode": "Ordenar código desordenado",
-      "funProduct": "Crear un pequeño producto divertido",
-      "clearLogic": "Aclarar una lógica compleja",
-      "saveTime": "Ahorrarte algo de tiempo",
-      "newDirection": "Explorar una nueva dirección",
-      "inspiration": "Convertir la inspiración en código",
-      "annoyance": "Arreglar ese problema molesto",
-      "newFeature": "Añadir una función nueva al proyecto",
-      "elegantCode": "Escribir una implementación elegante",
-      "mergePr": "Dejar el PR listo para fusionar",
-      "together": "Terminar este código contigo",
-      "usable": "Mejorar un poco el producto"
+    "title": "¿Creamos algo juntos?",
+    "suggestions": {
+      "idea": "Crear un pelícano en bicicleta",
+      "readme": "Escribir un README claro para el proyecto",
+      "bug": "Localizar y corregir este error",
+      "tests": "Añadir pruebas a la función existente",
+      "api": "Diseñar una API sencilla",
+      "refactor": "Dividir una función larga en módulos pequeños",
+      "script": "Escribir un pequeño script de automatización",
+      "dashboard": "Crear un panel de visualización de datos",
+      "risk": "Revisar los riesgos de los cambios recientes",
+      "steps": "Dividir los requisitos en pasos",
+      "setting": "Añadir un interruptor en los ajustes",
+      "release": "Preparar una lista de comprobación del lanzamiento",
+      "label": "Sugerencias",
+      "ideaPrompt": "Crea una pequeña pieza de «pelícano en bicicleta» con la tecnología más adecuada del proyecto: SVG, animación Canvas o página web. Primero decide el formato de salida; después impleméntala con proporciones y movimiento convincentes para que se reconozca de inmediato a un pelícano montando en bici; termina indicando cómo previsualizarla.",
+      "readmePrompt": "Lee la estructura y la configuración clave del proyecto y escribe un README claro: descripción, stack, instalación y arranque, estructura de carpetas, scripts habituales y FAQ. No inventes comandos.",
+      "bugPrompt": "Tengo un error. Primero reprodúcelo y localiza la causa raíz con evidencia; después corrígelo, sin limitarte al síntoma. Explica los cambios, su alcance y cómo lo verificaste.",
+      "testsPrompt": "Revisa la infraestructura de pruebas y los huecos de cobertura, y añade pruebas útiles para esta función: camino normal y fallos importantes. Ejecútalas y corrige lo que aparezca.",
+      "apiPrompt": "Diseña una API pequeña y estable: primero indica recursos, campos de petición/respuesta, códigos de error y autenticación. Sigue el estilo del proyecto y entrega una implementación mínima o un borrador de interfaz.",
+      "refactorPrompt": "Busca una función demasiado larga o con responsabilidades mezcladas, divídela en módulos más pequeños sin cambiar el comportamiento; explica primero los límites, luego cambia y ejecuta las pruebas relacionadas.",
+      "scriptPrompt": "Escribe un pequeño script para eliminar trabajo repetitivo. Pregúntame primero qué flujo automatizar, impleméntalo, explica su uso y ejecútalo de verdad en este entorno para verificarlo.",
+      "dashboardPrompt": "Crea un panel de visualización de datos con las fuentes existentes del proyecto. Confirma antes las métricas y definiciones, usa las mínimas dependencias y cubre estados vacío, carga y error.",
+      "riskPrompt": "Revisa los cambios sin commitear: enumera problemas por riesgo (regresiones, casos límite, seguridad, rendimiento) con archivo/línea y propuestas de arreglo. No te quedes en comentarios de estilo.",
+      "stepsPrompt": "Divide mi requisito en pasos ejecutables: objetivo, archivos afectados, criterios de aceptación y dependencias para cada uno. Primero dame el plan y espera mi confirmación antes de tocar código.",
+      "settingPrompt": "Añade un interruptor persistente a la página de ajustes. Reutiliza el formulario y el almacenamiento existentes, cubre estados inactivo/deshabilitado/fallo al guardar y verifica que sigue activo tras reiniciar.",
+      "releasePrompt": "Prepara una lista de comprobación de publicación: versión, build, pruebas, migraciones, rollback y notas de versión. Usa los comandos reales de este proyecto, no frases genéricas."
     }
   },
   "waiting": {
@@ -100,6 +106,15 @@
       "title": "Eliminar conversación",
       "description": "«{{name}}» y todos sus mensajes se eliminarán del disco. Esta acción no se puede deshacer."
     },
+    "multiSelect": "Selección múltiple",
+    "selectedCount": "{{count}} seleccionados",
+    "selectAll": "Seleccionar todo",
+    "selectNone": "Anular selección",
+    "exitSelection": "Salir de la selección",
+    "deleteSelected": {
+      "title": "Eliminar chats seleccionados",
+      "description": "Los {{count}} chats seleccionados y todos sus mensajes se eliminarán del disco. No se puede deshacer."
+    },
     "searchTitle": "Búsqueda en todas las conversaciones",
     "searchPlaceholder": "Buscar en todas las conversaciones…",
     "searchHitCount": "{{count}} coincidencias",
@@ -152,6 +167,21 @@
     "cardDeleted": "eliminado",
     "cardUnchanged": "sin cambios"
   },
+  "turnChanges": {
+    "title_one": "{{count}} archivo editado",
+    "title_other": "{{count}} archivo editado",
+    "title_few": "{{count}} archivo editado",
+    "title_many": "{{count}} archivo editado",
+    "undo": "Deshacer",
+    "undoHint": "Revertir los cambios de archivos de este turno (se conserva la conversación)",
+    "undoUnavailable": "No hay una instantánea de archivos para este turno",
+    "review": "Revisar",
+    "showMore_one": "Mostrar {{count}} archivo más",
+    "showMore_other": "Mostrar {{count}} archivo más",
+    "showMore_few": "Mostrar {{count}} archivo más",
+    "showMore_many": "Mostrar {{count}} archivo más",
+    "collapse": "Mostrar menos"
+  },
   "tool": {
     "state": {
       "running": "En ejecución",
@@ -185,12 +215,6 @@
     "stepCount_other": "{{count}} pasos",
     "stepCount_few": "{{count}} pasos",
     "stepCount_many": "{{count}} pasos",
-    "section": {
-      "input": "Entrada",
-      "output": "Salida",
-      "outputSpilled": "Salida · guardada en disco",
-      "outputTruncated": "Salida · truncada"
-    },
     "emptyOutput": "(sin salida)",
     "waitingOutput": "Esperando salida…",
     "outputNotSaved": "La salida no se guardó en el historial",
@@ -225,7 +249,29 @@
     "computerClipboard": "Portapapeles",
     "computerWait": "Esperar",
     "computerAction": "Control del equipo",
-    "toolSearch": "Buscar herramientas"
+    "toolSearch": "Buscar herramientas",
+    "webSearch": "Búsqueda web",
+    "webFetch": "Obtener página",
+    "deleteFile": "Eliminar archivo",
+    "moveFile": "Mover archivo",
+    "applyPatch": "Aplicar parche",
+    "git": "Git",
+    "job": "Tarea en segundo plano",
+    "view": {
+      "open": "Abrir",
+      "unanswered": "(sin respuesta)",
+      "waitingAnswer": "Esperando respuesta…",
+      "params": "Parámetros",
+      "noChanges": "(sin cambios)",
+      "replaceAll": "Reemplazar todas las coincidencias",
+      "truncated": "Contenido truncado",
+      "spilled": "Contenido completo guardado en {{path}}",
+      "moreLines": "{{count}} líneas más",
+      "background": "Ejecutando en segundo plano",
+      "added": "Añadido",
+      "updated": "Actualizado",
+      "deleted": "Eliminado"
+    }
   },
   "role": {
     "general": "General",

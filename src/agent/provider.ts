@@ -136,10 +136,19 @@ function toChatCompletionMessages(messages: ChatMessage[]): Array<Record<string,
       };
     }
     if (message.role !== "tool" || (!message.images?.length && !message.documents?.length)) {
-      // imageRefs / documentRefs 只是回放层的落盘引用，不发给模型
-      const { imageRefs: _imageRefs, documentRefs: _documentRefs, ...rest } = message as ChatMessage & {
+      // imageRefs / documentRefs 只是回放层的落盘引用；reasoning / anthropic_thinking
+      // 也只用于存档展示（见 types.ts 的字段说明），chat completions 不回传。
+      const {
+        imageRefs: _imageRefs,
+        documentRefs: _documentRefs,
+        reasoning: _reasoning,
+        anthropic_thinking: _thinking,
+        ...rest
+      } = message as ChatMessage & {
         imageRefs?: unknown;
         documentRefs?: unknown;
+        reasoning?: unknown;
+        anthropic_thinking?: unknown;
       };
       return rest as unknown as Record<string, unknown>;
     }

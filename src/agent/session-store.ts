@@ -3,6 +3,7 @@ import type { FileHandle } from "node:fs/promises";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { buildMessageUnits, estimateMessagesTokens, repairToolPairs } from "./context.js";
+import { countDiffStats } from "./diff.js";
 import { readJsonFile, writeJsonAtomic } from "./atomic-json.js";
 import type {
   ApprovalMode,
@@ -27,6 +28,8 @@ import type {
   SubagentSummary,
   SubagentType,
   ToolDocument,
+  TurnFileChangeGroup,
+  TurnFileChangeStat,
   ToolImage,
   TurnStatus,
   UsageSource,
@@ -109,9 +112,13 @@ export class SessionStore {
       rootSessionId?: string;
       agentKind?: "subagent";
       agentType?: SubagentType;
+      /** fork 模式：记录来源会话 */
+      forkedFrom?: string;
       parentCallId?: string;
       description?: string;
       worktree?: SessionWorktree;
+      /** 诊断链路 id：子 Agent / 分支会话继承父级 */
+      traceId?: string;
       /** 导入场景：会话头用来源会话的原始时间，列表排序才符合时间线 */
       createdAt?: Date;
     } = {},
@@ -130,9 +137,11 @@ export class SessionStore {
           : {}),
       ...(options.agentKind ? { agentKind: options.agentKind } : {}),
       ...(options.agentType ? { agentType: options.agentType } : {}),
+      ...(options.forkedFrom ? { forkedFrom: options.forkedFrom } : {}),
       ...(options.parentCallId ? { parentCallId: options.parentCallId } : {}),
       ...(options.description ? { description: options.description } : {}),
       ...(options.worktree ? { worktree: options.worktree } : {}),
+      ...(options.traceId ? { traceId: options.traceId } : {}),
     };
     const store = new SessionStore(filePath, [header]);
     await fs.mkdir(path.dirname(filePath), { recursive: true });
@@ -171,6 +180,13 @@ export class SessionStore {
     const header = this.entries[0];
     if (header?.type !== "session") throw new Error("Session header is missing.");
     return header.cwd;
+  }
+
+  /** 诊断链路 id：旧会话没有 traceId 字段时用会话 id 派生，保证始终可用。 */
+  get traceId(): string {
+    const header = this.entries[0];
+    if (header?.type !== "session") throw new Error("Session header is missing.");
+    return header.traceId ?? header.id;
   }
 
   get worktree(): SessionWorktree | undefined {
@@ -215,6 +231,69 @@ export class SessionStore {
     return this.entries.filter(
       (entry): entry is FileChangeEntry => entry.type === "file_change",
     );
+  }
+
+  /**
+   * 按回合聚合的文件改动（历史回放）：turn_start 开新组、file_change 累加、turn_end 定稿。
+   * 没有 turn_end 的回合（进程崩溃）不出组 —— 那一轮的编辑没有「完成」语义。
+   */
+  get turnFileChangeGroups(): TurnFileChangeGroup[] {
+    // 自动检查点和 turn_start 共用 turnId：预先索引，卡片「撤销」直接指向本回合起点
+    const checkpointByTurn = new Map<string, { id: string; hasSnapshot: boolean }>();
+    for (const entry of this.entries) {
+      if (entry.type !== "checkpoint" || !entry.turnId) continue;
+      checkpointByTurn.set(entry.turnId, {
+        id: entry.id,
+        hasSnapshot: Boolean(entry.snapshot),
+      });
+    }
+
+    const groups: TurnFileChangeGroup[] = [];
+    let messageCount = 0;
+    let current: { turnId: string; stats: Map<string, TurnFileChangeStat> } | null = null;
+    for (const entry of this.entries) {
+      if (entry.type === "message") {
+        messageCount += 1;
+        continue;
+      }
+      if (entry.type === "turn_start") {
+        current = { turnId: entry.turnId, stats: new Map() };
+        continue;
+      }
+      if (entry.type === "file_change" && current) {
+        const stats = countDiffStats(entry.diff);
+        const existing = current.stats.get(entry.path);
+        if (existing) {
+          existing.added += stats.added;
+          existing.removed += stats.removed;
+        } else {
+          current.stats.set(entry.path, {
+            path: entry.path,
+            added: stats.added,
+            removed: stats.removed,
+          });
+        }
+        continue;
+      }
+      if (entry.type === "turn_end") {
+        if (!current || current.turnId !== entry.turnId) {
+          current = null;
+          continue;
+        }
+        if (current.stats.size) {
+          const checkpoint = checkpointByTurn.get(current.turnId);
+          groups.push({
+            turnId: current.turnId,
+            messageIndex: messageCount,
+            ...(checkpoint ? { checkpointId: checkpoint.id } : {}),
+            canRewind: Boolean(checkpoint?.hasSnapshot),
+            files: [...current.stats.values()],
+          });
+        }
+        current = null;
+      }
+    }
+    return groups;
   }
 
   /** 快照目录归属会话 id：派生会话沿用源会话 owner 共享 blob；缺省 = 自己的 id。 */
@@ -370,6 +449,7 @@ export class SessionStore {
       compaction: empty(),
       memory: empty(),
       learning: empty(),
+      web_search: empty(),
     };
     for (const entry of this.entries) {
       if (entry.type !== "usage") continue;
@@ -733,7 +813,7 @@ export class SessionStore {
   /** 追加一条文件改动记录（审阅面板）；path 为工作区相对路径，diff 为统一 diff 文本。 */
   async appendFileChange(
     filePath: string,
-    operation: "write_file" | "edit_file",
+    operation: "write_file" | "edit_file" | "delete_file" | "move_file",
     diff: string,
   ): Promise<string> {
     const id = newEntryId();

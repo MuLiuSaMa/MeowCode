@@ -119,7 +119,16 @@
   },
   "filePreview": {
     "copyPath": "Копировать путь",
-    "openInEditor": "Открыть в редакторе",
+    "preview": "Просмотр",
+    "source": "Исходник",
+    "openInEditor": "Открыть в системном приложении",
+    "openWith": "Открыть с помощью",
+    "systemDefault": "Приложение по умолчанию",
+    "chooseApp": "Выбрать другое приложение…",
+    "showInFolder": "Показать в папке",
+    "openWithApp": "Открыть с помощью {{name}}",
+    "explorerShort": "Проводник",
+    "detectingApps": "Поиск приложений…",
     "loading": "Загрузка…",
     "truncated": "Показаны первые {{shown}} из {{total}} строк"
   },
@@ -158,7 +167,11 @@
     "changeCount_other": "Изменений: {{count}}",
     "changeCount_few": "Изменений: {{count}}",
     "changeCount_many": "Изменений: {{count}}",
-    "diffAria": "Изменения в {{path}}"
+    "diffAria": "Изменения в {{path}}",
+    "review": "Проверить изменения",
+    "reviewing": "Проверка…",
+    "resultTitle": "Результат проверки ИИ",
+    "close": "Закрыть"
   },
   "workspace": {
     "loading": "Загрузка…",
@@ -171,6 +184,7 @@
     "noMatch": "Нет подходящих файлов"
   },
   "terminal": {
-    "exited": "[Процесс завершён]"
+    "exited": "[Процесс завершён]",
+    "ended": "Задача завершена или терминал уже освобождён"
   }
 }

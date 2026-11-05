@@ -463,7 +463,6 @@ export function createThirdPartySource(options: ThirdPartySourceOptions = {}) {
       throw new MarketplaceError("not_found", `skillhub skill not found: ${slug}`);
     }
     const item = skillhubItem(`skillhub-${slug}`, data.skill);
-    const version = data.latestVersion?.version || item.version;
     let files: Array<{ path: string; size: number; sha256?: string }> = [];
     try {
       const filesData = await fetchJson<{ files?: Array<{ path: string; sha256?: string; size: number }> }>(

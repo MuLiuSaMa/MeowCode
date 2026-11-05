@@ -891,7 +891,7 @@ async function workBuddyConversationMetas(
   // 库可用时只导库里未删除的会话；不可用才按文件全量兜底
   const candidates = db ? files.filter((filePath) => metaById.has(path.basename(filePath, ".jsonl"))) : files;
   return Promise.all(
-    files.map(async (filePath) => {
+    candidates.map(async (filePath) => {
       const id = path.basename(filePath, ".jsonl");
       const meta = metaById.get(id);
       const peek = meta?.title ? null : await peekWorkBuddyConversation(filePath);

@@ -5,16 +5,18 @@
  * 素材（都来自已暂存的内容）：
  *  - 最近 10 条 subject：让模型学到仓库的提交语气（中文/英文、是否带 scope）；
  *  - `--cached --stat` 前 40 行：文件清单与改动规模；
- *  - patch 摘要（≤12,000 字符、单文件 ≤3,000、≤20 个文件）：真正的改动内容。
+ *  - patch 摘要（≤3,000 tokens、单文件 ≤800、≤20 个文件）：真正的改动内容。
  *
  * 输出必须是**一条** commit message：首行 subject ≤72 字符，空行后可选正文。
  * 模型爱包 ``` 围栏或输出 JSON，`cleanCommitMessage` 全部容忍。
  */
+import { estimateTokens } from "./context.js";
 import { streamChatCompletion, utilityProvider } from "./provider.js";
+import { sliceHeadToTokens } from "./tool-budget.js";
 import type { ChatMessage, ProviderConfig } from "./types.js";
 
-const MAX_PATCH_CHARS = 12_000;
-const MAX_FILE_PATCH_CHARS = 3_000;
+const MAX_PATCH_TOKENS = 3_000;
+const MAX_FILE_PATCH_TOKENS = 800;
 const MAX_FILES = 20;
 const MAX_STAT_LINES = 40;
 const MAX_RECENT_SUBJECTS = 10;
@@ -78,12 +80,12 @@ export function summarizePatch(patchText: string | undefined): string {
     const file = header.replace(/^diff --git a\/.* b\//, "");
     if (NOISE_PATTERN.test(file)) continue;
     const trimmed =
-      block.length > MAX_FILE_PATCH_CHARS
-        ? `${block.slice(0, MAX_FILE_PATCH_CHARS)}\n... [truncated]`
+      estimateTokens(block) > MAX_FILE_PATCH_TOKENS
+        ? `${sliceHeadToTokens(block, MAX_FILE_PATCH_TOKENS)}\n... [truncated]`
         : block;
-    if (used + trimmed.length > MAX_PATCH_CHARS) break;
+    if (used + estimateTokens(trimmed) > MAX_PATCH_TOKENS) break;
     kept.push(trimmed);
-    used += trimmed.length;
+    used += estimateTokens(trimmed);
   }
   if (!kept.length) return "";
   const omitted = blocks.length - kept.length;

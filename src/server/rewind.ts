@@ -64,8 +64,6 @@ export type PlanRewindOptions = {
   keepNewFiles: boolean;
 };
 
-const SHA_RE = /^[0-9a-f]{64}$/;
-
 function isBinaryBuffer(bytes: Buffer): boolean {
   // git 同款启发式：前 8000 字节里出现 NUL 视为二进制
   const sample = bytes.subarray(0, 8000);
@@ -105,7 +103,6 @@ export async function planRewind(options: PlanRewindOptions): Promise<RewindPlan
     throw new RewindError("no_snapshot", "该检查点没有文件快照，无法回滚代码（可仅回滚对话）。");
   }
   let target: Record<string, string | null> = {};
-  let warnings: string[] = [];
   if (ref) {
     if (path.resolve(ref.cwd) !== path.resolve(session.cwd)) {
       throw new RewindError("cwd_changed", "会话工作目录已变化，无法回滚代码（worktree 可能已切换）。");
@@ -404,6 +401,8 @@ export async function applyRewind(options: ApplyRewindOptions): Promise<ApplyRew
     for (const file of changes) {
       if (file.action === "delete") store.forget(file.path);
     }
+    // 磁盘已改动：同步落盘已知态，避免下一次回滚把刚恢复的内容当成外部修改
+    await store.persistState();
 
     // 留痕（rewind entry）不在这里追加：derive 回调已把 runtime 切到派生会话，
     // 该文件的 live store 是切换时 load 的实例 —— 在别的实例上 append 文件虽有，
@@ -573,6 +572,7 @@ export async function applyUndo(options: ApplyUndoOptions): Promise<{ restored: 
     const nextState: Record<string, string | null> = {};
     for (const item of done) nextState[item.path] = item.after;
     store.assignState(nextState);
+    await store.persistState();
     void journal;
     return { restored, deleted };
   });

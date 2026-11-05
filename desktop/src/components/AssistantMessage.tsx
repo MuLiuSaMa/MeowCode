@@ -9,11 +9,14 @@ export function AssistantMessage({
   content,
   thinking,
   messageIndex,
+  streaming,
 }: {
   content: string;
   thinking?: string;
   /** 历史回放时的消息下标；会话全文检索跳转锚点（data-message-index）用 */
   messageIndex?: number;
+  /** 正在流式输出：末段内容淡入，看起来像在“写” */
+  streaming?: boolean;
 }) {
   const { t } = useTranslation("chat");
   const hasThinking = Boolean(thinking);
@@ -22,6 +25,7 @@ export function AssistantMessage({
   return (
     <article
       className="mc-assistant"
+      data-streaming={streaming ? "true" : undefined}
       {...(messageIndex !== undefined ? { "data-message-index": String(messageIndex) } : {})}
     >
       <div className="mc-assistant__body">

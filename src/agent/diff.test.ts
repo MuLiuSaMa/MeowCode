@@ -2,7 +2,7 @@ import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { previewEditDiff, previewWriteDiff } from "./diff";
+import { countDiffStats, previewEditDiff, previewWriteDiff } from "./diff";
 
 describe("previewWriteDiff", () => {
   it("renders a creation diff for a new file", async () => {
@@ -122,5 +122,33 @@ describe("previewEditDiff", () => {
     // 紧邻改动的上下文仍在，远处的行被折叠
     expect(diff).toContain(" line 999");
     expect(diff).not.toContain(" line 500");
+  });
+});
+
+describe("countDiffStats", () => {
+  it("counts body lines and skips file headers, hunk markers and context", () => {
+    const diff = [
+      "--- a/src/app.ts",
+      "+++ b/src/app.ts",
+      "@@",
+      "- old one",
+      "+ new one",
+      "+ new two",
+      " context line",
+      "\\ No newline at end of file",
+    ].join("\n");
+    expect(countDiffStats(diff)).toEqual({ added: 2, removed: 1 });
+  });
+
+  it("matches the review list counts for real generated diffs", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "meowcode-diff-"));
+    await writeFile(path.join(root, "a.txt"), "one\ntwo\n", "utf8");
+    const diff = await previewEditDiff(root, "a.txt", "one\ntwo", "one\nTWO\nthree");
+    expect(diff).toBeTruthy();
+    expect(countDiffStats(diff!)).toEqual({ added: 2, removed: 1 });
+  });
+
+  it("returns zeros for empty input", () => {
+    expect(countDiffStats("")).toEqual({ added: 0, removed: 0 });
   });
 });

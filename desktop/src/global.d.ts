@@ -112,14 +112,25 @@ declare global {
       getUiState(): Promise<UiState>;
       saveUiState(patch: UiStatePatch): Promise<{ ok: boolean }>;
       pickWorkspace(): Promise<string | null>;
+      /** 应用数据目录；改过位置时返回当前生效的自定义目录 */
+      getDataLocation(): Promise<{ path: string; defaultPath: string }>;
+      /** 选择新的数据目录（原生文件夹选择框）；取消返回 null */
+      pickDataDirectory(): Promise<string | null>;
+      /** 复制必要数据并重启应用；失败返回错误码 */
+      changeDataLocation(target: string): Promise<{
+        ok: boolean;
+        code?: "same_path" | "not_empty" | "invalid_target" | "copy_failed";
+        message?: string;
+        restarting?: boolean;
+      }>;
       /** 工作区目录是否仍然存在（被删除时输入框上方回退成「选择工作区」） */
       workspaceExists(target: string): Promise<boolean>;
       /** 只写 provider 偏好（思考强度 / 激活模型），不重启 agent server */
       saveProviderPrefs(prefs: {
         providers?: Array<{ id: string; reasoningEffort?: string }>;
         providerId?: string;
-        /** 回合后记忆蒸馏开关（实时生效走 /config/memory-extraction） */
-        memoryExtraction?: boolean;
+        /** 记忆总开关（实时生效走 /config/memory）：关掉后不蒸馏、不注入、不下发记忆工具 */
+        memoryEnabled?: boolean;
         /** 自我学习开关（实时生效走 /config/learning） */
         selfLearning?: boolean;
         /** 网络代理模式（实时生效走 /config/proxy） */
@@ -157,8 +168,6 @@ declare global {
       setIslandRect(rect: { x: number; y: number; width: number; height: number }): Promise<void>;
       /** 主进程光标进出岛体的判定结果（穿透已同步切换）：false = 光标已离开岛体 */
       onIslandCursor(listener: (inside: boolean) => void): () => void;
-      /** 点击胶囊 → 显示/聚焦主窗口 */
-      openMainFromIsland(): Promise<void>;
       /** 岛内发出的 prompt 回报主进程广播（主窗口当前会话命中时补用户气泡） */
       notifyIslandPrompt(payload: { sessionId: string; text: string }): Promise<void>;
       /** 悬浮岛发出 prompt 的广播（仅主窗口消费） */
@@ -216,6 +225,33 @@ declare global {
 
       /** 在资源管理器中打开目录（项目行菜单），返回错误信息或 null */
       openPath(target: string): Promise<string | null>;
+      /** 系统「打开方式」应用选择器；返回错误信息或 null */
+      openWith(target: string): Promise<string | null>;
+      /** 扫描系统里能打开该文件的应用（Windows 注册表 + 图标） */
+      detectOpenWith(target: string): Promise<{
+        default: {
+          name: string;
+          exe: string;
+          icon?: string | null;
+          default?: boolean;
+          recommended?: boolean;
+        } | null;
+        apps: Array<{
+          name: string;
+          exe: string;
+          icon?: string | null;
+          default?: boolean;
+          recommended?: boolean;
+        }>;
+        /** Windows 资源管理器图标（data URL）；非 Windows 为 null */
+        explorerIcon?: string | null;
+      }>;
+      /** 异步补全应用图标：exe 路径 → data URL / null */
+      openWithIcons(exes: string[]): Promise<Record<string, string | null>>;
+      /** 用检测到的具体应用打开文件 */
+      openWithApp(exe: string, target: string): Promise<string | null>;
+      /** 在系统文件管理器中定位文件 */
+      showInFolder(target: string): Promise<string | null>;
       /** 用系统默认浏览器打开 http/https 链接 */
       openExternal(url: string): Promise<string | null>;
 
@@ -225,10 +261,43 @@ declare global {
       onSelectBrowserTab(listener: (payload: { tabId: string }) => void): () => void;
 
       /** 终端（右侧面板终端页签） */
-      termCreate(options: { cwd?: string; cols: number; rows: number }): Promise<{ id: string; shell: string }>;
+      termCreate(options: {
+        cwd?: string;
+        cols: number;
+        rows: number;
+        command?: string;
+      }): Promise<{ id: string; shell: string }>;
       termWrite(id: string, data: string): Promise<void>;
       termResize(id: string, cols: number, rows: number): Promise<void>;
       termKill(id: string): Promise<void>;
+      termAttach(id: string): Promise<{
+        id: string;
+        shell: string;
+        cwd: string;
+        command: string | null;
+        cols: number;
+        rows: number;
+        startedAt: string;
+        data: string;
+        offset: number;
+        bufferStart: number;
+        exited: boolean;
+        code: number | null;
+      } | null>;
+      termRead(
+        id: string,
+        offset?: number,
+      ): Promise<{
+        id: string;
+        data: string;
+        offset: number;
+        bufferStart: number;
+        truncated: boolean;
+        exited: boolean;
+        code: number | null;
+      } | null>;
+      /** agent 启动后台任务：主进程请求打开/聚焦对应的终端页签 */
+      onEnsureJobTab(listener: (payload: { id: string; command: string }) => void): () => void;
       onTermData(listener: (payload: { id: string; data: string }) => void): () => void;
       onTermExit(listener: (payload: { id: string; code: number }) => void): () => void;
     };

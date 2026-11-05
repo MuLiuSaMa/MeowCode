@@ -143,11 +143,6 @@
   gap: 10px;
   padding: 2px 8px 10px 32px;
 }
-.mc-toolrow__hint {
-  margin: 0;
-  font-size: var(--fs-xs);
-  color: var(--fg-subtlest);
-}
 
 @media (prefers-reduced-motion: reduce) {
   .mc-toolrow__collapse {
@@ -156,4 +151,21 @@
   .mc-toolrow__spin {
     animation: none;
   }
+}
+
+/* 写/改文件的增删行数：贴右显示（来自 file_changed 的实时统计） */
+.mc-toolrow__stats {
+  display: inline-flex;
+  flex: none;
+  gap: 6px;
+  margin-left: auto;
+  font-size: var(--fs-caption);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.mc-toolrow__stats [data-kind="add"] {
+  color: var(--diff-add);
+}
+.mc-toolrow__stats [data-kind="del"] {
+  color: var(--diff-del);
 }

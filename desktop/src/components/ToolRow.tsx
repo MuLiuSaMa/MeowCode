@@ -3,7 +3,9 @@ import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
 import { LuChevronRight, LuCircleCheck, LuCircleX, LuExternalLink, LuLoaderCircle } from "react-icons/lu";
 import type { TimelineTool } from "../api";
-import { CodeBlock } from "./ui/CodeBlock";
+import { ToolBody } from "./toolviews/ToolBody";
+import { hasToolBody } from "./toolviews/registry";
+import { isAbsolutePath, panelPath } from "./toolviews/paths";
 import "./ToolRow.css";
 
 type ToolStatus = "running" | "ok" | "failed";
@@ -32,11 +34,6 @@ function baseName(path: string): string {
   return parts.at(-1) ?? path;
 }
 
-/** 盘符 / POSIX 根 / UNC 开头 = 绝对路径（面板预览只收工作区相对路径） */
-function isAbsolutePath(path: string): boolean {
-  return /^(?:[a-zA-Z]:[\\/]|\\\\|\/)/.test(path);
-}
-
 /** 工具行的人话标签映射（悬浮岛顶栏的「当前状态」也复用它） */
 export function presentTool(item: TimelineTool, status: ToolStatus, t: TFunction): ToolPresentation {
   const args = asRecord(item.input);
@@ -45,6 +42,58 @@ export function presentTool(item: TimelineTool, status: ToolStatus, t: TFunction
   const failedNote = status === "failed" ? t("tool.state.failed") : undefined;
 
   switch (item.tool) {
+    case "delete_file": {
+      const target = textArg(args, "path");
+      return {
+        label: t("tool.deleteFile"),
+        chip: target ? baseName(target) : undefined,
+        chipTitle: target || undefined,
+        note: failedNote,
+      };
+    }
+    case "move_file": {
+      const from = textArg(args, "from");
+      const to = textArg(args, "to");
+      return {
+        label: t("tool.moveFile"),
+        chip: from && to ? `${baseName(from)} → ${baseName(to)}` : from || to || undefined,
+        chipTitle: from && to ? `${from} → ${to}` : undefined,
+        note: failedNote,
+      };
+    }
+    case "apply_patch": {
+      const patchText = textArg(args, "patch");
+      const files = new Set(
+        [...patchText.matchAll(/^\*\*\* (?:Update|Add|Delete) File: (.+)$/gm)].map((match) => match[1]),
+      ).size;
+      return {
+        label: t("tool.applyPatch"),
+        chip: files ? t("tool.fileCount", { count: files }) : undefined,
+        note: failedNote,
+      };
+    }
+    case "git": {
+      const action = textArg(args, "action");
+      const detail =
+        textArg(args, "path") || textArg(args, "name") || textArg(args, "message").slice(0, 80);
+      return {
+        label: t("tool.git"),
+        chip: action || undefined,
+        chipTitle: action || undefined,
+        note: failedNote,
+        detail: detail || undefined,
+      };
+    }
+    case "job": {
+      const action = textArg(args, "action");
+      const jobId = textArg(args, "job_id");
+      return {
+        label: t("tool.job"),
+        chip: action ? (jobId ? `${action} · ${jobId}` : action) : undefined,
+        chipTitle: jobId || action || undefined,
+        note: failedNote,
+      };
+    }
     case "read_file":
     case "write_file":
     case "edit_file":
@@ -116,15 +165,57 @@ export function presentTool(item: TimelineTool, status: ToolStatus, t: TFunction
       };
     case "run_command": {
       const command = textArg(args, "command");
+      const background = args.background === true;
       return {
         label: t("tool.runCommand"),
         note:
           status === "running"
-            ? t("tool.state.running")
+            ? background
+              ? t("tool.view.background")
+              : t("tool.state.running")
             : status === "ok"
               ? t("tool.state.done")
               : t("tool.state.failed"),
         detail: command || undefined,
+      };
+    }
+    case "ask_user":
+      return {
+        label: t("tool.askUser"),
+        note: status === "running" ? t("tool.view.waitingAnswer") : failedNote,
+      };
+    case "task": {
+      const description = textArg(args, "description");
+      return {
+        label: t("tool.task"),
+        chip: description || undefined,
+        chipTitle: description || undefined,
+        note: failedNote,
+      };
+    }
+    case "web_search": {
+      const query = textArg(args, "query");
+      return {
+        label: t("tool.webSearch"),
+        chip: query || undefined,
+        chipTitle: query || undefined,
+        note: failedNote,
+      };
+    }
+    case "web_fetch": {
+      const url = textArg(args, "url");
+      let host = url;
+      try {
+        host = new URL(url).hostname;
+      } catch {
+        // 非法 URL 直接把原文放 chip
+      }
+      return {
+        label: t("tool.webFetch"),
+        chip: host || undefined,
+        chipTitle: url || undefined,
+        note: failedNote,
+        detail: url || undefined,
       };
     }
     case "diagnostics":
@@ -148,9 +239,7 @@ export function presentTool(item: TimelineTool, status: ToolStatus, t: TFunction
     case "read_many":
     case "read_video":
     case "run_code":
-    case "task":
     case "context_status":
-    case "ask_user":
     case "memory_read":
     case "memory_write":
     case "memory_delete":
@@ -160,9 +249,7 @@ export function presentTool(item: TimelineTool, status: ToolStatus, t: TFunction
         read_many: "tool.readMany",
         read_video: "tool.readVideo",
         run_code: "tool.runCode",
-        task: "tool.task",
         context_status: "tool.contextStatus",
-        ask_user: "tool.askUser",
         memory_read: "tool.memoryRead",
         memory_write: "tool.memoryWrite",
         memory_delete: "tool.memoryDelete",
@@ -275,15 +362,6 @@ export function presentTool(item: TimelineTool, status: ToolStatus, t: TFunction
   }
 }
 
-function formatInput(input: unknown): string {
-  if (typeof input === "string") return input;
-  try {
-    return JSON.stringify(input ?? {}, null, 2) ?? "{}";
-  } catch {
-    return String(input);
-  }
-}
-
 export function ToolRow({
   item,
   onOpenFile,
@@ -299,21 +377,19 @@ export function ToolRow({
   const [open, setOpen] = useState(false);
   const [bodyMounted, setBodyMounted] = useState(false);
   const detailId = useId();
-  /** 写入中 / 修改中的行没有可看的内容（参数可能还没写完、输出也没有）：不展开 */
-  const staticRow =
-    status === "running" &&
-    (item.tool === "write_file" || item.tool === "edit_file" || item.tool === "multi_edit");
+  /** 没有可展示内容（运行中还没参数、或旧记录没输出）时不显示 chevron */
+  const expandable = hasToolBody(item);
 
   // 读取文件 → 右侧弹出：仅限成功态 + 工作区内相对路径（面板预览端点 /workspace/file
-  // 只收工作区内相对路径，绝对/工作区外的回落为原展开行为）
+  // 只收工作区内相对路径，绝对/工作区外的回落为展开行为）
   const rawPath = textArg(asRecord(item.input), "path");
   const openablePath =
     item.tool === "read_file" && onOpenFile && status === "ok" && rawPath && !isAbsolutePath(rawPath)
-      ? rawPath.replace(/\\/g, "/")
+      ? panelPath(rawPath)
       : "";
 
   const toggle = () => {
-    // 首次展开才挂载详情：历史里大量工具行不必预先序列化 JSON
+    // 首次展开才挂载详情：历史里大量工具行不必预先渲染
     if (!open) setBodyMounted(true);
     setOpen((value) => !value);
   };
@@ -350,6 +426,12 @@ export function ToolRow({
           ) : null}
         </span>
       ) : null}
+      {item.added !== undefined || item.removed !== undefined ? (
+        <span className="mc-toolrow__stats">
+          {item.added ? <span data-kind="add">+{item.added}</span> : null}
+          {item.removed ? <span data-kind="del">-{item.removed}</span> : null}
+        </span>
+      ) : null}
     </>
   );
 
@@ -369,7 +451,7 @@ export function ToolRow({
     );
   }
 
-  if (staticRow) {
+  if (!expandable) {
     return (
       <div className="mc-toolrow" data-status={status} data-static="true">
         <div className="mc-toolrow__head" role="status">
@@ -396,27 +478,7 @@ export function ToolRow({
         <div className="mc-toolrow__collapse-inner">
           {bodyMounted ? (
             <div className="mc-toolrow__body">
-              <CodeBlock label={t("tool.section.input")} text={formatInput(item.input)} language="json" />
-              {item.output !== undefined ? (
-                <CodeBlock
-                  label={
-                    item.spilled
-                      ? t("tool.section.outputSpilled")
-                      : item.truncated
-                        ? t("tool.section.outputTruncated")
-                        : t("tool.section.output")
-                  }
-                  text={item.output || t("tool.emptyOutput")}
-                />
-              ) : (
-                <p className="mc-toolrow__hint">
-                  {status === "running"
-                    ? t("tool.waitingOutput")
-                    : item.replayed
-                      ? t("tool.outputNotSaved")
-                      : t("tool.emptyOutput")}
-                </p>
-              )}
+              <ToolBody item={item} status={status} {...(onOpenFile ? { onOpenFile } : {})} />
             </div>
           ) : null}
         </div>

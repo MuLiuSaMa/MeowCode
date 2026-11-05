@@ -4,7 +4,7 @@ import {
   LuArrowLeft,
   LuArrowRight,
   LuClipboardList,
-  LuFolderTree,
+  LuFile,
   LuGlobe,
   LuLayoutGrid,
   LuListChecks,
@@ -45,7 +45,7 @@ function tabIcon(tab: SideTab): ReactNode {
     case "browser":
       return <LuGlobe size={12} />;
     case "workspace":
-      return <LuFolderTree size={12} />;
+      return <LuFile size={12} />;
     case "review":
       return <LuListChecks size={12} />;
     case "plan":
@@ -163,6 +163,15 @@ export function RightPanel({
             data-tab={tab.kind}
             role="tab"
             aria-selected={tab.id === activeId}
+            onMouseDown={(event) => {
+              // 中键按在标签上会触发 Chromium 自动滚动；先按住默认行为
+              if (event.button === 1) event.preventDefault();
+            }}
+            onAuxClick={(event) => {
+              if (event.button !== 1 || tab.kind === "home") return;
+              event.preventDefault();
+              onClose(tab.id);
+            }}
           >
             <button type="button" className="mc-rtp__tabmain" title={tab.title} onClick={() => onActivate(tab.id)}>
               <span className="mc-rtp__tabicon">{tabIcon(tab)}</span>
@@ -240,7 +249,7 @@ export function RightPanel({
             ) : tab.kind === "browser" ? (
               <BrowserTab tabId={tab.id} url={tab.url} agent={tab.agent} onMeta={handleBrowserMeta} />
             ) : tab.kind === "terminal" ? (
-              <TerminalTab active={tab.id === activeId} cwd={workspace} />
+              <TerminalTab active={tab.id === activeId} cwd={workspace} termId={tab.termId} />
             ) : tab.kind === "subagents" ? (
               <SubagentsTab
                 runs={Object.values(subagentRuns).filter(

@@ -7,6 +7,7 @@ import logoUrl from "../../assets/icon.png";
 import wordmarkBlackUrl from "../../assets/wordmark-black.png";
 import wordmarkUrl from "../../assets/wordmark.png";
 import { useTheme } from "../../theme/theme";
+import { SPONSOR_NAMES } from "../../data/sponsors";
 import { checkForUpdates, type AppInfo, type UpdateInfo } from "../../api";
 import { FieldRow } from "../ui/Section";
 import { Spinner } from "../ui/Spinner";
@@ -17,15 +18,6 @@ const REPO_URL = "https://github.com/MuLiuSaMa/MeowCode";
 /** 官网 */
 const SITE_URL = "https://meowcode.cn";
 const AUTHOR = "木流"; // i18n-allow：作者署名是专有名词，不随界面语言改写
-/** 鸣谢：MeowCode 参考或借力的开源项目 */
-const CREDITS: Array<{ name: string; url: string }> = [
-  { name: "AllAgent.NET", url: "https://github.com/luolangaga/AllAgent.NET" },
-  { name: "Metis", url: "https://github.com/Wholiver/metis" },
-  { name: "ZCode", url: "https://github.com/zai-org/ZCode" },
-  { name: "DeepSeek-Harness", url: "https://github.com/deepseek-ai/deepseek-harness" },
-  { name: "OpenCode", url: "https://github.com/anomalyco/opencode" },
-  { name: "Codex", url: "https://github.com/openai/codex" },
-];
 /** 赞助：收款二维码（图片放在 assets/sponsor，扫码即可打赏）；名称是词条 key */
 const SPONSORS: Array<{ id: "wechat" | "alipay"; src: string }> = [
   { id: "wechat", src: wechatQrUrl },
@@ -157,23 +149,6 @@ export function AboutSection({
           </FieldRow>
         </div>
 
-        <div className="mc-about__rows mc-about__thanks">
-          <h2 className="mc-about__thankstitle">{t("about.credits")}</h2>
-          {CREDITS.map((credit) => (
-            <FieldRow key={credit.url} label={credit.name}>
-              <button
-                type="button"
-                className="mc-about__link"
-                title={t("about.openInBrowser")}
-                onClick={() => void window.meow.openExternal(credit.url)}
-              >
-                {credit.url}
-                <LuArrowUpRight size={12} />
-              </button>
-            </FieldRow>
-          ))}
-        </div>
-
         <div className="mc-about__rows mc-about__sponsor">
           <h2 className="mc-about__thankstitle">{t("about.sponsor")}</h2>
           <p className="mc-about__sponsorhint">{t("about.sponsorHint")}</p>
@@ -189,6 +164,20 @@ export function AboutSection({
                 <figcaption className="mc-about__qrname">{t(`about.sponsors.${sponsor.id}`)}</figcaption>
               </figure>
             ))}
+          </div>
+          <div className="mc-about__sponsorlist">
+            <h3 className="mc-about__sponsornamestitle">{t("about.sponsorList")}</h3>
+            <div
+              className="mc-about__sponsornames"
+              role="list"
+              aria-label={t("about.sponsorList")}
+            >
+              {SPONSOR_NAMES.map((name, index) => (
+                <span className="mc-about__sponsorname" role="listitem" key={`${name}-${index}`}>
+                  {name}
+                </span>
+              ))}
+            </div>
           </div>
         </div>
       </div>

@@ -22,11 +22,25 @@ import {
   type MemoryScope,
   type MemoryType,
 } from "./memory.js";
+import { estimateTokens } from "./context.js";
 import type { ChatMessage, ProviderConfig, TokenUsage, ToolCall } from "./types.js";
 
 // ---- 预算 ----
 
-const MAX_TRANSCRIPT_CHARS = 48_000;
+const MAX_TRANSCRIPT_TOKENS = 8_000;
+/** 每 3 个完成回合蒸馏一次；单回合增量很大时提前触发。 */
+export const MEMORY_DISTILL_TURN_INTERVAL = 3;
+export const MEMORY_DISTILL_MIN_TOKENS = 4_000;
+
+export function shouldExtractMemory(input: {
+  pendingTurns: number;
+  transcriptTokens: number;
+}): boolean {
+  return (
+    input.pendingTurns >= MEMORY_DISTILL_TURN_INTERVAL ||
+    input.transcriptTokens >= MEMORY_DISTILL_MIN_TOKENS
+  );
+}
 const MAX_USER_CHARS = 4_000;
 const MAX_ASSISTANT_CHARS = 2_000;
 const MAX_TOOL_ARGS_CHARS = 200;
@@ -113,9 +127,9 @@ export function serializeMessages(messages: ChatMessage[]): string {
       continue;
     }
     const block = lines.join("\n");
-    if (used + block.length > MAX_TRANSCRIPT_CHARS) break;
+    if (used + estimateTokens(block) > MAX_TRANSCRIPT_TOKENS) break;
     blocks.unshift(block);
-    used += block.length + 2;
+    used += estimateTokens(block) + 2;
   }
   return blocks.join("\n\n");
 }

@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { LuChevronRight, LuEllipsis, LuRotateCw } from "react-icons/lu";
+import { LuChevronRight, LuEllipsis, LuRotateCw, LuSparkles } from "react-icons/lu";
 import { api } from "../../api";
 import "./ReviewTab.css";
 
 type ReviewChange = {
   path: string;
-  operation: "write_file" | "edit_file";
+  operation: "write_file" | "edit_file" | "delete_file" | "move_file";
   changeCount: number;
   added: number;
   removed: number;
@@ -45,6 +45,8 @@ export function ReviewTab({ sessionId }: { sessionId?: string }) {
   const [failed, setFailed] = useState(false);
   /** 展开查看 diff 的文件 */
   const [expanded, setExpanded] = useState<string | null>(null);
+  const [reviewing, setReviewing] = useState(false);
+  const [reviewResult, setReviewResult] = useState<{ ok: boolean; output: string } | null>(null);
 
   const reload = useCallback(async () => {
     try {
@@ -72,16 +74,57 @@ export function ReviewTab({ sessionId }: { sessionId?: string }) {
     return unsubscribe;
   }, [reload, sessionId]);
 
+  const runReview = useCallback(async () => {
+    if (reviewing) return;
+    setReviewing(true);
+    setReviewResult(null);
+    try {
+      const result = await api<{ ok: boolean; output: string }>("/review/start", {
+        method: "POST",
+        body: JSON.stringify(sessionId ? { sessionId } : {}),
+      });
+      setReviewResult(result);
+    } catch (error) {
+      setReviewResult({
+        ok: false,
+        output: error instanceof Error ? error.message : String(error),
+      });
+    } finally {
+      setReviewing(false);
+    }
+  }, [reviewing, sessionId]);
+
   return (
     <div className="mc-review">
       <div className="mc-review__head">
         <span className="mc-review__count">
           {loading ? t("review.loading") : t("review.changedFiles", { count: changes.length })}
         </span>
+        <button
+          type="button"
+          className="mc-review__action"
+          disabled={reviewing || changes.length === 0}
+          onClick={() => void runReview()}
+        >
+          <LuSparkles size={13} />
+          {reviewing ? t("review.reviewing") : t("review.review")}
+        </button>
         <button type="button" className="mc-review__refresh" aria-label={t("review.refresh")} title={t("review.refresh")} onClick={() => void reload()}>
           <LuRotateCw size={13} />
         </button>
       </div>
+
+      {reviewResult ? (
+        <div className="mc-review__result" data-ok={reviewResult.ok}>
+          <div className="mc-review__resulthead">
+            <span>{t("review.resultTitle")}</span>
+            <button type="button" onClick={() => setReviewResult(null)}>
+              {t("review.close")}
+            </button>
+          </div>
+          <pre>{reviewResult.output}</pre>
+        </div>
+      ) : null}
 
       {failed ? (
         <p className="mc-review__empty">{t("review.failed")}</p>

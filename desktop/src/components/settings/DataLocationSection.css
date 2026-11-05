@@ -1,0 +1,49 @@
+.mc-dataloc {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 16px 18px;
+}
+
+.mc-dataloc__text {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.mc-dataloc__label {
+  color: var(--fg);
+  font-size: var(--fs-base);
+  font-weight: var(--fw-semibold);
+  line-height: 1.35;
+}
+
+.mc-dataloc__path {
+  color: var(--fg-subtle);
+  font-family: var(--font-mono);
+  font-size: var(--fs-caption);
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.mc-dataloc__actions {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 8px;
+}
+
+.mc-dataloc__target {
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  color: var(--fg-subtle);
+  font-family: var(--font-mono);
+  font-size: var(--fs-caption);
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}

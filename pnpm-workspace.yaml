@@ -18,3 +18,10 @@ onlyBuiltDependencies:
 # electron / electron-builder 二进制下载镜像（pnpm ≥10 的 npm 配置放这里，npm 不会对未知键告警）
 electron_mirror: https://npmmirror.com/mirrors/electron/
 electron_builder_binaries_mirror: https://npmmirror.com/mirrors/electron-builder-binaries/
+
+# electron-builder 26.17 的 app-builder-lib 声明 @electron/get ^3.0.0，
+# 但 out/util/electronGet.js 里用了 4.x 才有的 ElectronDownloadCacheMode，
+# 3.0.0 没有该导出 → 打包时报 "Cannot read properties of undefined (reading 'ReadWrite')"。
+# 强制到 5.1.0（ESM，Node ≥22.12 可直接 require）。
+overrides:
+  "@electron/get": 5.1.0

@@ -39,7 +39,8 @@
     "worktree": "Worktrees",
     "learning": "自己学習",
     "rewind": "セッション巻き戻し",
-    "sandbox": "サンドボックス"
+    "sandbox": "サンドボックス",
+    "approvals": "承認ルール"
   },
   "close": {
     "section": "ウィンドウを閉じるときの動作",
@@ -96,10 +97,6 @@
     }
   },
   "memory": {
-    "extractionTitle": "自動メモリー蒸留",
-    "extractionDesc": "各ターン終了後、軽量なバックグラウンド要求で新しい会話を振り返り、長期的に覚える価値のあること（好み、訂正、プロジェクトの決定）を自動的にメモリーに保存します。オフにすると、手動作成と AI 自身のメモリーツールによる書き込みのみが残ります。",
-    "extractionField": "ターン終了後に自動蒸留",
-    "extractionFailed": "設定の保存に失敗しました",
     "scope": {
       "user": "個人メモリ",
       "project": "プロジェクトメモリ"
@@ -129,7 +126,15 @@
     "loadFailed": "メモリを読み込めませんでした",
     "readFailed": "メモリを取得できませんでした",
     "saveFailed": "メモリを保存できませんでした",
-    "deleteFailed": "メモリを削除できませんでした"
+    "deleteFailed": "メモリを削除できませんでした",
+    "toggleTitle": "自動メモリー蒸留",
+    "toggleDesc": "各ターン終了後、軽量なバックグラウンド要求で新しい会話を振り返り、長期的に覚える価値のあること（好み、訂正、プロジェクトの決定）を自動的にメモリーに保存します。オフにすると、手動作成と AI 自身のメモリーツールによる書き込みのみが残ります。",
+    "toggleField": "ターン終了後に自動蒸留",
+    "toggleFailed": "設定の保存に失敗しました",
+    "clearAction": "すべて削除",
+    "clearConfirm": "すべて削除しますか？",
+    "clearDone": "すべてのメモリを削除しました",
+    "clearFailed": "メモリを消去できませんでした"
   },
   "archive": {
     "section": "アーカイブ",
@@ -152,7 +157,6 @@
     "website": "公式サイト",
     "repo": "オープンソースリポジトリ",
     "openInBrowser": "ブラウザーで開く",
-    "credits": "クレジット",
     "sponsor": "サポート",
     "sponsorHint": "MeowCode が役に立っていたら、QR コードを読み取って作者を支援できます。",
     "qrAlt": "{{name}}の支払い用 QR コード",
@@ -161,7 +165,8 @@
       "alipay": "Alipay"
     },
     "upToDate": "すでに最新バージョンです",
-    "checkFailed": "バージョン確認に失敗しました：{{error}}"
+    "checkFailed": "バージョン確認に失敗しました：{{error}}",
+    "sponsorList": "スポンサー一覧（MeowCode、NexBox、OpenMD、LingTab）"
   },
   "actions": {
     "add": "追加",
@@ -580,5 +585,40 @@
     "enabled": "ワークスペース書き込みに切り替えました（初回許可 {{ms}} ms）",
     "saveFailed": "サンドボックス設定の保存に失敗しました",
     "loadFailed": "サンドボックス設定の読み込みに失敗しました"
+  },
+  "dataLocation": {
+    "section": "ローカルデータ",
+    "desc": "設定、会話履歴、ローカルフォントの保存先です。",
+    "field": "データの場所",
+    "open": "フォルダを開く",
+    "change": "場所を変更...",
+    "loading": "読み込み中…",
+    "confirmTitle": "データの場所を変更しますか？",
+    "confirmDesc": "現在のデータを新しい場所にコピーし、アプリを再起動します。元のデータは残ります。",
+    "move": "移動して再起動",
+    "moving": "移動中…",
+    "restarting": "データを移動しました。アプリを再起動しています…",
+    "errors": {
+      "same_path": "新しい場所は現在の場所と同じです。",
+      "not_empty": "対象フォルダが空ではありません。空のフォルダを選んでください。",
+      "failed": "データの場所を変更できませんでした。"
+    }
+  },
+  "approvals": {
+    "section": "承認ルール",
+    "desc": "このプロジェクトで「今後確認しない」を選んだ操作です。ルールを削除すると次回から再確認します。ファイルのルールは変更後に自動で失効します。",
+    "empty": "プロジェクトの承認ルールはありません",
+    "clearAll": "すべて削除",
+    "remove": "ルールを削除",
+    "cleared": "プロジェクトの承認ルールをすべて削除しました",
+    "clearConfirmTitle": "すべての承認ルールを削除しますか？",
+    "clearConfirmDesc": "これらの操作は次回から再確認されます。ファイルのルールは変更後に自動で失効します。",
+    "kind": {
+      "tool": "ツール",
+      "path": "ファイル",
+      "command-exact": "完全一致コマンド",
+      "command-prefix": "コマンド前方一致"
+    },
+    "loading": "読み込み中…"
   }
 }

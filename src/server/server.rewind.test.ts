@@ -468,6 +468,8 @@ describe("session rewind api", () => {
     expect(observed).not.toBeNull();
   });
 });
+
+describe("checkpoint ordering", () => {
   it("does not carry an orphan turn_start into the derived session (crash-replay regression)", async () => {
     // 旧版把检查点打在 turn_start 之后：派生会话曾带孤立 turn_start，
     // switchSession 的崩溃恢复会把它重放成假用户消息并报「上次生成被中断」。

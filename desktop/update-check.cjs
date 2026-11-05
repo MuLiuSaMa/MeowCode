@@ -3,21 +3,79 @@
  *
  * 走 GitCode Releases（发布也发在 GitCode，国内直连 GitHub 不稳），
  * 逻辑参考 NexBox 的 src/lib/update-checker.ts：
- *  - release 接口带只读令牌，避开匿名限流；
+ *  - release 接口带只读令牌，避开匿名限流（令牌从环境变量或本地文件读，见 resolveGitcodeToken）；
  *  - 响应没有顶层 html_url，按仓库 + tag 拼发布页地址；
  *  - 版本按数字段比较，缺位补 0。
  *
  * 单独成文件而不是塞在 main.cjs 里：这段逻辑有分支（各种错误码），
  * 拆出来才能被单测覆盖（main.cjs 依赖 electron，跑不起来）。
  */
+const fs = require("node:fs");
+const os = require("node:os");
+const path = require("node:path");
 const { pickInstallerAsset, normalizeAssets } = require("./update-download.cjs");
 
 const GITCODE_OWNER = "MuLiuSaMa";
 const GITCODE_REPO = "MeowCode";
 const GITCODE_WEB = "https://gitcode.com";
-// 只读令牌：仅用于 release 接口走认证、规避匿名限流（无写权限，公开仓库下无额外风险）
-const GITCODE_READ_TOKEN = "WmAt3-nHJiYGKrCby8bGajtw";
+/**
+ * 更新接口用的只读令牌：只用于 release 查询走认证、规避匿名限流。
+ *
+ * 绝不在源码里写死 —— 本仓库是公开的，任何提交过的 token 都应视为已泄露。
+ * 读取顺序：
+ *   1. 环境变量 MEOWCODE_GITCODE_UPDATE_TOKEN（CI / 临时调试）
+ *   2. 打包资源 resources/icons/gitcode-update-token.txt
+ *   3. 仓库内 resources/gitcode-update-token.txt（开发用，.gitignore 已挡）
+ *   4. 用户目录 ~/.meowcode/gitcode-update-token.txt
+ * 全部缺失时退回匿名请求（可能被限流，但仍能工作）。
+ */
+const TOKEN_ENV = "MEOWCODE_GITCODE_UPDATE_TOKEN";
+const TOKEN_FILE = "gitcode-update-token.txt";
 const UPDATE_TIMEOUT_MS = 8_000;
+
+/** 读一个 token 文件；不存在、为空、或整行是注释时返回空串 */
+function readTokenFile(filePath) {
+  try {
+    const token = fs.readFileSync(filePath, "utf8").trim();
+    if (!token || token.startsWith("#")) return "";
+    // 只取第一行，避免文件里顺手写了说明文字
+    return token.split(/\r?\n/)[0].trim();
+  } catch {
+    return "";
+  }
+}
+
+let cachedToken;
+
+/** 解析更新令牌（进程内缓存：这是构建期配置，不随设置页变化） */
+function resolveGitcodeToken() {
+  if (cachedToken !== undefined) return cachedToken;
+
+  const fromEnv = String(process.env[TOKEN_ENV] || "").trim();
+  if (fromEnv) {
+    cachedToken = fromEnv;
+    return cachedToken;
+  }
+
+  const candidates = [];
+  if (process.resourcesPath) {
+    candidates.push(path.join(process.resourcesPath, "icons", TOKEN_FILE));
+    candidates.push(path.join(process.resourcesPath, TOKEN_FILE));
+  }
+  candidates.push(path.join(__dirname, "..", "resources", TOKEN_FILE));
+  candidates.push(path.join(os.homedir(), ".meowcode", TOKEN_FILE));
+
+  for (const file of candidates) {
+    const token = readTokenFile(file);
+    if (token) {
+      cachedToken = token;
+      return cachedToken;
+    }
+  }
+  cachedToken = "";
+  return cachedToken;
+}
+
 
 /** 拆版本号：去 v 前缀，按 . + - 切分，非数字段当 0 */
 function parseVersionParts(value) {
@@ -51,7 +109,12 @@ function describeUpdateError(error, status) {
   if (status === 404 || /未找到\s*release|not\s*found\s*release/i.test(body)) {
     return "GitCode 上还没有发布版本（发一个 Release 后再检查）";
   }
-  if (status === 401 || status === 403) return `GitCode 拒绝了请求（${status}）`;
+  if (status === 401 || status === 403) {
+    const usedToken = Boolean(error && error.usedToken);
+    return usedToken
+      ? `GitCode 拒绝了请求（${status}），更新令牌可能已失效`
+      : `GitCode 拒绝了请求（${status}），未配置更新令牌时容易被限流`;
+  }
   if (status) return `GitCode 返回 ${status}`;
   const message = error instanceof Error ? error.message : String(error ?? "");
   if (/timeout|abort/i.test(message)) return "请求超时，请检查网络后重试";
@@ -64,11 +127,11 @@ function describeUpdateError(error, status) {
 /** 拉最新 release；失败抛带 status/body 的错误 */
 async function fetchLatestGitCodeRelease() {
   const url = `https://api.gitcode.com/api/v5/repos/${GITCODE_OWNER}/${GITCODE_REPO}/releases/latest`;
+  const token = resolveGitcodeToken();
+  const headers = { "content-type": "application/json" };
+  if (token) headers.authorization = `Bearer ${token}`;
   const response = await fetch(url, {
-    headers: {
-      "content-type": "application/json",
-      authorization: `Bearer ${GITCODE_READ_TOKEN}`,
-    },
+    headers,
     signal: AbortSignal.timeout(UPDATE_TIMEOUT_MS),
   });
   if (!response.ok) {
@@ -76,6 +139,8 @@ async function fetchLatestGitCodeRelease() {
     const error = new Error(body || `HTTP ${response.status}`);
     error.status = response.status;
     error.body = body;
+    // 让错误文案能区分「令牌失效」和「未配置被限流」
+    error.usedToken = Boolean(token);
     throw error;
   }
   const data = await response.json();
@@ -116,9 +181,12 @@ module.exports = {
   GITCODE_OWNER,
   GITCODE_REPO,
   GITCODE_WEB,
+  TOKEN_ENV,
+  TOKEN_FILE,
   parseVersionParts,
   isNewerVersion,
   describeUpdateError,
+  resolveGitcodeToken,
   fetchLatestGitCodeRelease,
   checkForUpdate,
 };

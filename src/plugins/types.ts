@@ -1,4 +1,5 @@
 import type { ChatMessage, ToolResult } from "../agent/types.js";
+import type { ToolContract } from "../agent/tool-contract.js";
 
 /**
  * 插件日志器：所有输出自动带 [plugin:<id>] 前缀，便于在 server 日志里区分来源。
@@ -35,6 +36,8 @@ export type PluginTool = {
   execute: (input: Record<string, unknown>, ctx: PluginToolContext) => Promise<ToolResult>;
   /** 默认 false；true 则每次调用先走现有审批流（approval_required 事件 → 用户确认） */
   requiresApproval?: boolean;
+  /** 并发/只读/超时契约；缺省按「串行、有副作用」保守处理 */
+  contract?: ToolContract;
 };
 
 // ---------------------------------------------------------------------------

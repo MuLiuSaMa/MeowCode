@@ -783,3 +783,79 @@ describe("SessionStore compaction quality", () => {
     expect(loaded.effectiveMessages).toHaveLength(2);
   });
 });
+
+describe("SessionStore turn file change groups", () => {
+  const snapshot = async () => ({
+    ownerId: "owner-1",
+    file: "index/cp.json",
+    count: 2,
+    bytes: 12,
+    cwd: "D:/work",
+  });
+
+  it("aggregates per-path stats and points at the turn's auto checkpoint", async () => {
+    const { session } = await makeStore();
+    const checkpoint = await session.appendCheckpoint(
+      { auto: true, turnId: "t1", fileChanges: [] },
+      snapshot,
+    );
+    await session.appendTurnStart({ turnId: "t1" });
+    await session.appendMessage({ role: "user", content: "go" });
+    await session.appendMessage({ role: "assistant", content: "ok" });
+    await session.appendFileChange(
+      "src/a.ts",
+      "edit_file",
+      "--- a/src/a.ts\n+++ b/src/a.ts\n@@\n- one\n+ two\n+ three",
+    );
+    await session.appendFileChange(
+      "src/a.ts",
+      "edit_file",
+      "--- a/src/a.ts\n+++ b/src/a.ts\n@@\n+ four",
+    );
+    await session.appendFileChange(
+      "src/b.ts",
+      "write_file",
+      "--- /dev/null\n+++ b/src/b.ts\n@@\n+ hello",
+    );
+    await session.appendTurnEnd({ turnId: "t1", status: "completed" });
+
+    expect(session.turnFileChangeGroups).toEqual([
+      {
+        turnId: "t1",
+        messageIndex: 2,
+        checkpointId: checkpoint.id,
+        canRewind: true,
+        files: [
+          { path: "src/a.ts", added: 3, removed: 1 },
+          { path: "src/b.ts", added: 1, removed: 0 },
+        ],
+      },
+    ]);
+  });
+
+  it("skips a turn that never ended (crash) and one with no file changes", async () => {
+    const { session } = await makeStore();
+    await session.appendTurnStart({ turnId: "t1" });
+    await session.appendMessage({ role: "user", content: "go" });
+    await session.appendFileChange("a.ts", "edit_file", "--- a/a.ts\n+++ b/a.ts\n@@\n+ x");
+    // 没有 turn_end：视为中断，不出卡片
+
+    await session.appendTurnStart({ turnId: "t2" });
+    await session.appendMessage({ role: "assistant", content: "ok" });
+    await session.appendTurnEnd({ turnId: "t2", status: "completed" });
+
+    expect(session.turnFileChangeGroups).toEqual([]);
+  });
+
+  it("marks older checkpoints without a snapshot as not rewindable", async () => {
+    const { session } = await makeStore();
+    await session.appendCheckpoint({ auto: true, turnId: "t1", fileChanges: [] });
+    await session.appendTurnStart({ turnId: "t1" });
+    await session.appendFileChange("a.ts", "edit_file", "--- a/a.ts\n+++ b/a.ts\n@@\n+ x");
+    await session.appendTurnEnd({ turnId: "t1", status: "completed" });
+
+    const [group] = session.turnFileChangeGroups;
+    expect(group.canRewind).toBe(false);
+    expect(group.checkpointId).toBeTruthy();
+  });
+});

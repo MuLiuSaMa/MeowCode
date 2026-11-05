@@ -39,7 +39,8 @@
     "worktree": "Worktrees",
     "learning": "Apprentissage autonome",
     "rewind": "Restauration de session",
-    "sandbox": "Sandbox"
+    "sandbox": "Sandbox",
+    "approvals": "Règles d'approbation"
   },
   "close": {
     "section": "Fermeture de la fenêtre",
@@ -96,10 +97,6 @@
     }
   },
   "memory": {
-    "extractionTitle": "Distillation automatique de la mémoire",
-    "extractionDesc": "Après chaque tour, une requête légère en arrière-plan passe en revue la conversation et enregistre en mémoire ce qui mérite de l'être à long terme (préférences, corrections, décisions du projet). Une fois désactivée, seuls les ajouts manuels et les écritures spontanées de l'IA subsistent.",
-    "extractionField": "Distiller la mémoire après chaque tour",
-    "extractionFailed": "Échec de l'enregistrement du réglage",
     "scope": {
       "user": "Mémoire personnelle",
       "project": "Mémoire du projet"
@@ -129,7 +126,15 @@
     "loadFailed": "Impossible de charger la mémoire",
     "readFailed": "Impossible de lire l’entrée",
     "saveFailed": "Impossible d’enregistrer l’entrée",
-    "deleteFailed": "Impossible de supprimer l’entrée"
+    "deleteFailed": "Impossible de supprimer l’entrée",
+    "toggleTitle": "Distillation automatique de la mémoire",
+    "toggleDesc": "Après chaque tour, une requête légère en arrière-plan passe en revue la conversation et enregistre en mémoire ce qui mérite de l'être à long terme (préférences, corrections, décisions du projet). Une fois désactivée, seuls les ajouts manuels et les écritures spontanées de l'IA subsistent.",
+    "toggleField": "Distiller la mémoire après chaque tour",
+    "toggleFailed": "Échec de l'enregistrement du réglage",
+    "clearAction": "Tout supprimer",
+    "clearConfirm": "Tout supprimer ?",
+    "clearDone": "Toutes les mémoires ont été supprimées",
+    "clearFailed": "Impossible de vider les mémoires"
   },
   "archive": {
     "section": "Archives",
@@ -152,7 +157,6 @@
     "website": "Site web",
     "repo": "Dépôt",
     "openInBrowser": "Ouvrir dans le navigateur",
-    "credits": "Remerciements",
     "sponsor": "Soutenir",
     "sponsorHint": "Si MeowCode vous est utile, vous pouvez soutenir l’auteur en scannant un QR code.",
     "qrAlt": "QR code de paiement {{name}}",
@@ -161,7 +165,8 @@
       "alipay": "Alipay"
     },
     "upToDate": "Vous avez déjà la dernière version",
-    "checkFailed": "Échec de la vérification : {{error}}"
+    "checkFailed": "Échec de la vérification : {{error}}",
+    "sponsorList": "Soutiens (MeowCode, NexBox, OpenMD, LingTab)"
   },
   "actions": {
     "add": "Ajouter",
@@ -580,5 +585,40 @@
     "enabled": "Passage en écriture dans l’espace de travail (première autorisation {{ms}} ms)",
     "saveFailed": "Échec de l’enregistrement des paramètres de sandbox",
     "loadFailed": "Échec du chargement des paramètres de sandbox"
+  },
+  "dataLocation": {
+    "section": "Données locales",
+    "desc": "Emplacement des réglages, des conversations et des polices locales.",
+    "field": "Emplacement des données",
+    "open": "Ouvrir le dossier",
+    "change": "Changer d'emplacement...",
+    "loading": "Chargement…",
+    "confirmTitle": "Changer l'emplacement des données ?",
+    "confirmDesc": "Les données actuelles seront copiées vers le nouvel emplacement, puis l'application redémarrera. Les données d'origine seront conservées.",
+    "move": "Déplacer et redémarrer",
+    "moving": "Déplacement…",
+    "restarting": "Données déplacées — redémarrage de l'application…",
+    "errors": {
+      "same_path": "Le nouvel emplacement est identique à l'actuel.",
+      "not_empty": "Le dossier cible n'est pas vide. Choisissez un dossier vide.",
+      "failed": "Impossible de changer l'emplacement des données."
+    }
+  },
+  "approvals": {
+    "section": "Règles d'approbation",
+    "desc": "Actions approuvées avec « Ne plus demander » dans ce projet. Après suppression, la demande réapparaît ; les règles de fichier expirent dès que le fichier change.",
+    "empty": "Aucune règle d'approbation",
+    "clearAll": "Tout effacer",
+    "remove": "Supprimer la règle",
+    "cleared": "Toutes les règles d'approbation du projet sont effacées",
+    "clearConfirmTitle": "Effacer toutes les règles d'approbation ?",
+    "clearConfirmDesc": "Ces actions redemanderont une approbation. Les règles de fichier expirent déjà automatiquement quand le fichier change.",
+    "kind": {
+      "tool": "Outil",
+      "path": "Fichier",
+      "command-exact": "Commande exacte",
+      "command-prefix": "Préfixe de commande"
+    },
+    "loading": "Chargement…"
   }
 }

@@ -143,7 +143,6 @@
   margin: 2px 0 8px;
   padding: 6px 0;
   border-radius: var(--radius-md);
-  background: color-mix(in oklab, #000 22%, var(--bg));
   overflow-x: auto;
 }
 .mc-review__line {
@@ -164,4 +163,65 @@
 }
 .mc-review__line[data-kind="meta"] {
   color: var(--fg-subtlest);
+}
+
+/* 一键审查：标题行按钮 + 结果面板 */
+.mc-review__action {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-left: auto;
+  padding: 3px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  color: var(--fg-subtle);
+  font-size: var(--fs-caption);
+  cursor: pointer;
+}
+.mc-review__action:hover:not(:disabled) {
+  color: var(--fg);
+  border-color: var(--border-strong, var(--border));
+}
+.mc-review__action:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.mc-review__result {
+  margin: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  overflow: hidden;
+}
+.mc-review__resulthead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border);
+  font-size: var(--fs-caption);
+  color: var(--fg-subtle);
+}
+.mc-review__resulthead button {
+  border: none;
+  background: transparent;
+  color: var(--fg-subtle);
+  font-size: var(--fs-caption);
+  cursor: pointer;
+}
+.mc-review__result pre {
+  margin: 0;
+  padding: 10px;
+  max-height: 320px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: var(--font-code, monospace);
+  font-size: var(--fs-sm);
+  color: var(--fg);
+}
+.mc-review__result[data-ok="false"] pre {
+  color: var(--danger, #ff6b6b);
 }

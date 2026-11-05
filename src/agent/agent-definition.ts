@@ -39,6 +39,9 @@ const EXPLORE_TOOLS: ReadonlySet<string> = new Set([
   "context_status",
   "diagnostics",
   "run_code",
+  "web_search",
+  "web_fetch",
+  "git",
 ]);
 
 const PLANNER_SYSTEM_PROMPT = `You are a read-only Planner subagent launched by MeowCode's main agent.
@@ -78,6 +81,9 @@ const VERIFIER_TOOLS: ReadonlySet<string> = new Set([
   "diagnostics",
   "run_code",
   "run_command",
+  "web_fetch",
+  "web_search",
+  "git",
 ]);
 
 // ---- 以下 6 个角色参考 metis 的 performance 角色库（G2 范围 / G3.5 深挖 / G6 独立复验 /
@@ -174,6 +180,9 @@ Relative paths resolve against the workspace. Write, edit, and command tools fol
       "write_file",
       "edit_file",
       "multi_edit",
+      "delete_file",
+      "move_file",
+      "apply_patch",
       "run_command",
     ]),
     expectedGates: ["G4"],

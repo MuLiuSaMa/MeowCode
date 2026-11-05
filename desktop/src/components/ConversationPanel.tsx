@@ -2,12 +2,14 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   LuArchive,
+  LuCheck,
   LuChevronDown,
   LuEllipsis,
   LuFileDown,
   LuFolder,
   LuFolderOpen,
   LuGitBranch,
+  LuListChecks,
   LuPin,
   LuPinOff,
   LuSquare,
@@ -23,9 +25,9 @@ import { Button } from "./ui/Button";
 import { Dialog } from "./ui/Dialog";
 import "./ConversationPanel.css";
 
-/** 右键/「…」菜单的近似尺寸（含停止运行约 205）：用于把菜单夹在窗口内，实际高度由内容决定 */
+/** 右键/「…」菜单的近似尺寸（含停止运行与多选约 248）：用于把菜单夹在窗口内，实际高度由内容决定 */
 const SESSION_MENU_WIDTH = 158;
-const SESSION_MENU_ESTIMATED_HEIGHT = 210;
+const SESSION_MENU_ESTIMATED_HEIGHT = 248;
 
 /** 项目「…」菜单的近似尺寸（5 项 + 3 分隔线） */
 const PROJECT_MENU_WIDTH = 196;
@@ -164,6 +166,8 @@ export function ConversationPanel({
   onStopSession,
   onArchiveSession,
   onExportSession,
+  onArchiveSessions,
+  onDeleteSessions,
   onArchiveProject,
   onRenameProject,
   onTogglePinProject,
@@ -197,6 +201,10 @@ export function ConversationPanel({
   onArchiveSession: (filePath: string) => void;
   /** 导出会话为 Markdown / HTML / JSON 文件 */
   onExportSession: (filePath: string, title: string | null) => void;
+  /** 多选后批量归档：一次写入 preferences，避免逐条覆盖 */
+  onArchiveSessions: (filePaths: string[]) => void;
+  /** 多选后批量删除会话文件（运行中的会被服务端拒绝，单个失败不影响其余） */
+  onDeleteSessions: (filePaths: string[]) => void;
   onArchiveProject: (filePaths: string[]) => void;
   onRenameProject: (cwd: string, name: string) => void;
   onTogglePinProject: (cwd: string) => void;
@@ -224,6 +232,10 @@ export function ConversationPanel({
   const [sessionMenuDir, setSessionMenuDir] = useState<"up" | "down">("up");
   const [renamingSession, setRenamingSession] = useState<SessionSummary | null>(null);
   const [deletingSession, setDeletingSession] = useState<SessionSummary | null>(null);
+  /** 多选模式：null = 未进入；Set = 已勾选的 filePath（只在本次侧栏会话内有效，不落盘） */
+  const [selected, setSelected] = useState<ReadonlySet<string> | null>(null);
+  /** 批量删除确认弹窗 */
+  const [deletingSelected, setDeletingSelected] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const sessionMenuRef = useRef<HTMLDivElement>(null);
 
@@ -287,6 +299,16 @@ export function ConversationPanel({
     if (!sessionMenuFor) setSessionMenuAnchor(null);
   }, [sessionMenuFor]);
 
+  // 多选模式：Esc 退出（弹窗开着时把 Esc 让给弹窗自己处理）
+  useEffect(() => {
+    if (!selected || renamingSession || deletingSession || deletingSelected) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setSelected(null);
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [selected, renamingSession, deletingSession, deletingSelected]);
+
   // 项目菜单改 fixed 定位后：面板滚动或窗口缩放时直接关闭，避免悬空错位
   useEffect(() => {
     if (!menuFor || !projectMenuAnchor) return;
@@ -332,13 +354,88 @@ export function ConversationPanel({
     [sessions, archivedSessions, workspace, removedProjects, pinnedProjects],
   );
 
+  // 多选：以列表里**当前可见**的会话为准 —— 归档/删除后勾选自动收敛，不会误操作已消失的条目
+  const selectableItems = groups.flatMap((group) => group.items);
+  const selectedItems = selected
+    ? selectableItems.filter((session) => selected.has(session.filePath))
+    : [];
+  const selectedAll =
+    selectableItems.length > 0 && selectedItems.length === selectableItems.length;
+  /** 选中项里有正在生成 / 等待审批的会话：删除不安全（服务端会拒绝），按钮直接禁用 */
+  const selectedRunning = selectedItems.some(
+    (session) =>
+      (runningSessionIds ?? []).includes(session.id) ||
+      (approvalSessionIds ?? []).includes(session.id),
+  );
+
+  const toggleSelected = (filePath: string) =>
+    setSelected((current) => {
+      if (!current) return current;
+      const next = new Set(current);
+      if (next.has(filePath)) next.delete(filePath);
+      else next.add(filePath);
+      return next;
+    });
+
+  const toggleSelectAll = () =>
+    setSelected((current) => {
+      if (!current) return current;
+      if (selectedAll) return new Set<string>();
+      return new Set(selectableItems.map((session) => session.filePath));
+    });
+
   return (
     <section className="mc-panel mc-panel--conversations mc-convpanel">
       <div className="mc-convpanel__top">
-        <button type="button" className="mc-convpanel__new" onClick={onNewChat}>
-          <LuSquarePen size={14} />
-          <span>{t("conversation.newChat")}</span>
-        </button>
+        {selected ? (
+          // 多选操作条：顶掉「新聊天」，选完即退出，不留在侧栏
+          <div className="mc-convpanel__selectbar">
+            <span className="mc-convpanel__selectcount">
+              {t("conversation.selectedCount", { count: selectedItems.length })}
+            </span>
+            <button type="button" className="mc-convpanel__selectall" onClick={toggleSelectAll}>
+              {selectedAll ? t("conversation.selectNone") : t("conversation.selectAll")}
+            </button>
+            <button
+              type="button"
+              className="mc-convpanel__groupbtn"
+              disabled={selectedItems.length === 0}
+              aria-label={t("conversation.archive")}
+              title={t("conversation.archive")}
+              onClick={() => {
+                if (!selectedItems.length) return;
+                onArchiveSessions(selectedItems.map((session) => session.filePath));
+                setSelected(null);
+              }}
+            >
+              <LuArchive size={15} />
+            </button>
+            <button
+              type="button"
+              className="mc-convpanel__groupbtn mc-convpanel__groupbtn--danger"
+              disabled={selectedItems.length === 0 || selectedRunning}
+              aria-label={t("dialog.delete")}
+              title={selectedRunning ? t("conversation.deleteBlocked") : t("dialog.delete")}
+              onClick={() => setDeletingSelected(true)}
+            >
+              <LuTrash2 size={15} />
+            </button>
+            <button
+              type="button"
+              className="mc-convpanel__groupbtn"
+              aria-label={t("conversation.exitSelection")}
+              title={t("conversation.exitSelection")}
+              onClick={() => setSelected(null)}
+            >
+              <LuX size={15} />
+            </button>
+          </div>
+        ) : (
+          <button type="button" className="mc-convpanel__new" onClick={onNewChat}>
+            <LuSquarePen size={14} />
+            <span>{t("conversation.newChat")}</span>
+          </button>
+        )}
       </div>
 
       <div className="mc-convpanel__scroll">
@@ -516,19 +613,31 @@ export function ConversationPanel({
                             key={session.filePath}
                             className="mc-convpanel__itemrow"
                             data-menu-open={sessionMenuFor === session.filePath ? "true" : undefined}
+                            data-selecting={selected ? "true" : undefined}
                           >
                             <button
                               type="button"
                               className="mc-convpanel__item"
                               data-active={session.id === currentSessionId}
                               data-running={running}
+                              data-selecting={selected ? "true" : undefined}
+                              data-selected={selected?.has(session.filePath) ? "true" : undefined}
+                              aria-pressed={selected ? selected.has(session.filePath) : undefined}
                               title={`${group.cwd}${
                                 session.worktree ? ` · ${session.worktree.branch}` : ""
                               } · ${formatDateTime(new Date(session.createdAt))}`}
-                              onClick={() => onSwitchSession(session.filePath)}
+                              onClick={() => {
+                                // 多选模式下点行 = 勾选 / 取消，不切会话
+                                if (selected) {
+                                  toggleSelected(session.filePath);
+                                  return;
+                                }
+                                onSwitchSession(session.filePath);
+                              }}
                               onContextMenu={(event) => {
                                 event.preventDefault();
                                 event.stopPropagation();
+                                if (selected) return;
                                 setMenuFor(null);
                                 setSessionMenuAnchor(
                                   clampSessionMenuPoint(event.clientX, event.clientY),
@@ -536,6 +645,16 @@ export function ConversationPanel({
                                 setSessionMenuFor(session.filePath);
                               }}
                             >
+                              {selected ? (
+                                <span
+                                  className="mc-convpanel__check"
+                                  data-checked={
+                                    selected.has(session.filePath) ? "true" : undefined
+                                  }
+                                >
+                                  {selected.has(session.filePath) ? <LuCheck size={11} /> : null}
+                                </span>
+                              ) : null}
                               {running ? (
                                 <span
                                   className="mc-convpanel__runningdot"
@@ -682,6 +801,19 @@ export function ConversationPanel({
                                   <LuFileDown size={14} />
                                   {t("conversation.export")}
                                 </button>
+                                <button
+                                  type="button"
+                                  role="menuitem"
+                                  className="mc-convpanel__menuitem"
+                                  onClick={() => {
+                                    setMenuFor(null);
+                                    setSessionMenuFor(null);
+                                    setSelected(new Set([session.filePath]));
+                                  }}
+                                >
+                                  <LuListChecks size={14} />
+                                  {t("conversation.multiSelect")}
+                                </button>
                                 <div className="mc-convpanel__menusep" />
                                 <button
                                   type="button"
@@ -754,6 +886,34 @@ export function ConversationPanel({
             onClick={() => {
               if (deletingSession) onDeleteSession(deletingSession.filePath);
               setDeletingSession(null);
+            }}
+          >
+            {t("dialog.delete")}
+          </Button>
+        </div>
+      </Dialog>
+
+      <Dialog
+        open={deletingSelected}
+        onClose={() => setDeletingSelected(false)}
+        labelledBy="mc-delete-selected-title"
+      >
+        <span className="mc-dialog__title" id="mc-delete-selected-title">
+          {t("conversation.deleteSelected.title")}
+        </span>
+        <p className="mc-dialog__desc">
+          {t("conversation.deleteSelected.description", { count: selectedItems.length })}
+        </p>
+        <div className="mc-dialog__footer">
+          <Button variant="ghost" onClick={() => setDeletingSelected(false)}>
+            {t("dialog.cancel")}
+          </Button>
+          <Button
+            variant="danger"
+            onClick={() => {
+              onDeleteSessions(selectedItems.map((session) => session.filePath));
+              setDeletingSelected(false);
+              setSelected(null);
             }}
           >
             {t("dialog.delete")}

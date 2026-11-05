@@ -319,7 +319,7 @@ button.mc-skillchip.island-chip {
   padding: 4px 8px 8px;
 }
 
-/* 附件按钮单独贴左下角，停止/发送/打开主窗口仍在右侧 */
+/* 附件按钮单独贴左下角，停止/发送按钮在右侧（二选一，同主窗口） */
 .island-composer__attach {
   margin-right: auto;
 }

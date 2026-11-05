@@ -119,7 +119,16 @@
   },
   "filePreview": {
     "copyPath": "複製路徑",
-    "openInEditor": "在編輯器中開啟",
+    "preview": "預覽",
+    "source": "原始碼",
+    "openInEditor": "用系統應用程式開啟",
+    "openWith": "開啟方式",
+    "systemDefault": "系統預設應用",
+    "chooseApp": "選擇其他應用程式…",
+    "showInFolder": "在檔案總管中顯示",
+    "openWithApp": "用 {{name}} 開啟",
+    "explorerShort": "檔案總管",
+    "detectingApps": "正在偵測可開啟的應用程式…",
     "loading": "載入中…",
     "truncated": "僅顯示前 {{shown}} 行（共 {{total}} 行）"
   },
@@ -158,7 +167,11 @@
     "changeCount_other": "變更 {{count}} 次",
     "changeCount_few": "變更 {{count}} 次",
     "changeCount_many": "變更 {{count}} 次",
-    "diffAria": "{{path}} 的變更"
+    "diffAria": "{{path}} 的變更",
+    "review": "審查改動",
+    "reviewing": "審查中…",
+    "resultTitle": "AI 審查結果",
+    "close": "關閉"
   },
   "workspace": {
     "loading": "載入中…",
@@ -171,6 +184,7 @@
     "noMatch": "沒有符合的檔案"
   },
   "terminal": {
-    "exited": "[行程已結束]"
+    "exited": "[行程已結束]",
+    "ended": "任務已結束或終端已被清理"
   }
 }

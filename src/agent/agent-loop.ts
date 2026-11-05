@@ -23,7 +23,10 @@ import type { ChatMessage, ProviderConfig, ToolCall, ToolDefinition } from "./ty
 
 export type ToolResultMessage = Extract<ChatMessage, { role: "tool" }>;
 
-/** 无副作用、可安全并发的只读工具；只要一批调用全是这些，就并发执行。 */
+/**
+ * 无副作用、可安全并发的只读工具（宿主未提供 isParallelSafe 时的回退）。
+ * 生产路径以 tool-contract.ts 的契约为准；run_code 不在其中：meow 桥可以写文件。
+ */
 export const READ_ONLY_PARALLEL_TOOLS = new Set([
   "list_dir",
   "read_file",
@@ -32,8 +35,9 @@ export const READ_ONLY_PARALLEL_TOOLS = new Set([
   "grep",
   "context_status",
   "diagnostics",
-  "run_code",
   "memory_read",
+  "web_search",
+  "web_fetch",
 ]);
 
 /** 回合计时快照，循环结束时交宿主落盘 metrics。 */
@@ -159,6 +163,11 @@ export interface AgentLoopHost {
   pushUserMessage(messages: ChatMessage[], content: string): Promise<void>;
   /** 工具被门禁拦截时的 UI 事件（tool_started/output/finished ok=false） */
   onToolBlocked?(call: ToolCall, message: ToolResultMessage): void;
+  /**
+   * 该工具是否可放进并发批（宿主按工具契约判定，覆盖内置与动态工具）。
+   * 未实现时退回 READ_ONLY_PARALLEL_TOOLS，保持旧行为。
+   */
+  isParallelSafe?(toolName: string): boolean;
 
   hooks?: AgentLoopHooks;
 }
@@ -181,6 +190,10 @@ export async function runAgentLoop(host: AgentLoopHost): Promise<void> {
   let turnStopBlocks = 0;
   const { enabled: incrementalOn } = host.incremental();
   const hooks = host.hooks;
+  const parallelSafe = (call: ToolCall): boolean =>
+    host.isParallelSafe
+      ? host.isParallelSafe(call.function.name)
+      : READ_ONLY_PARALLEL_TOOLS.has(call.function.name);
 
   while (true) {
     // 服务商声明了上下文窗口就按窗口裁剪：永远保留 system，
@@ -438,7 +451,7 @@ export async function runAgentLoop(host: AgentLoopHost): Promise<void> {
         host.aborted() ? Promise.resolve(abortedMessage(call)) : runTask(call),
       );
       if (remainingCalls.length) {
-        if (remainingCalls.every((call) => READ_ONLY_PARALLEL_TOOLS.has(call.function.name))) {
+        if (remainingCalls.every((call) => parallelSafe(call))) {
           const results = await Promise.all(remainingCalls.map((call) => runReadOnly(call)));
           for (const result of results) {
             await host.pushToolMessage(messages, result);
@@ -461,7 +474,7 @@ export async function runAgentLoop(host: AgentLoopHost): Promise<void> {
       for (const promise of taskPromises) {
         await host.pushToolMessage(messages, await promise);
       }
-    } else if (toolCalls.every((call) => READ_ONLY_PARALLEL_TOOLS.has(call.function.name))) {
+    } else if (toolCalls.every((call) => parallelSafe(call))) {
       const results = await Promise.all(toolCalls.map((call) => runReadOnly(call)));
       for (const result of results) {
         await host.pushToolMessage(messages, result);

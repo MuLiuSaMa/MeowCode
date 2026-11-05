@@ -184,9 +184,15 @@
   position: absolute;
   inset: 0;
   overflow-y: auto;
+  /* 同 .mc-stream：内容滚到底后不再把滚动传给外层面板 */
+  overscroll-behavior: contain;
 }
 .mc-rtp__tabbody[data-hidden="true"] {
   display: none;
+}
+/* 子 Agent 自己管滚动：页签容器不再整块滚，头栏/插话框固定，只有消息流滚动 */
+.mc-rtp__tabbody[data-kind="subagent"] {
+  overflow: hidden;
 }
 
 .mc-rtp__placeholder {

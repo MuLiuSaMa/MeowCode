@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -48,6 +49,7 @@ import {
   type Settings,
   type SubagentRun,
   type SubagentSummary,
+  type TurnFileChangeGroup,
   type SubagentTranscript,
   type ThemePreference,
   type TimelineItem,
@@ -69,6 +71,7 @@ import { WorkspaceOverview } from "./components/WorkspaceOverview";
 import { CloseConfirmDialog } from "./components/CloseConfirmDialog";
 import { ContextWarningBanner } from "./components/ContextWarningBanner";
 import { Composer, type ComposerChip, type ComposerImage } from "./components/Composer";
+import { EmptySuggestions } from "./components/EmptySuggestions";
 import { ConversationPanel } from "./components/ConversationPanel";
 import { RightPanel } from "./components/RightPanel";
 import { QuickOpenDialog } from "./components/panel/QuickOpenDialog";
@@ -175,7 +178,7 @@ function preparingWriteTool(
   count?: number,
   names?: string[],
   path?: string,
-): { tool: "write_file" | "edit_file"; path?: string } | null {
+): { tool: "write_file" | "edit_file" | "delete_file" | "move_file"; path?: string } | null {
   const total = Math.max(count ?? 0, names?.length ?? 0);
   if (!names?.length || names.length !== total) return null;
   const withPath = path ? { path } : {};
@@ -208,6 +211,49 @@ function planDocPathOf(tool: string, input: unknown): string | null {
     (item) => item.startsWith("plans/") && !item.split("/").includes(".."),
   );
   return inPlans ? normalized[0] : null;
+}
+
+/**
+ * 输入框下移的缓动：先快、后慢，无回弹。
+ * easeOutExpo 起步速度最高，尾段缓慢贴住底部；不使用弹簧/过冲。
+ */
+const COMPOSER_DROP_EASING = "cubic-bezier(0.16, 1, 0.3, 1)";
+
+/**
+ * 新对话首次发送后的输入框下移动画：
+ * 发送前记录 .mc-composerwrap 的位置，消息出现后（空态布局撤掉）用 FLIP
+ * 从旧位置滑到底部，而不是瞬移。只动 transform，不触发布局回流。
+ */
+function startComposerDrop(container: HTMLElement | null, from: DOMRect): void {
+  if (!container || typeof window === "undefined") return;
+  if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
+  const el = container.querySelector<HTMLElement>(".mc-composerwrap");
+  if (!el || !el.animate) return;
+  const delta = from.top - el.getBoundingClientRect().top;
+  if (Math.abs(delta) < 2) return;
+  el.style.willChange = "transform";
+  // 先写死旧位置，保证 layout 阶段后的第一帧一定画在起点；
+  // 再用 fill:forwards 的 WAAPI 从起点滑到 0，动画结束前内联起点不会抢回来。
+  el.style.transform = `translateY(${delta}px)`;
+  void el.offsetHeight;
+  const animation = el.animate(
+    [{ transform: `translateY(${delta}px)` }, { transform: "translateY(0)" }],
+    { duration: 500, easing: COMPOSER_DROP_EASING, fill: "forwards" },
+  );
+  let cleaned = false;
+  const cleanup = () => {
+    if (cleaned) return;
+    cleaned = true;
+    el.style.transform = "";
+    el.style.willChange = "";
+    try {
+      animation.cancel();
+    } catch {
+      // 动画已结束/已取消时忽略
+    }
+  };
+  animation.onfinish = cleanup;
+  animation.oncancel = cleanup;
 }
 
 const EMPTY_TURN_METRICS: TurnMetrics = {
@@ -445,6 +491,11 @@ export default function App() {
     },
     [activeDraftKey],
   );
+  /** 新对话建议点击后让输入框获得焦点（只递增，Composer 监听变化） */
+  const [composerFocusToken, setComposerFocusToken] = useState(0);
+  /** 新对话发送后做 FLIP：记录发送前输入框位置，让输入框从居中位置滑到底部 */
+  const chatflowRef = useRef<HTMLDivElement | null>(null);
+  const pendingComposerDrop = useRef<DOMRect | null>(null);
   /** 上次进程退出时未交付的排队消息（服务端恢复，只展示不自动执行） */
   const [recoveredPrompts, setRecoveredPrompts] = useState<QueuedPrompt[]>([]);
   const [, setLastTurn] = useState<{
@@ -587,9 +638,15 @@ export default function App() {
       sideTabsRef.current.activate(tabId);
       setShowInspector(true);
     });
+    // agent 启动后台任务：打开（或复用）对应终端页签，用户可直接接管输入
+    const offJob = window.meow.onEnsureJobTab(({ id, command }) => {
+      sideTabsRef.current.openJobTerminal(id, command);
+      setShowInspector(true);
+    });
     return () => {
       offEnsure();
       offSelect();
+      offJob();
     };
   }, []);
 
@@ -633,49 +690,65 @@ export default function App() {
     }
     return 360;
   });
-  const resizeDragRef = useRef<{ startX: number; startWidth: number } | null>(null);
+  /** 拖拽实时宽度：move 只写 DOM 与这两个 ref，渲染读 ref —— 拖拽期间流式事件触发的重渲染不会把宽度拉回旧 state */
+  const listWidthLive = useRef(listWidth);
+  const inspectorWidthLive = useRef(inspectorWidth);
+  const inspWrapRef = useRef<HTMLDivElement | null>(null);
+  const listColRef = useRef<HTMLDivElement | null>(null);
+  const resizeDragRef = useRef<{ startX: number; startWidth: number; lastWidth: number } | null>(null);
   const startResize = useCallback(
     (event: ReactPointerEvent<HTMLDivElement>) => {
-      resizeDragRef.current = { startX: event.clientX, startWidth: inspectorWidth };
+      resizeDragRef.current = {
+        startX: event.clientX,
+        startWidth: inspectorWidthLive.current,
+        lastWidth: inspectorWidthLive.current,
+      };
       try {
         (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
       } catch {
         // 指针捕获失败也不影响拖拽
       }
     },
-    [inspectorWidth],
+    [],
   );
   const moveResize = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
     trackResizeCursor(event);
     const drag = resizeDragRef.current;
     if (!drag) return;
-    setInspectorWidth(
-      clampInspectorWidth(drag.startWidth - (event.clientX - drag.startX), listWidth),
-    );
-  }, [listWidth]);
+    // 拖拽每帧只改一个 CSS 变量，绕过 React：整棵 App 树逐像素重渲染是卡顿根源
+    const width = clampInspectorWidth(drag.startWidth - (event.clientX - drag.startX), listWidthLive.current);
+    drag.lastWidth = width;
+    inspectorWidthLive.current = width;
+    inspWrapRef.current?.style.setProperty("--inspector-w", `${width}px`);
+  }, []);
   const endResize = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
-    if (!resizeDragRef.current) return;
+    const drag = resizeDragRef.current;
+    if (!drag) return;
     resizeDragRef.current = null;
     try {
       (event.currentTarget as HTMLElement).releasePointerCapture(event.pointerId);
     } catch {
       // 已释放
     }
-    setInspectorWidth((current) => {
-      try {
-        window.localStorage.setItem("meowcode:inspectorWidth", String(Math.round(current)));
-      } catch {
-        // 存储失败忽略
-      }
-      return current;
-    });
+    // 松手才把末值提交进 state（单一数据源）并落盘
+    inspectorWidthLive.current = drag.lastWidth;
+    setInspectorWidth(drag.lastWidth);
+    try {
+      window.localStorage.setItem("meowcode:inspectorWidth", String(Math.round(drag.lastWidth)));
+    } catch {
+      // 存储失败忽略
+    }
   }, []);
 
   const [listDragging, setListDragging] = useState(false);
-  const listDragRef = useRef<{ startX: number; startWidth: number } | null>(null);
+  const listDragRef = useRef<{ startX: number; startWidth: number; lastWidth: number } | null>(null);
   const startListResize = useCallback(
     (event: ReactPointerEvent<HTMLDivElement>) => {
-      listDragRef.current = { startX: event.clientX, startWidth: listWidth };
+      listDragRef.current = {
+        startX: event.clientX,
+        startWidth: listWidthLive.current,
+        lastWidth: listWidthLive.current,
+      };
       setListDragging(true);
       try {
         (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
@@ -683,23 +756,28 @@ export default function App() {
         // 指针捕获失败也不影响拖拽
       }
     },
-    [listWidth],
+    [],
   );
-  const moveListResize = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
-    trackResizeCursor(event);
+  const moveListResize = useCallback(
+    (event: ReactPointerEvent<HTMLDivElement>) => {
+      trackResizeCursor(event);
+      const drag = listDragRef.current;
+      if (!drag) return;
+      // 左栏在左侧：向右拖 = 变宽；同右侧：只写 DOM，不触发 React 重渲染
+      const width = clampListWidth(
+        drag.startWidth + (event.clientX - drag.startX),
+        inspectorWidthLive.current,
+        inspectorOccupied,
+      );
+      drag.lastWidth = width;
+      listWidthLive.current = width;
+      listColRef.current?.style.setProperty("width", `${width}px`);
+    },
+    [inspectorOccupied],
+  );
+  const endListResize = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
     const drag = listDragRef.current;
     if (!drag) return;
-    // 左栏在左侧：向右拖 = 变宽
-    setListWidth(
-      clampListWidth(
-        drag.startWidth + (event.clientX - drag.startX),
-        inspectorWidth,
-        inspectorOccupied,
-      ),
-    );
-  }, [inspectorWidth, inspectorOccupied]);
-  const endListResize = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
-    if (!listDragRef.current) return;
     listDragRef.current = null;
     setListDragging(false);
     try {
@@ -707,15 +785,17 @@ export default function App() {
     } catch {
       // 已释放
     }
-    setListWidth((current) => {
-      try {
-        window.localStorage.setItem("meowcode:listWidth", String(Math.round(current)));
-      } catch {
-        // 存储失败忽略
-      }
-      return current;
-    });
+    listWidthLive.current = drag.lastWidth;
+    setListWidth(drag.lastWidth);
+    try {
+      window.localStorage.setItem("meowcode:listWidth", String(Math.round(drag.lastWidth)));
+    } catch {
+      // 存储失败忽略
+    }
   }, []);
+  // 渲染前同步：没拖拽时实时值 = state（窗口 resize 等外部改动能生效）；拖拽中保留 DOM 上的实时宽度
+  if (!listDragRef.current) listWidthLive.current = listWidth;
+  if (!resizeDragRef.current) inspectorWidthLive.current = inspectorWidth;
   // 窗口缩放 / 侧栏开关后重新分配宽度：聊天区始终保留 CHAT_MIN_WIDTH。
   // 先按当前右栏压左栏，再按新左栏压右栏；每轮只会向预算内收敛，不会来回震荡。
   useEffect(() => {
@@ -1225,6 +1305,8 @@ export default function App() {
         compaction?: { messageIndex: number; summary: string } | null;
         compactions?: CompactionPoint[];
         checkpoints?: SessionCheckpoint[];
+        /** 按回合聚合的文件改动：历史回放重建「已编辑 N 个文件」卡片 */
+        turnChanges?: TurnFileChangeGroup[];
       }>("/session/messages");
       // 快速切换时旧请求可能后到，直接丢弃
       if (loadId !== sessionLoadIdRef.current) return false;
@@ -1292,6 +1374,7 @@ export default function App() {
         nextKey,
         messages.compactions?.length ? messages.compactions : (messages.compaction ?? null),
         messages.checkpoints,
+        messages.turnChanges,
       );
       if (current.lastTurn?.status === "interrupted") {
         history.push({
@@ -2564,6 +2647,24 @@ export default function App() {
       ]);
     }
     if (event.type === "file_changed") {
+      // 工具行显示 +N -N：按 callId 把本次改动的增删行数挂回对应行
+      const detail = event as { callId?: string; added?: number; removed?: number };
+      if (
+        detail.callId &&
+        (detail.added !== undefined || detail.removed !== undefined)
+      ) {
+        setTimeline((items) =>
+          items.map((item) =>
+            item.kind === "tool" && item.callId === detail.callId
+              ? {
+                  ...item,
+                  ...(detail.added !== undefined ? { added: detail.added } : {}),
+                  ...(detail.removed !== undefined ? { removed: detail.removed } : {}),
+                }
+              : item,
+          ),
+        );
+      }
       // 审阅自动展开：页签不存在才新建并激活；已存在只让 ReviewTab 自己刷新
       if (!event.sessionId || event.sessionId === sessionIdRef.current) {
         scheduleSessionChangesRefresh();
@@ -2582,6 +2683,27 @@ export default function App() {
       (!event.sessionId || event.sessionId === sessionIdRef.current)
     ) {
       scheduleSessionChangesRefresh();
+      // 本轮改过文件：在对话末尾插一张「已编辑 N 个文件」卡片（撤销 / 审阅入口）。
+      // 没有改动就不插 —— 卡片本身是「这轮动过代码」的信号，不该当每条回复的页脚。
+      const files = event.files ?? [];
+      if (files.length) {
+        const key = `turn-changes-${event.turnId ?? Date.now()}`;
+        setTimeline((items) =>
+          items.some((item) => item.kind === "turn-changes" && item.key === key)
+            ? items
+            : [
+                ...items,
+                {
+                  kind: "turn-changes" as const,
+                  key,
+                  ...(event.turnId ? { turnId: event.turnId } : {}),
+                  ...(event.checkpointId ? { checkpointId: event.checkpointId } : {}),
+                  ...(event.canRewind !== undefined ? { canRewind: event.canRewind } : {}),
+                  files,
+                },
+              ],
+        );
+      }
     }
     if (event.type === "plan_updated") {
       setPlan({
@@ -2821,6 +2943,13 @@ export default function App() {
         setSessionSwitching(false);
       }
     }
+    // 首次发送会让空态布局撤掉；先记下输入框当前位置，消息入列后滑到底部
+    if (firstSend && !queued && emptyConversationRef.current) {
+      const from = chatflowRef.current
+        ?.querySelector<HTMLElement>(".mc-composerwrap")
+        ?.getBoundingClientRect();
+      if (from) pendingComposerDrop.current = from;
+    }
     if (overrideText === undefined) setInput("");
     if (chips.length) setChips([]);
     let queueId: string | undefined;
@@ -2961,21 +3090,27 @@ export default function App() {
   }, []);
 
   const respondApproval = useCallback(
-    async (approved: boolean) => {
+    async (
+      approved: boolean,
+      extras?: { feedback?: string; remember?: "tool" | "path" | "command-exact" | "command-prefix" },
+    ) => {
       if (!approval) return;
       const current = approval;
       removeApproval(current.sessionId, current.callId);
       try {
         await api("/approval/response", {
           method: "POST",
-          body: JSON.stringify({ callId: current.callId, approved }),
+          body: JSON.stringify({ callId: current.callId, approved, ...extras }),
         });
         setTimeline((items) => {
           const index = items.findIndex((item) => item.kind === "tool" && item.callId === current.callId);
           if (index < 0) return items;
           const next = [...items];
           const item = next[index] as TimelineTool;
-          next[index] = approved ? item : { ...item, ok: false, output: "User denied this tool call." };
+          const denied = extras?.feedback
+            ? `User denied this tool call. Reason: ${extras.feedback}`
+            : "User denied this tool call.";
+          next[index] = approved ? item : { ...item, ok: false, output: denied };
           return next;
         });
       } catch (err) {
@@ -4131,6 +4266,28 @@ export default function App() {
     () => Boolean(session && providers.length && workspaceAvailable !== false),
     [session, providers, workspaceAvailable],
   );
+  /** 全新会话：输入框居中、标题上移，并在下方显示建议轮播 */
+  const emptyConversation = Boolean(
+    canUse &&
+      timeline.length === 0 &&
+      !sessionLoading &&
+      !pendingAsk &&
+      !planDocPath &&
+      recoveredPrompts.length === 0 &&
+      queuedPrompts.length === 0,
+  );
+
+  /** sendPrompt 是 useCallback，避免其依赖数组漏项时读到旧的空态判断 */
+  const emptyConversationRef = useRef(emptyConversation);
+  emptyConversationRef.current = emptyConversation;
+
+  // 空态撤掉的那次布局提交里先挂上旧位置，保证输入框第一帧就在起点，不会先跳到屏幕底部
+  useLayoutEffect(() => {
+    const from = pendingComposerDrop.current;
+    if (!from || emptyConversation) return;
+    pendingComposerDrop.current = null;
+    startComposerDrop(chatflowRef.current, from);
+  }, [emptyConversation]);
   /** 项目切换菜单的数据源：已知项目（worktree 会话归回原项目）；当前项排最前，其余按显示名排序 */
   const projects = useMemo(() => {
     const set = new Set<string>();
@@ -4251,7 +4408,8 @@ export default function App() {
       {/* 接管全应用 title 提示，统一换成自绘气泡（不弹原生 tooltip） */}
       <GlobalTooltip />
       <AppShell
-        listWidth={listWidth}
+        listWidth={listWidthLive.current}
+        listColRef={listColRef}
         listResizer={
           <div
             className="mc-listresize"
@@ -4343,6 +4501,8 @@ export default function App() {
               onStopSession={(sessionId) => void stopSessionById(sessionId)}
               onArchiveSession={archiveSession}
               onExportSession={(filePath, title) => void exportSessionByPath(filePath, title)}
+              onArchiveSessions={archiveProject}
+              onDeleteSessions={(filePaths) => void deleteSessionsByPath(filePaths)}
               onArchiveProject={archiveProject}
               onRenameProject={renameProject}
               onTogglePinProject={togglePinProject}
@@ -4367,10 +4527,11 @@ export default function App() {
                 />
               ) : null}
               <div
+                ref={inspWrapRef}
                 className="mc-inspwrap"
                 data-collapsed={!showInspector}
                 data-animated={inspectorAnimated}
-                style={{ "--inspector-w": `${inspectorWidth}px` } as CSSProperties}
+                style={{ "--inspector-w": `${inspectorWidthLive.current}px` } as CSSProperties}
               >
                 <RightPanel
                   tabs={visibleSideTabs}
@@ -4467,93 +4628,112 @@ export default function App() {
               </button>
             </div>
           ) : null}
-          <MessageList
-            items={timeline}
-            canUse={canUse}
-            waiting={waiting}
-            preparing={toolPreparing}
-            preparingTool={preparingTool}
-            loading={sessionLoading}
-            subagentsByCallId={subagentsByCallId}
-            onOpenSubagent={openSubagentById}
-            onOpenFile={(path) => {
-              sideTabs.openFile(path);
-              setShowInspector(true);
-            }}
-            onRestoreCheckpoint={(checkpointId) => void restoreCheckpoint(checkpointId)}
-            onRewindCheckpoint={(checkpointId, mode) => void rewindCheckpoint(checkpointId, mode)}
-            focus={messageFocus}
-          />
-          <Composer
-            value={input}
-            onChange={setInput}
-            chips={chips}
-            onRemoveChip={removeChip}
-            onAttachSkill={(chip) => addChip({ kind: "skill", ...chip })}
-            onAttachPlugin={(chip) => addChip({ kind: "plugin", ...chip })}
-            onAttachCommand={(chip) => addChip({ kind: "command", ...chip })}
-            onAttachFile={({ name, path }) =>
-              addChip({ kind: "file", id: path, name, path })
-            }
-            askCard={pendingAsk}
-            onAnswerAsk={answerAsk}
-            onSend={(images, overrideText) => void sendPrompt(overrideText, undefined, images)}
-            onError={pushError}
-            onStop={abortSession}
-            // 切换/新建会话加载期间禁止发送，避免请求落到上一个会话的 runtime
-            disabled={!canUse || sessionSwitching || worktreeBusy}
-            streaming={streaming}
-            queuedPrompts={queuedPrompts}
-            onSteerQueued={(id) => void steerQueuedPrompt(id)}
-            onRemoveQueued={(id) => void removeQueuedPrompt(id)}
-            recoveredPrompts={recoveredPrompts}
-            onSendRecovered={sendRecoveredPrompt}
-            onDiscardRecovered={(id) => void discardRecoveredPrompt(id)}
-            canUse={canUse}
-            workspace={session?.cwd ?? settings?.workspace}
-            projectCwd={projectCwd}
-            gitBranch={gitBranch}
-            onOpenGit={() => setView("git")}
-            worktreeEnabled={worktreeIntent || Boolean(session?.worktree)}
-            worktreeLocked={Boolean(session?.worktree)}
-            worktreeBusy={worktreeBusy}
-            onToggleWorktree={(next) => void toggleWorktree(next)}
-            workspaceAvailable={workspaceAvailable}
-            providers={providers}
-            activeProviderId={activeProviderId}
-            onChangeActiveProvider={(id) => void changeActiveProvider(id)}
-            onManageModels={() => {
-              setSettingsSection("models");
-              setView("settings");
-            }}
-            model={activeProvider?.displayName || activeProvider?.model || t("model.unconfigured")}
-            effort={activeProvider?.reasoningEffort ?? ""}
-            onChangeEffort={(value) => void changeEffortFor(activeProviderId, value)}
-            permissionMode={permissionMode}
-            onChangePermissionMode={(mode) => void changePermissionMode(mode)}
-            agentProfile={agentProfile}
-            onChangeAgentProfile={(profile) => void changeAgentProfile(profile)}
-            architectures={harnessArchitectures}
-            activeArchitecture={sessionArchitecture}
-            onSelectArchitecture={(id) => void selectHarnessArchitecture(id)}
-            chatMode={chatMode}
-            onChangeChatMode={(mode) => void changeChatMode(mode)}
-            planDocPath={planDocPath}
-            onConfirmPlan={() => void confirmPlan()}
-            onDismissPlan={dismissPlan}
-            contextUsage={contextUsage}
-            showContext={hasSentMessage}
-            compacting={compacting}
-            cacheDiagnostics={cacheDiagnostics}
-            onManualCompact={manualCompact}
-            projects={projects}
-            projectNames={settings?.projectNames ?? {}}
-            onSwitchProject={switchProject}
-            onNewProject={() => void pickWorkspace()}
-            onRemoveProject={removeProject}
-            plan={plan}
-            changes={uncommittedSessionChanges}
-          />
+          <div
+            className="mc-chatflow"
+            data-empty={emptyConversation ? "true" : undefined}
+            ref={chatflowRef}
+          >
+            <MessageList
+              items={timeline}
+              canUse={canUse}
+              waiting={waiting}
+              preparing={toolPreparing}
+              preparingTool={preparingTool}
+              loading={sessionLoading}
+              subagentsByCallId={subagentsByCallId}
+              onOpenSubagent={openSubagentById}
+              onOpenFile={(path) => {
+                sideTabs.openFile(path);
+                setShowInspector(true);
+              }}
+              onRestoreCheckpoint={(checkpointId) => void restoreCheckpoint(checkpointId)}
+              onRewindCheckpoint={(checkpointId, mode) => void rewindCheckpoint(checkpointId, mode)}
+              onOpenReview={() => {
+                sideTabs.open({ kind: "review" });
+                setShowInspector(true);
+              }}
+              focus={messageFocus}
+            />
+            <Composer
+              value={input}
+              onChange={setInput}
+              focusToken={composerFocusToken}
+              chips={chips}
+              onRemoveChip={removeChip}
+              onAttachSkill={(chip) => addChip({ kind: "skill", ...chip })}
+              onAttachPlugin={(chip) => addChip({ kind: "plugin", ...chip })}
+              onAttachCommand={(chip) => addChip({ kind: "command", ...chip })}
+              onAttachFile={({ name, path }) =>
+                addChip({ kind: "file", id: path, name, path })
+              }
+              askCard={pendingAsk}
+              onAnswerAsk={answerAsk}
+              onSend={(images, overrideText) => void sendPrompt(overrideText, undefined, images)}
+              onError={pushError}
+              onStop={abortSession}
+              // 切换/新建会话加载期间禁止发送，避免请求落到上一个会话的 runtime
+              disabled={!canUse || sessionSwitching || worktreeBusy}
+              streaming={streaming}
+              queuedPrompts={queuedPrompts}
+              onSteerQueued={(id) => void steerQueuedPrompt(id)}
+              onRemoveQueued={(id) => void removeQueuedPrompt(id)}
+              recoveredPrompts={recoveredPrompts}
+              onSendRecovered={sendRecoveredPrompt}
+              onDiscardRecovered={(id) => void discardRecoveredPrompt(id)}
+              canUse={canUse}
+              workspace={session?.cwd ?? settings?.workspace}
+              projectCwd={projectCwd}
+              gitBranch={gitBranch}
+              onOpenGit={() => setView("git")}
+              worktreeEnabled={worktreeIntent || Boolean(session?.worktree)}
+              worktreeLocked={Boolean(session?.worktree)}
+              worktreeBusy={worktreeBusy}
+              onToggleWorktree={(next) => void toggleWorktree(next)}
+              workspaceAvailable={workspaceAvailable}
+              providers={providers}
+              activeProviderId={activeProviderId}
+              onChangeActiveProvider={(id) => void changeActiveProvider(id)}
+              onManageModels={() => {
+                setSettingsSection("models");
+                setView("settings");
+              }}
+              model={activeProvider?.displayName || activeProvider?.model || t("model.unconfigured")}
+              effort={activeProvider?.reasoningEffort ?? ""}
+              onChangeEffort={(value) => void changeEffortFor(activeProviderId, value)}
+              permissionMode={permissionMode}
+              onChangePermissionMode={(mode) => void changePermissionMode(mode)}
+              agentProfile={agentProfile}
+              onChangeAgentProfile={(profile) => void changeAgentProfile(profile)}
+              architectures={harnessArchitectures}
+              activeArchitecture={sessionArchitecture}
+              onSelectArchitecture={(id) => void selectHarnessArchitecture(id)}
+              chatMode={chatMode}
+              onChangeChatMode={(mode) => void changeChatMode(mode)}
+              planDocPath={planDocPath}
+              onConfirmPlan={() => void confirmPlan()}
+              onDismissPlan={dismissPlan}
+              contextUsage={contextUsage}
+              showContext={hasSentMessage}
+              compacting={compacting}
+              cacheDiagnostics={cacheDiagnostics}
+              onManualCompact={manualCompact}
+              projects={projects}
+              projectNames={settings?.projectNames ?? {}}
+              onSwitchProject={switchProject}
+              onNewProject={() => void pickWorkspace()}
+              onRemoveProject={removeProject}
+              plan={plan}
+              changes={uncommittedSessionChanges}
+            />
+            {emptyConversation ? (
+              <EmptySuggestions
+                onPick={(text) => {
+                  setInput(text);
+                  setComposerFocusToken((token) => token + 1);
+                }}
+              />
+            ) : null}
+          </div>
         </div>
 
         {view === "git" ? (
@@ -4670,8 +4850,8 @@ export default function App() {
         source={approval?.source}
         hookReason={approval?.hookReason}
         sandboxEscape={approval?.sandboxEscape}
-        onApprove={() => void respondApproval(true)}
-        onDeny={() => void respondApproval(false)}
+        onApprove={(options) => void respondApproval(true, options)}
+        onDeny={(feedback) => void respondApproval(false, feedback ? { feedback } : undefined)}
       />
 
       <CloseConfirmDialog open={closeAsk} onDecide={decideClose} />

@@ -164,6 +164,23 @@ export class SnapshotStore {
       }
     }
     this.state.set(target.path, value);
+    await this.persistState();
+  }
+
+  /**
+   * 把当前已知态落盘（state.json）。
+   *
+   * 检查点索引只在打点那一刻写入，回合中途的改动（打点之后又改了文件）不会进索引；
+   * 换一个 SnapshotStore 实例（server 侧回滚、进程重启）就只能从索引播种，于是把
+   * 「Agent 自己刚改成的新内容」误判成「外部修改」，白要一次 force。
+   * 每次观测后同步落一份真实磁盘态，冲突检测才有正确基线。
+   */
+  async persistState(): Promise<void> {
+    try {
+      await writeJsonAtomic(path.join(this.dir, "state.json"), this.stateSnapshot());
+    } catch {
+      // 落盘失败只让下一次回滚退化成「基线缺失」警告，不该影响写文件主流程
+    }
   }
 
   async noteBefore(targets: SnapshotTarget[]): Promise<void> {
@@ -213,6 +230,12 @@ export class SnapshotStore {
     this.stateSeeded = true;
     if (this.state.size > 0) return;
     try {
+      // 首选 state.json：它记的是最后一次观测到的真实磁盘态，含打点之后的改动
+      const persisted = await readJsonFile<SnapshotFiles>(path.join(this.dir, "state.json"));
+      if (persisted) {
+        for (const [p, sha] of Object.entries(persisted)) this.state.set(p, sha);
+        return;
+      }
       const indexDir = path.join(this.dir, "index");
       const names = await fs.readdir(indexDir);
       let latest: { file: string; mtime: number } | null = null;

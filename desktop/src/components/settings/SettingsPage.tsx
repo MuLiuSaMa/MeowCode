@@ -14,6 +14,7 @@ import {
   LuPanelTop,
   LuSettings,
   LuShield,
+  LuShieldCheck,
   LuSparkles,
   LuWebhook,
 } from "react-icons/lu";
@@ -28,6 +29,7 @@ import {
 } from "../../api";
 import { AboutSection } from "./AboutSection";
 import { AppearanceSection } from "./AppearanceSection";
+import { ApprovalsSection } from "./ApprovalsSection";
 import { ArchiveSection } from "./ArchiveSection";
 import { DataImportSection } from "./DataImportSection";
 import { GeneralSection } from "./GeneralSection";
@@ -51,6 +53,7 @@ export type SettingsSectionId =
   | "worktree"
   | "rewind"
   | "rules"
+  | "approvals"
   | "hooks"
   | "sandbox"
   | "dataImport"
@@ -80,6 +83,7 @@ const SECTIONS: Array<{
   { id: "worktree", labelKey: "sections.worktree", icon: LuGitFork },
   { id: "rewind", labelKey: "sections.rewind", icon: LuHistory },
   { id: "rules", labelKey: "sections.rules", icon: LuListChecks },
+  { id: "approvals", labelKey: "sections.approvals", icon: LuShieldCheck },
   { id: "hooks", labelKey: "sections.hooks", icon: LuWebhook },
   { id: "sandbox", labelKey: "sections.sandbox", icon: LuShield, beta: true },
   { id: "dataImport", labelKey: "sections.dataImport", icon: LuImport },
@@ -290,6 +294,7 @@ export function SettingsBody({
       />
     ),
     hooks: <HooksSection turnRunning={turnRunning} onToast={onToast} />,
+    approvals: <ApprovalsSection workspace={workspace} onToast={onToast} />,
     sandbox: <SandboxSection onToast={onToast} />,
     dataImport: <DataImportSection onToast={onToast} onImported={onReloadSessions} />,
     models: (

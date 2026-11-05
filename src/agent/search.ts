@@ -2,9 +2,10 @@ import { spawn } from "node:child_process";
 import path from "node:path";
 import { StringDecoder } from "node:string_decoder";
 import { displayPath, resolveToolPath } from "./paths.js";
+import { truncateToTokens } from "./tool-budget.js";
 import type { ToolResult } from "./types.js";
 
-const MAX_SEARCH_CHARS = 12_000;
+const MAX_SEARCH_TOKENS = 2_000;
 const SEARCH_TIMEOUT_MS = 30_000;
 const DEFAULT_GLOB_RESULTS = 100;
 const DEFAULT_GREP_RESULTS = 100;
@@ -88,17 +89,15 @@ function normalizeResults(value: unknown, fallback: number): number {
 }
 
 /**
- * 内联文本裁到 12k，但**完整 body 通过 spillText 交回调用方**。
+ * 内联文本裁到 2k tokens，但**完整 body 通过 spillText 交回调用方**。
  *
- * 落盘必须存裁剪前的全文：否则模型按提示去读 artifact 却读不到 12k 之后的内容，
+ * 落盘必须存裁剪前的全文：否则模型按提示去读 artifact 却读不到裁剪后的内容，
  * 只能重跑整次搜索 —— 那是一次完整上下文重发，比多存几百 KB 贵得多。
  */
 function truncateSearchOutput(text: string): { inline: string; spillText?: string } {
-  if (text.length <= MAX_SEARCH_CHARS) return { inline: text };
-  return {
-    inline: `${text.slice(0, MAX_SEARCH_CHARS)}\n... [truncated ${text.length - MAX_SEARCH_CHARS} characters]`,
-    spillText: text,
-  };
+  const truncated = truncateToTokens(text, MAX_SEARCH_TOKENS);
+  if (!truncated.truncated) return { inline: text };
+  return { inline: truncated.text, spillText: text };
 }
 
 function ignoredGlobArgs(): string[] {

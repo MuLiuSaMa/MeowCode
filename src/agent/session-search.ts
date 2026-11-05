@@ -432,7 +432,7 @@ async function loadIndexEntry(
 /** 等待所有在途影子写盘结束（测试用：清理临时目录前调用，避免 ENOTEMPTY）。 */
 export async function flushSearchIndexWrites(): Promise<void> {
   for (let guard = 0; guard < 100 && pendingWrites.size > 0; guard += 1) {
-    await Promise.allSettled([...pendingWrites]);
+    await Promise.allSettled(pendingWrites);
   }
 }
 

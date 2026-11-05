@@ -44,7 +44,14 @@
     "sandboxEvidence": "Preuve du blocage",
     "sandboxNote": "Réessayer hors de la sandbox exécute cette commande avec vos privilèges utilisateur. Une seule tentative est autorisée ; la sandbox reste active.",
     "sandboxDeny": "Garder la sandbox",
-    "sandboxRetry": "Réessayer hors sandbox"
+    "sandboxRetry": "Réessayer hors sandbox",
+    "feedbackLabel": "Raison (facultatif)",
+    "feedbackPlaceholder": "Dites à l'agent ce qui ne va pas",
+    "rememberCommand": "Ne plus demander cette commande dans ce projet",
+    "rememberPath": "Ne plus demander les modifications de ce fichier dans ce projet",
+    "rememberTool": "Ne plus demander cet outil dans ce projet",
+    "rememberExact": "Cette commande uniquement",
+    "rememberPrefix": "Commandes commençant par ceci"
   },
   "plan": {
     "aria": "Plan des tâches",
@@ -224,7 +231,6 @@
     "empty": "Aucun message pour l'instant",
     "stop": "Arrêter",
     "send": "Envoyer",
-    "openMain": "Ouvrir la fenêtre principale",
     "inputPlaceholder": "Tapez un message, Entrée pour envoyer",
     "inputIdle": "Cette session n'est pas en cours d'exécution. Continuez dans la fenêtre principale.",
     "dropHint": "Déposez pour joindre"

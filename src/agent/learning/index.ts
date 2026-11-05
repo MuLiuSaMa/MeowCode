@@ -49,7 +49,6 @@ import type {
 import {
   buildOutcomeRecord,
   computeImplicitScore,
-  createTurnTrace,
   detectSignals,
   isControlGroupHoldout,
   isUserCorrection,

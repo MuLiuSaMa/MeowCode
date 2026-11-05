@@ -44,7 +44,14 @@
     "sandboxEvidence": "拦截证据",
     "sandboxNote": "在沙箱外重试会以当前用户权限执行这条命令；只放行这一次，不会关闭沙箱。",
     "sandboxDeny": "保持沙箱",
-    "sandboxRetry": "在沙箱外重试"
+    "sandboxRetry": "在沙箱外重试",
+    "feedbackLabel": "拒绝理由（可选）",
+    "feedbackPlaceholder": "告诉 AI 哪里不对，它会据此调整",
+    "rememberCommand": "本项目内不再询问该命令",
+    "rememberPath": "本项目内不再询问对该文件的改动",
+    "rememberTool": "本项目内不再询问此工具",
+    "rememberExact": "仅此命令",
+    "rememberPrefix": "以该命令开头"
   },
   "plan": {
     "aria": "任务计划",
@@ -198,10 +205,10 @@
   "agentProfile": {
     "aria": "主 Agent 档位",
     "customDesc": "自定义架构 · 沿用当前档位的能力",
-    "dispatchable_one": "{{tagline}} · 可派发 {{count, number}} 个子 Agent",
-    "dispatchable_few": "{{tagline}} · 可派发 {{count, number}} 个子 Agent",
-    "dispatchable_many": "{{tagline}} · 可派发 {{count, number}} 个子 Agent",
-    "dispatchable_other": "{{tagline}} · 可派发 {{count, number}} 个子 Agent"
+    "dispatchable_one": "{{tagline}} · {{count, number}} 子 Agent",
+    "dispatchable_few": "{{tagline}} · {{count, number}} 子 Agent",
+    "dispatchable_many": "{{tagline}} · {{count, number}} 子 Agent",
+    "dispatchable_other": "{{tagline}} · {{count, number}} 子 Agent"
   },
   "contextMeter": {
     "usage": "上下文 {{used}} / {{window}}（{{percent}}%）",
@@ -224,7 +231,6 @@
     "empty": "暂无消息",
     "stop": "停止",
     "send": "发送",
-    "openMain": "打开主窗口",
     "inputPlaceholder": "输入消息，Enter 发送",
     "inputIdle": "该会话未在运行中，请在主窗口打开后继续",
     "dropHint": "松开，添加到消息"

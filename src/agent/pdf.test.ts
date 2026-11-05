@@ -128,9 +128,9 @@ describe("renderPdfText", () => {
       stats: { pages: 1, chars: 50, emptyPages: 0, countedPages: 1 },
       requested: [1],
       pages: [{ page: 1, text: "x".repeat(50) }],
-      pageBudget: 20,
+      pageBudget: 5,
     });
-    expect(result.text).toContain("[page truncated at 20 chars]");
+    expect(result.text).toContain("[page truncated at 5 tokens]");
     expect(result.truncatedPages).toBe(1);
   });
 });

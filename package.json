@@ -19,16 +19,19 @@
     "lint:fix": "oxlint --fix src desktop/src"
   },
   "dependencies": {
+    "@joplin/turndown-plugin-gfm": "^1.0.68",
     "@modelcontextprotocol/sdk": "^1.32.1",
     "@vscode/ripgrep": "^1.18.0",
     "jiti": "^2.7.0",
     "koffi": "3.1.1",
     "pdfjs-dist": "^6.4.299",
     "smol-toml": "^1.9.1",
+    "turndown": "^7.2.4",
     "undici": "^7.16.0"
   },
   "devDependencies": {
     "@types/node": "^24.10.1",
+    "@types/turndown": "^5.0.6",
     "@vscode/ripgrep-win32-x64": "1.18.0",
     "oxlint": "^1.90.0",
     "png-to-ico": "^3.0.2",

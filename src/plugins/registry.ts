@@ -71,6 +71,7 @@ export class PluginRegistry {
     const result = registerDynamicTool(tool.name, {
       definition,
       ...(tool.requiresApproval !== undefined ? { requiresApproval: tool.requiresApproval } : {}),
+      ...(tool.contract !== undefined ? { contract: tool.contract } : {}),
       execute: (input: unknown, workspace: string, options: ToolRunOptions): Promise<ToolResult> =>
         tool.execute((input ?? {}) as Record<string, unknown>, {
           workspace,

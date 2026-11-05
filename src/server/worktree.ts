@@ -6,7 +6,7 @@ import { promises as fs, type Dirent } from "node:fs";
 import { randomBytes } from "node:crypto";
 import path from "node:path";
 import type { SessionWorktree } from "../agent/types.js";
-import { GitError, runGit, withLock } from "./git.js";
+import { GitError, runGit, withLock } from "../git/git.js";
 
 export type CreatedSessionWorktree = {
   worktree: SessionWorktree;

@@ -1,27 +1,33 @@
 {
   "empty": {
     "setup": "配置模型服务商并选择工作区后即可开始。",
-    "phrase": {
-      "createSomething": "创造一些了不起的东西",
-      "fixBugs": "帮助你修复一些 BUG",
-      "dreams": "帮助你实现梦想",
-      "ideas": "把想法变成现实",
-      "automate": "让重复工作自动化",
-      "hardProblems": "一起解决棘手的问题",
-      "handyTool": "写一个趁手的小工具",
-      "nextProject": "搭建你的下一个项目",
-      "tidyCode": "整理混乱的代码",
-      "funProduct": "做一个有趣的小产品",
-      "clearLogic": "把复杂的逻辑理清",
-      "saveTime": "帮你节省一点时间",
-      "newDirection": "探索一个新的方向",
-      "inspiration": "让灵感落地成代码",
-      "annoyance": "修好那个恼人的问题",
-      "newFeature": "为项目加一个新功能",
-      "elegantCode": "写一段优雅的实现",
-      "mergePr": "把 PR 改到能合并",
-      "together": "陪你写完这段代码",
-      "usable": "让产品更好用一点"
+    "title": "一起来创造些什么？",
+    "suggestions": {
+      "idea": "创建一个鹈鹕骑自行车",
+      "readme": "给项目写一份清晰的 README",
+      "bug": "定位并修好这段报错",
+      "tests": "给现有功能补一组测试",
+      "api": "设计一个简洁的 API",
+      "refactor": "把长函数拆成小模块",
+      "script": "写一个自动化小脚本",
+      "dashboard": "做一个数据可视化面板",
+      "risk": "检查最近改动有没有风险",
+      "steps": "把需求拆成执行步骤",
+      "setting": "给设置页加一个开关",
+      "release": "整理一份发布检查清单",
+      "label": "建议",
+      "ideaPrompt": "请用当前项目最合适的技术做一个「鹈鹕骑自行车」的小作品：可以是 SVG、Canvas 动画或网页。先确定输出形态并实现，注意比例和动作，让人一眼认出是鹈鹕在骑车；完成后告诉我如何预览。",
+      "readmePrompt": "请先阅读项目结构和关键配置，为这个项目写一份清晰的 README：包含简介、技术栈、安装与启动、目录说明、常用脚本和常见问题。保持准确，不要编造不存在的命令。",
+      "bugPrompt": "我遇到一个报错。请先复现并定位根因（给出证据），再修复；不要只改表面症状。完成后说明改动点、影响范围和验证方式。",
+      "testsPrompt": "请检查现有测试框架和覆盖缺口，为这个功能补一组有意义的测试，覆盖正常路径和关键失败路径；运行测试并修复暴露的问题。",
+      "apiPrompt": "请设计一个简洁、稳定的 API：先说明资源、请求/响应字段、错误码和鉴权方式；如果项目已有风格就沿用，并给出最小实现或接口草案。",
+      "refactorPrompt": "请找出项目中一个过长或职责混杂的函数，在保持行为不变的前提下拆分成更小的模块；先说明拆分边界，再做改动并运行相关测试。",
+      "scriptPrompt": "请写一个能解决重复劳动的小脚本。先问我要自动化的具体流程，然后实现、说明用法，并在当前环境实际跑一遍验证。",
+      "dashboardPrompt": "请基于项目现有数据源做一个数据可视化面板：先确认指标和口径，再选择最小依赖实现；确保空数据、加载和错误状态都有处理。",
+      "riskPrompt": "请审查当前未提交的改动：按风险排序列出问题（行为回归、边界条件、安全、性能），给出文件/行号和修复建议；不要只做风格评论。",
+      "stepsPrompt": "请把我的需求拆成可执行的步骤：每步说明目标、涉及文件、验收标准和依赖关系；先给计划，我确认后再开始改代码。",
+      "settingPrompt": "请给设置页加一个可持久化的开关：沿用现有设置表单和存储通道，补上空闲/禁用/保存失败的状态，并验证重启后仍生效。",
+      "releasePrompt": "请整理一份发布检查清单：覆盖版本号、构建、测试、迁移、回滚和发布说明；结合当前项目的实际命令，不要写通用套话。"
     }
   },
   "waiting": {
@@ -100,6 +106,15 @@
       "title": "删除对话",
       "description": "「{{name}}」及其全部消息会从磁盘删除，无法恢复。"
     },
+    "multiSelect": "多选",
+    "selectedCount": "已选 {{count}} 项",
+    "selectAll": "全选",
+    "selectNone": "取消全选",
+    "exitSelection": "退出多选",
+    "deleteSelected": {
+      "title": "删除所选对话",
+      "description": "所选 {{count}} 个对话及其全部消息会从磁盘删除，无法恢复。"
+    },
     "searchTitle": "对话全文检索",
     "searchPlaceholder": "搜索全部对话…",
     "searchHitCount": "{{count}} 条命中",
@@ -152,6 +167,21 @@
     "cardDeleted": "删除",
     "cardUnchanged": "无变化"
   },
+  "turnChanges": {
+    "title_one": "已编辑 {{count}} 个文件",
+    "title_other": "已编辑 {{count}} 个文件",
+    "title_few": "已编辑 {{count}} 个文件",
+    "title_many": "已编辑 {{count}} 个文件",
+    "undo": "撤销",
+    "undoHint": "撤销本轮的文件改动（对话保留）",
+    "undoUnavailable": "本轮没有可回滚的文件快照",
+    "review": "审阅",
+    "showMore_one": "再显示 {{count}} 个文件",
+    "showMore_other": "再显示 {{count}} 个文件",
+    "showMore_few": "再显示 {{count}} 个文件",
+    "showMore_many": "再显示 {{count}} 个文件",
+    "collapse": "收起"
+  },
   "tool": {
     "state": {
       "running": "运行中",
@@ -185,12 +215,6 @@
     "stepCount_other": "{{count}} 步",
     "stepCount_few": "{{count}} 步",
     "stepCount_many": "{{count}} 步",
-    "section": {
-      "input": "输入",
-      "output": "输出",
-      "outputSpilled": "输出 · 已落盘",
-      "outputTruncated": "输出 · 已截断"
-    },
     "emptyOutput": "（无输出）",
     "waitingOutput": "等待输出…",
     "outputNotSaved": "历史记录未保存输出",
@@ -225,7 +249,29 @@
     "computerClipboard": "读写剪贴板",
     "computerWait": "等待",
     "computerAction": "电脑控制",
-    "toolSearch": "搜索工具"
+    "toolSearch": "搜索工具",
+    "webSearch": "联网搜索",
+    "webFetch": "抓取网页",
+    "deleteFile": "删除文件",
+    "moveFile": "移动文件",
+    "applyPatch": "应用补丁",
+    "git": "Git",
+    "job": "后台任务",
+    "view": {
+      "open": "打开",
+      "unanswered": "（未回答）",
+      "waitingAnswer": "等待回答…",
+      "params": "参数",
+      "noChanges": "（无变更）",
+      "replaceAll": "全部匹配替换",
+      "truncated": "内容已截断",
+      "spilled": "完整内容已保存到 {{path}}",
+      "moreLines": "还有 {{count}} 行未显示",
+      "background": "后台运行",
+      "added": "新增",
+      "updated": "更新",
+      "deleted": "已删除"
+    }
   },
   "role": {
     "general": "通用",
@@ -245,17 +291,17 @@
   "profile": {
     "standard": {
       "label": "标准 Agent",
-      "tagline": "完整能力：全量工具 + 全部子 Agent",
+      "tagline": "全量工具 + 全部角色",
       "description": "默认主 Agent：全量工具，按需派发全部子 Agent 角色。"
     },
     "minimal": {
       "label": "极简 Agent",
-      "tagline": "只有 read_file + run_command，自己动手",
+      "tagline": "只有 read_file + run_command",
       "description": "只保留 read_file 与 run_command（命令行读写文件），子 Agent 仅通用 / Explore，架构图里也没有门禁。"
     },
     "complex": {
       "label": "复杂 Agent",
-      "tagline": "十道门禁：规划→范围→深挖→实现→评审→复验→终审→清扫→目标核对",
+      "tagline": "十道门禁编排",
       "description": "全量工具 + 13 个角色（含范围 / 深挖 / 独立复验 / 终审 / 收敛清扫 / 目标核对），架构图跑 G0→G1→G2→G3.5→G4→G5→G6→G7→sweep→goal-check。"
     }
   },

@@ -44,7 +44,14 @@
     "sandboxEvidence": "ブロックの証拠",
     "sandboxNote": "サンドボックス外で再試行すると、現在のユーザー権限でこのコマンドが実行されます。許可されるのは今回の 1 回だけで、サンドボックスは無効になりません。",
     "sandboxDeny": "サンドボックスを維持",
-    "sandboxRetry": "サンドボックス外で再試行"
+    "sandboxRetry": "サンドボックス外で再試行",
+    "feedbackLabel": "拒否理由（任意）",
+    "feedbackPlaceholder": "どこが問題かを伝えると、AI が次回から調整します",
+    "rememberCommand": "このプロジェクトではこのコマンドを再確認しない",
+    "rememberPath": "このプロジェクトではこのファイルの変更を再確認しない",
+    "rememberTool": "このプロジェクトではこのツールを再確認しない",
+    "rememberExact": "このコマンドのみ",
+    "rememberPrefix": "このコマンドで始まるもの"
   },
   "plan": {
     "aria": "タスク計画",
@@ -224,7 +231,6 @@
     "empty": "メッセージはまだありません",
     "stop": "停止",
     "send": "送信",
-    "openMain": "メインウィンドウを開く",
     "inputPlaceholder": "メッセージを入力、Enter で送信",
     "inputIdle": "このセッションは実行中ではありません。メインウィンドウで続行してください。",
     "dropHint": "ドロップで添付"

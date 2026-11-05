@@ -1,7 +1,12 @@
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "./ui/Button";
 import { CodeBlock } from "./ui/CodeBlock";
+import { CustomSelect } from "./ui/CustomSelect";
 import { Dialog } from "./ui/Dialog";
+import "./ApprovalDialog.css";
+
+type RememberScope = "tool" | "path" | "command-exact" | "command-prefix";
 
 export function ApprovalDialog({
   open,
@@ -41,10 +46,24 @@ export function ApprovalDialog({
   hookReason?: string;
   /** 沙箱拒绝后的「沙箱外重试」审批 */
   sandboxEscape?: { command: string; detail: string };
-  onApprove: () => void;
-  onDeny: () => void;
+  onApprove: (options?: { remember?: RememberScope }) => void;
+  onDeny: (feedback?: string) => void;
 }) {
   const { t } = useTranslation("shell");
+  const [feedback, setFeedback] = useState("");
+  const [remember, setRemember] = useState(false);
+  const [commandScope, setCommandScope] = useState<"command-exact" | "command-prefix">(
+    "command-exact",
+  );
+
+  // 每次打开新审批都清空：上一条的理由/勾选不能带到下一条
+  useEffect(() => {
+    if (open) {
+      setFeedback("");
+      setRemember(false);
+      setCommandScope("command-exact");
+    }
+  }, [open, tool]);
 
   if (kind === "hook") {
     return (
@@ -71,10 +90,10 @@ export function ApprovalDialog({
         </div>
         <p className="mc-dialog__desc">{t("approval.hookNote")}</p>
         <div className="mc-dialog__footer">
-          <Button variant="danger" onClick={onDeny}>
+          <Button variant="danger" onClick={() => onDeny()}>
             {t("approval.hookSkip")}
           </Button>
-          <Button variant="primary" onClick={onApprove}>
+          <Button variant="primary" onClick={() => onApprove()}>
             {t("approval.hookRun")}
           </Button>
         </div>
@@ -97,10 +116,10 @@ export function ApprovalDialog({
         </div>
         <p className="mc-dialog__desc">{t("approval.sandboxNote")}</p>
         <div className="mc-dialog__footer">
-          <Button variant="danger" onClick={onDeny}>
+          <Button variant="danger" onClick={() => onDeny()}>
             {t("approval.sandboxDeny")}
           </Button>
-          <Button variant="primary" onClick={onApprove}>
+          <Button variant="primary" onClick={() => onApprove()}>
             {t("approval.sandboxRetry")}
           </Button>
         </div>
@@ -109,7 +128,7 @@ export function ApprovalDialog({
   }
 
   return (
-    <Dialog open={open} onClose={onDeny} labelledBy="mc-approval-title">
+    <Dialog open={open} onClose={() => onDeny()} labelledBy="mc-approval-title">
       <span className="mc-dialog__title" id="mc-approval-title">
         {t("approval.title")}
       </span>
@@ -148,11 +167,70 @@ export function ApprovalDialog({
         {diff ? <CodeBlock label={t("approval.diff")} text={diff} /> : null}
       </div>
 
+      {!stale ? (
+        <div className="mc-approval__extras">
+          <label className="mc-approval__label" htmlFor="mc-approval-feedback">
+            {t("approval.feedbackLabel")}
+          </label>
+          <textarea
+            id="mc-approval-feedback"
+            className="mc-approval__feedback"
+            rows={2}
+            value={feedback}
+            placeholder={t("approval.feedbackPlaceholder")}
+            onChange={(event) => setFeedback(event.target.value)}
+          />
+          <label className="mc-approval__remember">
+            <input
+              type="checkbox"
+              checked={remember}
+              onChange={(event) => setRemember(event.target.checked)}
+            />
+            <span>
+              {tool === "run_command"
+                ? t("approval.rememberCommand")
+                : tool === "write_file" || tool === "edit_file" || tool === "multi_edit"
+                  ? t("approval.rememberPath")
+                  : t("approval.rememberTool")}
+            </span>
+          </label>
+          {remember && tool === "run_command" ? (
+            <CustomSelect
+              className="mc-approval__scope"
+              value={commandScope}
+              options={[
+                { value: "command-exact", label: t("approval.rememberExact") },
+                { value: "command-prefix", label: t("approval.rememberPrefix") },
+              ]}
+              onChange={(value) => setCommandScope(value)}
+              ariaLabel={t("approval.rememberCommand")}
+              placement="top"
+            />
+          ) : null}
+        </div>
+      ) : null}
+
       <div className="mc-dialog__footer">
-        <Button variant="danger" onClick={onDeny}>
+        <Button variant="danger" onClick={() => onDeny(feedback.trim() || undefined)}>
           {t("approval.deny")}
         </Button>
-        <Button variant="primary" onClick={onApprove}>
+        <Button
+          variant="primary"
+          onClick={() =>
+            onApprove(
+              remember
+                ? {
+                    remember:
+                      tool === "run_command"
+                        ? commandScope
+                        : tool === "write_file" || tool === "edit_file" || tool === "multi_edit"
+                          ? "path"
+                          : "tool",
+                  }
+                : undefined,
+            )
+          }
+        >
           {t("approval.approve")}
         </Button>
       </div>

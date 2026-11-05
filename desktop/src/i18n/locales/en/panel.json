@@ -119,7 +119,16 @@
   },
   "filePreview": {
     "copyPath": "Copy path",
-    "openInEditor": "Open in editor",
+    "preview": "Preview",
+    "source": "Source",
+    "openInEditor": "Open with system app",
+    "openWith": "Open with",
+    "systemDefault": "System default",
+    "chooseApp": "Choose another app…",
+    "showInFolder": "Show in folder",
+    "openWithApp": "Open with {{name}}",
+    "explorerShort": "Explorer",
+    "detectingApps": "Detecting apps…",
     "loading": "Loading…",
     "truncated": "Showing the first {{shown}} of {{total}} lines"
   },
@@ -158,7 +167,11 @@
     "changeCount_other": "Changed {{count}} times",
     "changeCount_few": "Changed {{count}} times",
     "changeCount_many": "Changed {{count}} times",
-    "diffAria": "Changes in {{path}}"
+    "diffAria": "Changes in {{path}}",
+    "review": "Review changes",
+    "reviewing": "Reviewing…",
+    "resultTitle": "AI review",
+    "close": "Close"
   },
   "workspace": {
     "loading": "Loading…",
@@ -171,6 +184,7 @@
     "noMatch": "No matching files"
   },
   "terminal": {
-    "exited": "[Process exited]"
+    "exited": "[Process exited]",
+    "ended": "The job ended or this terminal is no longer available"
   }
 }

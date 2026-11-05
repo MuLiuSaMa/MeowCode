@@ -1,27 +1,33 @@
 {
   "empty": {
     "setup": "Configurez un fournisseur de modèle et choisissez un espace de travail pour commencer.",
-    "phrase": {
-      "createSomething": "Créer quelque chose de remarquable",
-      "fixBugs": "Vous aider à corriger des bugs",
-      "dreams": "Vous aider à réaliser vos rêves",
-      "ideas": "Transformer les idées en réalité",
-      "automate": "Automatiser les tâches répétitives",
-      "hardProblems": "Résoudre ensemble les problèmes difficiles",
-      "handyTool": "Écrire un petit outil bien pratique",
-      "nextProject": "Monter votre prochain projet",
-      "tidyCode": "Ranger du code en désordre",
-      "funProduct": "Concevoir un petit produit sympa",
-      "clearLogic": "Démêler une logique complexe",
-      "saveTime": "Vous faire gagner un peu de temps",
-      "newDirection": "Explorer une nouvelle direction",
-      "inspiration": "Transformer l'inspiration en code",
-      "annoyance": "Corriger ce problème agaçant",
-      "newFeature": "Ajouter une fonctionnalité au projet",
-      "elegantCode": "Écrire une implémentation élégante",
-      "mergePr": "Rendre la PR prête à fusionner",
-      "together": "Écrire ce code avec vous jusqu'au bout",
-      "usable": "Rendre le produit un peu plus agréable"
+    "title": "Créons quelque chose ensemble ?",
+    "suggestions": {
+      "idea": "Créer un pélican à vélo",
+      "readme": "Rédiger un README clair pour le projet",
+      "bug": "Localiser et corriger cette erreur",
+      "tests": "Ajouter des tests à la fonctionnalité existante",
+      "api": "Concevoir une API simple",
+      "refactor": "Découper une longue fonction en petits modules",
+      "script": "Écrire un petit script d'automatisation",
+      "dashboard": "Créer un panneau de visualisation de données",
+      "risk": "Vérifier les risques des modifications récentes",
+      "steps": "Décomposer les besoins en étapes",
+      "setting": "Ajouter un interrupteur dans les paramètres",
+      "release": "Préparer une checklist de publication",
+      "label": "Suggestions",
+      "ideaPrompt": "Crée une petite réalisation « pélican à vélo » avec la technologie la plus adaptée au projet : SVG, animation Canvas ou page web. Choisis d'abord le format de sortie, puis implémente avec des proportions et un mouvement crédibles pour qu'on reconnaisse immédiatement un pélican sur un vélo ; indique enfin comment la prévisualiser.",
+      "readmePrompt": "Lis la structure du projet et sa configuration, puis rédige un README clair : présentation, stack, installation/lancement, arborescence, scripts courants et FAQ. N'invente pas de commandes.",
+      "bugPrompt": "J'ai une erreur. Reproduis-la et identifie la cause racine avec des preuves avant de corriger ; ne traite pas seulement le symptôme. Explique ensuite le changement, sa portée et la vérification.",
+      "testsPrompt": "Examine la structure de tests existante et les lacunes de couverture, puis ajoute des tests utiles pour cette fonctionnalité : cas nominal et principaux cas d'échec. Exécute-les et corrige ce qu'ils révèlent.",
+      "apiPrompt": "Conçois une API simple et stable : décris d'abord les ressources, les champs requête/réponse, les codes d'erreur et l'authentification. Suis le style du projet et fournis une implémentation minimale ou un brouillon d'interface.",
+      "refactorPrompt": "Trouve une fonction trop longue ou aux responsabilités mélangées, découpe-la en modules plus petits sans changer le comportement ; explique d'abord les frontières, puis modifie et exécute les tests concernés.",
+      "scriptPrompt": "Écris un petit script pour supprimer les tâches répétitives. Demande-moi d'abord le processus à automatiser, implémente-le, explique l'usage et exécute-le réellement dans cet environnement pour vérifier.",
+      "dashboardPrompt": "Construis un panneau de visualisation de données à partir des sources existantes du projet. Valide d'abord les indicateurs et définitions, utilise un minimum de dépendances et gère les états vide, chargement et erreur.",
+      "riskPrompt": "Relis les modifications non commitées : liste les problèmes par risque (régressions, cas limites, sécurité, performance) avec fichier/ligne et corrections. Ne t'arrête pas aux remarques de style.",
+      "stepsPrompt": "Découpe mon besoin en étapes exécutables : objectif, fichiers concernés, critères d'acceptation et dépendances pour chacune. Donne d'abord le plan et attends ma confirmation avant de modifier le code.",
+      "settingPrompt": "Ajoute un interrupteur persistant à la page de paramètres. Réutilise le formulaire et le stockage existants, gère les états inactif/désactivé/échec d'enregistrement et vérifie qu'il survit au redémarrage.",
+      "releasePrompt": "Prépare une checklist de release : version, build, tests, migrations, rollback et notes de version. Utilise les commandes réelles du projet plutôt que des phrases génériques."
     }
   },
   "waiting": {
@@ -100,6 +106,15 @@
       "title": "Supprimer la conversation",
       "description": "« {{name}} » et tous ses messages seront supprimés du disque. Cette action est irréversible."
     },
+    "multiSelect": "Sélection multiple",
+    "selectedCount": "{{count}} sélectionnés",
+    "selectAll": "Tout sélectionner",
+    "selectNone": "Tout désélectionner",
+    "exitSelection": "Quitter la sélection",
+    "deleteSelected": {
+      "title": "Supprimer les conversations sélectionnées",
+      "description": "Les {{count}} conversations sélectionnées et tous leurs messages seront supprimés du disque. Cette action est irréversible."
+    },
     "searchTitle": "Recherche plein texte des conversations",
     "searchPlaceholder": "Rechercher dans toutes les conversations…",
     "searchHitCount": "{{count}} résultats",
@@ -152,6 +167,21 @@
     "cardDeleted": "supprimé",
     "cardUnchanged": "inchangé"
   },
+  "turnChanges": {
+    "title_one": "{{count}} fichier modifié",
+    "title_other": "{{count}} fichier modifié",
+    "title_few": "{{count}} fichier modifié",
+    "title_many": "{{count}} fichier modifié",
+    "undo": "Annuler",
+    "undoHint": "Annuler les modifications de fichiers de ce tour (la conversation est conservée)",
+    "undoUnavailable": "Aucun instantané de fichiers pour ce tour",
+    "review": "Examiner",
+    "showMore_one": "Afficher {{count}} fichier de plus",
+    "showMore_other": "Afficher {{count}} fichier de plus",
+    "showMore_few": "Afficher {{count}} fichier de plus",
+    "showMore_many": "Afficher {{count}} fichier de plus",
+    "collapse": "Afficher moins"
+  },
   "tool": {
     "state": {
       "running": "En cours",
@@ -185,12 +215,6 @@
     "stepCount_other": "{{count}} étapes",
     "stepCount_few": "{{count}} étapes",
     "stepCount_many": "{{count}} étapes",
-    "section": {
-      "input": "Entrée",
-      "output": "Sortie",
-      "outputSpilled": "Sortie · enregistrée sur disque",
-      "outputTruncated": "Sortie · tronquée"
-    },
     "emptyOutput": "(aucune sortie)",
     "waitingOutput": "En attente de la sortie…",
     "outputNotSaved": "Sortie non enregistrée dans l'historique",
@@ -225,7 +249,29 @@
     "computerClipboard": "Presse-papiers",
     "computerWait": "Attendre",
     "computerAction": "Contrôle de l’ordinateur",
-    "toolSearch": "Rechercher des outils"
+    "toolSearch": "Rechercher des outils",
+    "webSearch": "Recherche web",
+    "webFetch": "Récupérer la page",
+    "deleteFile": "Supprimer le fichier",
+    "moveFile": "Déplacer le fichier",
+    "applyPatch": "Appliquer le patch",
+    "git": "Git",
+    "job": "Tâche en arrière-plan",
+    "view": {
+      "open": "Ouvrir",
+      "unanswered": "(sans réponse)",
+      "waitingAnswer": "En attente de réponse…",
+      "params": "Paramètres",
+      "noChanges": "(aucune modification)",
+      "replaceAll": "Remplacer toutes les occurrences",
+      "truncated": "Contenu tronqué",
+      "spilled": "Contenu complet enregistré dans {{path}}",
+      "moreLines": "{{count}} lignes de plus",
+      "background": "Exécution en arrière-plan",
+      "added": "Ajouté",
+      "updated": "Mis à jour",
+      "deleted": "Supprimé"
+    }
   },
   "role": {
     "general": "Général",
