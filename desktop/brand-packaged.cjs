@@ -35,6 +35,9 @@ function applyVersionInfo(file, info) {
         InternalName: "MeowCode",
         OriginalFilename: "MeowCode.exe",
         LegalCopyright: info.copyright,
+        // 固定版本号只能是四段，字符串版本保留 package.json 里的三段写法
+        FileVersion: String(info.version),
+        ProductVersion: String(info.version),
       },
     );
     versionInfo.outputToResourceEntries(resource.entries);

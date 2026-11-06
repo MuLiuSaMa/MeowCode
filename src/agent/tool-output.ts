@@ -8,7 +8,7 @@
 import { randomUUID } from "node:crypto";
 import { promises as fs } from "node:fs";
 import path from "node:path";
-import { resolveToolPath } from "./paths.js";
+import { canonicalPathSync, resolveToolPath } from "./paths.js";
 
 export const TOOL_OUTPUT_DIR = path.join(".meowcode", "tool-output");
 export const TOOL_OUTPUT_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
@@ -25,7 +25,8 @@ export async function persistToolOutput(
   const file = path.join(dir, `${tool}-${stamp}-${randomUUID().slice(0, 8)}.log`);
   await fs.writeFile(file, text, "utf8");
   await cleanupToolOutput(dir);
-  return path.relative(workspace, file).split(path.sep).join("/");
+  // dir 来自 realpath；workspace 可能是短路径 / junction，直接 relative 会得到一串 ..
+  return path.relative(canonicalPathSync(workspace), file).split(path.sep).join("/");
 }
 
 /** 删除超过保留期的落盘文件；并发删除或文件已消失都不影响本次调用。 */

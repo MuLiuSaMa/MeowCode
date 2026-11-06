@@ -13,7 +13,7 @@
 ; ============================================================================
 
 #define MyAppName "MeowCode"
-#define MyAppVersion GetVersionNumbersString("desktop\release\win-unpacked\MeowCode.exe")
+#define MyAppVersion GetFileVersionString("desktop\release\win-unpacked\MeowCode.exe")
 #define MyAppPublisher "MuLiuSaMa"
 #define MyAppURL "https://github.com/MuLiuSaMa/MeowCode"
 #define MyAppExeName "MeowCode.exe"

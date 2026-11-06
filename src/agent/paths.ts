@@ -1,4 +1,4 @@
-import { promises as fs } from "node:fs";
+import { promises as fs, realpathSync } from "node:fs";
 import path from "node:path";
 
 /**
@@ -23,11 +23,27 @@ export const IGNORED_ENTRY_NAMES = new Set([
   ".cache",
 ]);
 
+/** 词法包含判断：两侧都必须是绝对路径。 */
+function containsLexically(base: string, target: string): boolean {
+  const relative = path.relative(base, target);
+  return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
+}
+
+/** 真实路径：展开 8.3 短名与 junction；路径不存在时回退词法解析。 */
+export function canonicalPathSync(value: string): string {
+  try {
+    return realpathSync.native(value);
+  } catch {
+    return path.resolve(value);
+  }
+}
+
 export function isWithinWorkspace(workspace: string, target: string): boolean {
   const resolvedWorkspace = path.resolve(workspace);
   const resolvedTarget = path.resolve(target);
-  const relative = path.relative(resolvedWorkspace, resolvedTarget);
-  return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
+  if (containsLexically(resolvedWorkspace, resolvedTarget)) return true;
+  // 工作区可能来自 8.3 短路径 / junction，而目标已被 realpath 展开：再按真实路径比一次
+  return containsLexically(canonicalPathSync(resolvedWorkspace), canonicalPathSync(resolvedTarget));
 }
 
 /**
@@ -51,7 +67,7 @@ async function realpathWithMissingSegments(target: string): Promise<string> {
   }
 }
 
-/** 工作区本身可能是 junction；不存在时回退词法路径（测试/尚未创建的工作区）。 */
+/** 工作区本身可能是 junction / 8.3 短路径；不存在时回退词法路径。 */
 async function canonicalWorkspace(workspace: string): Promise<string> {
   const resolved = path.resolve(workspace);
   try {
@@ -83,8 +99,13 @@ export async function resolveToolPath(
 }
 
 export function displayPath(workspace: string, target: string): string {
-  const resolved = path.resolve(workspace, target);
+  const base = path.resolve(workspace);
+  const resolved = path.resolve(base, target);
+  if (containsLexically(base, resolved)) return path.relative(base, resolved) || ".";
+  // 短路径 / junction 工作区：目标已被 realpath 展开，按真实路径重新算相对位置
+  const realBase = canonicalPathSync(base);
+  const realResolved = canonicalPathSync(resolved);
+  if (containsLexically(realBase, realResolved)) return path.relative(realBase, realResolved) || ".";
   // 工作区外路径用绝对路径展示，避免出现大量 ..\..\
-  if (!isWithinWorkspace(workspace, resolved)) return resolved;
-  return path.relative(path.resolve(workspace), resolved) || ".";
+  return resolved;
 }

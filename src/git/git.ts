@@ -13,6 +13,7 @@ import { spawn } from "node:child_process";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { commandEnv } from "../agent/exec/env.js";
+import { canonicalPathSync } from "../agent/paths.js";
 import { killProcessTree } from "../agent/exec/process-tree.js";
 
 // ---- 类型 ----
@@ -554,8 +555,9 @@ export function normalizeRepoPath(root: string, raw: string, label = "path"): st
 
 /** 破坏性操作（discard）只允许工作区内路径：工作区是子目录时不能悄悄丢掉看不见的改动。 */
 export function assertInsideWorkspace(root: string, workspace: string, relative: string): void {
-  const target = path.resolve(root, relative);
-  const rel = path.relative(path.resolve(workspace), target);
+  // git 返回的 root 是真实长路径；workspace 可能是 8.3 短路径 / junction，先归一才能比较
+  const target = path.resolve(canonicalPathSync(root), relative);
+  const rel = path.relative(canonicalPathSync(workspace), target);
   if (rel.startsWith("..") || path.isAbsolute(rel)) {
     throw new GitError(
       "invalid_path",

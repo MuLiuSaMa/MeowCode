@@ -24,7 +24,7 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import vm from "node:vm";
 import { readTextFile } from "./edit-content.js";
-import { IGNORED_ENTRY_NAMES, resolveToolPath } from "./paths.js";
+import { canonicalPathSync, IGNORED_ENTRY_NAMES, resolveToolPath } from "./paths.js";
 import { recordRead } from "./read-state.js";
 import { globPaths, grepMatches } from "./search.js";
 import { sweepToolOutput } from "./tool-output.js";
@@ -482,7 +482,7 @@ async function persistLog(workspace: string, lines: string[]): Promise<string | 
     await fs.writeFile(file, text, "utf8");
     // 与其它工具输出共用 7 天保留策略：日志目录会随长会话无限增长
     await sweepToolOutput(workspace);
-    return path.relative(workspace, file).split(path.sep).join("/");
+    return path.relative(canonicalPathSync(workspace), file).split(path.sep).join("/");
   } catch {
     return null;
   }
