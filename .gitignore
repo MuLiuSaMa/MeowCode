@@ -5,6 +5,7 @@ dist/
 coverage/
 desktop/dist/
 desktop/release/
+/installer-output/
 desktop/renderer/
 desktop/.vite/
 *.tsbuildinfo

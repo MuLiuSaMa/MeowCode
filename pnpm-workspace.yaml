@@ -5,7 +5,7 @@ allowBuilds:
   electron-winstaller: true
   esbuild: true
   koffi: true
-  node-pty: set this to true or false
+  node-pty: true
 
 onlyBuiltDependencies:
   - esbuild
