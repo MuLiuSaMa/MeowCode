@@ -869,7 +869,7 @@ function devRepoRoot() {
 function serverScriptPath() {
   const root = devRepoRoot();
   if (root) return path.join(root, "dist", "server", "server.js");
-  return path.join(process.resourcesPath, "agent-server", "server.js");
+  return path.join(process.resourcesPath, "agent-server", "server", "server.js");
 }
 
 /** 插件市场 bundles：dev=仓库 resources/marketplace；打包=extraResources/marketplace */
@@ -1821,7 +1821,8 @@ async function bootServerOnce() {
   const spawn = () =>
     new Promise((resolve, reject) => {
       const child = fork(script, [], {
-        cwd: devRepoRoot() ?? app.getAppPath(),
+        // 打包后 app.getAppPath() 是 app.asar 文件路径，不能当 cwd（spawn 会 ENOENT）
+        cwd: devRepoRoot() ?? process.resourcesPath,
         env: buildServerEnv(settings),
         stdio: ["ignore", "pipe", "pipe", "ipc"],
         serialization: "advanced",

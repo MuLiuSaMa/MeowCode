@@ -82,7 +82,7 @@
     ],
     "extraResources": [
       {
-        "from": "../dist/server",
+        "from": "../dist",
         "to": "agent-server"
       },
       {
