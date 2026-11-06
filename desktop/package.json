@@ -71,17 +71,8 @@
       "output": "release"
     },
     "files": [
-      "main.cjs",
-      "main-i18n.cjs",
-      "tray-sessions.cjs",
-      "notifications.cjs",
-      "preload.cjs",
-      "update-check.cjs",
-      "update-download.cjs",
-      "github-oauth.cjs",
-      "browser-host.cjs",
-      "computer-host.cjs",
-      "terminals.cjs",
+      "*.cjs",
+      "!brand-packaged.cjs",
       "renderer/**/*",
       "package.json"
     ],
