@@ -104,6 +104,19 @@ function ignoredGlobArgs(): string[] {
   return IGNORED_GLOBS.flatMap((glob) => ["--glob", `!${glob}`]);
 }
 
+/**
+ * 搜索根：先用 realpath 做越界校验，再返回调用方拼写的词法路径。
+ * rg 的 cwd 是 workspace，两者拼写不一致（8.3 短路径 / junction）会让 --glob 忽略规则失效。
+ */
+async function searchRoot(
+  workspace: string,
+  target: string,
+  allowOutsideWorkspace: boolean,
+): Promise<string> {
+  await resolveToolPath(workspace, target, allowOutsideWorkspace);
+  return path.resolve(workspace, target);
+}
+
 /** code mode（run_code 沙箱）用的结构化 grep 结果；只含 match 事件，不含 context 行。 */
 export type GrepMatch = { path: string; line: number; text: string };
 
@@ -122,7 +135,7 @@ export async function grepMatches(
 ): Promise<GrepMatch[]> {
   const normalizedPattern = pattern.trim();
   if (!normalizedPattern) return [];
-  const absoluteTarget = await resolveToolPath(workspace, target, allowOutsideWorkspace);
+  const absoluteTarget = await searchRoot(workspace, target, allowOutsideWorkspace);
   const limit = normalizeResults(options.maxResults, DEFAULT_GREP_RESULTS);
   const args = [
     "--json",
@@ -174,7 +187,7 @@ export async function globPaths(
 ): Promise<string[]> {
   const normalizedPattern = pattern.trim();
   if (!normalizedPattern) return [];
-  const absoluteTarget = await resolveToolPath(workspace, target, allowOutsideWorkspace);
+  const absoluteTarget = await searchRoot(workspace, target, allowOutsideWorkspace);
   const limit = normalizeResults(maxResults, DEFAULT_GLOB_RESULTS);
   const executable = await resolveRipgrepPath();
   const run = await spawnRipgrep(
@@ -240,7 +253,7 @@ export async function searchGlob(  workspace: string,
   if (!normalizedPattern) {
     return { output: "pattern must not be empty.", ok: false };
   }
-  const absoluteTarget = await resolveToolPath(workspace, target, allowOutsideWorkspace);
+  const absoluteTarget = await searchRoot(workspace, target, allowOutsideWorkspace);
   const limit = normalizeResults(maxResults, DEFAULT_GLOB_RESULTS);
   const executable = await resolveRipgrepPath();
   const run = await spawnRipgrep(
@@ -301,7 +314,7 @@ export async function searchGrep(
   if (!normalizedPattern) {
     return { output: "pattern must not be empty.", ok: false };
   }
-  const absoluteTarget = await resolveToolPath(workspace, target, allowOutsideWorkspace);
+  const absoluteTarget = await searchRoot(workspace, target, allowOutsideWorkspace);
   const limit = normalizeResults(options.maxResults, DEFAULT_GREP_RESULTS);
   const contextLines = Math.min(
     Math.max(Number(options.contextLines ?? 0) || 0, 0),

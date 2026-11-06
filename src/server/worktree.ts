@@ -99,6 +99,7 @@ export async function createSessionWorktree(
   options: { fetchUpstream?: boolean } = {},
 ): Promise<CreatedSessionWorktree> {
   const source = path.resolve(sourceCwd);
+  const realSource = await fs.realpath(source).catch(() => source);
   let stat;
   try {
     stat = await fs.stat(source);
@@ -109,7 +110,7 @@ export async function createSessionWorktree(
     throw new GitError("invalid_path", `Workspace is not a directory: ${source}`);
   }
 
-  const repoRoot = path.resolve(
+  const gitRoot = path.resolve(
     await gitText(source, ["rev-parse", "--show-toplevel"]).catch((error: unknown) => {
       if (error instanceof GitError) throw error;
       throw new GitError(
@@ -119,6 +120,9 @@ export async function createSessionWorktree(
       );
     }),
   );
+  // git 返回 realpath（短路径/junction 会展开）；映射回 source 的词法写法，
+  // 否则 source 子目录会被判成工作区外，返回值也和调用方传入的路径对不上
+  const repoRoot = path.resolve(source, path.relative(realSource, gitRoot));
 
   // 「创建前获取上游更新」是尽力而为：没 remote / 离线 / 鉴权失败都不阻止创建，
   // 只把远端 ref 刷新到最新，再在可快进时把 worktree 基到上游。

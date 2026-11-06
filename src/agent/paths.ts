@@ -29,12 +29,25 @@ function containsLexically(base: string, target: string): boolean {
   return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
 }
 
-/** 真实路径：展开 8.3 短名与 junction；路径不存在时回退词法解析。 */
+/**
+ * 真实路径：展开 8.3 短名与 junction。
+ * 尾部尚不存在的路径（如新建 plans/xxx.md）向上找到最近存在的祖先再拼回去。
+ */
 export function canonicalPathSync(value: string): string {
-  try {
-    return realpathSync.native(value);
-  } catch {
-    return path.resolve(value);
+  const resolved = path.resolve(value);
+  const missing: string[] = [];
+  let current = resolved;
+  while (true) {
+    try {
+      const real = realpathSync.native(current);
+      return missing.length ? path.join(real, ...missing.reverse()) : real;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") return resolved;
+      const parent = path.dirname(current);
+      if (parent === current) return resolved;
+      missing.push(path.basename(current));
+      current = parent;
+    }
   }
 }
 
