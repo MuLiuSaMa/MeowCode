@@ -3,6 +3,7 @@
 const fs = require("node:fs");
 const path = require("node:path");
 const ResEdit = require("resedit");
+const { execFileSync } = require("node:child_process");
 
 /** 2052 = 中文（简体），与 scripts/brand-electron.mjs 的开发态产物保持一致 */
 const VERSION_LANG = 2052;
@@ -43,8 +44,26 @@ function applyVersionInfo(file, info) {
   fs.writeFileSync(file, Buffer.from(exe.generate()));
 }
 
-/** electron-builder afterPack：把打包后的 MeowCode.exe 属性改成作者与中文。 */
-module.exports = async function afterPack(context) {
+exports.beforePack = async function beforePack() {
+  const root = path.resolve(__dirname, "..");
+  const target = path.join(root, ".tmp", "agent-release");
+  fs.rmSync(target, { recursive: true, force: true });
+  const args = [
+    "--filter", "meowcode",
+    "--fail-if-no-match",
+    "deploy", "--prod",
+    "--config.inject-workspace-packages=true",
+    "--config.node-linker=hoisted",
+    ".tmp/agent-release",
+  ];
+  if (process.platform === "win32") {
+    execFileSync("cmd.exe", ["/d", "/s", "/c", `pnpm ${args.join(" ")}`], { cwd: root, stdio: "inherit" });
+  } else {
+    execFileSync("pnpm", args, { cwd: root, stdio: "inherit" });
+  }
+};
+
+exports.afterPack = async function afterPack(context) {
   if (process.platform !== "win32") return;
   const appInfo = context.packager?.appInfo;
   const productName = appInfo?.productName || "MeowCode";
@@ -56,5 +75,8 @@ module.exports = async function afterPack(context) {
     author,
     copyright,
     version: appInfo?.version || "1.0.0",
+  });
+  execFileSync(process.execPath, [path.join(__dirname, "../scripts/release-smoke.mjs"), context.appOutDir], {
+    stdio: "inherit",
   });
 };

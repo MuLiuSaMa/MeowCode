@@ -6,6 +6,7 @@
   "type": "module",
   "license": "GPL-3.0-or-later",
   "main": "dist/server/server.js",
+  "files": ["dist"],
   "scripts": {
     "build:agent": "tsc -p tsconfig.json",
     "dev:server": "tsx watch src/server/server.ts",
@@ -15,6 +16,7 @@
     "make:ico": "node scripts/make-meowcode-ico.mjs",
     "build": "pnpm build:agent && pnpm --filter @meowcode/desktop build",
     "test": "vitest run",
+    "test:release": "node scripts/release-smoke.mjs",
     "package": "pnpm build && pnpm --filter @meowcode/desktop package:win",
     "lint": "oxlint src desktop/src",
     "lint:fix": "oxlint --fix src desktop/src"

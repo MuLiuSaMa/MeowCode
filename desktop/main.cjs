@@ -869,7 +869,7 @@ function devRepoRoot() {
 function serverScriptPath() {
   const root = devRepoRoot();
   if (root) return path.join(root, "dist", "server", "server.js");
-  return path.join(process.resourcesPath, "agent-server", "server", "server.js");
+  return path.join(process.resourcesPath, "agent-server", "dist", "server", "server.js");
 }
 
 /** 插件市场 bundles：dev=仓库 resources/marketplace；打包=extraResources/marketplace */
@@ -4087,15 +4087,36 @@ ipcMain.handle("meow:open-installer", async (_event, filePath) => {
     await shell.openPath(target);
     return { launched: true, quit: false };
   }
+  if (process.platform === "win32") {
+    // NSIS 安装包 manifest 是 requireAdministrator，直接 spawn 会 EACCES；
+    // 走 ShellExecute 才会弹 UAC
+    const failure = await shell.openPath(target);
+    if (failure) throw new Error(`无法启动安装包：${failure}`);
+    // 安装包要覆盖正在运行的文件，得先把应用退掉；窗口立刻收起，
+    // 会话落盘等优雅关停留在后台完成
+    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.hide();
+    destroyIslandWindow();
+    setTimeout(() => app.quit(), 300);
+    return { launched: true, quit: true };
+  }
   if (process.platform === "linux") {
     await fs.promises.chmod(target, 0o755).catch(() => undefined);
   }
   const { spawn } = require("node:child_process");
   const child = spawn(target, [], { detached: true, stdio: "ignore" });
+  // spawn 的失败通过 error 事件异步返回；不监听会变成主进程未捕获异常
+  await new Promise((resolve, reject) => {
+    const onError = (error) => reject(new Error(`无法启动安装包：${error.message}`));
+    child.once("error", onError);
+    child.once("spawn", () => {
+      child.removeListener("error", onError);
+      // 启动后仍可能收到 error；吞掉，避免子进程退出拖垮主进程
+      child.on("error", () => undefined);
+      resolve();
+    });
+  });
   child.unref();
-  // Windows：安装包要覆盖正在运行的文件，得先把应用退掉
-  if (process.platform === "win32") setTimeout(() => app.quit(), 500);
-  return { launched: true, quit: process.platform === "win32" };
+  return { launched: true, quit: false };
 });
 
 ipcMain.handle("meow:model-profiles", () => modelProfiles);

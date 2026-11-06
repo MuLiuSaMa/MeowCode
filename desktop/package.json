@@ -61,6 +61,7 @@
   "build": {
     "appId": "app.meowcode.desktop",
     "productName": "MeowCode",
+    "beforePack": "./brand-packaged.cjs",
     "afterPack": "./brand-packaged.cjs",
     "copyright": "Copyright © 2026 MuLiuSaMa",
     "npmRebuild": false,
@@ -82,8 +83,12 @@
     ],
     "extraResources": [
       {
-        "from": "../dist",
+        "from": "../.tmp/agent-release",
         "to": "agent-server"
+      },
+      {
+        "from": "../.tmp/agent-release/node_modules",
+        "to": "agent-server/node_modules"
       },
       {
         "from": "../node_modules/@vscode/ripgrep-win32-x64/bin/rg.exe",
