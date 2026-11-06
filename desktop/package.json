@@ -2,6 +2,7 @@
   "name": "@meowcode/desktop",
   "version": "1.0.0",
   "private": true,
+  "author": { "name": "MuLiuSaMa" },
   "main": "main.cjs",
   "scripts": {
     "dev": "concurrently -k --success first \"vite\" \"node ../scripts/brand-electron.mjs --soft && wait-on tcp:5273 && cross-env VITE_DEV_SERVER_URL=http://localhost:5273 node ../scripts/dev-electron.mjs .\"",
@@ -60,6 +61,8 @@
   "build": {
     "appId": "app.meowcode.desktop",
     "productName": "MeowCode",
+    "afterPack": "./brand-packaged.cjs",
+    "copyright": "Copyright © 2026 MuLiuSaMa",
     "npmRebuild": false,
     "electronDownload": {
       "mirror": "https://npmmirror.com/mirrors/electron/"
@@ -125,7 +128,8 @@
     },
     "nsis": {
       "oneClick": false,
-      "allowToChangeInstallationDirectory": true
+      "allowToChangeInstallationDirectory": true,
+      "language": "2052"
     }
   }
 }

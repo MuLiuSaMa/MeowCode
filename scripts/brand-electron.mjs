@@ -6,7 +6,7 @@
  *  - --force：强制重打（要求应用完全退出，含托盘）。
  *
  * 打标内容：electron.exe → MeowCode.exe（同步 electron/path.txt），替换图标组
- * （resources/icon.ico），版本信息字符串全部改为 MeowCode。幂等可重复执行；
+ * （resources/icon.ico），版本信息改为作者 MuLiuSaMa、中文（简体）。幂等可重复执行；
  * 写盘失败时保持原状（原始 exe 不动、path.txt 不改）。
  *
  * 注意：exe 改名后 Electron 不再视其为 default app，app.isPackaged 在 dev 下也会是 true。
@@ -23,7 +23,7 @@ const electronDir = path.join(repoRoot, "desktop", "node_modules", "electron");
 const distDir = path.join(electronDir, "dist");
 const pathFile = path.join(electronDir, "path.txt");
 const iconPath = path.join(repoRoot, "resources", "icon.ico");
-const iconHashFile = path.join(distDir, ".meowcode-icon.sha256");
+const iconHashFile = path.join(distDir, ".meowcode-brand.sha256");
 const sourceExe = path.join(distDir, "electron.exe");
 const targetExe = path.join(distDir, "MeowCode.exe");
 
@@ -35,7 +35,11 @@ const version = String(pkg.version ?? "1.0.0");
 const [vMajor = 0, vMinor = 0, vPatch = 0, vBuild = 0] = version
   .split(".")
   .map((part) => Number.parseInt(part, 10) || 0);
-const copyright = String(pkg.license ?? "GPL-3.0-or-later");
+const author = typeof pkg.author === "object" ? String(pkg.author?.name ?? "") : String(pkg.author ?? "");
+const AUTHOR = author || "MuLiuSaMa";
+const copyright = `Copyright © ${new Date().getFullYear()} ${AUTHOR}`;
+/** 版本资源的语言：2052 = 中文（简体） */
+const VERSION_LANG = 2052;
 
 function warn(message) {
   console.warn(`[brand-electron] ${message}`);
@@ -46,14 +50,19 @@ function iconFingerprint() {
   return createHash("sha256").update(fs.readFileSync(iconPath)).digest("hex");
 }
 
-/** path.txt 指向 MeowCode.exe、文件存在、且嵌入的图标指纹与 resources/icon.ico 一致。 */
+/** 图标或版本信息任何一项变化都要重打，否则升级版本后 exe 属性仍是旧版本。 */
+function brandFingerprint() {
+  return createHash("sha256")
+    .update(`${iconFingerprint() ?? "no-icon"}:${version}:${AUTHOR}:${VERSION_LANG}`)
+    .digest("hex");
+}
+
+/** path.txt 指向 MeowCode.exe、文件存在、且嵌入的图标/版本指纹与当前构建一致。 */
 function isBranded() {
   try {
     const target = fs.readFileSync(pathFile, "utf8").trim();
     if (target !== "MeowCode.exe" || !fs.existsSync(targetExe)) return false;
-    const current = iconFingerprint();
-    if (!current) return true;
-    return fs.readFileSync(iconHashFile, "utf8").trim() === current;
+    return fs.readFileSync(iconHashFile, "utf8").trim() === brandFingerprint();
   } catch {
     return false;
   }
@@ -86,14 +95,21 @@ function applyBranding(buffer) {
   const versionInfos = ResEdit.Resource.VersionInfo.fromEntries(res.entries);
   if (versionInfos.length) {
     for (const info of versionInfos) {
-      info.setFileVersion(vMajor, vMinor, vPatch, vBuild, 1033);
-      info.setProductVersion(vMajor, vMinor, vPatch, vBuild, 1033);
+      info.lang = VERSION_LANG;
+      // 清掉 Electron 自带的英文版本字符串，只保留中文一套
+      for (const existing of info.getAllLanguagesForStringValues()) {
+        info.removeAllStringValues(existing, false);
+      }
+      info.replaceAvailableLanguages([{ lang: VERSION_LANG, codepage: 1200 }]);
+      info.setFileVersion(vMajor, vMinor, vPatch, vBuild, VERSION_LANG);
+      info.setProductVersion(vMajor, vMinor, vPatch, vBuild, VERSION_LANG);
       info.setStringValues(
-        { lang: 1033, codepage: 1200 },
+        { lang: VERSION_LANG, codepage: 1200 },
         {
           FileDescription: "MeowCode",
           ProductName: "MeowCode",
-          CompanyName: "MeowCode",
+          CompanyName: AUTHOR,
+          Author: AUTHOR,
           InternalName: "MeowCode",
           OriginalFilename: "MeowCode.exe",
           LegalCopyright: copyright,
@@ -136,8 +152,7 @@ function brand() {
   writeAtomic(targetExe, branded);
   // 先落盘 exe 再改 path.txt：任何一步失败都不会让启动指向不存在的文件
   fs.writeFileSync(pathFile, "MeowCode.exe", "utf8");
-  const fingerprint = iconFingerprint();
-  if (fingerprint) fs.writeFileSync(iconHashFile, fingerprint, "utf8");
+  fs.writeFileSync(iconHashFile, brandFingerprint(), "utf8");
   if (source === sourceExe) {
     try {
       fs.unlinkSync(sourceExe);
