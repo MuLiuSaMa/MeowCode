@@ -2387,6 +2387,18 @@ describe("midstream early tool execution (experimental)", () => {
 });
 
 describe("prompt queue", () => {
+  // 后台任务（保活/预热压缩等）可能向同一个 provider mock 发请求；
+  // 队列断言只统计包含本用例 prompt 的调用，避免跨用例噪声。
+  const callsForPrompts = (contents: string[]) =>
+    streamMock.mock.calls.filter((call) => {
+      const messages = (call[0] as { messages?: ChatMessage[] } | undefined)?.messages;
+      return (
+        messages?.some(
+          (message) => message.role === "user" && contents.includes(String(message.content)),
+        ) === true
+      );
+    });
+
   it("runs a prompt queued during an active turn", async () => {
     const dir = await mkdtemp(path.join(tmpdir(), "meowcode-runtime-"));
     const runtime = makeRuntime(dir);
@@ -2403,15 +2415,16 @@ describe("prompt queue", () => {
       .mockResolvedValueOnce({ message: { role: "assistant", content: "second done" } });
 
     const first = runtime.prompt("first");
-    await vi.waitFor(() => expect(streamMock).toHaveBeenCalledTimes(1));
+    await vi.waitFor(() => expect(callsForPrompts(["first"])).toHaveLength(1), { timeout: 5_000 });
     expect(runtime.activeTurnSessionId).toBe(runtime.current!.id);
     await runtime.prompt("second", "q-second");
     release({ message: { role: "assistant", content: "first done" } });
     await first;
 
     expect(runtime.activeTurnSessionId).toBeNull();
-    expect(streamMock).toHaveBeenCalledTimes(2);
-    const secondRequest = streamMock.mock.calls[1][0].messages as ChatMessage[];
+    const promptCalls = callsForPrompts(["first", "second"]);
+    expect(promptCalls).toHaveLength(2);
+    const secondRequest = promptCalls[1][0].messages as ChatMessage[];
     expect(
       secondRequest.some((message) => message.role === "user" && message.content === "second"),
     ).toBe(true);
@@ -2448,7 +2461,7 @@ describe("prompt queue", () => {
       .mockResolvedValueOnce({ message: { role: "assistant", content: "kept" } });
 
     const first = runtime.prompt("first");
-    await vi.waitFor(() => expect(streamMock).toHaveBeenCalledTimes(1));
+    await vi.waitFor(() => expect(callsForPrompts(["first"])).toHaveLength(1), { timeout: 5_000 });
     await runtime.prompt("drop me", "q-drop");
     await runtime.prompt("keep me", "q-keep");
     expect(runtime.removeQueuedPrompt("q-drop")).toBe(true);
@@ -2456,8 +2469,9 @@ describe("prompt queue", () => {
     release({ message: { role: "assistant", content: "first done" } });
     await first;
 
-    expect(streamMock).toHaveBeenCalledTimes(2);
-    const secondRequest = streamMock.mock.calls[1][0].messages as ChatMessage[];
+    const promptCalls = callsForPrompts(["first", "keep me", "drop me"]);
+    expect(promptCalls).toHaveLength(2);
+    const secondRequest = promptCalls[1][0].messages as ChatMessage[];
     expect(secondRequest.some((message) => message.role === "user" && message.content === "keep me")).toBe(true);
     expect(secondRequest.some((message) => message.role === "user" && message.content === "drop me")).toBe(false);
 
@@ -2486,13 +2500,13 @@ describe("prompt queue", () => {
       .mockResolvedValueOnce({ message: { role: "assistant", content: "one done" } });
 
     const first = runtime.prompt("first");
-    await vi.waitFor(() => expect(streamMock).toHaveBeenCalledTimes(1));
+    await vi.waitFor(() => expect(callsForPrompts(["first"])).toHaveLength(1), { timeout: 5_000 });
     await runtime.prompt("one", "q-one");
     await runtime.prompt("two", "q-two");
     runtime.steerQueuedPrompt("q-two");
     await first;
 
-    expect(streamMock).toHaveBeenCalledTimes(3);
+    expect(callsForPrompts(["first", "one", "two"])).toHaveLength(3);
     const starts = events.filter(
       (event): event is Extract<MeowEvent, { type: "message_start" }> =>
         event.type === "message_start",
@@ -2523,12 +2537,12 @@ describe("prompt queue", () => {
     });
 
     const first = runtime.prompt("first");
-    await vi.waitFor(() => expect(streamMock).toHaveBeenCalledTimes(1));
+    await vi.waitFor(() => expect(callsForPrompts(["first"])).toHaveLength(1), { timeout: 5_000 });
     await runtime.prompt("queued");
     runtime.abort();
     await first;
 
-    expect(streamMock).toHaveBeenCalledTimes(1);
+    expect(callsForPrompts(["first", "queued"])).toHaveLength(1);
     expect(events.some((event) => event.type === "error")).toBe(false);
     expect(events.some((event) => event.type === "turn_complete")).toBe(true);
     const { SessionStore } = await import("./session-store.js");
