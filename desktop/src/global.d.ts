@@ -127,7 +127,7 @@ declare global {
       workspaceExists(target: string): Promise<boolean>;
       /** 只写 provider 偏好（思考强度 / 激活模型），不重启 agent server */
       saveProviderPrefs(prefs: {
-        providers?: Array<{ id: string; reasoningEffort?: string }>;
+        providers?: Array<{ id: string; reasoningEffort?: string; enabled?: boolean }>;
         providerId?: string;
         /** 记忆总开关（实时生效走 /config/memory）：关掉后不蒸馏、不注入、不下发记忆工具 */
         memoryEnabled?: boolean;

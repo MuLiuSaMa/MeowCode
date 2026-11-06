@@ -33,6 +33,7 @@
     "archive": "Archiv",
     "about": "Info",
     "island": "AI 悬浮岛",
+    "projects": "Projekte",
     "hooks": "Hooks",
     "dataImport": "Datenimport",
     "rules": "Regeln",
@@ -154,6 +155,7 @@
     "checking": "Prüfung läuft …",
     "check": "Version prüfen",
     "author": "Autor",
+    "qqGroup": "QQ-Gruppe",
     "website": "Website",
     "repo": "Repository",
     "openInBrowser": "Im Browser öffnen",
@@ -178,6 +180,14 @@
     "save": "Speichern",
     "saving": "Speichert …"
   },
+  "projects": {
+    "desc": "Verwalte deine hinzugefügten Arbeitsbereiche. Beim Hinzufügen eines Projekts wird in diesem Ordner ein neuer Chat gestartet; beim Entfernen wird es nur aus der Liste ausgeblendet, Chats und Dateien bleiben erhalten.",
+    "add": "Projekt hinzufügen",
+    "empty": "Noch keine Arbeitsbereiche hinzugefügt.",
+    "removeTitle": "Projekt entfernen",
+    "removeMessage": "„{{name}}“ entfernen? Es wird nur aus der Liste ausgeblendet; Chats und Dateien bleiben erhalten.",
+    "removeConfirm": "Entfernen"
+  },
   "models": {
     "section": "Modelle",
     "desc": "Fügen Sie hier Modellanbieter hinzu und tragen Sie den Modellnamen ein, den Sie verwenden möchten.",
@@ -192,6 +202,7 @@
     "restartTitle": "Speichern startet den lokalen Dienst neu",
     "restartMessage": "Modelländerungen starten den lokalen Agent-Dienst neu; der laufende Turn wird unterbrochen. Trotzdem speichern?",
     "restartConfirm": "Trotzdem speichern",
+    "editGroup": "Anbieter bearbeiten",
     "colModel": "Modell",
     "colProvider": "Anbieter",
     "colActions": "Aktionen",
@@ -535,6 +546,14 @@
         "on": "Wenn das Fenster im Hintergrund ist, bei Abschluss, Bestätigungsbedarf oder Abbruch eine Systembenachrichtigung mit Chat-Titel und Antwortauszug zeigen.",
         "off": "Es werden keine Systembenachrichtigungen gezeigt."
       }
+    },
+    "promptSuggestions": {
+      "field": "Vorschläge für die nächste Nachricht",
+      "desc": "Nach einer Antwort vorhersagen, was Sie als Nächstes senden könnten. Tab fügt den Vorschlag in das Eingabefeld ein.",
+      "confirmTitle": "Vorschläge für die nächste Nachricht aktivieren?",
+      "confirmHow": "Nach jeder Antwort wird eine zusätzliche Anfrage an das aktuelle Modell gesendet, um Ihre nächste Nachricht vorherzusagen. Sie erscheint im leeren Eingabefeld; Tab fügt sie ein. Es wird nichts automatisch gesendet.",
+      "confirmCost": "Dadurch werden bei jedem Zug zusätzliche Token verbraucht. Die Anfrage nutzt den Gesprächs-Cache und ist daher meist günstig, wird aber trotzdem berechnet.",
+      "enable": "Aktivieren"
     }
   },
   "proxy": {

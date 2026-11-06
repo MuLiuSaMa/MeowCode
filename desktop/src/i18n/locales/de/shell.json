@@ -234,5 +234,11 @@
     "inputPlaceholder": "Nachricht tippen, Enter zum Senden",
     "inputIdle": "Diese Sitzung läuft nicht. Im Hauptfenster fortsetzen.",
     "dropHint": "Zum Anhängen ablegen"
+  },
+  "star": {
+    "title": "Gib MeowCode einen Star",
+    "body": "Bitte, bitte, schenk mir ein kleines Sternchen~",
+    "dismiss": "Nee, danke",
+    "accept": "Klar!"
   }
 }

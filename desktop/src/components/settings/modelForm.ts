@@ -171,8 +171,7 @@ export type BuildProviderResult =
 
 /**
  * 列表与弹层里显示的名字：没填显示名时回退到模型 ID。
- * 唯一性校验也以它为准 —— 同一个模型 ID 可以配多条（不同端点/密钥），
- * 但两条在界面上一模一样就分不清用哪个了。
+ * 同一服务商内用这个标签区分模型；不同服务商可以重名。
  */
 export function providerLabel(provider: { displayName?: string; model: string }): string {
   return provider.displayName?.trim() || provider.model.trim();

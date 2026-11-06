@@ -30,6 +30,10 @@
       "releasePrompt": "Prepara una lista de comprobación de publicación: versión, build, pruebas, migraciones, rollback y notas de versión. Usa los comandos reales de este proyecto, no frases genéricas."
     }
   },
+  "suggestion": {
+    "label": "Sugerencia",
+    "dismiss": "Descartar sugerencia"
+  },
   "waiting": {
     "response": "Esperando al modelo"
   },

@@ -119,6 +119,23 @@ describe("agent server auth", () => {
     }
   });
 
+  it("validates input suggestion requests", async () => {
+    const headers = { authorization: `Bearer ${TOKEN}`, "content-type": "application/json" };
+    const missing = await fetch(`${baseUrl}/session/suggestion`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({}),
+    });
+    expect(missing.status).toBe(400);
+
+    const unknown = await fetch(`${baseUrl}/session/suggestion`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ sessionId: "missing-session" }),
+    });
+    expect(unknown.status).toBe(404);
+  });
+
   it("removes secrets from the server environment after startup", () => {
     expect(process.env.MEOWCODE_PROVIDERS).toBeUndefined();
     expect(process.env.MEOWCODE_BROWSER_HOST_TOKEN).toBeUndefined();

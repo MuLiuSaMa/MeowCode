@@ -160,3 +160,43 @@ export function providerIcon(key: string | undefined, theme: "light" | "dark"): 
   }
   return { kind: "img", src: spec.src, invert: theme === "dark" && Boolean(spec.invertOnDark) };
 }
+
+/** 模型品牌 → 图标 key（模型列表显示的是模型 Logo，不是服务商 Logo）。 */
+const MODEL_ICON_PREFIXES: Array<readonly [readonly string[], string]> = [
+  [["deepseek"], "deepseek"],
+  [["glm", "charglm", "codegeex", "emohaa"], "zai"],
+  [["mimo"], "xiaomi-mimo"],
+  [["kimi", "moonshot"], "moonshot-kimi"],
+  [["qwen", "qwq", "qvq"], "qwen"],
+  [["claude"], "anthropic"],
+  [["gpt", "chatgpt", "codex", "o1", "o2", "o3", "o4"], "openai"],
+  [["gemini", "gemma"], "google-gemini"],
+  [["grok"], "xai"],
+  [["mistral", "mixtral", "codestral", "devstral", "magistral"], "mistral"],
+  [["llama"], "meta"],
+  [["doubao", "seed"], "doubao"],
+  [["hunyuan"], "hunyuan"],
+  [["spark", "xinghuo"], "spark"],
+  [["ernie", "wenxin"], "wenxin"],
+  [["minimax", "abab"], "minimax"],
+  [["step"], "stepfun"],
+  [["sense"], "sensenova"],
+  [["command"], "cohere"],
+  [["sonar", "perplexity"], "perplexity"],
+  [["nemotron"], "nvidia"],
+  [["copilot"], "github-copilot"],
+  [["baichuan"], "baichuan"],
+  [["nova"], "aws"],
+  [["cloudflare"], "cloudflare"],
+];
+
+/** 按模型名识别品牌图标；聚合平台前缀（openrouter 的 `vendor/model`）取最后一段。 */
+export function modelIconKey(model: string): string | undefined {
+  const trimmed = model.trim().toLowerCase();
+  if (!trimmed) return undefined;
+  const bare = trimmed.slice(trimmed.lastIndexOf("/") + 1);
+  for (const [prefixes, iconKey] of MODEL_ICON_PREFIXES) {
+    if (prefixes.some((prefix) => bare.startsWith(prefix))) return iconKey;
+  }
+  return undefined;
+}

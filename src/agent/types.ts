@@ -736,7 +736,14 @@ export type TurnFileChangeGroup = {
 };
 
 /** 模型调用的来源：主对话 / 自动标题 / 上下文压缩。 */
-export type UsageSource = "chat" | "title" | "compaction" | "memory" | "learning" | "web_search";
+export type UsageSource =
+  | "chat"
+  | "title"
+  | "compaction"
+  | "memory"
+  | "learning"
+  | "web_search"
+  | "suggestion";
 
 export type SessionSettings = {
   approvalMode?: ApprovalMode;

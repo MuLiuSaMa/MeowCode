@@ -234,5 +234,11 @@
     "inputPlaceholder": "Type a message, Enter to send",
     "inputIdle": "This session is not running. Open it in the main window to continue.",
     "dropHint": "Drop to attach"
+  },
+  "star": {
+    "title": "Star MeowCode on GitHub",
+    "body": "Pwease give me a little star~",
+    "dismiss": "No thanks",
+    "accept": "Sure!"
   }
 }

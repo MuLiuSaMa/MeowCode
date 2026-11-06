@@ -1,5 +1,7 @@
 {
   "justNow": "अभी",
   "delete": "हटाएँ",
-  "deleteAria": "{{name}} हटाएँ"
+  "deleteAria": "{{name}} हटाएँ",
+  "copyCode": "कोड कॉपी करें",
+  "copied": "कॉपी हो गया"
 }

@@ -31,7 +31,6 @@ import { Button } from "../ui/Button";
 import { TextField } from "../ui/TextField";
 import { ProviderIcon } from "../ui/ProviderIcon";
 import { ProviderFormBody, useProviderForm } from "../settings/ProviderFormBody";
-import { providerLabel } from "../settings/modelForm";
 import type { OnboardingStep } from "./copy";
 import "./Onboarding.css";
 
@@ -113,7 +112,6 @@ export function Onboarding({
   /** 与设置页共用同一份表单逻辑：多模型行、勾选、行内上下文、获取模型列表 */
   const form = useProviderForm({
     draft: draft ?? EMPTY_DRAFT,
-    existingLabels: providers.map(providerLabel),
     onSave: (entries) => {
       if (saving) return;
       setSaving(true);

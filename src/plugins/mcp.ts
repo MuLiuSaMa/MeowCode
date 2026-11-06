@@ -629,7 +629,7 @@ export class McpManager {
 /** 默认工厂：stdio（spawn 子进程）或 streamable HTTP；env/headers 展开 ${VAR}。
  *  HTTP + auth.type="oauth" 时走 SDK 授权流程（回环回调 + 换 token），失败标 failed。 */
 export const createStdioOrHttpClient: McpClientFactory = async (config, serverName): Promise<McpClientLike> => {
-  const client = new Client({ name: "meowcode", version: "0.1.0" });
+  const client = new Client({ name: "meowcode", version: "1.0.0" });
   if (typeof config.url === "string" && config.url.length > 0) {
     const headers: Record<string, string> = {};
     for (const [key, value] of Object.entries(config.headers ?? {})) {

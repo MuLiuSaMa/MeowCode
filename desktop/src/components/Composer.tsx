@@ -69,6 +69,8 @@ export type ComposerImage = {
   data: string;
   dataUrl: string;
   name?: string;
+  /** 拖入/选择的原始文件路径；剪贴板图片没有来源路径 */
+  path?: string;
 };
 
 /** 与后端 /session/prompt 的 images 字段对齐：最多 3 张，单张 base64 不超过 2.6MB。 */
@@ -115,6 +117,8 @@ async function prepareImage(file: File, t: TFunction): Promise<ComposerImage | s
   if (!IMAGE_TYPES.has(file.type)) {
     return t("image.unsupported", { type: file.type || file.name });
   }
+  // 拖入/从磁盘选择时有原始路径；剪贴板图片拿不到
+  const sourcePath = window.meow.getFilePath?.(file)?.trim() || undefined;
   const original = await readAsDataUrl(file, t);
   let dataUrl = original;
   let mimeType = file.type;
@@ -175,6 +179,7 @@ async function prepareImage(file: File, t: TFunction): Promise<ComposerImage | s
     data,
     dataUrl,
     name: file.name,
+    ...(sourcePath ? { path: sourcePath } : {}),
   };
 }
 
@@ -339,6 +344,9 @@ export function Composer({
   value,
   onChange,
   focusToken = 0,
+  suggestion,
+  onSuggestionUsed,
+  onSuggestionDismiss,
   polishTarget = "main",
   chips,
   onRemoveChip,
@@ -405,6 +413,10 @@ export function Composer({
   onChange: (value: string) => void;
   /** 递增时把焦点交给输入框（新对话建议点选后使用） */
   focusToken?: number;
+  /** 回合结束后预测的下一句：输入框空且聚焦时按 Tab 填入，不会自动发送 */
+  suggestion?: string | null;
+  onSuggestionUsed?: () => void;
+  onSuggestionDismiss?: () => void;
   /** 美化提示词调用哪个 runtime：侧边聊传 "side"，缺省主聊天 */
   polishTarget?: "main" | "side";
   /** 已引用的技能 / 插件 / 插件命令（可多选） */
@@ -584,6 +596,7 @@ export function Composer({
 
   /** 「美化提示词」请求进行中：按钮转圈并阻止重复触发 */
   const [polishing, setPolishing] = useState(false);
+  const [composing, setComposing] = useState(false);
   const polishingRef = useRef(false);
   /** 异步返回时读取最新输入值（闭包里的 value 会过期） */
   const valueRef = useRef(value);
@@ -1232,6 +1245,16 @@ export function Composer({
     disabled || compacting || polishing || (!value.trim() && !images.length && !hasAttachments);
 
   const polishDisabled = disabled || compacting || polishing || !value.trim();
+  const showSuggestion = Boolean(
+    suggestion &&
+      !value &&
+      !images.length &&
+      !chips?.length &&
+      !polishing &&
+      !composing &&
+      !disabled &&
+      !compacting,
+  );
 
   /** 美化提示词：请求返回时若草稿已被改动/发送，丢弃结果，绝不覆盖新输入 */
   const handlePolish = async () => {
@@ -1883,9 +1906,12 @@ export function Composer({
             rows={2}
             onChange={(event) => {
               setSlashHidden(false);
+              if (suggestion) onSuggestionDismiss?.();
               onChange(event.target.value);
               updateMention(event.target.value, event.target.selectionStart);
             }}
+            onCompositionStart={() => setComposing(true)}
+            onCompositionEnd={() => setComposing(false)}
             onPaste={(event) => {
               const files = [...(event.clipboardData?.files ?? [])].filter((file) =>
                 file.type.startsWith("image/"),
@@ -1946,6 +1972,27 @@ export function Composer({
                 event.preventDefault();
                 setMention(null);
                 return;
+              }
+              // 预测的下一句：Tab 填入草稿（不自动发送），Esc 本次忽略
+              if (
+                showSuggestion &&
+                !event.altKey &&
+                !event.ctrlKey &&
+                !event.metaKey &&
+                !event.shiftKey
+              ) {
+                if (event.key === "Tab") {
+                  event.preventDefault();
+                  onChange(suggestion!);
+                  onSuggestionUsed?.();
+                  requestAnimationFrame(() => textareaRef.current?.focus());
+                  return;
+                }
+                if (event.key === "Escape") {
+                  event.preventDefault();
+                  onSuggestionDismiss?.();
+                  return;
+                }
               }
               if (event.key === "Enter" && !event.shiftKey) {
                 event.preventDefault();

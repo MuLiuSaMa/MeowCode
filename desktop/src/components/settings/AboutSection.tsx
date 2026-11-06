@@ -124,6 +124,10 @@ export function AboutSection({
             <span className="mc-about__value">{AUTHOR}</span>
           </FieldRow>
 
+          <FieldRow label={t("about.qqGroup")}>
+            <span className="mc-about__value">1128483595</span>
+          </FieldRow>
+
           <FieldRow label={t("about.website")}>
             <button
               type="button"

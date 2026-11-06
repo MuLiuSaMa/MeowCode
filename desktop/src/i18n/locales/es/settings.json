@@ -33,6 +33,7 @@
     "archive": "Archivo",
     "about": "Acerca de",
     "island": "AI 悬浮岛",
+    "projects": "Proyectos",
     "hooks": "Hooks",
     "dataImport": "Importar datos",
     "rules": "Reglas",
@@ -154,6 +155,7 @@
     "checking": "Comprobando…",
     "check": "Comprobar versión",
     "author": "Autor",
+    "qqGroup": "Grupo QQ",
     "website": "Sitio web",
     "repo": "Repositorio",
     "openInBrowser": "Abrir en el navegador",
@@ -178,6 +180,14 @@
     "save": "Guardar",
     "saving": "Guardando…"
   },
+  "projects": {
+    "desc": "Gestiona los espacios de trabajo añadidos. Al añadir un proyecto se inicia un nuevo chat en esa carpeta; al quitarlo solo se oculta de la lista, los chats y archivos no se eliminan.",
+    "add": "Añadir proyecto",
+    "empty": "Aún no hay espacios de trabajo añadidos.",
+    "removeTitle": "Quitar proyecto",
+    "removeMessage": "¿Quitar «{{name}}»? Solo se ocultará de la lista; los chats y archivos no se eliminan.",
+    "removeConfirm": "Quitar"
+  },
   "models": {
     "section": "Modelos",
     "desc": "Añade aquí los proveedores de modelos y escribe el nombre del modelo que quieras usar.",
@@ -192,6 +202,7 @@
     "restartTitle": "Guardar reinicia el servicio local",
     "restartMessage": "Los cambios de modelos reinician el servicio agent local e interrumpen el turno en curso. ¿Guardar igualmente?",
     "restartConfirm": "Guardar igualmente",
+    "editGroup": "Editar proveedor",
     "colModel": "Modelo",
     "colProvider": "Proveedor",
     "colActions": "Acciones",
@@ -535,6 +546,14 @@
         "on": "Si la ventana está en segundo plano, mostrar una notificación al terminar un turno, pedir confirmación o interrumpirse (título de la conversación y resumen de la respuesta).",
         "off": "No se mostrarán notificaciones del sistema."
       }
+    },
+    "promptSuggestions": {
+      "field": "Sugerencias de próximo mensaje",
+      "desc": "Tras una respuesta, predecir qué podrías enviar después. Pulsa Tab para insertarlo en el campo.",
+      "confirmTitle": "¿Activar las sugerencias de próximo mensaje?",
+      "confirmHow": "Tras cada respuesta se envía una petición adicional al modelo actual para predecir tu próximo mensaje. Aparece en el campo vacío; pulsa Tab para insertarlo. No se envía nada automáticamente.",
+      "confirmCost": "Esto consume tokens adicionales en cada turno. La petición reutiliza la caché de la conversación, así que suele ser barata, pero se factura igualmente.",
+      "enable": "Activar"
     }
   },
   "proxy": {

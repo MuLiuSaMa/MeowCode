@@ -26,23 +26,99 @@
   text-align: center;
 }
 
-/* 操作列要按内容占宽（确认删除 + 取消必须同一行），其余列让位并截断 */
-.mc-models__table {
-  table-layout: auto;
+/* 按服务商分组：组头一行，模型行只显示品牌 Logo + 模型名 + 操作 */
+.mc-models__groups {
+  display: flex;
+  flex-direction: column;
+  padding: 4px 0 6px;
+}
+.mc-models__group {
+  padding: 4px 8px 6px;
+}
+.mc-models__group + .mc-models__group {
+  border-top: 1px solid var(--border);
+  padding-top: 8px;
+}
+.mc-models__grouphead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px 2px;
+}
+.mc-models__groupname {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+  color: var(--fg);
+}
+.mc-models__groupcount {
+  flex: none;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: var(--radius-full);
+  background: var(--surface);
+  color: var(--fg-subtle);
+  font-size: var(--fs-xs);
+  line-height: 20px;
+  text-align: center;
+}
+.mc-models__groupedit {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-left: auto;
+  padding: 3px 8px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--fg-subtle);
+  font-family: inherit;
+  font-size: var(--fs-xs);
+  cursor: pointer;
+  transition:
+    background-color var(--dur) var(--ease),
+    color var(--dur) var(--ease);
+}
+.mc-models__groupedit:hover {
+  background: var(--surface);
+  color: var(--fg);
+}
+.mc-models__grouplist {
+  display: flex;
+  flex-direction: column;
+}
+.mc-models__modelrow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px;
+  border-radius: var(--radius-md);
+  corner-shape: superellipse(1.5);
+  transition: background-color var(--dur) var(--ease);
+}
+.mc-models__modelrow:hover {
+  background: var(--surface);
 }
 .mc-models__name {
   display: flex;
   align-items: center;
   gap: 8px;
+  flex: 1;
   min-width: 0;
 }
-.mc-models__provider {
+.mc-models__name .mc-truncate {
+  min-width: 0;
+}
+.mc-models__rowactions {
+  flex: none;
   display: flex;
   align-items: center;
-  gap: 8px;
-  min-width: 0;
-  font-size: var(--fs-sm);
-  color: var(--fg-subtle);
+  gap: 4px;
 }
 
 /* ---- 服务商选择器 ---- */

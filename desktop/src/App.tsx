@@ -15,6 +15,7 @@ import {
   deleteHarnessArchitecture,
   downloadUpdate,
   fetchHarnessArchitectures,
+  getPromptSuggestion,
   getSessionChangesSummary,
   gitStatus,
   importFontFile,
@@ -96,6 +97,12 @@ import { MarketplaceBody } from "./components/marketplace/MarketplaceBody";
 import { Onboarding } from "./components/onboarding/Onboarding";
 import { TitleBar } from "./components/TitleBar";
 import { Toast } from "./components/Toast";
+import {
+  StarPrompt,
+  acceptStarPrompt as rememberStarPromptAccepted,
+  shouldShowStarPrompt,
+  snoozeStarPrompt,
+} from "./components/StarPrompt";
 import "./components/UndoBar.css";
 import { UpdateModal } from "./components/UpdateModal";
 import { ThemeProvider } from "./theme/theme";
@@ -124,6 +131,8 @@ import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 
 type View = "chat" | "settings" | "plugins" | "architecture" | "git";
+const REPO_URL = "https://github.com/MuLiuSaMa/MeowCode";
+
 /**
  * 工具审批模式：read-only = 只读；ask = 每次询问；auto = 工作区内自动（可写根内写/改与常规命令不弹窗，高危命令仍弹）；
  * full = 完全访问（整机路径放行）。会话级，切会话重置。
@@ -362,6 +371,13 @@ export default function App() {
   const [plan, setPlan] = useState<PlanState | null>(null);
   /** 输入框悬浮胶囊：本会话已修改文件（只取统计，不含 diff；渲染前按 git status 过滤已提交） */
   const [sessionChanges, setSessionChanges] = useState<SessionChangeSummary[]>([]);
+  /** 回合结束后预测的下一句：显示在对话末尾，点击填入输入框 */
+  const [promptSuggestion, setPromptSuggestion] = useState<string | null>(null);
+  const suggestionSeqRef = useRef(0);
+  const promptSuggestionsEnabledRef = useRef(false);
+  /** 右下角 Star 提示：启动后出现一次；「补药」7 天后再来，「好哒」永久关闭 */
+  const [starPromptOpen, setStarPromptOpen] = useState(false);
+  const starPromptHandledRef = useRef(false);
   /** 右上角工作区概览：默认收起，子 Agent 启动时自动展开 */
   const [workspaceOverviewOpen, setWorkspaceOverviewOpen] = useState(false);
   const sessionIdRef = useRef<string | null>(null);
@@ -393,9 +409,55 @@ export default function App() {
   );
   const closeWorkspaceOverview = useCallback(() => setWorkspaceOverviewOpen(false), []);
 
+  promptSuggestionsEnabledRef.current = settings?.nextPromptSuggestions === true;
+
+  const requestPromptSuggestion = useCallback(async (sessionId: string) => {
+    const seq = ++suggestionSeqRef.current;
+    setPromptSuggestion(null);
+    try {
+      const suggestion = await getPromptSuggestion(sessionId);
+      if (seq !== suggestionSeqRef.current || sessionIdRef.current !== sessionId) return;
+      setPromptSuggestion(suggestion);
+    } catch {
+      // 建议是锦上添花：失败不打扰对话
+    }
+  }, []);
+
   useEffect(() => {
     sessionIdRef.current = session?.id ?? null;
+    // 切会话：旧会话的建议不能再落进新输入框
+    suggestionSeqRef.current += 1;
+    setPromptSuggestion(null);
   }, [session?.id]);
+
+  useEffect(() => {
+    if (settings?.nextPromptSuggestions === true) return;
+    suggestionSeqRef.current += 1;
+    setPromptSuggestion(null);
+  }, [settings?.nextPromptSuggestions]);
+
+  useEffect(() => {
+    if (!ready || !splashDone || onboardingOpen || starPromptHandledRef.current) return;
+    if (!shouldShowStarPrompt()) return;
+    const timer = window.setTimeout(() => {
+      starPromptHandledRef.current = true;
+      setStarPromptOpen(true);
+    }, 3500);
+    return () => window.clearTimeout(timer);
+  }, [ready, splashDone, onboardingOpen]);
+
+  const dismissStarPrompt = useCallback(() => {
+    starPromptHandledRef.current = true;
+    setStarPromptOpen(false);
+    snoozeStarPrompt();
+  }, []);
+
+  const acceptStarPrompt = useCallback(() => {
+    starPromptHandledRef.current = true;
+    setStarPromptOpen(false);
+    rememberStarPromptAccepted();
+    void window.meow.openExternal(REPO_URL);
+  }, []);
 
   useEffect(() => {
     setSessionChanges([]);
@@ -1141,6 +1203,7 @@ export default function App() {
       silentUpdate: settings?.silentUpdate ?? true,
       notifications: settings?.notifications ?? true,
       floatingIsland: settings?.floatingIsland ?? false,
+      nextPromptSuggestions: settings?.nextPromptSuggestions ?? false,
       worktreeFetchUpstream: settings?.worktreeFetchUpstream ?? false,
       worktreeAutoCleanup: settings?.worktreeAutoCleanup ?? true,
       worktreeMaxKeep: settings?.worktreeMaxKeep ?? 15,
@@ -1157,6 +1220,7 @@ export default function App() {
       settings?.silentUpdate,
       settings?.notifications,
       settings?.floatingIsland,
+      settings?.nextPromptSuggestions,
       settings?.worktreeFetchUpstream,
       settings?.worktreeAutoCleanup,
       settings?.worktreeMaxKeep,
@@ -2457,6 +2521,8 @@ export default function App() {
     });
 
     if (event.type === "message_start") {
+      suggestionSeqRef.current += 1;
+      setPromptSuggestion(null);
       setToolProgress(null);
       if (event.queuedId) completeQueuedPrompt(event.queuedId);
       // 新回合：只重置回合计时；会话累计 token / 缓存命中率保留
@@ -2514,6 +2580,13 @@ export default function App() {
       setTimeline((items) => clearRunningCompaction(items));
       // 每轮结束都重拉一次占用：服务商不回传用量时走估算，也能看到增长
       void refreshContextUsage();
+      if (
+        event.status === "completed" &&
+        event.sessionId === sessionIdRef.current &&
+        promptSuggestionsEnabledRef.current
+      ) {
+        void requestPromptSuggestion(event.sessionId);
+      }
     }
     if (event.type === "compaction_started") {
       const key = nextKey("compaction");
@@ -2845,9 +2918,18 @@ export default function App() {
     images?: ComposerImage[],
   ) => {
     // 附件 chip：绝对路径（不限工作区），作为首部【附件】行交给运行时注入文件内容
-    const attachmentLines = chips
+    const fileAttachmentLines = chips
       .filter((chip) => chip.kind === "file")
       .map((chip) => `【附件】${chip.name} · ${chip.path}`); // i18n-allow 消息首部协议标记，与 src/agent 解析约定一致
+    // 拖入/选择的图片带原始路径：同样给模型一行路径引用；剪贴板图片没有来源路径
+    const imageAttachmentLines = (images ?? [])
+      .filter((image) => image.path?.trim())
+      .map((image) => {
+        const path = image.path!.trim();
+        const name = image.name?.trim() || path.replace(/\\/g, "/").split("/").pop() || path;
+        return `【附件】${name} · ${path}`; // i18n-allow 消息首部协议标记，与 src/agent 解析约定一致
+      });
+    const attachmentLines = [...new Set([...fileAttachmentLines, ...imageAttachmentLines])];
     // 技能/插件引用 chip：首部叠加多行标记；插件命令独占，展开后是一整段指令
     const rawInput = overrideText ?? input;
     const commandChip = chips.find((chip) => chip.kind === "command");
@@ -2895,6 +2977,9 @@ export default function App() {
     ).trim();
     if (!text && !images?.length) return;
     if (compacting || sessionSwitching || worktreeBusy) return;
+    // 用户开始新回合：上一轮的输入建议立即作废
+    suggestionSeqRef.current += 1;
+    setPromptSuggestion(null);
     const queued = streaming;
     const firstSend = !timeline.some(
       (item) => item.kind === "message" && item.role === "user",
@@ -3161,6 +3246,10 @@ export default function App() {
                   : prev.notifications,
               floatingIsland:
                 typeof saved?.floatingIsland === "boolean" ? saved.floatingIsland : prev.floatingIsland,
+              nextPromptSuggestions:
+                typeof saved?.nextPromptSuggestions === "boolean"
+                  ? saved.nextPromptSuggestions
+                  : prev.nextPromptSuggestions,
               worktreeFetchUpstream:
                 typeof saved?.worktreeFetchUpstream === "boolean"
                   ? saved.worktreeFetchUpstream
@@ -3919,8 +4008,45 @@ export default function App() {
     [settings, pushError],
   );
 
-  /** 引导完成：先落盘完成标记；没有工作区时落到设置 → 通用，避免停在不可用的输入框 */
-  const finishOnboarding = useCallback(async () => {
+  /**
+   * 启用/停用模型：只写偏好并热切换，不重启 agent server。
+   * 停用当前模型时，激活项让给列表里第一个仍启用的模型。
+   */
+  const toggleProviderEnabled = useCallback(
+    async (providerId: string, enabled: boolean) => {
+      if (!settings) return;
+      const nextProviders = (settings.providers ?? []).map((item) =>
+        item.id === providerId ? { ...item, enabled } : item,
+      );
+      const activeId = nextProviders.some(
+        (item) => item.id === settings.providerId && item.enabled !== false,
+      )
+        ? settings.providerId
+        : (nextProviders.find((item) => item.enabled !== false)?.id ?? nextProviders[0]?.id);
+      const previous = settings;
+      // 开关先落 UI，再在后台落盘 + 热切换；失败回滚
+      setSettings({ ...settings, providers: nextProviders, providerId: activeId });
+      try {
+        const saved = await window.meow.saveProviderPrefs({
+          providers: [{ id: providerId, enabled }],
+          ...(activeId && activeId !== settings.providerId ? { providerId: activeId } : {}),
+        });
+        setSettings(saved);
+        if (activeId && activeId !== settings.providerId) {
+          await api("/session/model", {
+            method: "PUT",
+            body: JSON.stringify({ provider: activeId }),
+          });
+        }
+      } catch (err) {
+        setSettings(previous);
+        pushError(err instanceof Error ? err.message : String(err));
+      }
+    },
+    [settings, pushError],
+  );
+
+  /** 引导完成：先落盘完成标记；没有工作区时落到设置 → 通用，避免停在不可用的输入框 */  const finishOnboarding = useCallback(async () => {
     const ok = await savePreferences({ onboardingCompleted: true });
     if (!ok) return;
     setOnboardingOpen(false);
@@ -4464,7 +4590,7 @@ export default function App() {
           ) : view === "settings" ? (
             <SettingsNav section={settingsSection} onSection={setSettingsSection} />
           ) : view === "plugins" ? (
-            <MarketplaceNav tab={marketTab} onTab={setMarketTab} onClose={() => setView("chat")} />
+            <MarketplaceNav tab={marketTab} onTab={setMarketTab} />
           ) : view === "architecture" ? (
             <ArchitectureNav
               agents={architectureAgents}
@@ -4653,11 +4779,31 @@ export default function App() {
                 setShowInspector(true);
               }}
               focus={messageFocus}
+              suggestion={promptSuggestion}
+              onSuggestionUse={(text) => {
+                setInput(text);
+                setComposerFocusToken((token) => token + 1);
+                suggestionSeqRef.current += 1;
+                setPromptSuggestion(null);
+              }}
+              onSuggestionDismiss={() => {
+                suggestionSeqRef.current += 1;
+                setPromptSuggestion(null);
+              }}
             />
             <Composer
               value={input}
               onChange={setInput}
               focusToken={composerFocusToken}
+              suggestion={promptSuggestion}
+              onSuggestionUsed={() => {
+                suggestionSeqRef.current += 1;
+                setPromptSuggestion(null);
+              }}
+              onSuggestionDismiss={() => {
+                suggestionSeqRef.current += 1;
+                setPromptSuggestion(null);
+              }}
               chips={chips}
               onRemoveChip={removeChip}
               onAttachSkill={(chip) => addChip({ kind: "skill", ...chip })}
@@ -4776,6 +4922,12 @@ export default function App() {
             sessions={sessions}
             archivedSessions={settings?.archivedSessions ?? []}
             workspace={session?.cwd ?? settings?.workspace ?? null}
+            projects={projects}
+            activeProject={projectCwd ?? settings?.workspace ?? ""}
+            projectNames={settings?.projectNames ?? {}}
+            onAddProject={() => void pickWorkspace()}
+            onRenameProject={renameProject}
+            onRemoveProject={removeProject}
             onUnarchiveSession={unarchiveSession}
             onDeleteArchivedSession={(filePath) => void deleteArchivedSessions([filePath])}
             onDeleteAllArchived={() =>
@@ -4783,6 +4935,7 @@ export default function App() {
             }
             onSavePreferences={(prefs) => void savePreferences(prefs)}
             onSaveProviders={(next, activeId) => void saveProviders(next, activeId)}
+            onToggleProvider={(id, enabled) => void toggleProviderEnabled(id, enabled)}
             onChangeEffort={(id, value) => void changeEffortFor(id, value)}
             updateRelease={updateRelease}
             onUpdateDiscovered={discoverUpdate}
@@ -4834,6 +4987,10 @@ export default function App() {
           />
         ) : null}
       </AppShell>
+
+      {starPromptOpen ? (
+        <StarPrompt onAccept={acceptStarPrompt} onDismiss={dismissStarPrompt} />
+      ) : null}
 
       <ApprovalDialog
         open={Boolean(approval) && !sessionSwitching}

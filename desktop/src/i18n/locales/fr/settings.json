@@ -33,6 +33,7 @@
     "archive": "Archives",
     "about": "À propos",
     "island": "AI 悬浮岛",
+    "projects": "Projets",
     "hooks": "Hooks",
     "dataImport": "Import de données",
     "rules": "Règles",
@@ -154,6 +155,7 @@
     "checking": "Vérification…",
     "check": "Vérifier la version",
     "author": "Auteur",
+    "qqGroup": "Groupe QQ",
     "website": "Site web",
     "repo": "Dépôt",
     "openInBrowser": "Ouvrir dans le navigateur",
@@ -178,6 +180,14 @@
     "save": "Enregistrer",
     "saving": "Enregistrement…"
   },
+  "projects": {
+    "desc": "Gérez les espaces de travail ajoutés. Ajouter un projet démarre une nouvelle discussion dans ce dossier ; le retirer ne fait que le masquer de la liste, les discussions et les fichiers restent intacts.",
+    "add": "Ajouter un projet",
+    "empty": "Aucun espace de travail ajouté pour l'instant.",
+    "removeTitle": "Retirer le projet",
+    "removeMessage": "Retirer « {{name}} » ? Il sera seulement masqué de la liste ; les discussions et fichiers restent intacts.",
+    "removeConfirm": "Retirer"
+  },
   "models": {
     "section": "Modèles",
     "desc": "Ajoutez ici les fournisseurs de modèles, puis indiquez le nom du modèle à utiliser.",
@@ -192,6 +202,7 @@
     "restartTitle": "L’enregistrement redémarre le service local",
     "restartMessage": "Les modifications de modèles redémarrent le service agent local et interrompent le tour en cours. Enregistrer quand même ?",
     "restartConfirm": "Enregistrer quand même",
+    "editGroup": "Modifier le fournisseur",
     "colModel": "Modèle",
     "colProvider": "Fournisseur",
     "colActions": "Actions",
@@ -535,6 +546,14 @@
         "on": "Si la fenêtre est en arrière-plan, afficher une notification système à la fin d'un tour, en cas de confirmation requise ou d'interruption (titre de la conversation et résumé de la réponse).",
         "off": "Aucune notification système ne sera affichée."
       }
+    },
+    "promptSuggestions": {
+      "field": "Suggestions de prochain message",
+      "desc": "Après une réponse, prédire ce que vous pourriez envoyer ensuite. Appuyez sur Tab pour l’insérer dans le champ.",
+      "confirmTitle": "Activer les suggestions de prochain message ?",
+      "confirmHow": "Après chaque réponse, une requête supplémentaire est envoyée au modèle actuel pour prédire votre prochain message. Il apparaît dans le champ vide ; appuyez sur Tab pour l’insérer. Rien n’est envoyé automatiquement.",
+      "confirmCost": "Cela consomme des tokens supplémentaires à chaque tour. La requête réutilise le cache de la conversation, elle est donc généralement peu coûteuse, mais reste facturée.",
+      "enable": "Activer"
     }
   },
   "proxy": {

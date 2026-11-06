@@ -234,5 +234,11 @@
     "inputPlaceholder": "Escribe un mensaje, Enter para enviar",
     "inputIdle": "Esta sesión no está en ejecución. Continúa en la ventana principal.",
     "dropHint": "Suelta para adjuntar"
+  },
+  "star": {
+    "title": "Dale una estrella a MeowCode",
+    "body": "Porfi, dame una estrellita~",
+    "dismiss": "No, gracias",
+    "accept": "¡Vale!"
   }
 }

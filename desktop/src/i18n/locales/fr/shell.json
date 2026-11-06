@@ -234,5 +234,11 @@
     "inputPlaceholder": "Tapez un message, Entrée pour envoyer",
     "inputIdle": "Cette session n'est pas en cours d'exécution. Continuez dans la fenêtre principale.",
     "dropHint": "Déposez pour joindre"
+  },
+  "star": {
+    "title": "Mettez une étoile à MeowCode",
+    "body": "S'il te plaît, offre-moi une petite étoile~",
+    "dismiss": "Non merci",
+    "accept": "D'accord"
   }
 }

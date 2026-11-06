@@ -234,5 +234,11 @@
     "inputPlaceholder": "メッセージを入力、Enter で送信",
     "inputIdle": "このセッションは実行中ではありません。メインウィンドウで続行してください。",
     "dropHint": "ドロップで添付"
+  },
+  "star": {
+    "title": "MeowCode にスターをください",
+    "body": "お願いっ、小さな星をちょっとだけ〜",
+    "dismiss": "やめとく",
+    "accept": "いいよ"
   }
 }

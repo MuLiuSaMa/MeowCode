@@ -1,5 +1,7 @@
 {
   "justNow": "gerade eben",
   "delete": "Löschen",
-  "deleteAria": "{{name}} löschen"
+  "deleteAria": "{{name}} löschen",
+  "copyCode": "Code kopieren",
+  "copied": "Kopiert"
 }

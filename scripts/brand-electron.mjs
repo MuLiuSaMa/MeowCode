@@ -31,7 +31,7 @@ const force = process.argv.includes("--force");
 const soft = !force;
 
 const pkg = JSON.parse(fs.readFileSync(path.join(repoRoot, "package.json"), "utf8"));
-const version = String(pkg.version ?? "0.1.0");
+const version = String(pkg.version ?? "1.0.0");
 const [vMajor = 0, vMinor = 0, vPatch = 0, vBuild = 0] = version
   .split(".")
   .map((part) => Number.parseInt(part, 10) || 0);

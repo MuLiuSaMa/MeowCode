@@ -1,6 +1,8 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { CustomSelect, type CustomSelectOption } from "../ui/CustomSelect";
+import { Button } from "../ui/Button";
+import { Dialog } from "../ui/Dialog";
 import { FieldRow, Section } from "../ui/Section";
 import { SegmentedControl } from "../ui/SegmentedControl";
 import { Toggle } from "../ui/Toggle";
@@ -24,6 +26,8 @@ export function GeneralSection({
   onSilentUpdateChange,
   notifications,
   onNotificationsChange,
+  nextPromptSuggestions,
+  onNextPromptSuggestionsChange,
   onToast,
 }: {
   closeAction: CloseAction;
@@ -39,9 +43,13 @@ export function GeneralSection({
   /** 回合结束 / 需要审批 / 被中断时是否弹系统通知（默认开） */
   notifications: boolean;
   onNotificationsChange: (value: boolean) => void;
+  /** 输入建议：回合结束后预测下一句（默认关，开启前确认额外 token） */
+  nextPromptSuggestions: boolean;
+  onNextPromptSuggestionsChange: (value: boolean) => void;
   onToast: (text: string) => void;
 }) {
   const { t } = useTranslation("settings");
+  const [confirmPromptSuggestions, setConfirmPromptSuggestions] = useState(false);
   // 语言名用各自母语写法、不参与翻译：翻成当前界面语言反而认不出自己要切去哪
   const languageOptions = useMemo<CustomSelectOption<LanguagePreference>[]>(
     () => [
@@ -103,10 +111,50 @@ export function GeneralSection({
             label={t("general.notify.field")}
           />
         </FieldRow>
+        <FieldRow
+          label={t("general.promptSuggestions.field")}
+          hint={t("general.promptSuggestions.desc")}
+        >
+          <Toggle
+            checked={nextPromptSuggestions}
+            onChange={(value) => {
+              if (value) {
+                setConfirmPromptSuggestions(true);
+                return;
+              }
+              onNextPromptSuggestionsChange(false);
+            }}
+            label={t("general.promptSuggestions.field")}
+          />
+        </FieldRow>
         <ProxyRows onToast={onToast} />
       </Section>
 
       <DataLocationSection onToast={onToast} />
+
+      <Dialog
+        open={confirmPromptSuggestions}
+        onClose={() => setConfirmPromptSuggestions(false)}
+        labelledBy="mc-prompt-suggestions-title"
+      >
+        <span className="mc-dialog__title" id="mc-prompt-suggestions-title">
+          {t("general.promptSuggestions.confirmTitle")}
+        </span>
+        <p className="mc-dialog__desc">{t("general.promptSuggestions.confirmHow")}</p>
+        <p className="mc-dialog__desc">{t("general.promptSuggestions.confirmCost")}</p>
+        <div className="mc-dialog__footer">
+          <Button onClick={() => setConfirmPromptSuggestions(false)}>{t("actions.cancel")}</Button>
+          <Button
+            variant="primary"
+            onClick={() => {
+              setConfirmPromptSuggestions(false);
+              onNextPromptSuggestionsChange(true);
+            }}
+          >
+            {t("general.promptSuggestions.enable")}
+          </Button>
+        </div>
+      </Dialog>
     </div>
   );
 }

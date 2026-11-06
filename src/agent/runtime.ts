@@ -85,7 +85,7 @@ import { getLspManager } from "../lsp/manager.js";
 import { formatLspFeedback } from "../lsp/format.js";
 import { type BrowserHostClient } from "./browser-host.js";
 import { browserToolDefinitions, executeBrowserTool, isBrowserTool } from "./browser-tools.js";
-import { streamChatCompletion } from "./provider.js";
+import { streamChatCompletion, utilityProvider } from "./provider.js";
 import {
   sessionAffinityKey,
   resolveCachePlan,
@@ -96,6 +96,7 @@ import { createToolCatalog, reconcileToolCatalog, type ToolCatalog } from "./too
 import { failoverReason, planFallbacks } from "./provider-fallback.js";
 import { boostEffort } from "./thinking-budget.js";
 import { projectForMainPath, projectForRequest } from "./request-projection.js";
+import { SUGGESTION_SYSTEM_PROMPT, SUGGESTION_USER_PROMPT, usableSuggestion } from "./prompt-suggestion.js";
 import { toResponsesInput } from "./responses.js";
 import { normalizeSpeechStyle, readSpeechStyleFromEnv, speechStylePrompt, type SpeechStyle } from "./speech-style.js";
 import { generateSessionTitle } from "./title-generator.js";
@@ -624,6 +625,9 @@ const CACHE_KEEPALIVE_DELAY_MS = 290_000;
  */
 const CACHE_KEEPALIVE_MAX_PINGS = 4;
 
+/** 下一句建议：单次请求输出预算（含思考 token）；失败不重试 */
+const SUGGESTION_MAX_TOKENS = 1_200;
+
 /**
  * 空闲压缩：1h TTL 的会话空到 ~54min 缓存已死（CC v2.1.299 的 idle compaction ~54min
  * 同思路）。占用过 60% 就趁「反正要冷」后台预热压缩，把重写搭在本来就要失效的便车上。
@@ -948,6 +952,8 @@ export class AgentRuntime {
   /** 最近一次回合失败原因（按 runtime/会话保留，切回时展示） */
   private lastErrorMessage: string | null = null;
   private compactingSession = false;
+  /** 输入建议请求：新回合/切会话时中止，避免晚到的结果覆盖新草稿 */
+  private suggestionAbort: AbortController | null = null;
   /** 实验开关（默认全关），见 constructor options.experimental */
   private experimental: {
     midstreamToolExec?: boolean;
@@ -2232,6 +2238,8 @@ export class AgentRuntime {
   }
 
   async switchSession(filePath: string): Promise<SessionHeaderLike> {
+    this.suggestionAbort?.abort();
+    this.suggestionAbort = null;
     const session = await SessionStore.load(filePath);
     const previous = this.currentSession;
     await this.clearQueuedPrompts("discarded");
@@ -2939,6 +2947,78 @@ export class AgentRuntime {
   }
 
   /**
+   * 回合结束后预测用户下一句：复用主对话前缀 + 合成指令，模型只回一句短建议。
+   * 禁止工具调用，但不改 provider/tools 参数，尽量命中主请求的缓存前缀。
+   */
+  async suggestNextPrompt(): Promise<string | null> {
+    const session = this.currentSession;
+    const provider = this.activeProviderOrNull();
+    if (!session || !provider || this.isRunning || this.compactingSession) return null;
+    if (this.chatMode === "plan" || this.pendingApprovalList.length > 0 || this.pendingAskDetails) {
+      return null;
+    }
+    const lastAssistant = [...session.effectiveMessages]
+      .reverse()
+      .find((message) => message.role === "assistant");
+    if (
+      !lastAssistant ||
+      typeof lastAssistant.content !== "string" ||
+      !lastAssistant.content.trim()
+    ) {
+      return null;
+    }
+
+    this.suggestionAbort?.abort();
+    const controller = new AbortController();
+    this.suggestionAbort = controller;
+    const timeout = setTimeout(() => controller.abort(), 20_000);
+    // 只带最近几条对话，用独立提示词而不是主对话前缀：避免主系统提示词把模型
+    // 带回「助手回复」模式，同时输入更小；失败不重试，建议只是锦上添花。
+    const transcript = session.effectiveMessages
+      .filter((message) => message.role === "user" || message.role === "assistant")
+      .slice(-8)
+      .map((message) => {
+        if (typeof message.content !== "string") return null;
+        const text = message.content.trim();
+        if (!text) return null;
+        const clipped = text.length > 1_200 ? `${text.slice(0, 1_200)}…` : text;
+        return `${message.role === "user" ? "User" : "Assistant"}: ${clipped}`;
+      })
+      .filter((line): line is string => Boolean(line))
+      .join("\n\n");
+    if (!transcript) return null;
+    try {
+      const result = await streamChatCompletion({
+        provider: utilityProvider(provider, SUGGESTION_MAX_TOKENS, "suggestion"),
+        messages: [
+          { role: "system", content: SUGGESTION_SYSTEM_PROMPT },
+          { role: "user", content: `${transcript}\n\n${SUGGESTION_USER_PROMPT}` },
+        ],
+        tools: [],
+        signal: controller.signal,
+        onDelta: () => undefined,
+        onUsage: (usage) => {
+          void session
+            .appendUsage({
+              ...usage,
+              source: "suggestion",
+              providerId: provider.id,
+              model: provider.model,
+            })
+            .catch(() => undefined);
+        },
+      });
+      return usableSuggestion(result.message.content ?? "");
+    } catch {
+      // 建议是锦上添花：中止/网关拒绝/超时都静默失败
+      return null;
+    } finally {
+      clearTimeout(timeout);
+      if (this.suggestionAbort === controller) this.suggestionAbort = null;
+    }
+  }
+
+  /**
    * 缓存策略（P0-3/P1-4）：给每个请求的 provider 盖两项会话级章——
    *  - pace：会话节奏，`cacheTtl: "auto"` 的判据（人驱动 vs 子代理/批量）。
    *    **必须在会话开始就定死且整个会话恒定**：TTL 是断点字段的一部分，
@@ -2967,6 +3047,9 @@ export class AgentRuntime {
   ): Promise<void> {
     const session = this.currentSession;
     if (!session) throw new Error("No active session. Create a session first.");
+    // 用户已经开始下一轮：上一轮的输入建议请求不再有意义
+    this.suggestionAbort?.abort();
+    this.suggestionAbort = null;
     if (this.compactingSession) {
       throw new Error("Context compaction is running. Wait for it to finish before sending.");
     }

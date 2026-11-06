@@ -29,6 +29,7 @@
     "appearance": "Appearance",
     "shortcuts": "Shortcuts",
     "island": "AI Floating Island",
+    "projects": "Projects",
     "worktree": "Worktrees",
     "rules": "Rules",
     "models": "Models",
@@ -214,6 +215,7 @@
     "checking": "Checking…",
     "check": "Check Version",
     "author": "Author",
+    "qqGroup": "QQ group",
     "website": "Website",
     "repo": "Repository",
     "openInBrowser": "Open in browser",
@@ -238,6 +240,14 @@
     "save": "Save",
     "saving": "Saving…"
   },
+  "projects": {
+    "desc": "Manage the workspaces you have added. Adding a project starts a new chat in that folder; removing one only hides it from the list and leaves chats and files untouched.",
+    "add": "Add Project",
+    "empty": "No workspaces added yet.",
+    "removeTitle": "Remove project",
+    "removeMessage": "Remove “{{name}}”? It will only be hidden from the list; chats and files stay untouched.",
+    "removeConfirm": "Remove"
+  },
   "models": {
     "section": "Models",
     "desc": "Add model providers here, then enter the model name you want to use.",
@@ -252,6 +262,7 @@
     "restartTitle": "Saving restarts the local service",
     "restartMessage": "Model changes restart the local agent service, which interrupts the running turn. Save anyway?",
     "restartConfirm": "Save anyway",
+    "editGroup": "Edit provider",
     "colModel": "Model",
     "colProvider": "Provider",
     "colActions": "Actions",
@@ -535,6 +546,14 @@
         "on": "When a turn finishes, needs your approval, or is interrupted — and the window is in the background — show a system notification with the chat title and reply summary.",
         "off": "No system notifications will be shown."
       }
+    },
+    "promptSuggestions": {
+      "field": "Next-message suggestions",
+      "desc": "After a reply finishes, predict what you might send next. Press Tab to put it in the input box.",
+      "confirmTitle": "Turn on next-message suggestions?",
+      "confirmHow": "After each reply, one extra request is sent to the current model to predict your next message. It appears in the empty input box; press Tab to fill it in. Nothing is sent until you send it yourself.",
+      "confirmCost": "This uses additional tokens on every turn. The request reuses the conversation cache, so it is usually inexpensive, but it is still billed.",
+      "enable": "Turn on"
     }
   },
   "proxy": {

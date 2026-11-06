@@ -1,0 +1,74 @@
+/* 设置 → 项目：已添加的工作区列表 */
+.mc-projects {
+  display: flex;
+  flex-direction: column;
+}
+
+.mc-projects__empty {
+  margin: 0;
+  padding: 26px 16px;
+  color: var(--fg-subtlest);
+  font-size: var(--fs-base);
+  text-align: center;
+}
+
+.mc-projects__list {
+  display: flex;
+  flex-direction: column;
+}
+
+.mc-projects__row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  transition: background-color var(--dur) var(--ease);
+}
+
+.mc-projects__row + .mc-projects__row {
+  border-top: 1px solid var(--border);
+}
+
+.mc-projects__row:hover,
+.mc-projects__row[data-active="true"] {
+  background: var(--surface-hover);
+}
+
+.mc-projects__icon {
+  flex: none;
+  color: var(--fg-subtlest);
+}
+
+.mc-projects__text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.mc-projects__name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  color: var(--fg);
+  font-size: var(--fs-base);
+}
+
+.mc-projects__name .mc-truncate {
+  min-width: 0;
+}
+
+.mc-projects__path {
+  color: var(--fg-subtlest);
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+}
+
+.mc-projects__actions {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 4px;
+}

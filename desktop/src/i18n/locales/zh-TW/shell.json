@@ -234,5 +234,11 @@
     "inputPlaceholder": "輸入訊息，Enter 傳送",
     "inputIdle": "此對話未在執行中，請在主視窗開啟後繼續",
     "dropHint": "鬆開以附加"
+  },
+  "star": {
+    "title": "給 MeowCode 點一個 Star",
+    "body": "球球惹，給我點個小星星叭～",
+    "dismiss": "補藥",
+    "accept": "好噠"
   }
 }

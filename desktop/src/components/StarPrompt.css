@@ -1,0 +1,63 @@
+/* 右下角小卡片：一次性 Star 提示，出现即淡入上浮，不做回弹 */
+.mc-starprompt {
+  position: fixed;
+  right: 18px;
+  bottom: 18px;
+  z-index: 550;
+  width: 264px;
+  padding: 13px 14px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  corner-shape: superellipse(1.5);
+  background: var(--bg-elevated);
+  box-shadow: var(--shadow-lg);
+  animation: mc-starprompt-in 220ms var(--ease) both;
+}
+
+.mc-starprompt__head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.mc-starprompt__icon {
+  display: inline-flex;
+  color: var(--fg-subtle);
+}
+
+.mc-starprompt__title {
+  color: var(--fg);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+  line-height: 1.3;
+}
+
+.mc-starprompt__body {
+  margin: 6px 0 12px;
+  color: var(--fg-subtle);
+  font-size: var(--fs-xs);
+  line-height: 1.55;
+}
+
+.mc-starprompt__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+@keyframes mc-starprompt-in {
+  from {
+    opacity: 0;
+    transform: translate(10px, 10px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mc-starprompt {
+    animation: none;
+  }
+}

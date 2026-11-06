@@ -153,7 +153,7 @@ import type {
   TurnStatus,
 } from "../agent/types.js";
 
-const APP_VERSION = "0.1.0";
+const APP_VERSION = "1.0.0";
 const DEFAULT_SESSIONS_DIR = path.join(os.homedir(), "AppData", "Roaming", "MeowCode", "agent", "sessions");
 
 /** 插件命令 chip 的展示标记：首行是名称/插件/命令，空行后才是实际 `/command` 文本 */
@@ -2729,6 +2729,23 @@ export async function startServer(options: { port?: number; token?: string } = {
           )
           .catch(() => undefined);
         sendJson(response, 202, { accepted: true });
+        return;
+      }
+
+      // 输入建议：回合结束后由客户端触发，复用当前会话前缀预测下一句
+      if (pathname === "/session/suggestion" && request.method === "POST") {
+        const body = await readJsonBody<{ sessionId?: string }>(request);
+        if (invalidSessionId(body.sessionId) || !body.sessionId?.trim()) {
+          sendError(response, 400, "invalid_request", "sessionId must be a non-empty string");
+          return;
+        }
+        const target = resolveRuntime(body.sessionId.trim());
+        if (!target?.current) {
+          sendError(response, 404, "session_not_found", "That session is not running.");
+          return;
+        }
+        const suggestion = await target.suggestNextPrompt();
+        sendJson(response, 200, { suggestion });
         return;
       }
 

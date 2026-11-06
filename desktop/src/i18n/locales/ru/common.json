@@ -1,5 +1,7 @@
 {
   "justNow": "только что",
   "delete": "Удалить",
-  "deleteAria": "Удалить «{{name}}»"
+  "deleteAria": "Удалить «{{name}}»",
+  "copyCode": "Копировать код",
+  "copied": "Скопировано"
 }

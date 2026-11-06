@@ -33,6 +33,7 @@
     "archive": "Arquivo",
     "about": "Sobre",
     "island": "AI 悬浮岛",
+    "projects": "Projetos",
     "hooks": "Hooks",
     "dataImport": "Importar dados",
     "rules": "Regras",
@@ -154,6 +155,7 @@
     "checking": "Verificando…",
     "check": "Verificar versão",
     "author": "Autor",
+    "qqGroup": "Grupo QQ",
     "website": "Site",
     "repo": "Repositório",
     "openInBrowser": "Abrir no navegador",
@@ -178,6 +180,14 @@
     "save": "Salvar",
     "saving": "Salvando…"
   },
+  "projects": {
+    "desc": "Gerencie os espaços de trabalho adicionados. Adicionar um projeto inicia um novo chat nessa pasta; remover apenas o oculta da lista, chats e arquivos não são excluídos.",
+    "add": "Adicionar projeto",
+    "empty": "Ainda não há espaços de trabalho adicionados.",
+    "removeTitle": "Remover projeto",
+    "removeMessage": "Remover «{{name}}»? Apenas será ocultado da lista; chats e arquivos não são excluídos.",
+    "removeConfirm": "Remover"
+  },
   "models": {
     "section": "Modelos",
     "desc": "Adicione aqui os provedores de modelos e informe o nome do modelo que você usa.",
@@ -192,6 +202,7 @@
     "restartTitle": "Salvar reinicia o serviço local",
     "restartMessage": "Alterações de modelos reiniciam o serviço agent local e interrompem o turno em andamento. Salvar mesmo assim?",
     "restartConfirm": "Salvar mesmo assim",
+    "editGroup": "Editar provedor",
     "colModel": "Modelo",
     "colProvider": "Provedor",
     "colActions": "Ações",
@@ -535,6 +546,14 @@
         "on": "Se a janela estiver em segundo plano, mostrar uma notificação ao concluir um turno, pedir confirmação ou ser interrompido (título da conversa e resumo da resposta).",
         "off": "Nenhuma notificação do sistema será mostrada."
       }
+    },
+    "promptSuggestions": {
+      "field": "Sugestões de próxima mensagem",
+      "desc": "Após uma resposta, prever o que você pode enviar em seguida. Pressione Tab para inserir no campo.",
+      "confirmTitle": "Ativar sugestões de próxima mensagem?",
+      "confirmHow": "Após cada resposta, uma requisição extra é enviada ao modelo atual para prever sua próxima mensagem. Ela aparece no campo vazio; pressione Tab para inserir. Nada é enviado automaticamente.",
+      "confirmCost": "Isso consome tokens extras a cada turno. A requisição reutiliza o cache da conversa, então costuma ser barata, mas ainda é cobrada.",
+      "enable": "Ativar"
     }
   },
   "proxy": {

@@ -157,6 +157,9 @@ export function WorkspaceOverview({
         : t("overview.changes");
   const showStats = hasChanges;
 
+  // 干净工作区且没有子 Agent：右上角不保留一个空概览入口
+  if (isRepo && !hasChanges && sorted.length === 0) return null;
+
   const switchBranch = async (name: string) => {
     if (branchBusy !== null || name === status?.branch) return;
     setBranchBusy(name);

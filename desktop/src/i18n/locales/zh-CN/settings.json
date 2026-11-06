@@ -29,6 +29,7 @@
     "appearance": "外观",
     "shortcuts": "快捷键",
     "island": "AI 悬浮岛",
+    "projects": "项目",
     "worktree": "Worktrees",
     "rules": "规则",
     "models": "模型",
@@ -214,6 +215,7 @@
     "checking": "检查中…",
     "check": "检查版本",
     "author": "作者",
+    "qqGroup": "QQ群",
     "website": "官网",
     "repo": "开源仓库",
     "openInBrowser": "用浏览器打开",
@@ -238,6 +240,14 @@
     "save": "保存",
     "saving": "保存中…"
   },
+  "projects": {
+    "desc": "管理已添加的工作区。添加项目会在该目录新建一个对话；移除只会从列表中隐藏，聊天记录和文件都不会删除。",
+    "add": "添加项目",
+    "empty": "还没有添加任何工作区。",
+    "removeTitle": "移除项目",
+    "removeMessage": "确定移除「{{name}}」吗？只会从列表中隐藏，聊天记录和文件都不会删除。",
+    "removeConfirm": "移除"
+  },
   "models": {
     "section": "模型",
     "desc": "在这里添加模型服务商，并填写你要使用的模型名称。",
@@ -252,6 +262,7 @@
     "restartTitle": "保存会重启本地服务",
     "restartMessage": "模型改动需要重启本地 agent 服务才能生效，正在进行的回合会被中断。仍要保存吗？",
     "restartConfirm": "仍要保存",
+    "editGroup": "编辑该服务商",
     "colModel": "模型",
     "colProvider": "服务商",
     "colActions": "操作",
@@ -535,6 +546,14 @@
         "on": "回合结束、需要确认或被中断时，窗口不在前台就弹系统通知（显示会话标题与回复摘要）。",
         "off": "关闭后不再弹任何系统通知。"
       }
+    },
+    "promptSuggestions": {
+      "field": "输入建议",
+      "desc": "回复结束后预测你可能要发的下一句，按 Tab 填入输入框。",
+      "confirmTitle": "开启输入建议？",
+      "confirmHow": "每次回复结束后，会用当前模型额外发起一次请求，预测你接下来可能要发的话，显示在空输入框里。按 Tab 填入，不会自动发送。",
+      "confirmCost": "这会在每轮对话额外消耗 Token。请求会复用对话缓存，通常花费不多，但仍会计费。",
+      "enable": "开启"
     }
   },
   "proxy": {

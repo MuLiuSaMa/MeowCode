@@ -181,6 +181,49 @@ img {
   padding: 0;
   font-size: var(--fs-caption);
 }
+/* 代码块复制按钮：右上角浮层，不随代码横向滚动 */
+.mc-mdcode {
+  position: relative;
+  margin: 12px 0;
+}
+.mc-mdcode > pre {
+  margin: 0;
+  padding-right: 44px;
+}
+.mc-mdcode__copy {
+  position: absolute;
+  top: 7px;
+  right: 7px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  corner-shape: superellipse(1.5);
+  background: color-mix(in oklab, #000 22%, var(--bg));
+  color: var(--fg-subtle);
+  cursor: pointer;
+  transition:
+    color var(--dur) var(--ease),
+    background-color var(--dur) var(--ease),
+    border-color var(--dur) var(--ease);
+}
+.mc-mdcode__copy:hover,
+.mc-mdcode__copy:focus-visible {
+  color: var(--fg);
+  background: var(--surface-hover);
+  border-color: var(--border);
+}
+.mc-mdcode__copy[data-copied="true"] {
+  color: var(--fg);
+}
+.mc-mdcode__copy svg { display: block; }
+.mc-mdcode__copy .mc-mdcode__icon--done { display: none; }
+.mc-mdcode__copy[data-copied="true"] .mc-mdcode__icon { display: none; }
+.mc-mdcode__copy[data-copied="true"] .mc-mdcode__icon--done { display: block; }
 .mc-markdown ul,
 .mc-markdown ol { margin: 10px 0; padding-inline-start: 22px; }
 .mc-markdown li { margin: 4px 0; }

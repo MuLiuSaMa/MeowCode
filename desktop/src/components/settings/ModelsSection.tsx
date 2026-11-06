@@ -2,16 +2,15 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { LuPencil, LuPlus, LuTrash2 } from "react-icons/lu";
 import { findTemplate } from "../../data/providerCatalog";
+import { modelIconKey } from "../../data/providerIcons";
 import { Badge } from "../ui/Badge";
 import { Button } from "../ui/Button";
 import { Dialog } from "../ui/Dialog";
 import { IconButton } from "../ui/IconButton";
 import { ProviderIcon } from "../ui/ProviderIcon";
 import { Section } from "../ui/Section";
-import { Table, Td, Th } from "../ui/Table";
 import { Toggle } from "../ui/Toggle";
 import { ModelFormDialog } from "./ModelFormDialog";
-import { providerLabel } from "./modelForm";
 import { ProviderPickerDialog } from "./ProviderPickerDialog";
 import type { ProviderSettings } from "../../api";
 import "./ModelsSection.css";
@@ -23,6 +22,7 @@ export function ModelsSection({
   turnRunning,
   onChange,
   onChangeEffort: _onChangeEffort,
+  onToggleProvider,
 }: {
   providers: ProviderSettings[];
   activeProviderId: string;
@@ -31,6 +31,8 @@ export function ModelsSection({
   turnRunning: boolean;
   onChange: (providers: ProviderSettings[], activeId?: string) => void;
   onChangeEffort: (providerId: string, value: string) => void;
+  /** 启用/停用单个模型：只写偏好并热切换，不重启 agent server */
+  onToggleProvider: (providerId: string, enabled: boolean) => void;
 }) {
   const { t } = useTranslation("settings");
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -94,6 +96,17 @@ export function ModelsSection({
 
   const deleteTarget = pendingDelete ? providers.find((item) => item.id === pendingDelete) : null;
 
+  const groups = (() => {
+    const map = new Map<string, { key: string; items: ProviderSettings[] }>();
+    for (const provider of providers) {
+      const key = groupKeyOf(provider);
+      const group = map.get(key);
+      if (group) group.items.push(provider);
+      else map.set(key, { key, items: [provider] });
+    }
+    return [...map.values()];
+  })();
+
   return (
     <div className="mc-settings__inner">
       <Section title={t("models.section")} description={t("models.desc")}>
@@ -110,58 +123,69 @@ export function ModelsSection({
           {providers.length === 0 ? (
             <p className="mc-models__empty">{t("models.empty")}</p>
           ) : (
-            <Table className="mc-models__table">
-              <thead>
-                <tr>
-                  <Th style={{ width: "42%" }}>{t("models.colModel")}</Th>
-                  <Th style={{ width: "26%" }}>{t("models.colProvider")}</Th>
-                  <Th style={{ width: "32%", textAlign: "right" }}>{t("models.colActions")}</Th>
-                </tr>
-              </thead>
-              <tbody>
-                {providers.map((provider) => {
-                  const template = findTemplate(provider.templateId);
-                  const isActive = provider.id === activeProviderId;
-                  return (
-                    <tr key={provider.id}>
-                      <Td>
-                        <span className="mc-models__name">
-                          <span className="mc-truncate">{provider.displayName || provider.model}</span>
-                          {isActive ? <Badge tone="running">{t("models.active")}</Badge> : null}
-                        </span>
-                      </Td>
-                      <Td>
-                        <span className="mc-models__provider">
-                          <ProviderIcon template={template} size={18} />
-                          <span className="mc-truncate">{provider.name}</span>
-                        </span>
-                      </Td>
-                      <Td>
-                        <span className="mc-table__actions">
-                          <Toggle
-                            checked={provider.enabled !== false}
-                            label={t("models.enableAria", { name: provider.displayName || provider.model })}
-                            onChange={(checked) =>
-                              commit(providers.map((item) => (item.id === provider.id ? { ...item, enabled: checked } : item)))
-                            }
-                          />
-                          <IconButton label={t("actions.edit")} size="sm" onClick={() => setEditing(provider)}>
-                            <LuPencil size={14} />
-                          </IconButton>
-                          <IconButton
-                            label={t("actions.delete")}
-                            size="sm"
-                            onClick={() => setPendingDelete(provider.id)}
-                          >
-                            <LuTrash2 size={14} />
-                          </IconButton>
-                        </span>
-                      </Td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </Table>
+            <div className="mc-models__groups">
+              {groups.map((group) => {
+                const first = group.items[0];
+                const template = findTemplate(first.templateId);
+                return (
+                  <section className="mc-models__group" key={group.key}>
+                    <div className="mc-models__grouphead">
+                      <span className="mc-models__groupname">{first.name}</span>
+                      <span
+                        className="mc-models__groupcount"
+                        title={t("models.count", { count: group.items.length })}
+                      >
+                        {group.items.length}
+                      </span>
+                      <button
+                        type="button"
+                        className="mc-models__groupedit"
+                        onClick={() => setEditing(first)}
+                      >
+                        <LuPencil size={13} />
+                        {t("models.editGroup")}
+                      </button>
+                    </div>
+                    <div className="mc-models__grouplist">
+                      {group.items.map((provider) => {
+                        const isActive = provider.id === activeProviderId;
+                        return (
+                          <div className="mc-models__modelrow" key={provider.id}>
+                            <ProviderIcon
+                              template={template}
+                              iconKey={modelIconKey(provider.model)}
+                              size={18}
+                            />
+                            <span className="mc-models__name">
+                              <span className="mc-truncate">
+                                {provider.displayName || provider.model}
+                              </span>
+                              {isActive ? <Badge tone="running">{t("models.active")}</Badge> : null}
+                            </span>
+                            <span className="mc-models__rowactions">
+                              <Toggle
+                                checked={provider.enabled !== false}
+                                label={t("models.enableAria", {
+                                  name: provider.displayName || provider.model,
+                                })}
+                                onChange={(checked) => onToggleProvider(provider.id, checked)}
+                              />
+                              <IconButton
+                                label={t("actions.delete")}
+                                size="sm"
+                                onClick={() => setPendingDelete(provider.id)}
+                              >
+                                <LuTrash2 size={14} />
+                              </IconButton>
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </section>
+                );
+              })}
+            </div>
           )}
         </div>
       </Section>
@@ -220,9 +244,6 @@ export function ModelsSection({
         <ModelFormDialog
           draft={editing}
           entries={editingGroup}
-          existingLabels={providers
-            .filter((item) => !groupIds.has(item.id))
-            .map(providerLabel)}
           onClose={() => setEditing(null)}
           onSave={handleSave}
         />

@@ -234,5 +234,11 @@
     "inputPlaceholder": "输入消息，Enter 发送",
     "inputIdle": "该会话未在运行中，请在主窗口打开后继续",
     "dropHint": "松开，添加到消息"
+  },
+  "star": {
+    "title": "给 MeowCode 点一个 Star",
+    "body": "球球惹，给我点个小星星叭~",
+    "dismiss": "补药",
+    "accept": "好哒"
   }
 }

@@ -30,6 +30,10 @@
       "releasePrompt": "Stelle eine Release-Checkliste zusammen: Version, Build, Tests, Migrationen, Rollback und Release Notes. Nutze die echten Befehle dieses Projekts statt allgemeiner Floskeln."
     }
   },
+  "suggestion": {
+    "label": "Vorschlag",
+    "dismiss": "Vorschlag ausblenden"
+  },
   "waiting": {
     "response": "Warte auf das Modell"
   },

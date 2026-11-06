@@ -389,7 +389,8 @@ export function utilityProvider(
     | "commit"
     | "polish"
     | "memory"
-    | "learning" = "compaction",
+    | "learning"
+    | "suggestion" = "compaction",
 ): ProviderConfig {
   return { ...provider, maxTokens, reasoningEffort: undefined, thinkingBudget: undefined };
 }

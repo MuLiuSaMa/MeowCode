@@ -12,17 +12,15 @@ const TABS: Array<{ id: MarketTab; labelKey: string; icon: typeof LuPuzzle }> = 
 ];
 
 /**
- * 市场左侧导航（占对话列表槽位）：标题 + 三页签 + 返回对话。
- * 标题/返回按钮复用 mc-settings__heading / mc-settings__back 的既有样式。
+ * 市场左侧导航（占对话列表槽位）：标题 + 三页签。
+ * 标题复用 mc-settings__heading 的既有样式。
  */
 export function MarketplaceNav({
   tab,
   onTab,
-  onClose,
 }: {
   tab: MarketTab;
   onTab: (tab: MarketTab) => void;
-  onClose: () => void;
 }) {
   const { t } = useTranslation("marketplace");
 
@@ -46,9 +44,6 @@ export function MarketplaceNav({
           </li>
         ))}
       </ul>
-      <button type="button" className="mc-settings__back" onClick={onClose}>
-        {t("nav.back")}
-      </button>
     </nav>
   );
 }

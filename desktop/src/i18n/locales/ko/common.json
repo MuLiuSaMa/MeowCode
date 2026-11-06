@@ -1,5 +1,7 @@
 {
   "justNow": "방금",
   "delete": "삭제",
-  "deleteAria": "{{name}} 삭제"
+  "deleteAria": "{{name}} 삭제",
+  "copyCode": "코드 복사",
+  "copied": "복사됨"
 }

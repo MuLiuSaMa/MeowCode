@@ -234,5 +234,11 @@
     "inputPlaceholder": "메시지를 입력하고 Enter로 보내기",
     "inputIdle": "이 세션은 실행 중이 아닙니다. 기본 창에서 계속하세요.",
     "dropHint": "드롭하여 첨부"
+  },
+  "star": {
+    "title": "MeowCode에 스타를 눌러 주세요",
+    "body": "부탁이야, 작은 별 하나만 눌러 줘~",
+    "dismiss": "안 할래",
+    "accept": "좋아"
   }
 }

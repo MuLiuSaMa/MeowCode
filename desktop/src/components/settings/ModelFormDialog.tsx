@@ -13,20 +13,17 @@ import "./ModelsSection.css";
 export function ModelFormDialog({
   draft,
   entries,
-  existingLabels,
   onClose,
   onSave,
 }: {
   draft: ProviderSettings;
   /** 同一服务商下已有的模型条目（编辑时传入；新建为空） */
   entries: ProviderSettings[];
-  /** 其它服务商的显示名，用于唯一性校验 */
-  existingLabels: string[];
   onClose: () => void;
   onSave: (entries: ProviderSettings[]) => void;
 }) {
   const { t } = useTranslation("settings");
-  const controller = useProviderForm({ draft, entries, existingLabels, onSave });
+  const controller = useProviderForm({ draft, entries, onSave });
   const template = findTemplate(draft.templateId);
 
   return (

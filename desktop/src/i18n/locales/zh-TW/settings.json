@@ -33,6 +33,7 @@
     "archive": "歸檔",
     "about": "關於",
     "island": "AI 悬浮岛",
+    "projects": "專案",
     "hooks": "Hooks",
     "dataImport": "資料匯入",
     "rules": "規則",
@@ -154,6 +155,7 @@
     "checking": "檢查中…",
     "check": "檢查版本",
     "author": "作者",
+    "qqGroup": "QQ 群組",
     "website": "官網",
     "repo": "開源存放庫",
     "openInBrowser": "用瀏覽器開啟",
@@ -178,6 +180,14 @@
     "save": "儲存",
     "saving": "儲存中…"
   },
+  "projects": {
+    "desc": "管理已加入的工作區。新增專案會在該目錄建立新對話；移除只會從清單隱藏，聊天紀錄和檔案都不會刪除。",
+    "add": "新增專案",
+    "empty": "還沒有加入任何工作區。",
+    "removeTitle": "移除專案",
+    "removeMessage": "確定移除「{{name}}」嗎？只會從清單隱藏，聊天紀錄和檔案都不會刪除。",
+    "removeConfirm": "移除"
+  },
   "models": {
     "section": "模型",
     "desc": "在這裡新增模型服務商，並填寫你要使用的模型名稱。",
@@ -192,6 +202,7 @@
     "restartTitle": "儲存會重啟本機服務",
     "restartMessage": "模型變更需要重啟本機 agent 服務才生效，進行中的回合會被中斷。仍要儲存嗎？",
     "restartConfirm": "仍要儲存",
+    "editGroup": "編輯該服務商",
     "colModel": "模型",
     "colProvider": "服務商",
     "colActions": "操作",
@@ -535,6 +546,14 @@
         "on": "回合結束、需要確認或被中斷時，視窗不在前景就彈系統通知（顯示對話標題與回覆摘要）。",
         "off": "關閉後不再彈任何系統通知。"
       }
+    },
+    "promptSuggestions": {
+      "field": "輸入建議",
+      "desc": "回覆結束後預測你可能要發的下一句，按 Tab 填入輸入框。",
+      "confirmTitle": "開啟輸入建議？",
+      "confirmHow": "每次回覆結束後，會用目前模型額外發起一次請求，預測你接下來可能要發的話，顯示在空白輸入框裡。按 Tab 填入，不會自動傳送。",
+      "confirmCost": "這會在每輪對話額外消耗 Token。請求會重用對話快取，通常花費不多，但仍會計費。",
+      "enable": "開啟"
     }
   },
   "proxy": {

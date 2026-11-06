@@ -1,7 +1,8 @@
-import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type RefObject } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type RefObject } from "react";
 import { useTranslation } from "react-i18next";
 import { LuCheck, LuChevronRight, LuSettings2 } from "react-icons/lu";
 import { findTemplate } from "../data/providerCatalog";
+import { modelIconKey } from "../data/providerIcons";
 import { effortFromIndex, effortIndex, effortLabel, effortLevelsForModel, effortLevelsFromValues, type EffortLevel } from "../effort";
 import type { ProviderSettings } from "../api";
 import { ProviderIcon } from "./ui/ProviderIcon";
@@ -85,6 +86,21 @@ export function ModelPopover({
   const fraction = max === 0 ? 0 : index / max;
   const atMax = max > 0 && index === max;
 
+  /** 同一服务商 = 同名 + 同端点（与设置页模型列表同一判据） */
+  const groups = useMemo(() => {
+    const map = new Map<string, { key: string; name: string; items: ProviderSettings[] }>();
+    for (const provider of providers) {
+      const key = `${provider.templateId ?? "custom"}\u0000${provider.name.trim().toLowerCase()}\u0000${provider.baseUrl.trim().toLowerCase()}`;
+      let group = map.get(key);
+      if (!group) {
+        group = { key, name: provider.name || provider.displayName || provider.model, items: [] };
+        map.set(key, group);
+      }
+      group.items.push(provider);
+    }
+    return [...map.values()];
+  }, [providers]);
+
   useLayoutEffect(() => {
     const anchor = anchorRef?.current;
     if (!anchor) return;
@@ -129,26 +145,34 @@ export function ModelPopover({
             <span className="mc-popover__count">{providers.length}</span>
           </div>
           <div className="mc-popover__list">
-            {providers.map((provider) => (
-              <button
-                key={provider.id}
-                type="button"
-                className="mc-popover__item"
-                data-active={provider.id === activeProviderId}
-                onClick={() => {
-                  onChangeActive(provider.id);
-                  setShowList(false);
-                }}
-              >
-                <ProviderIcon template={findTemplate(provider.templateId)} size={20} />
-                <span className="mc-popover__itemtext">
-                  <span className="mc-popover__itemname">{provider.displayName || provider.model}</span>
-                  <span className="mc-popover__itemmeta mc-truncate">{provider.name}</span>
-                </span>
-                {provider.id === activeProviderId ? (
-                  <LuCheck size={14} className="mc-popover__check" />
-                ) : null}
-              </button>
+            {groups.map((group) => (
+              <div className="mc-popover__group" key={group.key}>
+                <div className="mc-popover__groupname">{group.name}</div>
+                {group.items.map((provider) => (
+                  <button
+                    key={provider.id}
+                    type="button"
+                    className="mc-popover__item"
+                    data-active={provider.id === activeProviderId}
+                    onClick={() => {
+                      onChangeActive(provider.id);
+                      setShowList(false);
+                    }}
+                  >
+                    <ProviderIcon
+                      template={findTemplate(provider.templateId)}
+                      iconKey={modelIconKey(provider.model)}
+                      size={20}
+                    />
+                    <span className="mc-popover__itemname">
+                      {provider.displayName || provider.model}
+                    </span>
+                    {provider.id === activeProviderId ? (
+                      <LuCheck size={14} className="mc-popover__check" />
+                    ) : null}
+                  </button>
+                ))}
+              </div>
             ))}
             {providers.length === 0 ? (
               <p className="mc-popover__empty">{t("modelPopover.empty")}</p>
@@ -161,7 +185,7 @@ export function ModelPopover({
               className="mc-popover__managebtn"
               onClick={onManageModels}
             >
-              <LuSettings2 size={14} />
+              <LuSettings2 size={13} />
               {t("modelPopover.manage")}
             </button>
           </div>

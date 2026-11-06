@@ -8,6 +8,7 @@ import { AssistantStatusLine, type AssistantStatus } from "./AssistantStatusLine
 import { CheckpointMarker } from "./CheckpointMarker";
 import { CompactionBanner } from "./CompactionBanner";
 import { MessageNavigator } from "./MessageNavigator";
+import { PromptSuggestion } from "./PromptSuggestion";
 import { Spinner } from "./ui/Spinner";
 import { TaskToolRow } from "./TaskToolRow";
 import { ToolRow } from "./ToolRow";
@@ -52,6 +53,9 @@ export function MessageList({
   onRewindCheckpoint,
   onOpenReview,
   focus,
+  suggestion,
+  onSuggestionUse,
+  onSuggestionDismiss,
 }: {
   items: TimelineItem[];
   canUse: boolean;
@@ -81,6 +85,10 @@ export function MessageList({
   onOpenReview?: () => void;
   /** 会话全文检索跳转意图：滚动到指定消息并短暂高亮（token 变化触发重播） */
   focus?: { messageIndex: number; token: number } | null;
+  /** 回合结束后预测的下一句：显示在对话末尾，点击填入输入框（不发送） */
+  suggestion?: string | null;
+  onSuggestionUse?: (text: string) => void;
+  onSuggestionDismiss?: () => void;
 }) {
   const { t } = useTranslation("chat");
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -131,7 +139,7 @@ export function MessageList({
     const el = scrollRef.current;
     if (!el || !stickRef.current) return;
     el.scrollTop = el.scrollHeight;
-  }, [items, waiting, preparing]);
+  }, [items, waiting, preparing, suggestion]);
 
   // 检索跳转：滚到命中消息并触发描边。deps 只放 focus——
   // 放 items 会在流式输出期间每帧重滚，和用户抢滚动条。
@@ -280,6 +288,13 @@ export function MessageList({
                 />
               ) : null}
               {statusLine.visible ? <AssistantStatusLine status={statusLine.status} /> : null}
+              {!statusLine.visible && suggestion ? (
+                <PromptSuggestion
+                  text={suggestion}
+                  onUse={(text) => onSuggestionUse?.(text)}
+                  onDismiss={() => onSuggestionDismiss?.()}
+                />
+              ) : null}
             </div>
           )}
         </div>

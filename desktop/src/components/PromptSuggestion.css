@@ -1,0 +1,96 @@
+/* 回合结束后的下一句建议：对话末尾的一行，点击或 Tab 填入，不发送 */
+.mc-suggestion {
+  display: flex;
+  align-items: center;
+  align-self: flex-start;
+  gap: 6px;
+  max-width: 100%;
+  min-height: 18px;
+  color: var(--fg-subtlest);
+  font-family: var(--font-sans);
+  font-size: var(--fs-xs);
+  line-height: 1.4;
+  animation: mc-suggestion-in 180ms var(--ease) both;
+}
+
+.mc-suggestion__main {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--fg-subtle);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: color var(--dur) var(--ease);
+}
+
+.mc-suggestion__main:hover {
+  color: var(--fg);
+}
+
+.mc-suggestion__label {
+  flex: none;
+  color: var(--fg-subtlest);
+}
+
+.mc-suggestion__text {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.mc-suggestion__kbd {
+  flex: none;
+  padding: 0 3px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  color: var(--fg-subtlest);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+.mc-suggestion__dismiss {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--fg-subtlest);
+  cursor: pointer;
+  opacity: 0;
+  transition:
+    opacity var(--dur) var(--ease),
+    color var(--dur) var(--ease);
+}
+
+.mc-suggestion:hover .mc-suggestion__dismiss,
+.mc-suggestion:focus-within .mc-suggestion__dismiss {
+  opacity: 1;
+}
+
+.mc-suggestion__dismiss:hover {
+  color: var(--fg);
+}
+
+@keyframes mc-suggestion-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mc-suggestion {
+    animation: none;
+  }
+}

@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import {
   LuArchive,
   LuBrain,
+  LuFolder,
   LuGitFork,
   LuHistory,
   LuImport,
@@ -38,6 +39,7 @@ import { IslandSection } from "./IslandSection";
 import { LearningSection } from "./LearningSection";
 import { MemorySection } from "./MemorySection";
 import { ModelsSection } from "./ModelsSection";
+import { ProjectsSection } from "./ProjectsSection";
 import { RewindSection } from "./RewindSection";
 import { RulesSection } from "./RulesSection";
 import { SandboxSection } from "./SandboxSection";
@@ -50,6 +52,7 @@ export type SettingsSectionId =
   | "appearance"
   | "shortcuts"
   | "island"
+  | "projects"
   | "worktree"
   | "rewind"
   | "rules"
@@ -76,6 +79,7 @@ const SECTIONS: Array<{
   { id: "appearance", labelKey: "sections.appearance", icon: LuPalette },
   { id: "shortcuts", labelKey: "sections.shortcuts", icon: LuKeyboard },
   { id: "island", labelKey: "sections.island", icon: LuPanelTop },
+  { id: "projects", labelKey: "sections.projects", icon: LuFolder },
   { id: "models", labelKey: "sections.models", icon: LuBoxes, divider: true },
   { id: "memory", labelKey: "sections.memory", icon: LuBrain },
   { id: "learning", labelKey: "sections.learning", icon: LuSparkles, beta: true },
@@ -142,11 +146,18 @@ export function SettingsBody({
   sessions,
   archivedSessions,
   workspace,
+  projects,
+  activeProject,
+  projectNames,
+  onAddProject,
+  onRenameProject,
+  onRemoveProject,
   onUnarchiveSession,
   onDeleteArchivedSession,
   onDeleteAllArchived,
   onSavePreferences,
   onSaveProviders,
+  onToggleProvider,
   onChangeEffort,
   updateRelease,
   onUpdateDiscovered,
@@ -175,6 +186,16 @@ export function SettingsBody({
   archivedSessions: string[];
   /** 当前工作区（会话 cwd 优先）：记忆分区里「项目记忆」跟随它 */
   workspace: string | null;
+  /** 已添加的项目（工作区）列表 */
+  projects: string[];
+  /** 当前项目（会话 cwd 优先，其次默认工作区） */
+  activeProject: string;
+  projectNames: Record<string, string>;
+  onAddProject: () => void;
+  /** 只改显示名；空名恢复文件夹名 */
+  onRenameProject: (cwd: string, name: string) => void;
+  /** 只从列表隐藏，不删除会话与磁盘文件 */
+  onRemoveProject: (cwd: string) => void;
   onUnarchiveSession: (filePath: string) => void;
   /** 删除单个归档会话（文件一起删） */
   onDeleteArchivedSession: (filePath: string) => void;
@@ -182,6 +203,8 @@ export function SettingsBody({
   onDeleteAllArchived: () => void;
   onSavePreferences: (prefs: Partial<Preferences>) => void;
   onSaveProviders: (providers: ProviderSettings[], activeId?: string) => void;
+  /** 启用/停用单个模型：轻量保存，不重启 agent server */
+  onToggleProvider: (providerId: string, enabled: boolean) => void;
   onChangeEffort: (providerId: string, value: string) => void;
   /** 已发现的新版本（App 启动静默检查的结果，关于页按钮据此变样） */
   updateRelease: UpdateInfo | null;
@@ -230,6 +253,10 @@ export function SettingsBody({
         onSilentUpdateChange={(value) => onSavePreferences({ silentUpdate: value })}
         notifications={preferences.notifications ?? true}
         onNotificationsChange={(value) => onSavePreferences({ notifications: value })}
+        nextPromptSuggestions={preferences.nextPromptSuggestions ?? false}
+        onNextPromptSuggestionsChange={(value) =>
+          onSavePreferences({ nextPromptSuggestions: value })
+        }
         onToast={onToast}
       />
     ),
@@ -247,6 +274,16 @@ export function SettingsBody({
       />
     ),
     shortcuts: <ShortcutsSection />,
+    projects: (
+      <ProjectsSection
+        projects={projects}
+        activeProject={activeProject}
+        projectNames={projectNames}
+        onAddProject={onAddProject}
+        onRenameProject={onRenameProject}
+        onRemoveProject={onRemoveProject}
+      />
+    ),
     island: (
       <IslandSection
         floatingIsland={preferences.floatingIsland ?? false}
@@ -305,6 +342,7 @@ export function SettingsBody({
         turnRunning={turnRunning}
         onChange={onSaveProviders}
         onChangeEffort={onChangeEffort}
+        onToggleProvider={onToggleProvider}
       />
     ),
     memory: <MemorySection workspace={workspace} onToast={onToast} />,

@@ -1,5 +1,7 @@
 {
   "justNow": "just now",
   "delete": "Delete",
-  "deleteAria": "Delete {{name}}"
+  "deleteAria": "Delete {{name}}",
+  "copyCode": "Copy code",
+  "copied": "Copied"
 }

@@ -30,6 +30,10 @@
       "releasePrompt": "Monte uma lista de verificação de release: versão, build, testes, migrações, rollback e notas de versão. Use os comandos reais deste projeto, não frases genéricas."
     }
   },
+  "suggestion": {
+    "label": "Sugestão",
+    "dismiss": "Descartar sugestão"
+  },
   "waiting": {
     "response": "Aguardando o modelo"
   },

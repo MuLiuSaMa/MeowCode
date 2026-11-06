@@ -30,6 +30,10 @@
       "releasePrompt": "Put together a release checklist covering versioning, build, tests, migrations, rollback, and release notes. Use this project's actual commands instead of generic advice."
     }
   },
+  "suggestion": {
+    "label": "Suggestion",
+    "dismiss": "Dismiss suggestion"
+  },
   "waiting": {
     "response": "Waiting for the model"
   },

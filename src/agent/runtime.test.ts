@@ -74,6 +74,61 @@ describe("validatePlanInput", () => {
   });
 });
 
+describe("next prompt suggestion", () => {
+  it("predicts the next prompt from the recent transcript", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "meowcode-runtime-"));
+    const workspace = await mkdtemp(path.join(tmpdir(), "meowcode-ws-"));
+    const runtime = makeRuntime(dir);
+    await runtime.newSession(workspace);
+    streamMock
+      .mockResolvedValueOnce({ message: { role: "assistant", content: "Done. I ran the tests." } })
+      .mockResolvedValueOnce({ message: { role: "assistant", content: "run the tests" } });
+
+    await runtime.prompt("fix the bug");
+    const suggestion = await runtime.suggestNextPrompt();
+
+    expect(suggestion).toBe("run the tests");
+    const request = streamMock.mock.calls[1][0];
+    expect(request.tools).toEqual([]);
+    expect(request.messages[0]).toMatchObject({
+      role: "system",
+      content: expect.stringContaining("next-input predictor"),
+    });
+    expect(request.messages.at(-1)).toMatchObject({
+      role: "user",
+      content: expect.stringContaining("User: fix the bug"),
+    });
+    expect(request.provider.maxTokens).toBe(1_200);
+    expect(request.provider.reasoningEffort).toBeUndefined();
+  });
+
+  it("does not request a suggestion while a turn is running", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "meowcode-runtime-"));
+    const workspace = await mkdtemp(path.join(tmpdir(), "meowcode-ws-"));
+    const runtime = makeRuntime(dir);
+    await runtime.newSession(workspace);
+    expect(await runtime.suggestNextPrompt()).toBeNull();
+    expect(streamMock).not.toHaveBeenCalled();
+  });
+
+  it("does not retry when the suggestion response has no content", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "meowcode-runtime-"));
+    const workspace = await mkdtemp(path.join(tmpdir(), "meowcode-ws-"));
+    const runtime = makeRuntime(dir);
+    await runtime.newSession(workspace);
+    streamMock
+      .mockResolvedValueOnce({ message: { role: "assistant", content: "Done." } })
+      .mockResolvedValueOnce({ message: { role: "assistant", content: "" } });
+
+    await runtime.prompt("fix the bug");
+    expect(await runtime.suggestNextPrompt()).toBeNull();
+    expect(streamMock).toHaveBeenCalledTimes(2);
+    const request = streamMock.mock.calls[1][0];
+    expect(request.provider.maxTokens).toBe(1_200);
+    expect(request.provider.reasoningEffort).toBeUndefined();
+  });
+});
+
 describe("request prefix stability", () => {
   it("keeps stable system messages (base + memory guide), persists tool results, and extends the previous prefix", async () => {
     const dir = await mkdtemp(path.join(tmpdir(), "meowcode-runtime-"));

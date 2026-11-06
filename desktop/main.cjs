@@ -808,6 +808,8 @@ function publicSettings(settings) {
     silentUpdate: typeof settings.silentUpdate === "boolean" ? settings.silentUpdate : true,
     notifications: typeof settings.notifications === "boolean" ? settings.notifications : true,
     floatingIsland: typeof settings.floatingIsland === "boolean" ? settings.floatingIsland : false,
+    nextPromptSuggestions:
+      typeof settings.nextPromptSuggestions === "boolean" ? settings.nextPromptSuggestions : false,
     worktreeFetchUpstream:
       typeof settings.worktreeFetchUpstream === "boolean" ? settings.worktreeFetchUpstream : false,
     worktreeAutoCleanup:
@@ -3664,7 +3666,14 @@ ipcMain.handle("meow:save-provider-prefs", (_event, prefs) => {
   const providers = (settings.providers ?? []).map((provider) => {
     const patch = patches.find((item) => item.id === provider.id);
     if (!patch) return provider;
-    return { ...provider, reasoningEffort: patch.reasoningEffort || undefined };
+    const nextProvider = { ...provider };
+    if ("reasoningEffort" in patch) {
+      nextProvider.reasoningEffort = patch.reasoningEffort || undefined;
+    }
+    if (typeof patch.enabled === "boolean") {
+      nextProvider.enabled = patch.enabled;
+    }
+    return nextProvider;
   });
   const next = { ...settings, providers };
   if (typeof prefs?.providerId === "string" && prefs.providerId) {
@@ -3715,6 +3724,9 @@ ipcMain.handle("meow:get-preferences", () => {
     notifications: typeof settings.notifications === "boolean" ? settings.notifications : true,
     // AI 悬浮岛：默认关闭
     floatingIsland: typeof settings.floatingIsland === "boolean" ? settings.floatingIsland : false,
+    // 输入建议：每轮回合后预测下一句（默认关闭，开启前会提示额外 token）
+    nextPromptSuggestions:
+      typeof settings.nextPromptSuggestions === "boolean" ? settings.nextPromptSuggestions : false,
     worktreeFetchUpstream:
       typeof settings.worktreeFetchUpstream === "boolean" ? settings.worktreeFetchUpstream : false,
     worktreeAutoCleanup:
@@ -3796,6 +3808,10 @@ ipcMain.handle("meow:save-preferences", (_event, prefs) => {
   if (typeof prefs?.floatingIsland === "boolean") {
     next.floatingIsland = prefs.floatingIsland;
   }
+  // 输入建议：默认关闭；只影响渲染层是否在回合后请求预测
+  if (typeof prefs?.nextPromptSuggestions === "boolean") {
+    next.nextPromptSuggestions = prefs.nextPromptSuggestions;
+  }
   // Worktrees：创建前 fetch / 自动清理 / 保留上限
   if (typeof prefs?.worktreeFetchUpstream === "boolean") {
     next.worktreeFetchUpstream = prefs.worktreeFetchUpstream;
@@ -3851,6 +3867,8 @@ ipcMain.handle("meow:save-preferences", (_event, prefs) => {
     silentUpdate: typeof next.silentUpdate === "boolean" ? next.silentUpdate : true,
     notifications: typeof next.notifications === "boolean" ? next.notifications : true,
     floatingIsland: typeof next.floatingIsland === "boolean" ? next.floatingIsland : false,
+    nextPromptSuggestions:
+      typeof next.nextPromptSuggestions === "boolean" ? next.nextPromptSuggestions : false,
     worktreeFetchUpstream:
       typeof next.worktreeFetchUpstream === "boolean" ? next.worktreeFetchUpstream : false,
     worktreeAutoCleanup:

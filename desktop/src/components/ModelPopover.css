@@ -215,14 +215,31 @@
   display: flex;
   flex-direction: column;
   gap: 0;
-  margin-top: 6px;
+  margin-top: 4px;
   max-height: 264px;
   overflow-y: auto;
+}
+/* 服务商分组：标题一行，模型行只留 Logo + 名称 */
+.mc-popover__group + .mc-popover__group {
+  margin-top: 2px;
+}
+.mc-popover__groupname {
+  padding: 6px 8px 1px;
+  color: var(--fg-subtlest);
+  font-size: var(--fs-xs);
+  line-height: 1.3;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mc-popover__group:first-child .mc-popover__groupname {
+  padding-top: 0;
 }
 .mc-popover__item {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
+  width: 100%;
   padding: 4px 8px;
   border: 0;
   border-radius: var(--radius-md);
@@ -235,28 +252,18 @@
   transition: background-color var(--dur) var(--ease);
 }
 .mc-popover__item:hover {
-  background: var(--surface-hover);
+  background: var(--surface);
 }
 .mc-popover__item[data-active="true"] {
   background: var(--surface);
 }
-.mc-popover__itemtext {
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-  min-width: 0;
-  flex: 1;
-  line-height: 1.35;
-}
 .mc-popover__itemname {
+  flex: 1;
+  min-width: 0;
   font-size: var(--fs-base);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-.mc-popover__itemmeta {
-  font-size: var(--fs-xs);
-  color: var(--fg-subtlest);
 }
 .mc-popover__check {
   color: var(--accent);
@@ -270,23 +277,23 @@
 
 /* ---- 列表底部：管理模型（无模型时引导添加，有模型时固定在列表下方） ---- */
 .mc-popover__manage {
-  margin-top: 8px;
-  padding-top: 8px;
+  margin-top: 6px;
+  padding-top: 6px;
   border-top: 1px solid var(--border);
 }
 .mc-popover__managebtn {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 7px;
   width: 100%;
-  padding: 6px 8px;
+  padding: 4px 8px;
   border: 0;
   border-radius: var(--radius-md);
   corner-shape: superellipse(1.5);
   background: transparent;
   color: var(--fg);
   font-family: inherit;
-  font-size: var(--fs-base);
+  font-size: var(--fs-sm);
   text-align: left;
   cursor: pointer;
   transition: background-color var(--dur) var(--ease);

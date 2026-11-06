@@ -1,5 +1,7 @@
 {
   "justNow": "剛剛",
   "delete": "刪除",
-  "deleteAria": "刪除{{name}}"
+  "deleteAria": "刪除{{name}}",
+  "copyCode": "複製程式碼",
+  "copied": "已複製"
 }

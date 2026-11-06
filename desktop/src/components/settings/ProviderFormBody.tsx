@@ -79,14 +79,11 @@ function rowsFrom(draft: ProviderSettings, entries: ProviderSettings[]): Provide
 export function useProviderForm({
   draft,
   entries = [],
-  existingLabels,
   onSave,
 }: {
   draft: ProviderSettings;
   /** 同一服务商下已有的模型条目（编辑时传入；新建为空） */
   entries?: ProviderSettings[];
-  /** 其它服务商的显示名，用于唯一性校验 */
-  existingLabels: string[];
   onSave: (entries: ProviderSettings[]) => void;
 }) {
   const { t } = useTranslation("settings");
@@ -272,7 +269,8 @@ export function useProviderForm({
       return;
     }
 
-    const labels = [...existingLabels];
+    // 显示名只要求同一服务商内不重复；不同服务商可以有同名模型。
+    const labels: string[] = [];
     const built: ProviderSettings[] = [];
     const usedIds = new Set<string>();
     for (const row of rows) {

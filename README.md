@@ -5,12 +5,13 @@
 <h1 align="center">MeowCode —— 可自由修改架构的Agent</h1>
 
 <p align="center">
-  <a href="https://meowcode.cn"><img alt="官网" src="https://img.shields.io/badge/%E5%AE%98%E7%BD%91-meowcode.cn-1f6feb.svg"></a>
-  <a href="https://github.com/MuLiuSaMa/MeowCode"><img alt="GitHub" src="https://img.shields.io/static/v1?label=&amp;message=GitHub&amp;color=181717&amp;logo=github&amp;logoColor=white"></a>
-  <a href="https://gitee.com/muliuawa/MeowCode"><img alt="Gitee" src="https://img.shields.io/static/v1?label=&amp;message=Gitee&amp;color=c71d23&amp;logo=gitee&amp;logoColor=white"></a>
-  <a href="https://gitcode.com/MuLiuSaMa/MeowCode"><img alt="GitCode" src="https://img.shields.io/static/v1?label=&amp;message=GitCode&amp;color=ee3e33"></a>
-  <img alt="Stars" src="https://img.shields.io/github/stars/MuLiuSaMa/MeowCode?color=e3b341">
-  <img alt="Downloads" src="https://img.shields.io/github/downloads/MuLiuSaMa/MeowCode/total?color=2ea043">
+  <a href="https://meowcode.cn"><img alt="官网" src="https://img.shields.io/badge/%E5%AE%98%E7%BD%91-meowcode.cn-1f6feb?style=flat-square"></a>
+  <a href="https://github.com/MuLiuSaMa/MeowCode"><img alt="GitHub" src="https://img.shields.io/badge/GitHub-%E4%BB%93%E5%BA%93-181717?style=flat-square&amp;logo=github&amp;logoColor=white"></a>
+  <a href="https://gitee.com/muliuawa/MeowCode"><img alt="Gitee" src="https://img.shields.io/badge/Gitee-%E4%BB%93%E5%BA%93-C71D23?style=flat-square&amp;logo=gitee&amp;logoColor=white"></a>
+  <a href="https://gitcode.com/MuLiuSaMa/MeowCode"><img alt="GitCode" src="https://img.shields.io/badge/GitCode-%E4%BB%93%E5%BA%93-1677FF?style=flat-square&amp;logo=gitcode&amp;logoColor=white"></a>
+  <img alt="Stars" src="https://img.shields.io/github/stars/MuLiuSaMa/MeowCode?style=flat-square&amp;logo=github&amp;color=e3b341">
+  <img alt="Downloads" src="https://img.shields.io/github/downloads/MuLiuSaMa/MeowCode/total?style=flat-square&amp;logo=github&amp;label=%E4%B8%8B%E8%BD%BD%E9%87%8F&amp;color=2ea043">
+  <img alt="QQ群 1128483595" src="https://img.shields.io/badge/QQ%E7%BE%A4-1128483595-12B7F5?style=flat-square&amp;logo=tencentqq&amp;logoColor=white">
 </p>
 
 一个**架构可以随你改**的本地编程 Agent 桌面应用。

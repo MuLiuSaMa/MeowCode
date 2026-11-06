@@ -99,6 +99,8 @@
   min-height: 0; /* 关键：允许在 flex 列里收缩，超出部分交给 overflow-y 滚动而不是被裁掉 */
   overflow-y: auto;
   padding: 26px 32px 40px;
+  /* 有无滚动条都保留槽位：各设置页的居中内容列不会左右跳 */
+  scrollbar-gutter: stable both-edges;
 }
 .mc-settings__inner {
   max-width: 680px;

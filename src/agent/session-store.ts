@@ -450,6 +450,7 @@ export class SessionStore {
       memory: empty(),
       learning: empty(),
       web_search: empty(),
+      suggestion: empty(),
     };
     for (const entry of this.entries) {
       if (entry.type !== "usage") continue;

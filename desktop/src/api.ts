@@ -605,6 +605,8 @@ export type Preferences = {
   notifications?: boolean;
   /** AI 悬浮岛：屏幕顶部胶囊显示所有运行中会话状态（默认关） */
   floatingIsland?: boolean;
+  /** 输入建议：回合结束后额外请求一次，预测下一句（默认关） */
+  nextPromptSuggestions?: boolean;
   /** Worktrees：创建前先 fetch 上游更新（默认关） */
   worktreeFetchUpstream?: boolean;
   /** Worktrees：自动清理旧 worktree（默认开） */
@@ -866,6 +868,8 @@ export type Settings = {
   notifications?: boolean;
   /** AI 悬浮岛：屏幕顶部胶囊显示所有运行中会话状态（默认关） */
   floatingIsland?: boolean;
+  /** 输入建议：回合结束后额外请求一次，预测下一句（默认关） */
+  nextPromptSuggestions?: boolean;
   /** Worktrees：创建前先 fetch 上游更新（默认关） */
   worktreeFetchUpstream?: boolean;
   /** Worktrees：自动清理旧 worktree（默认开） */
@@ -2336,6 +2340,15 @@ export async function gitCommitMessage(hint?: string): Promise<{ message: string
 }
 
 /** AI 美化提示词：text 是当前输入框快照；side 让侧边聊使用自己的模型。 */
+/** 回合结束后预测用户下一句；失败/无建议返回 null，不打扰对话。 */
+export async function getPromptSuggestion(sessionId: string): Promise<string | null> {
+  const result = await api<{ suggestion?: string | null }>("/session/suggestion", {
+    method: "POST",
+    body: JSON.stringify({ sessionId }),
+  });
+  return result.suggestion?.trim() || null;
+}
+
 export async function polishPrompt(
   text: string,
   options: { side?: boolean } = {},
