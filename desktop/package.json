@@ -88,11 +88,53 @@
     "extraResources": [
       {
         "from": "../.tmp/agent-release",
-        "to": "agent-server"
+        "to": "agent-server",
+        "filter": [
+          "**/*",
+          "!**/*.d.ts",
+          "!**/*.d.mts",
+          "!**/*.d.cts",
+          "!**/*.map",
+          "!**/@mixmark-io/domino/test/**",
+          "!**/@mixmark-io/domino/.yarn/**",
+          "!**/@napi-rs/**",
+          "!**/pdfjs-dist/build/**",
+          "!**/pdfjs-dist/web/**",
+          "!**/pdfjs-dist/cmaps/**",
+          "!**/pdfjs-dist/standard_fonts/**",
+          "!**/pdfjs-dist/image_decoders/**",
+          "!**/pdfjs-dist/types/**",
+          "!**/pdfjs-dist/iccs/**",
+          "!**/pdfjs-dist/legacy/web/**",
+          "!**/pdfjs-dist/legacy/image_decoders/**",
+          "!**/pdfjs-dist/legacy/build/*.min.mjs",
+          "!**/zod/src/**"
+        ]
       },
       {
         "from": "../.tmp/agent-release/node_modules",
-        "to": "agent-server/node_modules"
+        "to": "agent-server/node_modules",
+        "filter": [
+          "**/*",
+          "!**/*.d.ts",
+          "!**/*.d.mts",
+          "!**/*.d.cts",
+          "!**/*.map",
+          "!**/@mixmark-io/domino/test/**",
+          "!**/@mixmark-io/domino/.yarn/**",
+          "!**/@napi-rs/**",
+          "!**/pdfjs-dist/build/**",
+          "!**/pdfjs-dist/web/**",
+          "!**/pdfjs-dist/cmaps/**",
+          "!**/pdfjs-dist/standard_fonts/**",
+          "!**/pdfjs-dist/image_decoders/**",
+          "!**/pdfjs-dist/types/**",
+          "!**/pdfjs-dist/iccs/**",
+          "!**/pdfjs-dist/legacy/web/**",
+          "!**/pdfjs-dist/legacy/image_decoders/**",
+          "!**/pdfjs-dist/legacy/build/*.min.mjs",
+          "!**/zod/src/**"
+        ]
       },
       {
         "from": "../node_modules/@vscode/ripgrep-win32-x64/bin/rg.exe",

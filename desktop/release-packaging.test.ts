@@ -72,8 +72,19 @@ describe("release packaging", () => {
     expect(pkg.build.beforePack).toBe("./brand-packaged.cjs");
     expect(pkg.build.afterPack).toBe("./brand-packaged.cjs");
     expect(pkg.build.files).toContain("*.cjs");
-    expect(pkg.build.extraResources).toContainEqual({ from: "../.tmp/agent-release", to: "agent-server" });
-    expect(pkg.build.extraResources).toContainEqual({ from: "../.tmp/agent-release/node_modules", to: "agent-server/node_modules" });
+    const agentResource = pkg.build.extraResources.find(
+      (entry: { to?: string }) => entry.to === "agent-server",
+    );
+    expect(agentResource?.from).toBe("../.tmp/agent-release");
+    // 部署的 node_modules 只带运行时文件：类型声明/源码映射/测试夹具不进安装包，
+    // 否则 5 千多个碎文件会让 Inno 的「提取文件」一步拖很久
+    expect(agentResource?.filter).toContain("!**/*.d.ts");
+    expect(agentResource?.filter).toContain("!**/@mixmark-io/domino/test/**");
+    const modulesResource = pkg.build.extraResources.find(
+      (entry: { to?: string }) => entry.to === "agent-server/node_modules",
+    );
+    expect(modulesResource?.from).toBe("../.tmp/agent-release/node_modules");
+    expect(modulesResource?.filter).toContain("!**/pdfjs-dist/build/**");
     expect(main).toContain('path.join(process.resourcesPath, "agent-server", "dist", "server", "server.js")');
     expect(main).toContain("cwd: devRepoRoot() ?? process.resourcesPath");
     expect(main).not.toContain("cwd: devRepoRoot() ?? app.getAppPath()");
