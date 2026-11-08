@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { FitAddon } from "@xterm/addon-fit";
 import { Terminal } from "@xterm/xterm";
+import { useTheme } from "../../theme/theme";
 import "./TerminalTab.css";
 
 /**
@@ -19,6 +20,7 @@ export function TerminalTab({
   termId?: string;
 }) {
   const { t } = useTranslation("panel");
+  const { resolved, palette } = useTheme();
   /** 译文只用于退出提示：用 ref 取值，切语言时不重建终端（会杀 PTY） */
   const tRef = useRef(t);
   tRef.current = t;
@@ -137,6 +139,20 @@ export function TerminalTab({
       fitRef.current = null;
     };
   }, [cwd, termId]);
+
+  // 切换明暗 / 配色时同步终端底色：只改 theme，不重建 Terminal（重建会杀掉 PTY）。
+  // 延后一帧读取：子组件的 effect 先于 ThemeProvider 执行，此时 data-theme/data-palette 还是旧值。
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(() => {
+      const term = termRef.current;
+      if (!term) return;
+      const styles = getComputedStyle(document.documentElement);
+      const panelBg = styles.getPropertyValue("--bg-panel").trim() || "#131313";
+      const fg = styles.getPropertyValue("--fg").trim() || "#f5f5f5";
+      term.options.theme = { background: panelBg, foreground: fg, cursor: fg };
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [resolved, palette]);
 
   // 页签激活时（含从隐藏恢复）补一次 fit 并聚焦
   useEffect(() => {

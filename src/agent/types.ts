@@ -203,6 +203,12 @@ export type MeowEvent = AgentEventMeta &
       checkpointId?: string;
       /** 该检查点是否带文件快照（false/缺省 = 无法回滚代码，撤销按钮禁用） */
       canRewind?: boolean;
+      /** 本回合总耗时（毫秒，墙钟）：前端在该轮末尾定格显示运行时间 */
+      durationMs?: number;
+      /** 本回合结束时间（ISO）：前端「对话时间」与悬停卡片 */
+      endedAt?: string;
+      /** 本回合主对话消耗的 Token 汇总 */
+      turnUsage?: TurnUsageTotals;
     }
   /**
    * 供应商故障转移：可重试错误（超时 / 429 / 5xx）触发了 fallback 链切换。
@@ -735,6 +741,30 @@ export type TurnFileChangeGroup = {
   files: TurnFileChangeStat[];
 };
 
+/** 一个回合的运行耗时（历史回放时按 messageIndex 插回时间线，与文件改动同口径）。 */
+/** 一个回合的运行耗时与用量（历史回放时按 messageIndex 插回时间线，与文件改动同口径）。 */
+export type TurnUsageTotals = {
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens: number;
+  cacheWriteTokens: number;
+  /** input + output：前端「使用 Token」的展示口径 */
+  totalTokens: number;
+};
+
+export type TurnDurationGroup = {
+  turnId: string;
+  /** 该回合 turn_end 之前有多少条消息（与 turnFileChangeGroups 同口径） */
+  messageIndex: number;
+  /** 首个 turn_start → 末个 turn_end 的墙钟差（毫秒，含工具调用与续命段） */
+  durationMs: number;
+  status: TurnStatus;
+  /** 回合结束时间（ISO）：前端显示「对话时间」并作为悬停卡片的锚点 */
+  endedAt?: string;
+  /** 本回合主对话消耗的 Token 汇总；老会话没有 turnId 归属时为缺省 */
+  usage?: TurnUsageTotals;
+};
+
 /** 模型调用的来源：主对话 / 自动标题 / 上下文压缩。 */
 export type UsageSource =
   | "chat"
@@ -1184,6 +1214,8 @@ export type SessionEntry =
       outputTokens?: number;
       cacheReadTokens?: number;
       cacheWriteTokens?: number;
+      /** 本轮生成速度（output token / 秒）；只有主对话调用会带，实时速度曲线回放用 */
+      tokensPerSecond?: number;
       /** 未标记的旧记录视为主对话 */
       source?: UsageSource;
       turnId?: string;

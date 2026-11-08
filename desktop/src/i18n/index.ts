@@ -13,6 +13,7 @@ export const NAMESPACES = [
   "git",
   "panel",
   "marketplace",
+  "automation",
   "architecture",
   "settings",
   "onboarding",

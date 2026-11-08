@@ -138,7 +138,11 @@ export interface AgentLoopHost {
   /** assistant 消息落盘（含 flush 与 partial 检查点收尾） */
   persistAssistantMessage(message: ChatMessage): Promise<void>;
   /** 真实用量记账：锚点更新、usage 落盘、事件、压缩预热 */
-  recordUsage(usage: NonNullable<StreamCompletionResult["usage"]>): Promise<void>;
+  recordUsage(
+    usage: NonNullable<StreamCompletionResult["usage"]>,
+    /** 本轮生成速度（output token / 秒，首字之后计时）；落盘给实时速度曲线回放 */
+    meta?: { tokensPerSecond?: number },
+  ): Promise<void>;
   onMessageComplete(result: StreamCompletionResult): void;
   onError(message: string): void;
   persistMetrics(timing: AgentLoopTiming): Promise<void>;
@@ -311,11 +315,16 @@ export async function runAgentLoop(host: AgentLoopHost): Promise<void> {
     await host.persistAssistantMessage(result.message);
     messages.push(result.message);
     if (result.usage) {
+      let roundSpeed: number | null = null;
       if (roundStartedAt != null && result.usage.outputTokens && result.usage.outputTokens > 0) {
         const seconds = (Date.now() - roundStartedAt) / 1000;
-        if (seconds >= 0.05) lastSpeed = result.usage.outputTokens / seconds;
+        if (seconds >= 0.05) roundSpeed = result.usage.outputTokens / seconds;
       }
-      await host.recordUsage(result.usage);
+      if (roundSpeed != null) lastSpeed = roundSpeed;
+      await host.recordUsage(
+        result.usage,
+        roundSpeed != null ? { tokensPerSecond: roundSpeed } : undefined,
+      );
     }
 
     const toolCalls = result.message.tool_calls ?? [];

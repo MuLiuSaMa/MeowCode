@@ -8,11 +8,7 @@
   "speech": {
     "section": "Speech style",
     "field": "Reply style",
-    "desc": {
-      "normal": "Default tone: concise, direct and professional — just the essentials.",
-      "tafei": "Taffy tone: a playful catgirl persona that ends sentences with “miao” (喵) and occasionally uses her catchphrase; technical content stays accurate.",
-      "dazui": "Dazui: ah, this, this… right? The best speech style under ten million."
-    },
+    "desc": "Choose the tone style for AI replies. Changes take effect immediately.",
     "options": {
       "normal": "Normal",
       "tafei": "永雏塔菲",
@@ -129,6 +125,16 @@
     "themeSection": "Theme",
     "themeField": "Color theme",
     "themeDesc": "“System” follows the Windows light / dark setting in real time. Changes apply immediately, no restart needed.",
+    "paletteSection": "Palette",
+    "paletteDesc": "Pick the accent and canvas tint. Light and dark are tuned separately, so the colors adapt when you switch modes.",
+    "palette": {
+      "classic": "Classic",
+      "lava": "Lava Orange",
+      "bee": "Bee Yellow",
+      "mint": "Mint Green",
+      "parchment": "Parchment",
+      "harmony": "Harmony Blue"
+    },
     "theme": {
       "system": "System",
       "light": "Light",
@@ -554,6 +560,11 @@
       "confirmHow": "After each reply, one extra request is sent to the current model to predict your next message. It appears in the empty input box; press Tab to fill it in. Nothing is sent until you send it yourself.",
       "confirmCost": "This uses additional tokens on every turn. The request reuses the conversation cache, so it is usually inexpensive, but it is still billed.",
       "enable": "Turn on"
+    },
+    "providerFallback": {
+      "field": "Provider failover",
+      "desc": "When the primary provider times out, is rate-limited, or returns a server error, this turn automatically switches to another enabled provider (up to 2 hops).",
+      "toggleFailed": "Failed to save the provider failover setting"
     }
   },
   "proxy": {

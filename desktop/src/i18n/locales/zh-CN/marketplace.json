@@ -29,9 +29,11 @@
   "platforms": {
     "gitee": "Gitee",
     "gitcode": "GitCode",
-    "gitcode-community": "GitCode 社区"
+    "gitcode-community": "GitCode 社区",
+    "undermind": "Undermind"
   },
   "actions": {
+    "aiAuthor": "AI 帮我写",
     "cancel": "取消",
     "close": "关闭",
     "copied": "已复制",
@@ -91,10 +93,18 @@
     "project": "项目"
   },
   "mcp": {
+    "authorize": "授权",
+    "authorizeTitle": "在浏览器中完成授权，完成后自动连接",
+    "authorizing": "等待授权",
     "connecting": "连接中",
+    "disabled": "已停用",
     "envRequired": "需设置 {{names}}",
     "failed": "失败",
     "failedDetail": "失败 · {{error}}",
+    "localBadge": "本地配置",
+    "localNoTarget": "本机 MCP 服务",
+    "needsAuth": "需要授权",
+    "reauthorize": "重新授权",
     "ready": "就绪 · {{count}} 工具",
     "ready_one": "就绪 · {{count}} 工具",
     "ready_other": "就绪 · {{count}} 工具",
@@ -130,9 +140,10 @@
       "title": "添加 MCP 服务",
       "desc": "手动添加一个 MCP server：配置写入 ~/.meowcode/mcp.json，保存后自动连接。",
       "idLabel": "名称（id）*",
-      "connTypeLabel": "连接类型",
-      "connStdio": "本地命令（Stdio）",
-      "connHttp": "远程地址（HTTP）",
+      "navLabel": "接入方式",
+      "navStdio": "本地命令",
+      "navHttp": "远程地址",
+      "navJson": "JSON 配置",
       "commandLabel": "命令 *",
       "argsLabel": "参数（每行一个）",
       "urlLabel": "服务地址 *",
@@ -141,7 +152,6 @@
       "envHint": "支持 ${VAR} 形式引用 MeowCode 进程环境变量。",
       "jsonLabel": "MCP 配置（JSON）",
       "jsonHint": "接受 {\"mcpServers\": {…}} 包裹（可一次添加多个）或单个 server 对象。",
-      "advancedToggle": "高级：粘贴 JSON",
       "jsonInvalid": "不是合法的 JSON。",
       "jsonEmpty": "mcpServers 里没有条目。",
       "jsonIdInvalid": "条目 id「{{id}}」不合法：需以字母/数字开头，只含字母、数字、点、下划线、连字符。",
@@ -151,7 +161,14 @@
       "headersInvalid": "请求头不是合法的 JSON 对象。",
       "needCommand": "请填写启动命令。",
       "needUrl": "请填写服务地址。",
-      "toggleAria": "启停 MCP {{id}}"
+      "toggleAria": "启停 MCP {{id}}",
+      "authGroup": "认证",
+      "oauthToggle": "OAuth 浏览器授权（远程 MCP）",
+      "oauthHint": "保存后首次连接会打开浏览器登录并授权；token 落在本机 ~/.meowcode/mcp-oauth/，不进聊天记录。",
+      "oauthScopesLabel": "OAuth Scopes（可选，空格/逗号分隔）",
+      "oauthClientIdLabel": "OAuth Client ID（可选，预注册）",
+      "oauthCimdLabel": "OAuth Client Metadata URL（可选）",
+      "oauthCimdHint": "留空使用 MeowCode 官方 CIMD 文档（meowcode.cn/.well-known/oauth-client）；填空串可关闭 CIMD 回退。"
     }
   },
   "body": {
@@ -271,8 +288,12 @@
     "desc": "令牌只加密保存在本机，用于连接 {{name}}；保存前会在线校验有效性，通过后立即重连并加载工具。",
     "empty": "请填写 Token。",
     "hintFigma": "在 Figma 网页版 Settings → Security → Personal access tokens 生成，File content 读取权限即可。",
+    "hintLarkAppId": "飞书开放平台开发者后台 → 应用的 App ID，形如 cli_xxxx。",
+    "hintLarkSecret": "同一应用详情页的 App Secret；两者需同属一个自建应用，且应用已发布并开通对应权限。",
     "hintLuckin": "登录 open.lkcoffee.com/mcp 创建并复制 Token；用于瑞幸点单 MCP（下单、查订单、取餐码）。",
     "labelFigma": "Figma 个人访问令牌",
+    "labelLarkAppId": "飞书 App ID",
+    "labelLarkSecret": "飞书 App Secret",
     "labelLuckin": "瑞幸开放平台 Token",
     "placeholder": "粘贴访问令牌",
     "title": "设置 {{name}} 访问令牌"

@@ -1,0 +1,426 @@
+/*
+ * 自动化页 = 左侧 AutomationNav（占对话列表槽位）+ 右侧 AutomationPage（mc-panel--content 子项）。
+ * 结构与市场页同构，类名前缀 mc-auto__。控件复用 ui/ 的 mc-field/mc-dialog 既有样式。
+ */
+
+/* ---- 左侧导航 ---- */
+.mc-auto__nav {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 18px 12px 16px;
+  overflow-y: auto;
+}
+.mc-auto__subtitle {
+  margin: -6px 0 12px;
+  padding: 0 10px;
+  font-size: var(--fs-sm);
+  color: var(--fg-subtlest);
+  line-height: 1.5;
+}
+
+/* ---- 右侧主体 ---- */
+.mc-auto__body {
+  flex: 1;
+  width: 100%;
+  min-width: 0;
+  overflow-y: auto;
+  padding: 18px 20px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.mc-auto__toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.mc-auto__reload {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border, rgba(128, 128, 128, 0.3));
+  background: transparent;
+  color: var(--fg-subtle);
+  font-family: inherit;
+  font-size: var(--fs-sm);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.mc-auto__reload:hover:not(:disabled) {
+  background: var(--surface-hover);
+  color: var(--fg);
+}
+.mc-auto__reload:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.mc-auto__spin {
+  animation: mc-auto-spin 0.9s linear infinite;
+}
+@keyframes mc-auto-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ---- 任务列表 ---- */
+.mc-auto__rows {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.mc-auto__row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border-radius: var(--radius-md);
+  background: var(--surface);
+}
+.mc-auto__row:hover {
+  background: var(--surface-hover);
+}
+.mc-auto__icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  flex-shrink: 0;
+  border-radius: var(--radius-md);
+  background: var(--surface-hover);
+  color: var(--fg-subtle);
+}
+.mc-auto__icon[data-disabled="true"] {
+  opacity: 0.45;
+}
+.mc-auto__rowinfo {
+  flex: 1;
+  min-width: 0;
+}
+.mc-auto__rowname {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--fs-base);
+  font-weight: var(--fw-medium);
+  color: var(--fg);
+}
+.mc-auto__rowdesc {
+  margin: 2px 0 0;
+  font-size: var(--fs-sm);
+  color: var(--fg-subtle);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mc-auto__rowsub {
+  margin: 2px 0 0;
+  font-size: var(--fs-sm);
+  color: var(--fg-subtlest);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mc-auto__badges {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+.mc-auto__ghost {
+  padding: 4px 12px;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--fg-subtlest);
+  font-family: inherit;
+  font-size: var(--fs-sm);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.mc-auto__ghost:hover:not(:disabled) {
+  color: var(--fg);
+  background: var(--surface-hover);
+}
+.mc-auto__ghost:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.mc-auto__empty {
+  font-size: var(--fs-sm);
+  color: var(--fg-subtlest);
+  margin: 12px 0 0;
+}
+.mc-auto__error {
+  font-size: var(--fs-sm);
+  color: var(--mc-danger, #e5484d);
+  margin: 0;
+}
+
+/* ---- 编辑弹窗 ---- */
+.mc-auto__form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 12px;
+}
+.mc-auto__form .mc-field__label {
+  font-size: var(--fs-sm);
+}
+.mc-auto__form .mc-segmented {
+  width: 100%;
+}
+.mc-auto__textarea {
+  width: 100%;
+  resize: vertical;
+  min-height: 84px;
+  padding: 8px 10px;
+  border: 1px solid var(--border, rgba(128, 128, 128, 0.3));
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  color: var(--fg);
+  font-family: inherit;
+  font-size: var(--fs-sm);
+  line-height: 1.5;
+  outline: none;
+}
+.mc-auto__textarea:focus {
+  border-color: var(--fg-subtle);
+}
+.mc-auto__workspace {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.mc-auto__workspace > :first-child {
+  flex: 1;
+  min-width: 0;
+}
+
+/* 时间选择（HH : MM 双下拉）：替代原生 <input type="time"> 的 spinner 弹层 */
+.mc-auto__timeselect {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.mc-auto__timeselect > :first-child,
+.mc-auto__timeselect > :last-child {
+  flex: 1;
+  min-width: 0;
+}
+.mc-auto__timesep {
+  color: var(--fg-subtle);
+  font-variant-numeric: tabular-nums;
+}
+
+/* 一次性任务：日期（原生 date）+ 时间（TimeSelect）一行 */
+.mc-auto__daterow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.mc-auto__daterow > .mc-auto__timeselect {
+  flex: 1;
+  min-width: 150px;
+}
+/* ---- 日期选择（按钮 + 月历浮层）：替代原生 <input type="date"> 的日历弹层 ---- */
+.mc-datepicker {
+  flex: 1;
+  min-width: 130px;
+}
+.mc-datepicker__button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 10px;
+  border: 1px solid var(--border, rgba(128, 128, 128, 0.3));
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  color: var(--fg);
+  font-family: inherit;
+  font-size: var(--fs-sm);
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  transition: border-color var(--dur) var(--ease);
+}
+.mc-datepicker__button:hover {
+  border-color: var(--fg-subtle);
+}
+.mc-datepicker__button > svg {
+  flex-shrink: 0;
+  color: var(--fg-subtlest);
+}
+.mc-datepicker__menu {
+  position: fixed;
+  z-index: 500;
+  width: 280px;
+  padding: 12px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border, rgba(128, 128, 128, 0.3));
+  border-radius: var(--radius-lg, 14px);
+  box-shadow: var(--shadow-lg);
+}
+.mc-datepicker__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.mc-datepicker__month {
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+  color: var(--fg);
+}
+.mc-datepicker__nav {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--fg-subtle);
+  cursor: pointer;
+}
+.mc-datepicker__nav:hover {
+  background: var(--surface-hover);
+  color: var(--fg);
+}
+.mc-datepicker__grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+}
+.mc-datepicker__wd {
+  padding: 2px 0;
+  font-size: 11px;
+  color: var(--fg-subtlest);
+  text-align: center;
+}
+.mc-datepicker__day {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 28px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--fg);
+  font-family: inherit;
+  font-size: var(--fs-sm);
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  transition: background-color var(--dur) var(--ease);
+}
+.mc-datepicker__day:hover {
+  background: var(--surface-hover);
+}
+.mc-datepicker__day[data-today="true"] {
+  border-color: var(--border-strong, rgba(128, 128, 128, 0.4));
+}
+.mc-datepicker__day[data-selected="true"] {
+  background: var(--brand);
+  border-color: transparent;
+  /* --brand 是主题主前景（深色主题=白），文字必须用配套反色 --brand-fg 才看得见 */
+  color: var(--brand-fg);
+  font-weight: var(--fw-medium);
+}
+.mc-datepicker__foot {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 8px;
+}
+.mc-datepicker__today {
+  padding: 3px 10px;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--brand);
+  font-family: inherit;
+  font-size: var(--fs-sm);
+  cursor: pointer;
+}
+.mc-datepicker__today:hover {
+  background: var(--surface-hover);
+}
+.mc-auto__advanced {
+  align-self: flex-start;
+  padding: 4px 0;
+  border: 0;
+  background: transparent;
+  color: var(--fg-subtle);
+  font-family: inherit;
+  font-size: var(--fs-sm);
+  cursor: pointer;
+}
+.mc-auto__advanced:hover {
+  color: var(--fg);
+}
+.mc-auto__advanced::before {
+  content: "▸ ";
+}
+.mc-auto__advanced[data-open="true"]::before {
+  content: "▾ ";
+}
+.mc-auto__advancedbody {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px dashed var(--border, rgba(128, 128, 128, 0.3));
+  border-radius: var(--radius-md);
+}
+
+/* ---- 运行历史弹窗 ---- */
+.mc-auto__history {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 14px;
+  max-height: 320px;
+  overflow-y: auto;
+}
+.mc-auto__historyrow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 2px;
+  border-bottom: 1px solid var(--border, rgba(128, 128, 128, 0.15));
+  font-size: var(--fs-sm);
+}
+.mc-auto__historyrow:last-child {
+  border-bottom: 0;
+}
+.mc-auto__historytime {
+  /* 等宽数字 + 固定列宽：多行时间纵向对齐 */
+  min-width: 96px;
+  font-variant-numeric: tabular-nums;
+  color: var(--fg-subtle);
+  white-space: nowrap;
+}
+.mc-auto__historyerror {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--fg-subtlest);
+}
+.mc-auto__historyrow .mc-btn {
+  margin-left: auto;
+  flex-shrink: 0;
+}

@@ -1,10 +1,14 @@
 import { promises as fs } from "node:fs";
+import http from "node:http";
+import type { AddressInfo } from "node:net";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { hasDynamicTool, isDynamicToolRequiringApproval, listDynamicToolDefinitions } from "../agent/tools.js";
 import {
+  McpAuthRequiredError,
   McpManager,
+  createStdioOrHttpClient,
   expandEnvTemplates,
   mcpContentToResult,
   readMcpConfig,
@@ -148,6 +152,46 @@ describe("缺凭据跳过连接", () => {
     expect(
       unresolvedEnvVars({ command: "npx", args: ["-y", `pkg@${tokenTemplate()}`] } as never),
     ).toEqual([TOKEN_ENV]);
+  });
+
+  it("远程 server 回 401 → 抛 McpAuthRequiredError，连接期不等浏览器回调", async () => {
+    const server = http.createServer((_request, response) => {
+      response.writeHead(401, { "content-type": "application/json" });
+      response.end(JSON.stringify({ error: "unauthorized" }));
+    });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const port = (server.address() as AddressInfo).port;
+    try {
+      const started = Date.now();
+      await expect(
+        createStdioOrHttpClient({ url: `http://127.0.0.1:${port}/mcp` }, "demo"),
+      ).rejects.toBeInstanceOf(McpAuthRequiredError);
+      // 旧实现会在这里 prepare + ensureAuthorized，卡到回环回调超时（5 分钟）→ UI 一直「连接中」
+      expect(Date.now() - started).toBeLessThan(5_000);
+    } finally {
+      server.close();
+    }
+  });
+
+  it("连接 401 → 只标 needs_auth，绝不自动弹授权浏览器（由用户手动点「授权」）", async () => {
+    const home = await makeTempRoot();
+    const previousHome = process.env.MEOWCODE_HOME_DIR;
+    process.env.MEOWCODE_HOME_DIR = home;
+    const factory: McpClientFactory = async () => {
+      throw new McpAuthRequiredError("cloudflare");
+    };
+    const manager = new McpManager(factory);
+    const spy = vi.spyOn(manager, "authorize").mockResolvedValue(undefined);
+    try {
+      await manager.start({ cloudflare: { url: "https://mcp.example.com/mcp" } });
+      expect(manager.statuses().cloudflare.status).toBe("needs_auth");
+      expect(spy).not.toHaveBeenCalled();
+    } finally {
+      spy.mockRestore();
+      await manager.dispose();
+      if (previousHome === undefined) delete process.env.MEOWCODE_HOME_DIR;
+      else process.env.MEOWCODE_HOME_DIR = previousHome;
+    }
   });
 
   it("headers 里有缺 env 的占位 → 标 unconfigured，工厂不被调用", async () => {
@@ -451,5 +495,72 @@ describe("restart", () => {
     expect(manager.statuses().fresh?.status).toBe("ready");
     await manager.dispose();
     void created;
+  });
+});
+
+describe("revoke（解除授权）", () => {
+  it("清掉本机 token、摘除工具，状态退回 needs_auth", async () => {
+    const home = await makeTempRoot();
+    const previousHome = process.env.MEOWCODE_HOME_DIR;
+    process.env.MEOWCODE_HOME_DIR = home;
+    try {
+      const serverUrl = "https://mcp.example.com/mcp";
+      const tokenFile = path.join(home, ".meowcode", "mcp-oauth", "cloudflare.json");
+      await fs.mkdir(path.dirname(tokenFile), { recursive: true });
+      await fs.writeFile(
+        tokenFile,
+        JSON.stringify({
+          issuer: serverUrl,
+          tokens: { access_token: "tok", token_type: "Bearer" },
+          clientInformation: { client_id: "dcr-client" },
+        }),
+      );
+
+      const { manager } = managerWith([fakeClient()]);
+      await manager.start({ cloudflare: { url: serverUrl } });
+      expect(manager.statuses().cloudflare.status).toBe("ready");
+      expect(hasDynamicTool("mcp__cloudflare__echo")).toBe(true);
+
+      await manager.revoke("cloudflare");
+
+      expect(manager.statuses().cloudflare.status).toBe("needs_auth");
+      expect(hasDynamicTool("mcp__cloudflare__echo")).toBe(false);
+      const stored = JSON.parse(await fs.readFile(tokenFile, "utf8")) as {
+        tokens?: unknown;
+        clientInformation?: { client_id?: string };
+      };
+      expect(stored.tokens).toBeUndefined();
+      // DCR 注册信息要留着，下次授权不必重新注册
+      expect(stored.clientInformation?.client_id).toBe("dcr-client");
+      await manager.dispose();
+    } finally {
+      if (previousHome === undefined) delete process.env.MEOWCODE_HOME_DIR;
+      else process.env.MEOWCODE_HOME_DIR = previousHome;
+    }
+  });
+
+  it("stdio server 没有 OAuth 通道 → 直接报错", async () => {
+    const { manager } = managerWith([fakeClient()]);
+    await manager.start({ local: { command: "node" } });
+    await expect(manager.revoke("local")).rejects.toThrow(/not an HTTP server/);
+    await manager.dispose();
+  });
+
+  it("stdio args 里的 ${VAR} 与 env 一样会被进程环境展开（检测/展开对称）", () => {
+    const previous = process.env.MEOWCODE_TEST_ARG;
+    process.env.MEOWCODE_TEST_ARG = "hello";
+    try {
+      expect(expandEnvTemplates("-a ${MEOWCODE_TEST_ARG}")).toBe("-a hello");
+      expect(expandEnvTemplates("keep ${MEOWCODE_MISSING_X} literal? no → empty")).toBe("keep  literal? no → empty");
+      // unresolvedEnvVars 与展开对称：env 在场时不缺、env 不在时报缺
+      expect(unresolvedEnvVars({ command: "npx", args: ["-a", "${MEOWCODE_TEST_ARG}"] })).toEqual([]);
+      delete process.env.MEOWCODE_TEST_ARG;
+      expect(unresolvedEnvVars({ command: "npx", args: ["-a", "${MEOWCODE_TEST_ARG}"] })).toEqual([
+        "MEOWCODE_TEST_ARG",
+      ]);
+    } finally {
+      if (previous === undefined) delete process.env.MEOWCODE_TEST_ARG;
+      else process.env.MEOWCODE_TEST_ARG = previous;
+    }
   });
 });

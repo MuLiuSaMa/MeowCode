@@ -29,9 +29,11 @@
   "platforms": {
     "gitee": "Gitee",
     "gitcode": "GitCode",
-    "gitcode-community": "Communauté GitCode"
+    "gitcode-community": "Communauté GitCode",
+    "undermind": "Undermind"
   },
   "actions": {
+    "aiAuthor": "Écrire avec l’IA",
     "cancel": "Annuler",
     "close": "Fermer",
     "copied": "Copié",
@@ -91,10 +93,18 @@
     "project": "Projet"
   },
   "mcp": {
+    "authorize": "Autoriser",
+    "authorizeTitle": "Terminez l'autorisation dans le navigateur ; la connexion se fait ensuite automatiquement",
+    "authorizing": "En attente d'autorisation",
     "connecting": "Connexion",
+    "disabled": "Désactivé",
     "envRequired": "Configuration requise : {{names}}",
     "failed": "Échec",
     "failedDetail": "Échec · {{error}}",
+    "localBadge": "Configuration locale",
+    "localNoTarget": "Serveur MCP local",
+    "needsAuth": "Autorisation requise",
+    "reauthorize": "Réautoriser",
     "ready": "Prêt · {{count}} outils",
     "ready_one": "Prêt · {{count}} outil",
     "ready_other": "Prêt · {{count}} outils",
@@ -220,8 +230,12 @@
     "desc": "Le jeton est chiffré sur cette machine et sert uniquement à connecter {{name}}. Il est validé en ligne avant l'enregistrement, puis la connexion est rétablie et les outils chargés.",
     "empty": "Saisissez un jeton.",
     "hintFigma": "Créez-le sur le site Figma dans Settings → Security → Personal access tokens ; un accès en lecture à File content suffit.",
+    "hintLarkAppId": "App ID depuis la console développeur Feishu/Lark Open Platform, au format cli_xxxx.",
+    "hintLarkSecret": "App Secret de la page du même application ; les deux doivent appartenir à une application publiée avec les permissions requises.",
     "hintLuckin": "Connectez-vous sur open.lkcoffee.com/mcp pour créer et copier un Token ; utilisé par le MCP de commande Luckin (commande, suivi, code de retrait).",
     "labelFigma": "Jeton d'accès personnel Figma",
+    "labelLarkAppId": "App ID Lark/Feishu",
+    "labelLarkSecret": "App Secret Lark/Feishu",
     "labelLuckin": "Token de la plateforme Luckin",
     "placeholder": "Coller le jeton d'accès",
     "title": "Définir le jeton d'accès {{name}}"
@@ -309,9 +323,10 @@
       "title": "添加 MCP 服务",
       "desc": "手动添加一个 MCP server：配置写入 ~/.meowcode/mcp.json，保存后自动连接。",
       "idLabel": "名称（id）*",
-      "connTypeLabel": "连接类型",
-      "connStdio": "本地命令（Stdio）",
-      "connHttp": "远程地址（HTTP）",
+      "navLabel": "Mode de connexion",
+      "navStdio": "Commande locale",
+      "navHttp": "URL distante",
+      "navJson": "Configuration JSON",
       "commandLabel": "命令 *",
       "argsLabel": "参数（每行一个）",
       "urlLabel": "服务地址 *",
@@ -320,7 +335,6 @@
       "envHint": "支持 ${VAR} 形式引用 MeowCode 进程环境变量。",
       "jsonLabel": "MCP 配置（JSON）",
       "jsonHint": "接受 {\"mcpServers\": {…}} 包裹（可一次添加多个）或单个 server 对象。",
-      "advancedToggle": "高级：粘贴 JSON",
       "jsonInvalid": "不是合法的 JSON。",
       "jsonEmpty": "mcpServers 里没有条目。",
       "jsonIdInvalid": "条目 id「{{id}}」不合法：需以字母/数字开头，只含字母、数字、点、下划线、连字符。",
@@ -330,7 +344,14 @@
       "headersInvalid": "请求头不是合法的 JSON 对象。",
       "needCommand": "请填写启动命令。",
       "needUrl": "请填写服务地址。",
-      "toggleAria": "启停 MCP {{id}}"
+      "toggleAria": "启停 MCP {{id}}",
+      "authGroup": "Authentification",
+      "oauthToggle": "Autorisation OAuth via le navigateur (MCP distant)",
+      "oauthHint": "La première connexion ouvre un navigateur pour se connecter ; le token est stocké dans ~/.meowcode/mcp-oauth/.",
+      "oauthScopesLabel": "Scopes OAuth (facultatif, espace/virgule)",
+      "oauthClientIdLabel": "Client ID OAuth (facultatif, préenregistré)",
+      "oauthCimdLabel": "URL des métadonnées client OAuth (facultatif)",
+      "oauthCimdHint": "Vide utilise le document CIMD officiel MeowCode. Une chaîne vide désactive le repli CIMD."
     }
   },
   "sources": {

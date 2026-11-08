@@ -18,6 +18,9 @@ export function McpStatusBadge({ state }: { state: McpServerState | undefined })
     const names = (state.missingEnv ?? []).join(", ");
     return <Badge tone="neutral">{names ? t("mcp.unconfiguredDetail", { names }) : t("mcp.unconfigured")}</Badge>;
   }
+  if (state.status === "needs_auth") {
+    return <Badge tone="neutral">{t("mcp.needsAuth")}</Badge>;
+  }
   return (
     <Badge tone="danger">
       {state.error ? t("mcp.failedDetail", { error: state.error }) : t("mcp.failed")}
@@ -51,6 +54,9 @@ export function McpRow({
   oauthConnected,
   oauthPending,
   onCancelOauth,
+  onAuthorize,
+  onRevoke,
+  authorizing,
   onDelete,
   canDelete,
 }: {
@@ -80,6 +86,12 @@ export function McpRow({
   oauthPending?: boolean;
   /** 放弃本次浏览器授权 */
   onCancelOauth?: () => void;
+  /** 远程 MCP（oauthCapable）的 MCP 协议内授权入口：起浏览器 + 等回环回调 */
+  onAuthorize?: (entry: MarketplaceEntryLike) => void;
+  /** 解除已生效的 MCP OAuth 授权（清本机 token + 断开） */
+  onRevoke?: (entry: MarketplaceEntryLike) => void;
+  /** 正在等浏览器完成 MCP 授权 */
+  authorizing?: boolean;
   /** 社区条目删除入口（自己的条目才可见） */
   onDelete?: (entry: MarketplaceEntryLike) => void;
   canDelete?: boolean;
@@ -101,6 +113,33 @@ export function McpRow({
   const showOauthConnect = Boolean(
     oauthPlatform && onConnectOauth && (!oauthReady || state?.status === "failed"),
   );
+  // 远程 MCP 的协议内授权：没连上就给一个显式入口。连接期那次 401 自动授权失败后
+  // 不会自己再弹，用户否则只能干等或重装。
+  // unconfigured（缺 env）不显示：那种情况该配凭据，不是授权。
+  // 平台条目（Gitee/GitCode/Undermind 等 requiresEnv 映射到 OAuth 平台的）与 GitHub 通道
+  // 不走协议内授权/解除：凭据来自平台 OAuth，断开走下面的平台「解除授权」——
+  // 否则一行会同时出现两个「解除授权」（协议内 + 平台），用户无法区分。
+  const showAuthorize = Boolean(
+    entry.type === "mcp" &&
+      entry.oauthCapable &&
+      entry.installed &&
+      onAuthorize &&
+      !requiresGithub &&
+      !oauthPlatform &&
+      state?.status !== "ready" &&
+      state?.status !== "unconfigured",
+  );
+  const needsReauth = state?.status === "failed";
+  // 已授权成功（ready）才给「解除授权」：needs_auth 时没有 token 可清，该点的是「授权」
+  const showRevoke = Boolean(
+    entry.type === "mcp" &&
+      entry.oauthCapable &&
+      entry.installed &&
+      onRevoke &&
+      !requiresGithub &&
+      !oauthPlatform &&
+      state?.status === "ready",
+  );
 
   return (
     <div className="mc-mkt__row">
@@ -109,6 +148,8 @@ export function McpRow({
         <div className="mc-mkt__rowname">
           <span title={entry.name}>{entry.name}</span>
           <CommunityBadge entry={entry} />
+          {entry.localMcpSource === "manual" ? <Badge>{t("mine.badge")}</Badge> : null}
+          {entry.localMcpSource === "local" ? <Badge>{t("mcp.localBadge")}</Badge> : null}
         </div>
         <p className="mc-mkt__rowdesc">{entry.description}</p>
       </div>
@@ -124,8 +165,33 @@ export function McpRow({
             {t("actions.delete")}
           </button>
         ) : null}
-        {entry.installed && !showGithubConnect && !showOauthConnect ? (
+        {entry.localMcpEnabled === false ? <Badge tone="neutral">{t("mcp.disabled")}</Badge> : null}
+        {/* 授权进行中由下面的「等待授权」徽标独占提示，不再重复显示「需要授权」 */}
+        {entry.installed && !showGithubConnect && !showOauthConnect && !authorizing ? (
           <McpStatusBadge state={state} />
+        ) : null}
+        {authorizing ? <Badge tone="running">{t("mcp.authorizing")}</Badge> : null}
+        {showAuthorize && !authorizing ? (
+          <button
+            type="button"
+            className="mc-mkt__connect"
+            disabled={busy}
+            title={state?.error ?? t("mcp.authorizeTitle")}
+            onClick={() => onAuthorize?.(entry)}
+          >
+            {needsReauth ? t("mcp.reauthorize") : t("mcp.authorize")}
+          </button>
+        ) : null}
+        {showRevoke ? (
+          <button
+            type="button"
+            className="mc-mkt__ghost"
+            disabled={busy}
+            title={t("body.disconnect.title", { platform: entry.name })}
+            onClick={() => onRevoke?.(entry)}
+          >
+            {t("actions.disconnect")}
+          </button>
         ) : null}
         {oauthPending ? <Badge tone="running">{t("oauth.awaitingBrowser")}</Badge> : null}
         {oauthPending && onCancelOauth ? (
@@ -176,7 +242,11 @@ export function McpRow({
             <EnvWarning names={otherEnvNames} />
           </>
         ) : null}
-        {!requiresGithub && !oauthPlatform && entry.envReady === true && onDisconnectManualToken ? (
+        {!requiresGithub &&
+        !oauthPlatform &&
+        entry.envReady === true &&
+        !showRevoke /* 同一条目协议内 OAuth ready 时不重复给手动令牌解除入口 */ &&
+        onDisconnectManualToken ? (
           <button
             type="button"
             className="mc-mkt__ghost"
@@ -262,6 +332,7 @@ const SOURCE_LABEL_KEYS: Record<string, string> = {
  */
 export function InstalledPluginRow({
   descriptor,
+  name,
   description,
   iconUrl,
   busy,
@@ -271,6 +342,8 @@ export function InstalledPluginRow({
   onOpenPanel,
 }: {
   descriptor: PluginDescriptor;
+  /** 市场条目的中文名（市场安装的插件没有 descriptor.displayName） */
+  name?: string;
   /** 插件介绍（来自市场索引；用户手放的非市场插件没有） */
   description?: string;
   iconUrl?: string;
@@ -296,7 +369,11 @@ export function InstalledPluginRow({
         }}
       >
         <MarketIcon
-          entry={{ id: descriptor.id, name: descriptor.displayName ?? descriptor.id, source: descriptor.source }}
+          entry={{
+            id: descriptor.id,
+            name: descriptor.displayName ?? name ?? descriptor.id,
+            source: descriptor.source,
+          }}
           iconUrl={descriptor.iconUrl ?? iconUrl}
           size={30}
         />
@@ -308,7 +385,7 @@ export function InstalledPluginRow({
         title={t("actions.viewDetails")}
       >
         <div className="mc-mkt__rowname">
-          <span>{descriptor.displayName ?? descriptor.id}</span>
+          <span>{descriptor.displayName ?? name ?? descriptor.id}</span>
           {sourceKey ? <Badge>{t(sourceKey)}</Badge> : null}
           {descriptor.error ? <Badge tone="danger">{t("plugin.loadFailed")}</Badge> : null}
         </div>

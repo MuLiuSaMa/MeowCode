@@ -8,11 +8,7 @@
   "speech": {
     "section": "Ton de réponse",
     "field": "Style de réponse",
-    "desc": {
-      "normal": "Ton par défaut : concis, direct et professionnel — l’essentiel seulement.",
-      "tafei": "Ton Taffy : une persona de fille-chat espiègle qui termine ses phrases par « miao » (喵) et utilise parfois sa phrase fétiche ; le contenu technique reste précis.",
-      "dazui": "Dazui : euh, ceci, ceci… voilà. Le meilleur ton à moins de dix millions."
-    },
+    "desc": "Choisissez le style de ton des réponses de l’IA. Les changements prennent effet immédiatement.",
     "options": {
       "normal": "Normal",
       "tafei": "永雏塔菲",
@@ -69,6 +65,16 @@
     "themeSection": "Thème",
     "themeField": "Thème de couleurs",
     "themeDesc": "« Système » suit en temps réel le réglage clair / sombre de Windows. Le changement s’applique immédiatement, sans redémarrage.",
+    "paletteSection": "Palette de couleurs",
+    "paletteDesc": "Choisissez la couleur d’accent et la teinte de l’interface. Clair et sombre sont réglés séparément et s’adaptent automatiquement au changement de mode.",
+    "palette": {
+      "classic": "Classique",
+      "lava": "Orange lave",
+      "bee": "Jaune abeille",
+      "mint": "Vert menthe",
+      "parchment": "Parchemin",
+      "harmony": "Bleu harmonie"
+    },
     "theme": {
       "system": "Système",
       "light": "Clair",
@@ -554,6 +560,11 @@
       "confirmHow": "Après chaque réponse, une requête supplémentaire est envoyée au modèle actuel pour prédire votre prochain message. Il apparaît dans le champ vide ; appuyez sur Tab pour l’insérer. Rien n’est envoyé automatiquement.",
       "confirmCost": "Cela consomme des tokens supplémentaires à chaque tour. La requête réutilise le cache de la conversation, elle est donc généralement peu coûteuse, mais reste facturée.",
       "enable": "Activer"
+    },
+    "providerFallback": {
+      "field": "Basculement du fournisseur",
+      "desc": "En cas de délai d’attente, de limitation de débit ou d’erreur serveur du fournisseur principal, ce tour bascule automatiquement vers un autre fournisseur activé (2 sauts max).",
+      "toggleFailed": "Échec de l’enregistrement du basculement du fournisseur"
     }
   },
   "proxy": {

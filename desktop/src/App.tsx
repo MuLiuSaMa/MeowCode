@@ -50,12 +50,15 @@ import {
   type Settings,
   type SubagentRun,
   type SubagentSummary,
+  type TurnDurationGroup,
   type TurnFileChangeGroup,
   type SubagentTranscript,
   type ThemePreference,
+  type ThemePalette,
   type TimelineItem,
   type TimelineTool,
   type TurnMetrics,
+  type SpeedSample,
   type UiState,
   type UpdateInfo,
   type UsageSummary,
@@ -94,6 +97,8 @@ import {
 } from "./components/architecture/ArchitecturePage";
 import { MarketplaceNav, type MarketTab } from "./components/marketplace/MarketplaceNav";
 import { MarketplaceBody } from "./components/marketplace/MarketplaceBody";
+import { AutomationNav } from "./components/automation/AutomationNav";
+import { AutomationPage } from "./components/automation/AutomationPage";
 import { Onboarding } from "./components/onboarding/Onboarding";
 import { TitleBar } from "./components/TitleBar";
 import { Toast } from "./components/Toast";
@@ -105,7 +110,7 @@ import {
 } from "./components/StarPrompt";
 import "./components/UndoBar.css";
 import { UpdateModal } from "./components/UpdateModal";
-import { ThemeProvider } from "./theme/theme";
+import { ThemeProvider, readStoredPalette } from "./theme/theme";
 import { useSideTabs, type SideTab, type SideTabOpen } from "./panel/useSideTabs";
 import {
   clearRunningCompaction,
@@ -130,7 +135,7 @@ import i18n from "./i18n";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 
-type View = "chat" | "settings" | "plugins" | "architecture" | "git";
+type View = "chat" | "settings" | "plugins" | "architecture" | "git" | "automation";
 const REPO_URL = "https://github.com/MuLiuSaMa/MeowCode";
 
 /**
@@ -473,6 +478,8 @@ export default function App() {
   );
   /** 最近一次 AI 回合的响应统计（右侧会话信息）：token / 速度 / 耗时 */
   const [turnMetrics, setTurnMetrics] = useState<TurnMetrics | null>(null);
+  /** 实时生成速度曲线：按模型调用（roundId）原地更新的最近样本 */
+  const [speedSamples, setSpeedSamples] = useState<SpeedSample[]>([]);
   /** 前缀缓存诊断：最终 usage 事件聚合（弹层缓存行 + 首页失配计数） */
   const [cacheDiagnostics, setCacheDiagnostics] = useState<CacheDiagnostics>(EMPTY_CACHE_DIAGNOSTICS);
   /** cache-bust 检测基线：按模型记上一条最终样本的命中读数（换模型自动换基线） */
@@ -480,6 +487,8 @@ export default function App() {
   /** 最近一次压缩质量观测（窗口结算后才有值） */
   /** 回合计时（performance.now）：开始、首字、当轮首字；usage 到达即结算一轮速度 */
   const turnStartAtRef = useRef<number | null>(null);
+  /** 当前生成轮墙钟起点：turn_complete 若没带 durationMs（旧服务端）时的兜底结算 */
+  const turnWallStartAtRef = useRef<number | null>(null);
   const turnFirstTokenAtRef = useRef<number | null>(null);
   const roundFirstTokenAtRef = useRef<number | null>(null);
   /** 会话累计用量：按 roundId 保存最近样本再派生，流中实时值与最终真值不会双计 */
@@ -522,6 +531,8 @@ export default function App() {
   /** 关闭确认弹窗（closeAction=ask 时主进程唤起） */
   const [closeAsk, setCloseAsk] = useState(false);
   const [timeline, setTimeline] = useState<TimelineItem[]>([]);
+  /** 当前生成轮的墙钟起点（毫秒）：消息流末尾的运行时间实时累加用；回合结束置 null（由 turn-info 定格） */
+  const [turnStartedAt, setTurnStartedAt] = useState<number | null>(null);
   /** 模型正在流式生成工具调用参数（还没有 tool_started 事件） */
   const [toolProgress, setToolProgress] = useState<{
     count: number;
@@ -1089,8 +1100,18 @@ export default function App() {
   const runStateVersionRef = useRef(0);
   /** 按会话的运行状态版本：当前会话自己的事件才让它的队列/压缩状态回填失效 */
   const sessionRunVersionsRef = useRef<Record<string, number>>({});
+  /**
+   * 正在落盘的模型列表改动。增删模型要重启 agent server（模型列表走 env 传给子进程），
+   * 这段时间里新模型对 server 还不存在 —— 切模型前先等它落地，否则 PUT /session/model 会 400。
+   */
+  const providersSaveRef = useRef<Promise<boolean> | null>(null);
   const [appInfo, setAppInfo] = useState<AppInfo | null>(null);
   const [themePreference, setThemePreference] = useState<ThemePreference>("system");
+  /**
+   * 配色方案。初值取 localStorage 镜像（与 index.html 防闪脚本同源），
+   * 否则首帧 effect 会先把 data-palette 写成 classic，出现 classic → 目标色的跳变。
+   */
+  const [themePalette, setThemePalette] = useState<ThemePalette>(readStoredPalette);
 
   useEffect(() => {
     const timer = window.setTimeout(() => setSplashDone(true), 1000);
@@ -1197,6 +1218,7 @@ export default function App() {
   const preferences = useMemo<Preferences>(
     () => ({
       theme: settings?.theme ?? "system",
+      palette: settings?.palette ?? "classic",
       closeAction: settings?.closeAction ?? "ask",
       language: settings?.language ?? "system",
       speechStyle: settings?.speechStyle ?? "normal",
@@ -1214,6 +1236,7 @@ export default function App() {
     }),
     [
       settings?.theme,
+      settings?.palette,
       settings?.closeAction,
       settings?.language,
       settings?.speechStyle,
@@ -1272,9 +1295,11 @@ export default function App() {
     [updateSubagentRuns],
   );
 
-  /** 切会话 / 新回合开始时清空响应统计（历史回合的 usage 没有持久化，无法回放） */
+  /** 切会话 / 新回合开始时清空响应统计（速度/首字延迟这类回合指标不落盘，无法回放） */
   const resetTurnMetrics = useCallback(() => {
     turnStartAtRef.current = null;
+    turnWallStartAtRef.current = null;
+    setTurnStartedAt(null);
     turnFirstTokenAtRef.current = null;
     roundFirstTokenAtRef.current = null;
     setTurnMetrics(null);
@@ -1371,6 +1396,15 @@ export default function App() {
         checkpoints?: SessionCheckpoint[];
         /** 按回合聚合的文件改动：历史回放重建「已编辑 N 个文件」卡片 */
         turnChanges?: TurnFileChangeGroup[];
+        /** 按回合的运行耗时：历史回放每轮末尾显示运行时间 */
+        turnDurations?: TurnDurationGroup[];
+        /** 每次模型调用的用量样本（右侧实时曲线，时间正序） */
+        usageSamples?: Array<{
+          inputTokens: number;
+          outputTokens?: number;
+          cacheReadTokens?: number;
+          tokensPerSecond?: number;
+        }>;
       }>("/session/messages");
       // 快速切换时旧请求可能后到，直接丢弃
       if (loadId !== sessionLoadIdRef.current) return false;
@@ -1399,6 +1433,16 @@ export default function App() {
       // 会话级统计以文件汇总为基座：切回来时历史累计仍在
       resetSessionUsage();
       usageTotalsRef.current = totalsFromServer(usage);
+      // 生成速度曲线按模型调用取样：历史从文件恢复，之后由 usage 事件实时续上
+      setSpeedSamples(
+        (messages.usageSamples ?? [])
+          .filter(
+            (sample) =>
+              typeof sample.tokensPerSecond === "number" && sample.tokensPerSecond > 0,
+          )
+          .slice(-30)
+          .map((sample) => ({ tokensPerSecond: sample.tokensPerSecond as number })),
+      );
       if (usage?.hasUsage || lastMetrics) {
         const totals = usageTotalsRef.current;
         setTurnMetrics({
@@ -1439,6 +1483,7 @@ export default function App() {
         messages.compactions?.length ? messages.compactions : (messages.compaction ?? null),
         messages.checkpoints,
         messages.turnChanges,
+        messages.turnDurations,
       );
       if (current.lastTurn?.status === "interrupted") {
         history.push({
@@ -1543,6 +1588,8 @@ export default function App() {
 
   // 启动时静默查一次：有新版就在聊天里留一条带"立即更新"的提示（不打扰，但不藏）
   useEffect(() => {
+    // 商店版（MSIX）由 Microsoft Store 更新：不自动查，也不在时间线里提示新版本
+    if (window.meow.storeManaged) return;
     let disposed = false;
     void checkForUpdates()
       .then((result) => {
@@ -2512,6 +2559,38 @@ export default function App() {
         case "turn_complete": {
           // 兜底：中止 / 报错 / 协议异常时也要让所有流式条目收尾
           finalizeStreamingAssistants(next);
+          // 本轮运行耗时定格：优先服务端 durationMs，旧服务端用墙钟兜底；按 turnId upsert 避免重连重复
+          const wallStart = turnWallStartAtRef.current;
+          const durationMs =
+            event.durationMs ?? (wallStart != null ? Date.now() - wallStart : null);
+          if (durationMs != null && durationMs >= 0) {
+            // turn_complete 的 status 是 TurnStatus；MeowEvent.status 与子 Agent 共用宽类型，
+            // 后端可能发 "error"，子 Agent 侧叫 "failed"，统一归一为 "error" 供样式使用
+            const raw: string | undefined = event.status;
+            const status: "completed" | "aborted" | "error" | "interrupted" | undefined =
+              raw === "completed" || raw === "aborted" || raw === "interrupted"
+                ? raw
+                : raw === "error" || raw === "failed"
+                  ? "error"
+                  : undefined;
+            // 旧服务端不带 turnId：不做 upsert，避免误覆盖上一条无 turnId 的记录
+            const existing = event.turnId
+              ? next.findIndex(
+                  (item) => item.kind === "turn-info" && item.turnId === event.turnId,
+                )
+              : -1;
+            const info: TimelineItem = {
+              kind: "turn-info",
+              key: existing >= 0 ? next[existing].key : nextKey("turn-info"),
+              ...(event.turnId ? { turnId: event.turnId } : {}),
+              durationMs,
+              ...(status ? { status } : {}),
+              endedAt: event.endedAt ?? new Date().toISOString(),
+              ...(event.turnUsage ? { usage: event.turnUsage } : {}),
+            };
+            if (existing >= 0) next[existing] = info;
+            else next.push(info);
+          }
           break;
         }
         default:
@@ -2527,6 +2606,8 @@ export default function App() {
       if (event.queuedId) completeQueuedPrompt(event.queuedId);
       // 新回合：只重置回合计时；会话累计 token / 缓存命中率保留
       turnStartAtRef.current = performance.now();
+      turnWallStartAtRef.current = Date.now();
+      setTurnStartedAt(Date.now());
       turnFirstTokenAtRef.current = null;
       roundFirstTokenAtRef.current = null;
       const totals = usageTotalsRef.current;
@@ -2570,6 +2651,9 @@ export default function App() {
     if (event.type === "turn_complete") {
       const start = turnStartAtRef.current;
       if (start != null) turnStartAtRef.current = null;
+      // 当前轮结束：live 计时交给已定格的 turn-info item
+      turnWallStartAtRef.current = null;
+      setTurnStartedAt(null);
       // 缓存命中率是会话累计，usage 到达时已实时更新，这里只补回合耗时
       setTurnMetrics((prev) => ({
         ...(prev ?? EMPTY_TURN_METRICS),
@@ -2621,6 +2705,28 @@ export default function App() {
       const now = performance.now();
       const roundStart = roundFirstTokenAtRef.current;
       const roundOutput = typeof event.outputTokens === "number" ? event.outputTokens : null;
+      // 生成速度实时曲线：同一 roundId 原地替换（流中输出在增长），撤回则删点。
+      // 起点是当轮首个流式增量（与下方 turnMetrics 的 final 结算同口径）。
+      if (event.retracted) {
+        const retractedId = event.roundId;
+        if (retractedId) {
+          setSpeedSamples((prev) => prev.filter((sample) => sample.roundId !== retractedId));
+        }
+      } else if (event.roundId && roundOutput != null && roundOutput > 0 && roundStart != null) {
+        const elapsed = (now - roundStart) / 1000;
+        if (elapsed >= 0.05) {
+          const roundId = event.roundId;
+          const point: SpeedSample = { roundId, tokensPerSecond: roundOutput / elapsed };
+          setSpeedSamples((prev) => {
+            const index = prev.findIndex((sample) => sample.roundId === roundId);
+            const next =
+              index >= 0
+                ? [...prev.slice(0, index), point, ...prev.slice(index + 1)]
+                : [...prev, point];
+            return next.length > 30 ? next.slice(-30) : next;
+          });
+        }
+      }
       // 速度只在最终真值上结算：实时样本提前清掉起点会把本轮速度算到下一轮头上
       const final = event.final === true;
       const seconds = final && roundStart != null ? (now - roundStart) / 1000 : 0;
@@ -2819,6 +2925,7 @@ export default function App() {
         if (disposed) return;
         setSettings(loadedSettings);
         setThemePreference(loadedSettings.theme ?? "system");
+        setThemePalette(loadedSettings.palette ?? "classic");
         // 磁盘上的偏好是权威值：镜像可能滞后（换机、清缓存、旧版本写过别的语言）
         syncLanguageFromSettings(loadedSettings.language);
         setDrafts(loadedUi.drafts ?? {});
@@ -3213,7 +3320,10 @@ export default function App() {
 
   /** 轻量偏好（主题 / 关闭方式 / 归档 / 侧栏项目）：只写盘，不重启 agent server。返回值同步回 state。 */
   const savePreferences = useCallback(async (prefs: Partial<Preferences>): Promise<boolean> => {
+    const previousPalette = settings?.palette ?? "classic";
     if (prefs.theme !== undefined) setThemePreference(prefs.theme);
+    // 配色先乐观更新：色块立即选中、界面立即换色；落盘失败下面的合并会回滚
+    if (prefs.palette !== undefined) setThemePalette(prefs.palette);
     // 语言先就地切换：界面要立即跟随，落盘由下面的 IPC 负责，不阻塞视觉反馈
     if (prefs.language !== undefined) applyLanguage(prefs.language);
     // 语色先乐观更新：下拉立即显示新值；落盘失败再回滚
@@ -3235,6 +3345,7 @@ export default function App() {
           ? {
               ...prev,
               theme: saved?.theme ?? prev.theme,
+              palette: saved?.palette ?? prev.palette,
               closeAction: saved?.closeAction ?? prev.closeAction,
               language: saved?.language ?? prev.language,
               speechStyle: saved?.speechStyle ?? prev.speechStyle,
@@ -3302,10 +3413,11 @@ export default function App() {
       if (nextNotifications !== undefined) {
         setSettings((prev) => (prev ? { ...prev, notifications: previousNotifications } : prev));
       }
+      if (prefs.palette !== undefined) setThemePalette(previousPalette);
       pushError(err instanceof Error ? err.message : String(err));
       return false;
     }
-  }, [pushError, settings?.speechStyle, settings?.notifications]);
+  }, [pushError, settings?.speechStyle, settings?.notifications, settings?.palette]);
 
   // ---- 界面字体（外观设置）：导入的自定义字体注册成 @font-face，选中字体写进 --font-app ----
 
@@ -3980,14 +4092,16 @@ export default function App() {
   /**
    * 保存模型列表（增删改 / 启用开关）。
    * 走 saveSettings —— 会重启 agent server，因为模型列表要进 MEOWCODE_PROVIDERS 环境变量。
-   * 模型增删是低频的显式动作，重启可以接受。
+   * 重启期间 stopServer 优雅退出最多要 3 秒，所以**先把新列表落到 UI** 再等落盘，
+   * 否则点完「添加/删除」列表要愣一两秒才变（用户感知成「卡住了」）。
    */
   const saveProviders = useCallback(
-    async (nextProviders: ProviderSettings[], nextActiveId?: string): Promise<boolean> => {
-      if (!settings) return false;
+    (nextProviders: ProviderSettings[], nextActiveId?: string): Promise<boolean> => {
+      if (!settings) return Promise.resolve(false);
       const usable = (id: string | undefined) =>
         nextProviders.some((item) => item.id === id && item.enabled !== false);
       const requested = nextActiveId ?? settings.providerId;
+      const previous = settings;
       const nextSettings: Settings = {
         ...settings,
         providers: nextProviders.map((provider) => ({ ...provider, apiKey: provider.apiKey || undefined })),
@@ -3996,14 +4110,24 @@ export default function App() {
           ? requested
           : (nextProviders.find((item) => item.enabled !== false)?.id ?? nextProviders[0]?.id),
       };
-      try {
-        const saved = await window.meow.saveSettings(nextSettings);
-        setSettings(saved);
-        return true;
-      } catch (err) {
-        pushError(err instanceof Error ? err.message : String(err));
-        return false;
-      }
+      // 乐观更新：列表、模型胶囊立即反映改动
+      setSettings(nextSettings);
+      const run = (async () => {
+        try {
+          const saved = await window.meow.saveSettings(nextSettings);
+          setSettings(saved);
+          return true;
+        } catch (err) {
+          setSettings(previous);
+          pushError(err instanceof Error ? err.message : String(err));
+          return false;
+        }
+      })();
+      providersSaveRef.current = run;
+      void run.finally(() => {
+        if (providersSaveRef.current === run) providersSaveRef.current = null;
+      });
+      return run;
     },
     [settings, pushError],
   );
@@ -4340,6 +4464,11 @@ export default function App() {
       roundFirstTokenAtRef.current = null;
       setTurnMetrics((prev) => (prev ? { ...prev, tokensPerSecond: null } : prev));
       try {
+        // 刚增删过模型：agent server 还在重启，新模型对它还不存在。
+        // 等这轮保存落地（重启完成）再切，否则 PUT /session/model 会 400。
+        await providersSaveRef.current?.catch(() => undefined);
+        // 那轮保存的回执会带上它自己当时的 providerId，可能把用户刚点的这个覆盖掉 —— 补回来
+        setSettings((prev) => (prev ? { ...prev, providerId } : prev));
         // 只持久化激活项并热切换，绝不重启 agent server：
         // 重启会丢运行中的会话状态、还可能竞态新建空会话，导致「换模型后丢上下文」。
         await window.meow.saveProviderPrefs({ providerId });
@@ -4491,7 +4620,11 @@ export default function App() {
 
   if (!ready || !splashDone) {
     return (
-      <ThemeProvider preference={themePreference} onPreferenceChange={setThemePreference}>
+      <ThemeProvider
+        preference={themePreference}
+        palette={themePalette}
+        onPreferenceChange={setThemePreference}
+      >
         {/* 无边框窗口：启动阶段也必须保留标题栏，否则窗口无法拖动 */}
         <div className="mc-root mc-root--splash">
           <TitleBar forceDark />
@@ -4503,7 +4636,11 @@ export default function App() {
 
   if (onboardingOpen) {
     return (
-      <ThemeProvider preference={themePreference} onPreferenceChange={setThemePreference}>
+      <ThemeProvider
+        preference={themePreference}
+        palette={themePalette}
+        onPreferenceChange={setThemePreference}
+      >
         <div className="mc-root">
           <TitleBar />
           <Onboarding
@@ -4530,7 +4667,11 @@ export default function App() {
   }
 
   return (
-    <ThemeProvider preference={themePreference} onPreferenceChange={setThemePreference}>
+    <ThemeProvider
+      preference={themePreference}
+      palette={themePalette}
+      onPreferenceChange={setThemePreference}
+    >
       {/* 接管全应用 title 提示，统一换成自绘气泡（不弹原生 tooltip） */}
       <GlobalTooltip />
       <AppShell
@@ -4559,13 +4700,16 @@ export default function App() {
                     ? "architecture"
                     : view === "git"
                       ? "git"
-                      : "home"
+                      : view === "automation"
+                        ? "automation"
+                        : "home"
             }
             onHome={() => setView("chat")}
             onOpenGit={() => setView("git")}
             onOpenPlugins={() => setView("plugins")}
             onOpenSettings={() => setView("settings")}
             onOpenArchitecture={() => setView("architecture")}
+            onOpenAutomation={() => setView("automation")}
             update={
               silentUpdate.status === "hidden"
                 ? null
@@ -4605,6 +4749,8 @@ export default function App() {
               onDeleteArchitecture={(id) => void removeHarnessArchitecture(id)}
               workspace={session?.cwd ?? settings?.workspace}
             />
+          ) : view === "automation" ? (
+            <AutomationNav />
           ) : (
             <ConversationPanel
               sessions={sessions}
@@ -4682,6 +4828,7 @@ export default function App() {
                   workspace={session?.cwd ?? settings?.workspace}
                   session={session}
                   metrics={turnMetrics}
+                  speedSamples={speedSamples}
                   provider={activeProvider}
                   providers={providers}
                   onManageModels={() => {
@@ -4763,6 +4910,7 @@ export default function App() {
               items={timeline}
               canUse={canUse}
               waiting={waiting}
+              turnStartedAt={turnStartedAt}
               preparing={toolPreparing}
               preparingTool={preparingTool}
               loading={sessionLoading}
@@ -4777,6 +4925,10 @@ export default function App() {
               onOpenReview={() => {
                 sideTabs.open({ kind: "review" });
                 setShowInspector(true);
+              }}
+              onBranchSession={() => {
+                const path = session?.filePath;
+                if (path) void branchSessionByPath(path);
               }}
               focus={messageFocus}
               suggestion={promptSuggestion}
@@ -4914,6 +5066,7 @@ export default function App() {
             section={settingsSection}
             settings={settings}
             preferences={preferences}
+            themePalette={themePalette}
             appInfo={appInfo}
             providers={providers}
             activeProviderId={activeProviderId}
@@ -4980,11 +5133,23 @@ export default function App() {
               addChip({ kind: "skill", id: entry.id, name: entry.name, iconUrl });
               setView("chat");
             }}
+            onAuthorSkill={() => {
+              // 新建对话并引用内置「技能与插件创作」技能，让 AI 直接问需求、生成技能/插件
+              void (async () => {
+                await createSession(projectCwd);
+                addChip({ kind: "skill", id: "extension-authoring", name: "技能与插件创作" });
+                setView("chat");
+              })();
+            }}
             onOpenPluginPanel={(pluginId, title) => {
               sideTabs.open({ kind: "plugin", pluginId, title });
               setView("chat");
             }}
           />
+        ) : null}
+
+        {view === "automation" ? (
+          <AutomationPage workspace={settings?.workspace ?? null} projects={projects} />
         ) : null}
       </AppShell>
 

@@ -9,9 +9,9 @@ describe("builtin 插件元数据", () => {
     expect(meta!.description.length).toBeGreaterThan(20);
     expect(meta!.iconSvg.startsWith("<svg")).toBe(true);
     expect(meta!.iconSvg).toContain('viewBox="0 0 48 48"');
-    // Claude 十二芒星：12 条射线 + 品牌橙
-    expect(meta!.iconSvg).toContain("#D97757");
-    expect(meta!.iconSvg.match(/M24 24L/g)).toHaveLength(12);
+    // 与模型映射同一枚 Claude 星标：官方 glyph + 品牌橙
+    expect(meta!.iconSvg).toContain("#ff7043");
+    expect(meta!.iconSvg.match(/<path /g)).toHaveLength(12);
     // 详情：事件映射表与退出码语义
     expect(meta!.detail).toContain("PreToolUse");
     expect(meta!.detail).toContain("settings.json");
@@ -31,6 +31,19 @@ describe("builtin 插件元数据", () => {
     expect(meta!.detail).toContain("授权");
     expect(meta!.detail.length).toBeGreaterThan(200);
     expect(BUILTIN_PLUGIN_META["computer-control"].tags).toContain("computer");
+  });
+
+  it("extension-authoring 有显示名、介绍、图标与详情", () => {
+    const meta = builtinMeta("extension-authoring");
+    expect(meta).toBeDefined();
+    expect(meta!.displayName).toBe("技能与插件创作");
+    expect(meta!.description.length).toBeGreaterThan(20);
+    expect(meta!.iconSvg.startsWith("<svg")).toBe(true);
+    expect(meta!.iconSvg).toContain('viewBox="0 0 48 48"');
+    expect(meta!.detail).toContain("create_skill");
+    expect(meta!.detail).toContain("create_plugin");
+    expect(meta!.detail).toContain("审批");
+    expect(BUILTIN_PLUGIN_META["extension-authoring"].tags).toContain("skill");
   });
 
   it("未知 id 返回 undefined", () => {

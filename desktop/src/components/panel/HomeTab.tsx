@@ -1,10 +1,7 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import {
-  LuArrowDownToLine,
-  LuArrowUpFromLine,
   LuCpu,
-  LuDatabase,
   LuEllipsis,
   LuFile,
   LuFolder,
@@ -14,14 +11,13 @@ import {
   LuHourglass,
   LuListChecks,
   LuMessageSquare,
-  LuPercent,
   LuSearch,
   LuSquare,
   LuTerminal,
   LuTimer,
   LuUsers,
 } from "react-icons/lu";
-import type { ProviderSettings, TurnMetrics } from "../../api";
+import type { ProviderSettings, SpeedSample, TurnMetrics } from "../../api";
 import type { SideTabOpen } from "../../panel/useSideTabs";
 import { formatNumber } from "../../i18n/format";
 
@@ -40,14 +36,213 @@ const CARDS: Array<{
   { kind: "subagents", labelKey: "home.card.subagents", icon: <LuUsers size={15} /> },
 ];
 
-function Field({ icon, label, value }: { icon: ReactNode; label: string; value: string }) {
+/** 单次模型调用的生成速度（output token / 秒）。 */
+function speedOf(sample: SpeedSample): number {
+  return Math.max(0, sample.tokensPerSecond);
+}
+
+/** 纵轴上限：取 1 位有效数字向上取整，刻度落在整齐的量级上。 */
+function niceSpeedMax(value: number): number {
+  if (!Number.isFinite(value) || value <= 0) return 1;
+  const exponent = 10 ** Math.floor(Math.log10(value));
+  return Math.ceil(value / exponent) * exponent;
+}
+
+/** 环形命中率：SVG 尺寸固定，外层卡片负责随面板宽度换行。 */
+function HitRing({ value }: { value: number | null }) {
+  const size = 62;
+  const stroke = 5.5;
+  const radius = (size - stroke) / 2;
+  const circumference = 2 * Math.PI * radius;
+  const ratio = value == null ? 0 : Math.max(0, Math.min(1, value));
   return (
-    <div className="mc-rtp__field">
-      <span className="mc-rtp__fieldlabel">
+    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} aria-hidden="true">
+      <circle
+        cx={size / 2}
+        cy={size / 2}
+        r={radius}
+        fill="none"
+        stroke="var(--surface)"
+        strokeWidth={stroke}
+      />
+      {ratio > 0 ? (
+        <circle
+          cx={size / 2}
+          cy={size / 2}
+          r={radius}
+          fill="none"
+          stroke="var(--mc-stat-read)"
+          strokeWidth={stroke}
+          strokeLinecap="round"
+          strokeDasharray={`${ratio * circumference} ${circumference}`}
+          transform={`rotate(-90 ${size / 2} ${size / 2})`}
+          style={{ transition: "stroke-dasharray var(--dur) var(--ease)" }}
+        />
+      ) : null}
+      <text
+        x="50%"
+        y="50%"
+        textAnchor="middle"
+        dominantBaseline="central"
+        fontSize={12.5}
+        fontWeight={600}
+        fill="var(--fg)"
+      >
+        {formatPercent(value)}
+      </text>
+    </svg>
+  );
+}
+
+const CURVE_HEIGHT = 96;
+const CURVE_PAD = { top: 10, right: 8, bottom: 12, left: 30 };
+
+/** 水平切线的三次贝塞尔：点少时也不会出现尖角，视觉上更像「曲线」。 */
+function curvePath(points: Array<{ x: number; y: number }>): string {
+  if (!points.length) return "";
+  const [first, ...rest] = points;
+  let path = `M${first.x.toFixed(1)} ${first.y.toFixed(1)}`;
+  let previous = first;
+  for (const point of rest) {
+    const midX = ((previous.x + point.x) / 2).toFixed(1);
+    path += ` C${midX} ${previous.y.toFixed(1)} ${midX} ${point.y.toFixed(1)} ${point.x.toFixed(1)} ${point.y.toFixed(1)}`;
+    previous = point;
+  }
+  return path;
+}
+
+/**
+ * 实时生成速度曲线：每次模型调用一个点，流中按 roundId 原地替换。
+ *
+ * 宽度用 ResizeObserver 实测后按像素出图：面板宽度可拖拽（最小 240px），
+ * 固定 viewBox 拉伸会把圆点与描边一起拉扁。纵轴按本次窗口的最大速度自适应。
+ */
+function SpeedCurve({ samples, label }: { samples: SpeedSample[]; label: string }) {
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const [width, setWidth] = useState(0);
+  const gradientId = `mc-hit-${useId().replace(/[^a-zA-Z0-9_-]/g, "")}`;
+
+  useEffect(() => {
+    const node = wrapRef.current;
+    if (!node) return;
+    const update = () => setWidth(node.clientWidth);
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, []);
+
+  const values = samples.map(speedOf);
+  const scaleMax = niceSpeedMax(Math.max(...values, 1));
+  const innerWidth = Math.max(0, width - CURVE_PAD.left - CURVE_PAD.right);
+  const innerHeight = CURVE_HEIGHT - CURVE_PAD.top - CURVE_PAD.bottom;
+  const points = values.map((value, index) => ({
+    x:
+      CURVE_PAD.left +
+      (values.length > 1 ? (innerWidth * index) / (values.length - 1) : innerWidth / 2),
+    y: CURVE_PAD.top + (1 - value / scaleMax) * innerHeight,
+    value,
+  }));
+  const line = curvePath(points);
+  const baseline = CURVE_HEIGHT - CURVE_PAD.bottom;
+  const first = points[0];
+  const last = points.at(-1);
+  const area =
+    points.length > 1 && first && last
+      ? `${line} L${last.x.toFixed(1)} ${baseline} L${first.x.toFixed(1)} ${baseline} Z`
+      : "";
+
+  return (
+    <div className="mc-curve" ref={wrapRef}>
+      {width > 0 ? (
+        <svg width={width} height={CURVE_HEIGHT} role="img" aria-label={label}>
+          <defs>
+            <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="var(--mc-stat-read)" stopOpacity="0.28" />
+              <stop offset="100%" stopColor="var(--mc-stat-read)" stopOpacity="0" />
+            </linearGradient>
+          </defs>
+          {[1, 0.5, 0].map((ratio) => {
+            const y = CURVE_PAD.top + (1 - ratio) * innerHeight;
+            return (
+              <g key={ratio}>
+                <line
+                  x1={CURVE_PAD.left}
+                  x2={width - CURVE_PAD.right}
+                  y1={y}
+                  y2={y}
+                  stroke="var(--border)"
+                  strokeDasharray={ratio === 0 ? undefined : "2 4"}
+                />
+                <text x={0} y={y + 3} fontSize={9} fill="var(--fg-subtlest)">
+                  {Math.round(scaleMax * ratio)}
+                </text>
+              </g>
+            );
+          })}
+          {area ? <path d={area} fill={`url(#${gradientId})`} /> : null}
+          {points.length > 1 ? (
+            <path
+              d={line}
+              fill="none"
+              stroke="var(--mc-stat-read)"
+              strokeWidth={1.6}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          ) : null}
+          {points.map((point, index) => (
+            <circle
+              key={index}
+              cx={point.x}
+              cy={point.y}
+              r={index === points.length - 1 ? 2.8 : 1.8}
+              fill="var(--mc-stat-read)"
+            >
+              <title>{formatSpeed(point.value)}</title>
+            </circle>
+          ))}
+        </svg>
+      ) : null}
+    </div>
+  );
+}
+
+function DetailRow({
+  icon,
+  label,
+  value,
+  mono,
+}: {
+  icon: ReactNode;
+  label: string;
+  value: string;
+  mono?: boolean;
+}) {
+  return (
+    <div className="mc-detailrow">
+      <span className="mc-detailrow__label">
         {icon}
         {label}
       </span>
-      <span className="mc-rtp__fieldvalue">{value}</span>
+      <span
+        className={`mc-detailrow__value mc-truncate${mono ? " mc-detailrow__value--mono" : ""}`}
+        title={value}
+      >
+        {value}
+      </span>
+    </div>
+  );
+}
+
+function MiniStat({ icon, label, value }: { icon: ReactNode; label: string; value: string }) {
+  return (
+    <div className="mc-mini">
+      <span className="mc-mini__label">
+        {icon}
+        {label}
+      </span>
+      <span className="mc-mini__value">{value}</span>
     </div>
   );
 }
@@ -83,6 +278,7 @@ export function HomeTab({
   workspace,
   session,
   metrics,
+  speedSamples,
   provider,
   toolCount,
 }: {
@@ -95,8 +291,10 @@ export function HomeTab({
   onOpenSearch: () => void;
   workspace?: string;
   session: { id: string; cwd: string } | null;
-  /** 最近一次 AI 回合的响应统计 */
+  /** 会话累计用量与最近一次 AI 回合的响应统计 */
   metrics: TurnMetrics | null;
+  /** 实时生成速度曲线：最近若干次模型调用（时间正序），流中原地更新 */
+  speedSamples: SpeedSample[];
   provider?: ProviderSettings;
   toolCount: number;
 }) {
@@ -126,11 +324,29 @@ export function HomeTab({
     };
   }, [menuFor]);
 
-  /** 未命中缓存的输入 = 总输入 - 缓存读取；服务商未报告缓存明细时显示「未报告」，不伪装成 0。 */
-  const uncachedInputTokens =
-    typeof metrics?.inputTokens === "number"
-      ? Math.max(0, metrics.inputTokens - (metrics.cacheReadTokens ?? 0))
+  /** 服务商未报告缓存明细时显示「未报告」，不把未知伪装成 0。 */
+  const cacheReported = metrics?.cacheReadTokens != null;
+  const inputTotal = typeof metrics?.inputTokens === "number" ? metrics.inputTokens : null;
+  const cacheRead = cacheReported ? (metrics?.cacheReadTokens ?? 0) : null;
+  const cacheWrite = typeof metrics?.cacheWriteTokens === "number" ? metrics.cacheWriteTokens : null;
+  const outputTotal = typeof metrics?.outputTokens === "number" ? metrics.outputTokens : null;
+  // 未命中输入 = 总输入 - 缓存读 - 缓存写：写入的部分已计入缓存，不再算「未缓存」
+  const uncachedInput =
+    inputTotal != null && cacheRead != null
+      ? Math.max(0, inputTotal - cacheRead - (cacheWrite ?? 0))
       : null;
+
+  const legend = [
+    { key: "read", label: t("home.field.cacheRead"), value: cacheRead },
+    { key: "uncached", label: t("home.field.uncachedInput"), value: uncachedInput },
+    { key: "write", label: t("home.field.cacheWrite"), value: cacheWrite },
+    { key: "output", label: t("home.field.output"), value: outputTotal },
+  ];
+  const tokenTotal = legend.reduce((sum, item) => sum + (item.value ?? 0), 0);
+  const legendValue = (value: number | null) =>
+    metrics == null ? "—" : value == null ? t("home.notReported") : tokenValue(value);
+
+  const showCurve = speedSamples.length > 0;
   return (
     <div className="mc-rtp__home">
       <p className="mc-rtp__section">{t("home.toolsSection")}</p>
@@ -194,60 +410,105 @@ export function HomeTab({
       </div>
 
       <p className="mc-rtp__section">{t("home.sessionSection")}</p>
-      <div className="mc-rtp__fields">
-        <Field icon={<LuFolder size={13} />} label={t("home.field.workspace")} value={session?.cwd ?? "—"} />
-        <Field icon={<LuCpu size={13} />} label={t("home.field.provider")} value={provider?.name ?? "—"} />
-        <Field icon={<LuCpu size={13} />} label={t("home.field.model")} value={provider?.model ?? "—"} />
-        <Field icon={<LuHash size={13} />} label={t("home.field.sessionId")} value={session?.id ?? "—"} />
-        <Field icon={<LuSquare size={13} />} label={t("home.field.toolCalls")} value={String(toolCount)} />
-        <Field
-          icon={<LuArrowDownToLine size={13} />}
-          label={t("home.field.uncachedInput")}
-          value={
-            metrics?.inputTokens != null && metrics.cacheReadTokens == null
-              ? t("home.notReported")
-              : tokenValue(uncachedInputTokens)
-          }
-        />
-        <Field
-          icon={<LuDatabase size={13} />}
-          label={t("home.field.cacheRead")}
-          value={
-            metrics?.inputTokens != null && metrics.cacheReadTokens == null
-              ? t("home.notReported")
-              : tokenValue(metrics?.cacheReadTokens)
-          }
-        />
-        <Field
-          icon={<LuDatabase size={13} />}
-          label={t("home.field.cacheWrite")}
-          value={tokenValue(metrics?.cacheWriteTokens)}
-        />
-        <Field
-          icon={<LuArrowUpFromLine size={13} />}
-          label={t("home.field.output")}
-          value={tokenValue(metrics?.outputTokens)}
-        />
-        <Field
-          icon={<LuPercent size={13} />}
-          label={t("home.field.cacheHitRate")}
-          value={formatPercent(metrics?.cacheHitRate)}
-        />
-        <Field
-          icon={<LuGauge size={13} />}
-          label={t("home.field.speed")}
-          value={formatSpeed(metrics?.tokensPerSecond)}
-        />
-        <Field
-          icon={<LuTimer size={13} />}
-          label={t("home.field.response")}
-          value={formatDuration(metrics?.responseMs)}
-        />
-        <Field
-          icon={<LuHourglass size={13} />}
-          label={t("home.field.firstToken")}
-          value={formatDuration(metrics?.firstTokenMs)}
-        />
+      <div className="mc-rtp__session">
+        <div className="mc-rtp__stats">
+          <div className="mc-stat mc-stat--hero">
+            <span className="mc-stat__label">{t("home.field.cacheHitRate")}</span>
+            <div className="mc-stat__ring">
+              <HitRing value={metrics?.cacheHitRate ?? null} />
+            </div>
+            <span className="mc-stat__hint">{t("home.sessionTotal")}</span>
+          </div>
+
+          <div className="mc-stat mc-stat--tokens">
+            <span className="mc-stat__label">{t("home.tokensTitle")}</span>
+            <div className="mc-tokenbar" aria-hidden={tokenTotal === 0}>
+              {legend.map((item) =>
+                item.value && item.value > 0 ? (
+                  <span
+                    key={item.key}
+                    className={`mc-tokenbar__seg mc-tokenbar__seg--${item.key}`}
+                    style={{ flexGrow: item.value }}
+                  />
+                ) : null,
+              )}
+            </div>
+            <ul className="mc-tokenlegend">
+              {legend.map((item) => (
+                <li className="mc-tokenlegend__row" key={item.key}>
+                  <span className={`mc-tokenlegend__dot mc-tokenlegend__dot--${item.key}`} />
+                  <span className="mc-tokenlegend__label">{item.label}</span>
+                  <span className="mc-tokenlegend__value">{legendValue(item.value)}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+
+        <div className="mc-chartcard">
+          <div className="mc-chartcard__head">
+            <span className="mc-chartcard__title">{t("home.field.speed")} · tok/s</span>
+            {showCurve ? (
+              <span className="mc-chartcard__meta">
+                <span className="mc-chartcard__live" aria-hidden="true" />
+                {t("home.liveCalls", { count: speedSamples.length })}
+              </span>
+            ) : null}
+          </div>
+          {showCurve ? (
+            <SpeedCurve samples={speedSamples} label={t("home.field.speed")} />
+          ) : (
+            <p className="mc-chartcard__empty">—</p>
+          )}
+        </div>
+
+        <div className="mc-stat mc-stat--details">
+          <div className="mc-detailrows">
+            <DetailRow
+              icon={<LuFolder size={13} />}
+              label={t("home.field.workspace")}
+              value={session?.cwd ?? "—"}
+            />
+            <DetailRow
+              icon={<LuCpu size={13} />}
+              label={t("home.field.provider")}
+              value={provider?.name ?? "—"}
+            />
+            <DetailRow
+              icon={<LuCpu size={13} />}
+              label={t("home.field.model")}
+              value={provider?.model ?? "—"}
+            />
+            <DetailRow
+              icon={<LuHash size={13} />}
+              label={t("home.field.sessionId")}
+              value={session?.id ?? "—"}
+              mono
+            />
+          </div>
+          <div className="mc-detailstats">
+            <MiniStat
+              icon={<LuSquare size={13} />}
+              label={t("home.field.toolCalls")}
+              value={String(toolCount)}
+            />
+            <MiniStat
+              icon={<LuGauge size={13} />}
+              label={t("home.field.speed")}
+              value={formatSpeed(metrics?.tokensPerSecond)}
+            />
+            <MiniStat
+              icon={<LuTimer size={13} />}
+              label={t("home.field.response")}
+              value={formatDuration(metrics?.responseMs)}
+            />
+            <MiniStat
+              icon={<LuHourglass size={13} />}
+              label={t("home.field.firstToken")}
+              value={formatDuration(metrics?.firstTokenMs)}
+            />
+          </div>
+        </div>
       </div>
     </div>
   );

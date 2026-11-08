@@ -1,6 +1,6 @@
 {
   "name": "meowcode",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "private": true,
   "author": { "name": "MuLiuSaMa" },
   "type": "module",
@@ -18,6 +18,11 @@
     "test": "vitest run",
     "test:release": "node scripts/release-smoke.mjs",
     "package": "pnpm build && pnpm --filter @meowcode/desktop package:win",
+    "package:msix": "pnpm build && pnpm --filter @meowcode/desktop package:msix",
+    "make:msix-assets": "node scripts/make-msix-assets.mjs",
+    "test:msix": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/msix-test-sign.ps1",
+    "test:msix:sign": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/msix-test-sign.ps1 -NoInstall",
+    "test:msix:uninstall": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/msix-test-sign.ps1 -Uninstall",
     "lint": "oxlint src desktop/src",
     "lint:fix": "oxlint --fix src desktop/src"
   },

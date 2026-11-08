@@ -43,6 +43,7 @@ import { ContextPopover } from "./ContextPopover";
 import { AgentProfilePopover } from "./AgentProfilePopover";
 import { ModelPopover, levelsFor } from "./ModelPopover";
 import { findTemplate } from "../data/providerCatalog";
+import { modelIconKey } from "../data/providerIcons";
 import { ProviderIcon } from "./ui/ProviderIcon";
 import { SessionProgressPill } from "./SessionProgressPill";
 import { queuedPreview } from "../user-references";
@@ -841,10 +842,14 @@ export function Composer({
         name: skill.name,
         title: marketByKey.get(`skill:${skill.id}`)?.name ?? skill.name,
         description: skill.description,
-        iconUrl: marketIcons[`skill:${skill.id}`],
+        iconUrl: skill.iconUrl ?? marketIcons[`skill:${skill.id}`],
         installed: true,
       }));
-    return [...fromMarket, ...custom];
+    // 手动导入 / 手放的自定义技能排最前，已装市场技能次之，未装的压底：
+    // 否则「+ → 技能」一长串市场条目会把刚导入的技能淹没，看起来像“没引用到”
+    const marketInstalled = fromMarket.filter((item) => item.installed);
+    const marketMissing = fromMarket.filter((item) => !item.installed);
+    return [...custom, ...marketInstalled, ...marketMissing];
   }, [marketEntries, installedSkills, marketByKey, marketIcons]);
 
   /** 插件选择器数据：市场全部插件 + 本地手放的自定义插件 */
@@ -2357,9 +2362,13 @@ export function Composer({
                   title={`${model}${activeEffort ? ` · ${effortLabel(activeEffort, levels)}` : ""}`}
                   onClick={() => setMenuOpen((open) => !open)}
                 >
-                  {/* 当前服务商品牌 Logo：与模型弹层列表里同一套图标 */}
+                  {/* 模型品牌 Logo：与模型弹层列表同一套图标（iconKey 优先于服务商模板图标） */}
                   {activeProvider ? (
-                    <ProviderIcon template={findTemplate(activeProvider.templateId)} size={16} />
+                    <ProviderIcon
+                      template={findTemplate(activeProvider.templateId)}
+                      iconKey={modelIconKey(activeProvider.model) ?? "meow"}
+                      size={18}
+                    />
                   ) : null}
                   <span className="mc-truncate mc-composer__modelname">{model}</span>
                   <span className="mc-composer__effort">{effortLabel(activeEffort, levels)}</span>

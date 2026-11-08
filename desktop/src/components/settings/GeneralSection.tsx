@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { CustomSelect, type CustomSelectOption } from "../ui/CustomSelect";
 import { Button } from "../ui/Button";
@@ -6,7 +6,13 @@ import { Dialog } from "../ui/Dialog";
 import { FieldRow, Section } from "../ui/Section";
 import { SegmentedControl } from "../ui/SegmentedControl";
 import { Toggle } from "../ui/Toggle";
-import type { CloseAction, LanguagePreference, SpeechStyle } from "../../api";
+import {
+  getProviderFallback,
+  setProviderFallback,
+  type CloseAction,
+  type LanguagePreference,
+  type SpeechStyle,
+} from "../../api";
 import { UI_LANGUAGES } from "../../i18n/languages";
 import { DataLocationSection } from "./DataLocationSection";
 import { ProxyRows } from "./ProxyRows";
@@ -50,6 +56,36 @@ export function GeneralSection({
 }) {
   const { t } = useTranslation("settings");
   const [confirmPromptSuggestions, setConfirmPromptSuggestions] = useState(false);
+  /** 供应商故障转移：null = 还没从服务端拿到当前值（默认关） */
+  const [providerFallback, setProviderFallbackState] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    getProviderFallback()
+      .then((result) => {
+        if (!cancelled) setProviderFallbackState(result.enabled);
+      })
+      .catch(() => {
+        // 查询失败按默认值（关）展示，避免开关卡在加载态
+        if (!cancelled) setProviderFallbackState(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const toggleProviderFallback = async (value: boolean) => {
+    const previous = providerFallback;
+    setProviderFallbackState(value); // 乐观更新：失败回滚
+    try {
+      await setProviderFallback(value); // 运行中的 server 立即生效（新会话与存活的 runtime 一起切）
+      // 落盘供下次启动传 env；走 saveProviderPrefs，不重启 agent server
+      await window.meow.saveProviderPrefs({ providerFallback: value });
+    } catch (error) {
+      setProviderFallbackState(previous ?? false);
+      onToast(error instanceof Error ? error.message : t("general.providerFallback.toggleFailed"));
+    }
+  };
   // 语言名用各自母语写法、不参与翻译：翻成当前界面语言反而认不出自己要切去哪
   const languageOptions = useMemo<CustomSelectOption<LanguagePreference>[]>(
     () => [
@@ -82,7 +118,7 @@ export function GeneralSection({
 
       {/* 其余运行期偏好收进一张卡：一条条列出来比拆成四张卡更好扫 */}
       <Section title={t("general.section")} description={t("general.desc")}>
-        <FieldRow label={t("speech.field")} hint={t(`speech.desc.${speechStyle}`)}>
+        <FieldRow label={t("speech.field")} hint={t("speech.desc")}>
           <CustomSelect
             value={speechStyle}
             options={speechOptions}
@@ -125,6 +161,17 @@ export function GeneralSection({
               onNextPromptSuggestionsChange(false);
             }}
             label={t("general.promptSuggestions.field")}
+          />
+        </FieldRow>
+        <FieldRow
+          label={t("general.providerFallback.field")}
+          hint={t("general.providerFallback.desc")}
+        >
+          <Toggle
+            checked={providerFallback ?? false}
+            disabled={providerFallback === null}
+            onChange={(value) => void toggleProviderFallback(value)}
+            label={t("general.providerFallback.field")}
           />
         </FieldRow>
         <ProxyRows onToast={onToast} />

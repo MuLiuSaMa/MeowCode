@@ -1,7 +1,7 @@
 import { appendFile, mkdtemp, readFile, readdir, rm, stat, unlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { SessionStore, flushSessionIndex, listSessions } from "./session-store";
 import type { ChatMessage } from "./types.js";
 
@@ -238,6 +238,38 @@ describe("SessionStore", () => {
       hasUsage: true,
     });
     expect((await listSessions(dir))[0].messageCount).toBe(1);
+  });
+
+  it("exposes per-call usage samples for the live hit-rate curve", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "meowcode-sessions-"));
+    const session = await SessionStore.create(path.join(dir, "session.jsonl"), "D:/work");
+    await session.appendUsage({
+      inputTokens: 100,
+      outputTokens: 20,
+      cacheReadTokens: 60,
+      source: "chat",
+    });
+    // 未报告缓存读取的调用：画上去会变成假的 0 命中
+    await session.appendUsage({ inputTokens: 50, outputTokens: 10, source: "chat" });
+    // 标题/压缩等辅助调用不属于主对话曲线
+    await session.appendUsage({
+      inputTokens: 5,
+      outputTokens: 5,
+      cacheReadTokens: 1,
+      source: "title",
+    });
+    await session.appendUsage({
+      inputTokens: 200,
+      outputTokens: 30,
+      cacheReadTokens: 180,
+      tokensPerSecond: 42.5,
+      source: "chat",
+    });
+
+    expect(session.usageSamples).toEqual([
+      { inputTokens: 100, outputTokens: 20, cacheReadTokens: 60 },
+      { inputTokens: 200, outputTokens: 30, cacheReadTokens: 180, tokensPerSecond: 42.5 },
+    ]);
   });
 
   it("persists turn metrics without polluting chat messages", async () => {
@@ -857,5 +889,148 @@ describe("SessionStore turn file change groups", () => {
     const [group] = session.turnFileChangeGroups;
     expect(group.canRewind).toBe(false);
     expect(group.checkpointId).toBeTruthy();
+  });
+});
+
+describe("SessionStore turn durations", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("measures wall-clock per turn and maps to messageIndex (turn-changes 口径)", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-11-07T00:00:00.000Z"));
+    const { session } = await makeStore();
+    await session.appendTurnStart({ turnId: "t1" });
+    await session.appendMessage({ role: "user", content: "go" });
+    await session.appendMessage({ role: "assistant", content: "ok" });
+    vi.setSystemTime(new Date("2026-11-07T00:00:03.500Z"));
+    await session.appendTurnEnd({ turnId: "t1", status: "completed" });
+
+    expect(session.turnDurations).toEqual([
+      {
+        turnId: "t1",
+        messageIndex: 2,
+        durationMs: 3500,
+        status: "completed",
+        endedAt: "2026-11-07T00:00:03.500Z",
+      },
+    ]);
+  });
+
+  it("spans continuation segments: first turn_start → last turn_end of same turnId", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-11-07T00:00:00.000Z"));
+    const { session } = await makeStore();
+    await session.appendTurnStart({ turnId: "t1" });
+    await session.appendMessage({ role: "user", content: "go" });
+    vi.setSystemTime(new Date("2026-11-07T00:00:02.000Z"));
+    await session.appendTurnEnd({ turnId: "t1", status: "completed" });
+    // 续命段复用同 turnId，不重写 turn_start
+    await session.appendMessage({ role: "assistant", content: "more" });
+    vi.setSystemTime(new Date("2026-11-07T00:00:05.000Z"));
+    await session.appendTurnEnd({ turnId: "t1", status: "completed" });
+
+    expect(session.turnDurations).toEqual([
+      {
+        turnId: "t1",
+        messageIndex: 2,
+        durationMs: 5000,
+        status: "completed",
+        endedAt: "2026-11-07T00:00:05.000Z",
+      },
+    ]);
+  });
+
+  it("keeps aborted turns with a neutral status (not treated as error)", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-11-07T00:00:00.000Z"));
+    const { session } = await makeStore();
+    await session.appendTurnStart({ turnId: "t1" });
+    await session.appendMessage({ role: "user", content: "go" });
+    vi.setSystemTime(new Date("2026-11-07T00:00:01.250Z"));
+    await session.appendTurnEnd({ turnId: "t1", status: "aborted" });
+
+    expect(session.turnDurations).toEqual([
+      {
+        turnId: "t1",
+        messageIndex: 1,
+        durationMs: 1250,
+        status: "aborted",
+        endedAt: "2026-11-07T00:00:01.250Z",
+      },
+    ]);
+  });
+
+  it("skips an orphan turn_start (crash) and a turn_end without a start", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-11-07T00:00:00.000Z"));
+    const { session } = await makeStore();
+    // 无 turn_start 的 recovered turn_end：跳过
+    await session.appendTurnEnd({ turnId: "recovered-x", status: "interrupted" });
+    // 有 start 无 end（崩溃）：跳过
+    await session.appendTurnStart({ turnId: "t1" });
+    await session.appendMessage({ role: "user", content: "go" });
+
+    expect(session.turnDurations).toEqual([]);
+  });
+
+  it("interrupted 轮用最后活动时间，不把重启停机时间算进去", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-11-07T00:00:00.000Z"));
+    const { session } = await makeStore();
+    await session.appendTurnStart({ turnId: "t1" });
+    vi.setSystemTime(new Date("2026-11-07T00:00:01.000Z"));
+    await session.appendMessage({ role: "user", content: "go" });
+    // 崩溃后下次启动才补写 turn_end：墙钟差是 1 小时，真实活动只到第 1 秒
+    vi.setSystemTime(new Date("2026-11-07T01:00:00.000Z"));
+    await session.appendTurnEnd({ turnId: "t1", status: "interrupted" });
+
+    expect(session.turnDurations).toEqual([
+      {
+        turnId: "t1",
+        messageIndex: 1,
+        durationMs: 1000,
+        status: "interrupted",
+        endedAt: "2026-11-07T00:00:01.000Z",
+      },
+    ]);
+  });
+
+  it("aggregates per-turn chat usage and ignores other sources", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-11-07T00:00:00.000Z"));
+    const { session } = await makeStore();
+    await session.appendTurnStart({ turnId: "t1" });
+    await session.appendMessage({ role: "user", content: "go" });
+    await session.appendUsage({
+      inputTokens: 100,
+      outputTokens: 40,
+      cacheReadTokens: 30,
+      cacheWriteTokens: 10,
+      source: "chat",
+      turnId: "t1",
+    });
+    // 标题 / 建议等辅助请求不计入本回合
+    await session.appendUsage({ inputTokens: 5, outputTokens: 5, source: "title", turnId: "t1" });
+    vi.setSystemTime(new Date("2026-11-07T00:00:02.000Z"));
+    await session.appendTurnEnd({ turnId: "t1", status: "completed" });
+
+    expect(session.turnDurations).toEqual([
+      {
+        turnId: "t1",
+        messageIndex: 1,
+        durationMs: 2000,
+        status: "completed",
+        endedAt: "2026-11-07T00:00:02.000Z",
+        usage: {
+          inputTokens: 100,
+          outputTokens: 40,
+          cacheReadTokens: 30,
+          cacheWriteTokens: 10,
+          totalTokens: 140,
+        },
+      },
+    ]);
   });
 });

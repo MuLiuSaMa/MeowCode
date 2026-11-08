@@ -5,6 +5,7 @@ import {
   hasBreakpoint,
   resolveCachePlan,
   sessionAffinityKey,
+  supportsLineageAffinity,
 } from "./cache-profile.js";
 import type { ProviderConfig } from "./types.js";
 
@@ -95,6 +96,11 @@ describe("cacheControlFor", () => {
 });
 
 describe("auto cache TTL", () => {
+  it("defaults to auto when the provider does not choose a TTL", () => {
+    expect(resolveCachePlan(provider({ pace: "interactive" })).ttl).toBe("1h");
+    expect(resolveCachePlan(provider({ pace: "machine" })).ttl).toBe("5m");
+  });
+
   it("gives human-paced sessions 1h and machine-paced ones 5m", () => {
     expect(resolveCachePlan(provider({ cacheTtl: "auto", pace: "interactive" })).ttl).toBe("1h");
     expect(resolveCachePlan(provider({ cacheTtl: "auto", pace: "machine" })).ttl).toBe("5m");
@@ -163,5 +169,28 @@ describe("sessionAffinityKey", () => {
     expect(sessionAffinityKey("abc")).toBe("abc:main");
     expect(sessionAffinityKey("abc", "title")).toBe("abc:title");
     expect(sessionAffinityKey("x".repeat(200)).length).toBe(64);
+  });
+});
+
+describe("supportsLineageAffinity", () => {
+  it("only trusts content-addressed official OpenAI endpoints", () => {
+    expect(
+      supportsLineageAffinity(
+        provider({ protocol: "openai-responses", baseUrl: "https://api.openai.com/v1", model: "gpt-5.1" }),
+      ),
+    ).toBe(true);
+    expect(
+      supportsLineageAffinity(
+        provider({ protocol: "openai-chat-completions", baseUrl: "https://api.openai.com/v1", model: "gpt-5.1" }),
+      ),
+    ).toBe(true);
+    // 第三方网关分片规则不可证伪
+    expect(
+      supportsLineageAffinity(
+        provider({ protocol: "openai-responses", baseUrl: "https://proxy.example.com/v1", model: "gpt-5.1" }),
+      ),
+    ).toBe(false);
+    // Anthropic 用显式断点，不走这套亲和键
+    expect(supportsLineageAffinity(provider({}))).toBe(false);
   });
 });

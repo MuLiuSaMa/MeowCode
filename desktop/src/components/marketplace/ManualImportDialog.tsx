@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { LuFolderOpen, LuTriangleAlert, LuUpload } from "react-icons/lu";
+import { LuFolderOpen, LuInfo, LuTriangleAlert, LuUpload } from "react-icons/lu";
 import { importManualItem } from "../../api";
 import { Button } from "../ui/Button";
 import { Dialog } from "../ui/Dialog";
 import "./PlatformOauthDialog.css";
 import "./CommunitySubmitDialog.css";
+import "./AddDialog.css";
 
 const PLUGIN_FILE_ACCEPT = ".ts,.mts,.js,.mjs,.cjs";
 
@@ -26,6 +27,8 @@ type Picked = { path: string; label: string; mode: "file" | "dir" };
 /**
  * 手动导入弹窗（「我的」栏）：skill 选 SKILL.md（复制其所在目录），plugin 选源码
  * 单文件或目录。id 由所选路径推导展示，导入动作在 agent server 侧完成。
+ *
+ * 尺寸与「添加 MCP」弹窗一致（mc-adddlg）：选择区撑满正文，底部按钮常驻。
  */
 export function ManualImportDialog({
   open,
@@ -111,39 +114,61 @@ export function ManualImportDialog({
         if (phase !== "importing") onClose();
       }}
       labelledBy="mc-mine-import-title"
-      className="mc-mkt__dialog"
+      className="mc-mkt__dialog mc-adddlg"
     >
-      <span className="mc-dialog__title" id="mc-mine-import-title">
-        {type === "skill" ? t("mine.import.skillTitle") : t("mine.import.pluginTitle")}
-      </span>
-      <p className="mc-dialog__desc">
-        {type === "skill" ? t("mine.import.skillDesc") : t("mine.import.pluginDesc")}
-      </p>
+      <div className="mc-adddlg__head">
+        <span className="mc-dialog__title" id="mc-mine-import-title">
+          {type === "skill" ? t("mine.import.skillTitle") : t("mine.import.pluginTitle")}
+        </span>
+        <p className="mc-adddlg__desc">
+          {type === "skill" ? t("mine.import.skillDesc") : t("mine.import.pluginDesc")}
+        </p>
+      </div>
 
-      <fieldset className="mc-community__form" disabled={phase !== "form"}>
-        <div className="mc-oauth__field">
-          <span className="mc-oauth__fieldlabel">
+      <div className="mc-adddlg__body">
+        <div className="mc-adddlg__pick">
+          {type === "skill" ? (
+            <LuUpload size={22} aria-hidden />
+          ) : (
+            <LuFolderOpen size={22} aria-hidden />
+          )}
+          <span className="mc-adddlg__picktitle">
             {type === "skill" ? t("mine.import.pickSkill") : t("mine.import.pickPlugin")}
           </span>
-          <div className="mc-community__filerow">
+          <p className="mc-adddlg__pickhint">{picked?.label ?? t("actions.none")}</p>
+          <div className="mc-adddlg__pickactions">
             {type === "skill" ? (
-              <button type="button" className="mc-community__pick" onClick={() => fileInputRef.current?.click()}>
+              <button
+                type="button"
+                className="mc-community__pick"
+                disabled={phase !== "form"}
+                onClick={() => fileInputRef.current?.click()}
+              >
                 <LuUpload size={14} />
                 {t("mine.import.pickSkillBtn")}
               </button>
             ) : (
               <>
-                <button type="button" className="mc-community__pick" onClick={() => fileInputRef.current?.click()}>
+                <button
+                  type="button"
+                  className="mc-community__pick"
+                  disabled={phase !== "form"}
+                  onClick={() => fileInputRef.current?.click()}
+                >
                   <LuUpload size={14} />
                   {t("mine.import.pickFileBtn")}
                 </button>
-                <button type="button" className="mc-community__pick" onClick={() => dirInputRef.current?.click()}>
+                <button
+                  type="button"
+                  className="mc-community__pick"
+                  disabled={phase !== "form"}
+                  onClick={() => dirInputRef.current?.click()}
+                >
                   <LuFolderOpen size={14} />
                   {t("mine.import.pickDirBtn")}
                 </button>
               </>
             )}
-            <span className="mc-oauth__fieldhint">{picked?.label ?? t("actions.none")}</span>
           </div>
           <input
             ref={fileInputRef}
@@ -169,7 +194,8 @@ export function ManualImportDialog({
         </div>
 
         {picked ? (
-          <p className="mc-oauth__fieldhint">
+          <p className="mc-adddlg__summary">
+            <LuInfo size={13} aria-hidden />
             {t("mine.import.importAs", { id: derivedId || t("mine.import.idInvalid") })}
           </p>
         ) : null}
@@ -180,16 +206,16 @@ export function ManualImportDialog({
             {t("mine.import.pluginRisk")}
           </p>
         ) : null}
-      </fieldset>
+      </div>
 
       {error ? (
-        <div className="mc-oauth__error">
+        <div className="mc-oauth__error mc-adddlg__error">
           <LuTriangleAlert size={15} />
           <span>{error}</span>
         </div>
       ) : null}
 
-      <div className="mc-dialog__footer">
+      <div className="mc-dialog__footer mc-adddlg__foot">
         <Button variant="ghost" disabled={phase === "importing"} onClick={onClose}>
           {t("actions.cancel")}
         </Button>

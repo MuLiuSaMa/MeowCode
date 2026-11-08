@@ -149,7 +149,48 @@ pnpm dev:desktop
 | `pnpm build` | 编译 agent（TSC）并构建桌面端渲染层 |
 | `pnpm test` | 运行 vitest 单元测试 |
 | `pnpm lint` | oxlint 检查 `src` 与 `desktop/src` |
-| `pnpm package` | 构建并打包 Windows x64 NSIS 安装包（输出到 `desktop/release`） |
+| `pnpm package` | 构建并打包 Windows x64 NSIS 安装包（备用；正式版走 Inno Setup，见「打包发布」） |
+| `pnpm package:msix` | 构建并打出微软商店 MSIX（未签名，输出到 `desktop/release`） |
+| `pnpm test:msix` | 本地签名并侧载安装最新 MSIX（签名 + 信任证书 + 安装 + 启动） |
+| `pnpm make:msix-assets` | 从 `resources/icon.png` 重新生成商店瓦片图 |
+
+## 打包发布
+
+两条产线都从 release 构建开始，命令均在仓库根目录执行：
+
+```powershell
+pnpm build
+```
+
+### 普通版（Inno Setup）
+
+```powershell
+# 1. 生成未封装目录（内部会 deploy agent 并做打包冒烟检查）
+pnpm --filter @meowcode/desktop exec electron-builder --win --x64 --dir
+
+# 2. 用 Inno Setup 编译安装包（自动查找 ISCC；已加入 PATH 时可直接 ISCC.exe installer.iss）
+$iscc = (Get-Command ISCC.exe -ErrorAction SilentlyContinue).Source
+if (-not $iscc) {
+  $iscc = Get-ChildItem "$env:ProgramFiles\Inno Setup *\ISCC.exe", "${env:ProgramFiles(x86)}\Inno Setup *\ISCC.exe" -ErrorAction SilentlyContinue |
+    Sort-Object FullName -Descending | Select-Object -First 1 -ExpandProperty FullName
+}
+& $iscc installer.iss
+```
+
+-   输入：`desktop\release\win-unpacked\`
+-   产物：`installer-output\MeowCode-<版本>-setup.exe`
+-   版本号自动读取 `win-unpacked\MeowCode.exe`，由 `desktop/package.json` 的 `version` 决定
+
+### 微软商店版（MSIX）
+
+```powershell
+pnpm --filter @meowcode/desktop exec electron-builder --win --x64 --config electron-builder.msix.config.cjs
+```
+
+-   产物：`desktop\release\MeowCode-<版本>-x64.msix`，**保持未签名**上传 Partner Center，商店入库时会重签
+-   商店身份已写在 `desktop/electron-builder.msix.config.cjs`；换产品时可分别用 `MEOWCODE_MSIX_IDENTITY_NAME`、`MEOWCODE_MSIX_PUBLISHER`、`MEOWCODE_MSIX_PUBLISHER_DISPLAY_NAME` 覆盖
+-   本地侧载测试：`pnpm test:msix`；换 Logo 后先跑 `pnpm make:msix-assets`
+-   商店要求修订号为 0（版本自动补成 `x.y.z.0`），发新版本改 `desktop/package.json` 的 `version` 即可
 
 ## 目录结构
 

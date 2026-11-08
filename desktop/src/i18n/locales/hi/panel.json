@@ -62,7 +62,10 @@
       "miss": "{{base}} (मिस)",
       "hitting": "{{base}} (हिट हो रहा है)"
     },
-    "tokenValue": "{{value}} tok"
+    "tokenValue": "{{value}} tok",
+    "sessionTotal": "सत्र कुल",
+    "tokensTitle": "टोकन संरचना",
+    "liveCalls": "लाइव · अंतिम {{count}} कॉल"
   },
   "subagent": {
     "fallbackTitle": "सबएजेंट",

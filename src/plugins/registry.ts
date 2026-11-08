@@ -6,6 +6,7 @@ import {
 import type { ToolDefinition, ToolResult } from "../agent/types.js";
 import { createPluginStorage } from "./storage.js";
 import type {
+  ExtensionHost,
   PluginAPI,
   PluginCommand,
   PluginCommandInfo,
@@ -173,7 +174,12 @@ export class PluginRegistry {
   // ---- 插件 API 工厂 ----
 
   /** 为一个插件实例构造受限 API 门面（对齐 opencode 的 Context 收窄思路） */
-  createApi(pluginId: string, workspace: string, homeDir: string): PluginAPI {
+  createApi(
+    pluginId: string,
+    workspace: string,
+    homeDir: string,
+    host?: ExtensionHost,
+  ): PluginAPI {
     const logger = this.loggerOf(pluginId);
     return {
       registerTool: (tool: PluginTool): void => {
@@ -191,6 +197,7 @@ export class PluginRegistry {
       storage: createPluginStorage(pluginId, homeDir),
       logger,
       workspace,
+      ...(host ? { host } : {}),
     };
   }
 

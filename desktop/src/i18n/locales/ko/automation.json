@@ -1,0 +1,99 @@
+{
+  "nav": {
+    "heading": "자동화",
+    "subtitle": "일정에 따라 AI가 워크스페이스에서 작업을 실행하도록 함",
+    "ariaLabel": "자동화 탐색"
+  },
+  "page": {
+    "empty": "아직 자동화 작업이 없습니다. 「새 작업」으로 만들어 AI가 정기적으로 일하게 하세요.",
+    "loading": "불러오는 중…",
+    "nextRun": "다음 실행 {{time}}",
+    "noNextRun": "비활성화됨",
+    "lastRun": "마지막 {{status}} · {{time}}",
+    "neverRun": "실행 기록 없음",
+    "runs": "{{count}}회 실행됨",
+    "cwd": "워크스페이스: {{cwd}}"
+  },
+  "schedule": {
+    "interval": "{{minutes}}분마다",
+    "hours": "{{hours}}시간마다",
+    "daily": "매일 {{time}}",
+    "weekly": "{{weekday}} {{time}}",
+    "monthly": "매월 {{day}}일 {{time}}",
+    "cron": "Cron: {{expr}}",
+    "once": "{{time}} 1회 실행"
+  },
+  "weekday": {
+    "0": "일요일",
+    "1": "월요일",
+    "2": "화요일",
+    "3": "수요일",
+    "4": "목요일",
+    "5": "금요일",
+    "6": "토요일"
+  },
+  "status": {
+    "started": "실행 중",
+    "ok": "완료",
+    "error": "실패",
+    "missed": "건너뜀",
+    "disabled": "비활성화됨"
+  },
+  "actions": {
+    "create": "새 작업",
+    "refresh": "새로 고침",
+    "runNow": "지금 실행",
+    "running": "시작 중…",
+    "edit": "편집",
+    "delete": "삭제",
+    "cancel": "취소",
+    "save": "저장",
+    "saving": "저장 중…",
+    "openSession": "세션 열기",
+      "close": "닫기",
+    "enable": "작업 활성화",
+    "history": "실행 기록"
+  },
+  "deleteDialog": {
+    "title": "자동화 작업 삭제",
+    "desc": "「{{title}}」과(와) 실행 기록이 삭제됩니다. 이 작업은 되돌릴 수 없습니다."
+  },
+  "history": {
+    "title": "실행 기록 — {{title}}",
+    "empty": "실행 기록이 아직 없습니다.",
+    "status": "상태",
+    "session": "세션"
+  },
+  "form": {
+    "createTitle": "새 자동화 작업",
+    "editTitle": "자동화 작업 편집",
+    "fieldTitle": "작업 이름",
+    "titlePlaceholder": "예: 매일 아침 9시에 의존성 업데이트 확인",
+    "fieldWorkspace": "대상 워크스페이스",
+    "fieldPrompt": "실행 내용",
+    "promptPlaceholder": "작업이 실행될 때 AI가 받을 지시입니다. 구체적으로 쓸수록 좋습니다.",
+    "fieldSchedule": "실행 주기",
+    "freq": {
+      "interval": "간격",
+      "daily": "매일",
+      "weekly": "매주",
+      "monthly": "매월",
+      "once": "1회",
+      "cron": "Cron"
+    },
+    "intervalMinutes": "간격(분)",
+    "time": "시간",
+    "weekday": "요일",
+    "dayOfMonth": "날짜",
+    "onceAt": "실행 시각",
+      "today": "오늘",
+    "advanced": "고급 설정",
+    "fieldCron": "Cron 표현식",
+    "cronPlaceholder": "예: 0 9 * * 1-5 (현지 시간대)",
+    "fieldMaxRuns": "최대 실행 횟수",
+    "maxRunsPlaceholder": "비워 두면 무제한",
+    "errorRequired": "필수 항목을 입력해 주세요",
+    "invalidCron": "Cron 표현식이 잘못되었습니다",
+    "saveFailed": "저장 실패"
+  }
+}

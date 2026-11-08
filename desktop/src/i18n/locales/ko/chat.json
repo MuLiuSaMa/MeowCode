@@ -219,6 +219,22 @@
     "stepCount_other": "{{count}}단계",
     "stepCount_few": "{{count}}단계",
     "stepCount_many": "{{count}}단계",
+    "lineCount_one": "{{count}}줄",
+    "lineCount_other": "{{count}}줄",
+    "lineCount_few": "{{count}}줄",
+    "lineCount_many": "{{count}}줄",
+    "entryCount_one": "{{count}}개 항목",
+    "entryCount_other": "{{count}}개 항목",
+    "entryCount_few": "{{count}}개 항목",
+    "entryCount_many": "{{count}}개 항목",
+    "matchCount_one": "{{count}}곳 일치",
+    "matchCount_other": "{{count}}곳 일치",
+    "matchCount_few": "{{count}}곳 일치",
+    "matchCount_many": "{{count}}곳 일치",
+    "resultCount_one": "{{count}}개 결과",
+    "resultCount_other": "{{count}}개 결과",
+    "resultCount_few": "{{count}}개 결과",
+    "resultCount_many": "{{count}}개 결과",
     "emptyOutput": "(출력 없음)",
     "waitingOutput": "출력 대기 중…",
     "outputNotSaved": "기록에 출력이 저장되지 않았습니다",
@@ -320,5 +336,13 @@
     "close": "워크스페이스 개요 닫기",
     "commitOrPush": "커밋 또는 푸시",
     "switchBranch": "브랜치 전환"
+  },
+  "turnFooter": {
+    "copyMarkdown": "Markdown으로 복사",
+    "copyPlain": "일반 텍스트로 복사",
+    "branch": "새 브랜치 만들기",
+    "duration": "소요 시간",
+    "tokens": "사용한 Token",
+    "time": "대화 시간"
   }
 }

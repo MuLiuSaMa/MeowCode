@@ -26,6 +26,7 @@ import {
   type ProviderSettings,
   type SessionSummary,
   type Settings,
+  type ThemePalette,
   type UpdateInfo,
 } from "../../api";
 import { AboutSection } from "./AboutSection";
@@ -138,6 +139,7 @@ export function SettingsBody({
   section,
   settings: _settings,
   preferences,
+  themePalette,
   appInfo,
   providers,
   activeProviderId,
@@ -175,6 +177,12 @@ export function SettingsBody({
   section: SettingsSectionId;
   settings: Settings | null;
   preferences: Preferences;
+  /**
+   * 当前实际生效的配色（App 的 themePalette）。
+   * 不用 preferences.palette：那是落盘回执，读它会让选中态比界面慢一拍，
+   * 回执里漏字段时更会「界面换了、选中态不动」。
+   */
+  themePalette: ThemePalette;
   appInfo: AppInfo | null;
   providers: ProviderSettings[];
   activeProviderId: string;
@@ -264,6 +272,8 @@ export function SettingsBody({
       <AppearanceSection
         preference={preferences.theme}
         onPreference={(value) => onSavePreferences({ theme: value })}
+        palette={themePalette}
+        onPalette={(value) => onSavePreferences({ palette: value })}
         fontFamily={fontFamily}
         codeFontFamily={codeFontFamily}
         customFonts={customFonts}

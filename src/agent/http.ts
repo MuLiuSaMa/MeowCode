@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { ProviderTimeoutError } from "./provider-error.js";
 import { applyProxy } from "./proxy.js";
 
@@ -122,8 +123,14 @@ export async function fetchWithRetry(
       ? AbortSignal.any([userSignal, timeoutController.signal])
       : timeoutController.signal;
     try {
+      // 每次 HTTP 尝试一个独立请求 id：代理/网关的日志与错误回执能对上具体那一次，
+      // 重试也不会共用同一个 id（用户显式配置的同名头优先）。
+      const headers = { ...(init.headers as Record<string, string> | undefined) };
+      if (!Object.keys(headers).some((key) => key.toLowerCase() === "x-request-id")) {
+        headers["x-request-id"] = randomUUID();
+      }
       // 代理按当前设置决定（直连时原样返回 init，无额外开销）
-      response = await fetch(input, applyProxy({ ...init, signal }, String(input)));
+      response = await fetch(input, applyProxy({ ...init, headers, signal }, String(input)));
     } catch (error) {
       if (userSignal?.aborted) throw abortError();
       if (timedOut) {

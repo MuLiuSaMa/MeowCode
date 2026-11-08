@@ -62,7 +62,10 @@
       "miss": "{{base}} (falha)",
       "hitting": "{{base}} (acerto)"
     },
-    "tokenValue": "{{value}} tok"
+    "tokenValue": "{{value}} tok",
+    "sessionTotal": "Total da sessão",
+    "tokensTitle": "Composição de tokens",
+    "liveCalls": "Ao vivo · últimas {{count}} chamadas"
   },
   "subagent": {
     "fallbackTitle": "Subagente",

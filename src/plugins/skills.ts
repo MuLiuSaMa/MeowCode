@@ -1,5 +1,6 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { parseMarkdownFrontmatter } from "./frontmatter.js";
 
 export type SkillEntry = {
@@ -8,11 +9,29 @@ export type SkillEntry = {
   /** true 则全文内联进 system 上下文（默认只注入索引行，模型按需 read_file） */
   always: boolean;
   path: string;
-  source: "project" | "user";
+  source: "project" | "user" | "builtin";
   /** learned = 自我学习写出来的（origin: learned），手写技能不带这个标记 */
   origin?: "learned";
   body: string;
 };
+
+/**
+ * 内置技能目录：随包的 `resources/marketplace/builtin-skills`（桌面端把整个
+ * resources/marketplace 打包进 <resources>/marketplace，并注入 MEOWCODE_MARKETPLACE_DIR）。
+ * 未注入时按仓库布局回退；目录不存在时发现流程会自然跳过。
+ */
+export function builtinSkillsDir(): string {
+  const marketplace = process.env.MEOWCODE_MARKETPLACE_DIR;
+  if (marketplace && marketplace.trim()) return path.join(marketplace, "builtin-skills");
+  return path.join(
+    path.dirname(fileURLToPath(import.meta.url)),
+    "..",
+    "..",
+    "resources",
+    "marketplace",
+    "builtin-skills",
+  );
+}
 
 /**
  * 发现 SKILL.md：`<root>/.meowcode/skills/<name>/SKILL.md`。
@@ -21,7 +40,7 @@ export type SkillEntry = {
  * project 同名覆盖 user；手写技能优先于学习产物（roots 顺序决定）。
  */
 export async function discoverSkills(
-  roots: Array<{ dir: string; source: "project" | "user"; learned?: boolean }>,
+  roots: Array<{ dir: string; source: "project" | "user" | "builtin"; learned?: boolean }>,
   options?: { allowMissingDescription?: boolean; exclude?: Set<string> },
 ): Promise<SkillEntry[]> {
   const byName = new Map<string, SkillEntry>();
@@ -125,8 +144,10 @@ export async function loadSkillIndexDetail(roots: {
   homeDir?: string;
   /** 退役技能名：不参与索引（学习层账本给出）。 */
   exclude?: Set<string>;
+  /** 内置技能根：由 server 显式传入；测试/嵌入场景缺省不加载。 */
+  builtinDir?: string;
 }): Promise<SkillIndexDetail> {
-  const sources: Array<{ dir: string; source: "project" | "user"; learned?: boolean }> = [
+  const sources: Array<{ dir: string; source: "project" | "user" | "builtin"; learned?: boolean }> = [
     { dir: path.join(roots.workspace, ".meowcode", "skills"), source: "project" },
     {
       dir: path.join(roots.workspace, ".meowcode", "learning", "skills"),
@@ -142,6 +163,8 @@ export async function loadSkillIndexDetail(roots: {
       learned: true,
     });
   }
+  // 内置技能优先级最低：同名时用户/项目技能先到先得（server 显式传入才加载）
+  if (roots.builtinDir) sources.push({ dir: roots.builtinDir, source: "builtin" });
   const skills = await discoverSkills(
     sources,
     roots.exclude?.size ? { exclude: roots.exclude } : undefined,
@@ -154,6 +177,7 @@ export async function loadSkillIndex(roots: {
   workspace: string;
   homeDir?: string;
   exclude?: Set<string>;
+  builtinDir?: string;
 }): Promise<string | undefined> {
   return (await loadSkillIndexDetail(roots)).text;
 }

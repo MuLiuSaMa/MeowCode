@@ -1,0 +1,202 @@
+/*
+ * 手动添加弹窗共用样式（添加技能 / 添加插件 / 添加 MCP）：
+ * 三个弹窗同宽同高（.mc-adddlg），内部统一「头部 / 小导航 / 可滚动正文 / 底部按钮」骨架，
+ * 内容再长也不把弹窗撑大，超出部分只在正文里滚动。
+ * 字段本身沿用 .mc-oauth__field / .mc-dialog__input 体系，这里只覆盖间距与对齐。
+ */
+
+/* ---- 尺寸：三个弹窗统一 ---- */
+.mc-adddlg {
+  width: min(92vw, 560px);
+  max-width: min(92vw, 560px);
+}
+.mc-adddlg .mc-dialog__panel {
+  height: min(520px, 82vh);
+  max-height: min(520px, 82vh);
+  overflow: hidden;
+  padding: 20px 22px 16px;
+}
+
+/* ---- 头部：标题 + 一句话说明 ---- */
+.mc-adddlg__head {
+  flex: none;
+}
+.mc-adddlg__desc {
+  margin: 6px 0 0;
+  color: var(--fg-subtle);
+  font-size: var(--fs-caption);
+  line-height: 1.55;
+}
+
+/* ---- 小导航（分段控件）：切换 MCP 的三种接入方式 ---- */
+.mc-adddlg__nav {
+  flex: none;
+  margin-top: 14px;
+}
+.mc-adddlg__nav .mc-segmented {
+  display: flex;
+  width: 100%;
+  border: 1px solid var(--border);
+  background: var(--surface);
+}
+.mc-adddlg__nav .mc-segmented__item {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  flex: 1;
+  height: 30px;
+  padding: 0 8px;
+  font-size: var(--fs-caption);
+}
+/* 弹窗底色就是 --bg-elevated，选中态改用更亮的一档才看得出「按下」 */
+.mc-adddlg__nav .mc-segmented__item[data-active="true"] {
+  background: var(--surface-hover);
+  box-shadow: var(--shadow-sm);
+}
+
+/* ---- 正文：唯一可滚动区（flex 列：导入弹窗的选择区靠 flex:1 撑满）---- */
+.mc-adddlg__body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  margin-top: 16px;
+  padding-right: 4px;
+}
+
+/* ---- 表单：纵向字段流，外间距统一交给 gap ---- */
+.mc-adddlg__form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  /* 内容超出正文时不压缩（min-height:auto），交给正文滚动 */
+  flex: 1 1 auto;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+.mc-adddlg__form:disabled {
+  opacity: 0.55;
+}
+/* 正文里的非表单行（摘要、风险提示）不参与伸缩 */
+.mc-adddlg__body > .mc-adddlg__summary,
+.mc-adddlg__body > .mc-oauth__fieldhint {
+  flex: none;
+}
+
+/* 字段：覆盖 .mc-oauth__field 的 margin-top */
+.mc-adddlg .mc-oauth__field {
+  margin-top: 0;
+  gap: 7px;
+}
+/* 输入框：覆盖 .mc-dialog__input 的 margin-top（否则和 CustomSelect 同行时错位） */
+.mc-adddlg .mc-dialog__input {
+  margin-top: 0;
+}
+/* CustomSelect 触发器对齐输入框的字号与高度 */
+.mc-adddlg .mc-customselect__button {
+  height: auto;
+  padding: 9px 12px;
+  font-size: var(--fs-base);
+}
+
+/* ---- 两列并排 ---- */
+.mc-adddlg__row {
+  display: flex;
+  gap: 12px;
+}
+.mc-adddlg__row > * {
+  flex: 1;
+  min-width: 0;
+}
+
+/* ---- 分组小标题：标题右侧一条细线（把「基础配置」和「认证」这类分区隔开）---- */
+.mc-adddlg__group {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 2px 0 -4px;
+  font-size: var(--fs-sm);
+  color: var(--fg-subtlest);
+}
+.mc-adddlg__group::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
+/* ---- 错误条：贴在正文与底部按钮之间，滚动时也一直可见 ---- */
+.mc-adddlg__error {
+  margin: 12px 0 0;
+}
+
+/* ---- 底部按钮 ---- */
+.mc-adddlg__foot {
+  flex: none;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+
+/* ---- 选择区（添加技能/插件）：撑满正文的主要动作块 ---- */
+.mc-adddlg__pick {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  flex: 1;
+  min-height: 180px;
+  padding: 24px 20px;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  text-align: center;
+}
+/* 虚线是外层选择区的语言，按钮本身用实线 + 面板底色 */
+.mc-adddlg__pick .mc-community__pick {
+  background: var(--bg-elevated);
+  border-style: solid;
+}
+.mc-adddlg__pick .mc-community__pick:hover {
+  background: var(--surface-hover);
+}
+.mc-adddlg__pickactions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+}
+.mc-adddlg__picktitle {
+  font-size: var(--fs-base);
+  color: var(--fg);
+}
+.mc-adddlg__pickhint {
+  margin: 0;
+  color: var(--fg-subtle);
+  font-size: var(--fs-sm);
+  line-height: 1.5;
+}
+
+/* ---- 导入结果摘要 ---- */
+.mc-adddlg__summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 12px 0 0;
+  padding: 9px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  color: var(--fg-subtle);
+  font-size: var(--fs-sm);
+}
+.mc-adddlg__summary svg {
+  flex: none;
+}

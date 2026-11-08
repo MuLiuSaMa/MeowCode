@@ -12,7 +12,8 @@ export type { CacheState } from "./types.js";
 /** 低于这个输入量不做命中判断：低于缓存粒度时 0 命中是正常的。 */
 export const CACHE_MIN_INPUT_TOKENS = 2048;
 
-const TTL_MS: Record<"5m" | "1h", number> = {
+/** 各 TTL 档的毫秒数：诊断与冷 resume 剪枝共用（超过即服务端缓存不可读回）。 */
+export const TTL_MS: Record<"5m" | "1h", number> = {
   "5m": 300_000,
   "1h": 3_600_000,
 };

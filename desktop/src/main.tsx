@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import App from "./App";
 import { setupI18n } from "./i18n";
 import "./theme/tokens.css";
+import "./theme/palettes.css";
 import "./theme/base.css";
 import "./theme/code-highlight.css";
 import "@xterm/xterm/css/xterm.css";

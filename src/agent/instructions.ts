@@ -132,6 +132,7 @@ export async function loadWorkspaceInstructionsDetail(
   workspace: string,
   homeDir?: string,
   settings: InstructionSettings = {},
+  builtinSkillsDir?: string,
 ): Promise<WorkspaceInstructionsDetail> {
   const home = homeDir !== undefined ? homeDir : os.homedir();
   const includeAgents = settings.includeAgentsMd !== false;
@@ -172,7 +173,12 @@ export async function loadWorkspaceInstructionsDetail(
   try {
     // 退役的学习技能不进索引：账本是权威，一次会话读一次盘
     const retired = await listRetiredSkillNames(workspace, home).catch(() => new Set<string>());
-    const skills = await loadSkillIndexDetail({ workspace, homeDir: home, exclude: retired });
+    const skills = await loadSkillIndexDetail({
+      workspace,
+      homeDir: home,
+      exclude: retired,
+      ...(builtinSkillsDir ? { builtinDir: builtinSkillsDir } : {}),
+    });
     skillIndex = skills.text;
     skillCount = skills.count;
     if (skillIndex) workspaceParts.push(skillIndex);

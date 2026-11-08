@@ -1,0 +1,117 @@
+/* 外观设置：配色骨架缩略图网格 */
+
+/* 整行容器：与 .mc-fieldrow 同一套内边距，视觉上和其他设置行对齐 */
+.mc-palette {
+  padding: 16px 18px;
+}
+
+/* 靠右：和其他设置行的「右侧控件」对齐 */
+.mc-palette__grid {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 14px 12px;
+}
+
+.mc-palette__item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 7px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: none;
+  color: var(--fg-subtle);
+  font-family: inherit;
+  font-size: var(--fs-xs);
+  line-height: 1.3;
+  cursor: pointer;
+  transition: color var(--dur) var(--ease);
+}
+.mc-palette__item:hover {
+  color: var(--fg);
+}
+.mc-palette__item[data-active="true"] {
+  color: var(--fg);
+}
+.mc-palette__item:focus-visible {
+  outline: none;
+}
+
+/* ---- 缩略图：一块迷你界面骨架，内部颜色全部来自它自己的 data-palette ---- */
+.mc-palette__thumb {
+  display: block;
+  width: 84px;
+  height: 52px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  corner-shape: superellipse(1.5);
+  background: var(--bg);
+  overflow: hidden;
+  transition: box-shadow var(--dur) var(--ease);
+}
+
+/* 选中环：内圈用当前画布色挖出间隙，外圈用当前配色的强焦点色 */
+.mc-palette__item[data-active="true"] .mc-palette__thumb,
+.mc-palette__item:focus-visible .mc-palette__thumb {
+  box-shadow:
+    0 0 0 2px var(--bg),
+    0 0 0 4px var(--ring-strong);
+}
+
+.mc-palette__thumbchrome {
+  display: block;
+  height: 12px;
+  background: var(--bg-chrome);
+  border-bottom: 1px solid var(--border-strong);
+}
+
+.mc-palette__thumbbody {
+  display: flex;
+  height: calc(100% - 12px);
+}
+
+.mc-palette__thumbrail {
+  display: block;
+  width: 16px;
+  flex-shrink: 0;
+  background: var(--bg-panel);
+  border-right: 1px solid var(--border-strong);
+}
+
+.mc-palette__thumblines {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  justify-content: center;
+  gap: 4px;
+  min-width: 0;
+  padding: 0 7px;
+}
+
+/* 三条「文字」骨架：前两条是正文，最后一条用强调色示意强调元素 */
+.mc-palette__line {
+  display: block;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--fg-subtle);
+  opacity: 0.5;
+}
+.mc-palette__line:nth-child(1) {
+  width: 78%;
+}
+.mc-palette__line:nth-child(2) {
+  width: 54%;
+}
+.mc-palette__line:nth-child(3) {
+  width: 66%;
+}
+.mc-palette__line[data-accent] {
+  background: var(--accent);
+  opacity: 1;
+}
+
+.mc-palette__name {
+  white-space: nowrap;
+}

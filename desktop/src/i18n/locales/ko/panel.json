@@ -62,7 +62,10 @@
       "miss": "{{base}}(미적중)",
       "hitting": "{{base}}(적중 중)"
     },
-    "tokenValue": "{{value}} tok"
+    "tokenValue": "{{value}} tok",
+    "sessionTotal": "세션 누적",
+    "tokensTitle": "토큰 구성",
+    "liveCalls": "실시간 · 최근 {{count}}회 호출"
   },
   "subagent": {
     "fallbackTitle": "하위 에이전트",

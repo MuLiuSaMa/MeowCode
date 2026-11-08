@@ -1,0 +1,99 @@
+{
+  "nav": {
+    "heading": "Automations",
+    "subtitle": "Let AI run tasks in a workspace on a schedule",
+    "ariaLabel": "Automations navigation"
+  },
+  "page": {
+    "empty": "No automations yet. Create one and let AI do the work on schedule.",
+    "loading": "Loading…",
+    "nextRun": "Next run {{time}}",
+    "noNextRun": "Disabled",
+    "lastRun": "Last run {{status}} · {{time}}",
+    "neverRun": "Never ran",
+    "runs": "{{count}} runs",
+    "cwd": "Workspace: {{cwd}}"
+  },
+  "schedule": {
+    "interval": "Every {{minutes}} min",
+    "hours": "Every {{hours}} h",
+    "daily": "Daily at {{time}}",
+    "weekly": "{{weekday}} at {{time}}",
+    "monthly": "Monthly on day {{day}} at {{time}}",
+    "cron": "Cron: {{expr}}",
+    "once": "Once at {{time}}"
+  },
+  "weekday": {
+    "0": "Sunday",
+    "1": "Monday",
+    "2": "Tuesday",
+    "3": "Wednesday",
+    "4": "Thursday",
+    "5": "Friday",
+    "6": "Saturday"
+  },
+  "status": {
+    "started": "running",
+    "ok": "completed",
+    "error": "failed",
+    "missed": "missed",
+    "disabled": "Disabled"
+  },
+  "actions": {
+    "create": "New task",
+    "refresh": "Refresh",
+    "runNow": "Run now",
+    "running": "Starting…",
+    "edit": "Edit",
+    "delete": "Delete",
+    "cancel": "Cancel",
+    "save": "Save",
+    "saving": "Saving…",
+    "openSession": "Open session",
+      "close": "Close",
+    "enable": "Enable task",
+    "history": "Run history"
+  },
+  "deleteDialog": {
+    "title": "Delete automation",
+    "desc": "“{{title}}” will be deleted along with its run history. This cannot be undone."
+  },
+  "history": {
+    "title": "Run history — {{title}}",
+    "empty": "No runs yet.",
+    "status": "Status",
+    "session": "Session"
+  },
+  "form": {
+    "createTitle": "New automation",
+    "editTitle": "Edit automation",
+    "fieldTitle": "Task name",
+    "titlePlaceholder": "e.g. Check dependency updates daily at 9am",
+    "fieldWorkspace": "Target workspace",
+    "fieldPrompt": "Prompt",
+    "promptPlaceholder": "What the AI should do when the task fires. Be specific.",
+    "fieldSchedule": "Schedule",
+    "freq": {
+      "interval": "Interval",
+      "daily": "Daily",
+      "weekly": "Weekly",
+      "monthly": "Monthly",
+      "once": "Once",
+      "cron": "Cron"
+    },
+    "intervalMinutes": "Interval (minutes)",
+    "time": "Time",
+    "weekday": "Weekday",
+    "dayOfMonth": "Day of month",
+    "onceAt": "Run at",
+      "today": "Today",
+    "advanced": "Advanced settings",
+    "fieldCron": "Cron expression",
+    "cronPlaceholder": "e.g. 0 9 * * 1-5 (local timezone)",
+    "fieldMaxRuns": "Max runs",
+    "maxRunsPlaceholder": "Leave empty for unlimited",
+    "errorRequired": "Please fill in the required fields",
+    "invalidCron": "Invalid cron expression",
+    "saveFailed": "Failed to save"
+  }
+}

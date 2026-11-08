@@ -13,8 +13,25 @@ import { Spinner } from "./ui/Spinner";
 import { TaskToolRow } from "./TaskToolRow";
 import { ToolRow } from "./ToolRow";
 import { TurnChangesCard } from "./TurnChangesCard";
+import { TurnInfoBar } from "./TurnInfoBar";
 import { UserBubble } from "./UserBubble";
 import "./MessageList.css";
+
+/** 按 user 消息切分出每一轮：user 开新组，其前的散项（notice/error 等）归第 0 组。 */
+function groupIntoTurns(items: TimelineItem[]): TimelineItem[][] {
+  const turns: TimelineItem[][] = [];
+  let current: TimelineItem[] = [];
+  for (const item of items) {
+    if (item.kind === "message" && item.role === "user") {
+      if (current.length) turns.push(current);
+      current = [item];
+    } else {
+      current.push(item);
+    }
+  }
+  if (current.length) turns.push(current);
+  return turns;
+}
 
 /** 状态行锚点：跳过 notice / checkpoint / error，取最后一条对话项。 */
 function lastStatusAnchor(items: TimelineItem[]): TimelineItem | undefined {
@@ -43,6 +60,7 @@ export function MessageList({
   items,
   canUse,
   waiting,
+  turnStartedAt,
   preparing,
   preparingTool,
   loading,
@@ -52,6 +70,7 @@ export function MessageList({
   onRestoreCheckpoint,
   onRewindCheckpoint,
   onOpenReview,
+  onBranchSession,
   focus,
   suggestion,
   onSuggestionUse,
@@ -61,6 +80,8 @@ export function MessageList({
   canUse: boolean;
   /** 等待模型响应：发送后首字未到 / 工具执行间隙 */
   waiting?: boolean;
+  /** 当前生成轮的墙钟起点（毫秒）：消息流末尾状态行右侧实时显示已运行时间；回合结束置 null */
+  turnStartedAt?: number | null;
   /** 模型正在生成工具调用参数：显示具体进度文案 */
   preparing?: string | null;
   /** 正在生成写/改文件的参数：先渲染一条「写入中 / 修改中」的工具行占位 */
@@ -83,6 +104,8 @@ export function MessageList({
   onRewindCheckpoint?: (checkpointId: string, mode: "both" | "code") => void;
   /** 编辑汇总卡片的「审阅」：打开右侧审阅页签 */
   onOpenReview?: () => void;
+  /** 每轮操作行的「创建新分支」：复制当前会话为新分支并切过去 */
+  onBranchSession?: () => void;
   /** 会话全文检索跳转意图：滚动到指定消息并短暂高亮（token 变化触发重播） */
   focus?: { messageIndex: number; token: number } | null;
   /** 回合结束后预测的下一句：显示在对话末尾，点击填入输入框（不发送） */
@@ -135,6 +158,9 @@ export function MessageList({
     [items],
   );
 
+  // 按轮分组：每轮一个 hover 容器，末尾挂运行耗时信息条
+  const turns = useMemo(() => groupIntoTurns(items), [items]);
+
   useLayoutEffect(() => {
     const el = scrollRef.current;
     if (!el || !stickRef.current) return;
@@ -176,6 +202,82 @@ export function MessageList({
     stickRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
   };
 
+  // turn-info 不在流里平铺渲染，改由每轮末尾的 TurnInfoBar 承载
+  const renderItem = (item: TimelineItem) =>
+    item.kind === "compaction" ? (
+      <CompactionBanner
+        key={item.key}
+        compacting={Boolean(item.running)}
+        interrupted={Boolean(item.interrupted)}
+        failed={Boolean(item.failed)}
+        note={item.summary ?? null}
+      />
+    ) : item.kind === "checkpoint" ? (
+      <CheckpointMarker
+        key={item.key}
+        item={item}
+        onRestore={onRestoreCheckpoint}
+        onRewind={onRewindCheckpoint}
+      />
+    ) : item.kind === "turn-changes" ? (
+      <TurnChangesCard
+        key={item.key}
+        item={item}
+        onUndo={onRewindCheckpoint}
+        onReview={onOpenReview}
+      />
+    ) : item.kind === "tool" ? (
+      (() => {
+        const agent = item.tool === "task" ? subagentsByCallId?.[item.callId] : undefined;
+        return agent && onOpenSubagent ? (
+          <TaskToolRow key={item.key} item={item} agent={agent} onOpen={onOpenSubagent} />
+        ) : (
+          <ToolRow key={item.key} item={item} onOpenFile={onOpenFile} />
+        );
+      })()
+    ) : item.kind === "notice" ? (
+      <div key={item.key} className="mc-noticeitem" role="status">
+        <LuInfo size={15} className="mc-noticeitem__icon" />
+        <span className="mc-noticeitem__text">{item.message}</span>
+        {item.action ? (
+          <button type="button" className="mc-noticeitem__action" onClick={item.action.run}>
+            {item.action.label}
+          </button>
+        ) : null}
+      </div>
+    ) : item.kind === "error" ? (
+      <div key={item.key} className="mc-erritem" role="alert">
+        <LuCircleAlert size={15} className="mc-erritem__icon" />
+        <span className="mc-erritem__text">{item.message}</span>
+      </div>
+    ) : item.kind === "turn-info" ? null : item.role === "user" ? (
+      <UserBubble
+        key={item.key}
+        content={item.content}
+        images={item.images}
+        navKey={item.key}
+        messageIndex={item.messageIndex}
+        checkpointId={item.checkpointId}
+        checkpointHasSnapshot={item.checkpointHasSnapshot}
+        onRewind={
+          onRewindCheckpoint
+            ? (checkpointId) => {
+                // 自动点挂在消息上：有快照走预览（both），否则直接仅对话回滚
+                void onRewindCheckpoint(checkpointId, "both");
+              }
+            : undefined
+        }
+      />
+    ) : (
+      <AssistantMessage
+        key={item.key}
+        content={item.content}
+        thinking={item.thinking}
+        messageIndex={item.messageIndex}
+        streaming={item.streaming}
+      />
+    );
+
   return (
     <div className="mc-streamwrap">
       <div className="mc-stream" ref={scrollRef} onScroll={handleScroll}>
@@ -191,103 +293,51 @@ export function MessageList({
             )
           ) : (
             <div className="mc-stream__list">
-              {items.map((item, _itemIndex) =>
-                item.kind === "compaction" ? (
-                  <CompactionBanner
-                    key={item.key}
-                    compacting={Boolean(item.running)}
-                    interrupted={Boolean(item.interrupted)}
-                    failed={Boolean(item.failed)}
-                    note={item.summary ?? null}
-                  />
-                ) : item.kind === "checkpoint" ? (
-                  <CheckpointMarker
-                    key={item.key}
-                    item={item}
-                    onRestore={onRestoreCheckpoint}
-                    onRewind={onRewindCheckpoint}
-                  />
-                ) : item.kind === "turn-changes" ? (
-                  <TurnChangesCard
-                    key={item.key}
-                    item={item}
-                    onUndo={onRewindCheckpoint}
-                    onReview={onOpenReview}
-                  />
-                ) : item.kind === "tool" ? (
-                  (() => {
-                    const agent =
-                      item.tool === "task" ? subagentsByCallId?.[item.callId] : undefined;
-                    return agent && onOpenSubagent ? (
-                      <TaskToolRow key={item.key} item={item} agent={agent} onOpen={onOpenSubagent} />
-                    ) : (
-                      <ToolRow key={item.key} item={item} onOpenFile={onOpenFile} />
-                    );
-                  })()
-                ) : item.kind === "notice" ? (
-                  <div key={item.key} className="mc-noticeitem" role="status">
-                    <LuInfo size={15} className="mc-noticeitem__icon" />
-                    <span className="mc-noticeitem__text">{item.message}</span>
-                    {item.action ? (
-                      <button
-                        type="button"
-                        className="mc-noticeitem__action"
-                        onClick={item.action.run}
-                      >
-                        {item.action.label}
-                      </button>
+              {turns.map((turn, turnIndex) => {
+                const isLast = turnIndex === turns.length - 1;
+                const info = turn.find((item) => item.kind === "turn-info");
+                const markdown = turn
+                  .map((item) =>
+                    item.kind === "message" && item.role === "assistant" ? item.content : "",
+                  )
+                  .filter(Boolean)
+                  .join("\n\n");
+                return (
+                  <div className="mc-turn" key={turn[0]?.key ?? `turn-${turnIndex}`}>
+                    <div className="mc-turn__body">
+                      {turn.map(renderItem)}
+                      {isLast && preparingTool ? (
+                        // 参数还在流式生成：先占一条工具行，明确告诉用户正在写入/修改文件
+                        <ToolRow
+                          key="__preparing_file__"
+                          item={{
+                            kind: "tool",
+                            key: "__preparing_file__",
+                            callId: "__preparing_file__",
+                            tool: preparingTool.tool,
+                            input: (() => {
+                              const target = preparingTool.path ?? preparingTool.fallbackPath;
+                              return target ? { path: target } : {};
+                            })(),
+                          }}
+                        />
+                      ) : null}
+                    </div>
+                    {info?.kind === "turn-info" ? (
+                      <TurnInfoBar
+                        durationMs={info.durationMs}
+                        endedAt={info.endedAt}
+                        usage={info.usage}
+                        markdown={markdown}
+                        onBranch={onBranchSession}
+                      />
                     ) : null}
                   </div>
-                ) : item.kind === "error" ? (
-                  <div key={item.key} className="mc-erritem" role="alert">
-                    <LuCircleAlert size={15} className="mc-erritem__icon" />
-                    <span className="mc-erritem__text">{item.message}</span>
-                  </div>
-                ) : item.role === "user" ? (
-                  <UserBubble
-                    key={item.key}
-                    content={item.content}
-                    images={item.images}
-                    navKey={item.key}
-                    messageIndex={item.messageIndex}
-                    checkpointId={item.checkpointId}
-                    checkpointHasSnapshot={item.checkpointHasSnapshot}
-                    onRewind={
-                      onRewindCheckpoint
-                        ? (checkpointId) => {
-                            // 自动点挂在消息上：有快照走预览（both），否则直接仅对话回滚
-                            void onRewindCheckpoint(checkpointId, "both");
-                          }
-                        : undefined
-                    }
-                  />
-                ) : (
-                  <AssistantMessage
-                    key={item.key}
-                    content={item.content}
-                    thinking={item.thinking}
-                    messageIndex={item.messageIndex}
-                    streaming={item.streaming}
-                  />
-                ),
-              )}
-              {preparingTool ? (
-                // 参数还在流式生成：先占一条工具行，明确告诉用户正在写入/修改文件
-                <ToolRow
-                  key="__preparing_file__"
-                  item={{
-                    kind: "tool",
-                    key: "__preparing_file__",
-                    callId: "__preparing_file__",
-                    tool: preparingTool.tool,
-                    input: (() => {
-                      const target = preparingTool.path ?? preparingTool.fallbackPath;
-                      return target ? { path: target } : {};
-                    })(),
-                  }}
-                />
+                );
+              })}
+              {statusLine.visible ? (
+                <AssistantStatusLine status={statusLine.status} startedAt={turnStartedAt} />
               ) : null}
-              {statusLine.visible ? <AssistantStatusLine status={statusLine.status} /> : null}
               {!statusLine.visible && suggestion ? (
                 <PromptSuggestion
                   text={suggestion}

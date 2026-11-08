@@ -46,6 +46,16 @@ export type SessionMode = "default" | "plan" | "goal";
 /** 主 Agent 档位（会话级）：标准 / 极简 / 复杂，定义见 src/agent/agent-profiles.ts */
 export type AgentProfileId = "standard" | "minimal" | "complex";
 
+/** 一个回合主对话消耗的 Token 汇总（历史回放与 turn_complete 共用） */
+export type TurnUsageTotals = {
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens: number;
+  cacheWriteTokens: number;
+  /** input + output：悬停卡片里「使用 Token」的展示口径 */
+  totalTokens: number;
+};
+
 export type MeowEvent = {
   type: string;
   /** 侧边聊天 runtime 的事件标记；主会话列表不显示它的运行圆点 */
@@ -70,6 +80,8 @@ export type MeowEvent = {
   durationMs?: number;
   status?: SubagentStatus;
   usage?: UsageSummary;
+  /** turn_complete：本回合主对话 Token 汇总 */
+  turnUsage?: TurnUsageTotals;
   error?: string;
   /** turn_complete：本轮改过的文件（按路径聚合，含增删行数） */
   files?: TurnFileChangeStat[];
@@ -288,6 +300,21 @@ export type TurnFileChangeGroup = {
   files: TurnFileChangeStat[];
 };
 
+/** GET /session/messages 的 turnDurations：历史回放按回合在末尾显示运行耗时 */
+export type TurnDurationGroup = {
+  turnId: string;
+  /** 该回合结束时的消息下标（与 turnChanges 同口径） */
+  messageIndex: number;
+  /** 本回合总耗时（毫秒，墙钟） */
+  durationMs: number;
+  /** 回合收尾状态：中止/中断用中性样式，不标红 */
+  status?: "completed" | "aborted" | "error" | "interrupted";
+  /** 回合结束时间（ISO）：操作行的时间 chip */
+  endedAt?: string;
+  /** 本回合主对话 Token 汇总 */
+  usage?: TurnUsageTotals;
+};
+
 /** 会话检查点（GET /session/messages 的 checkpoints 与 GET /session/checkpoints 共用） */
 export type SessionCheckpoint = {
   id: string;
@@ -366,6 +393,17 @@ export type TurnMetrics = {
   firstTokenMs: number | null;
   /** 缓存命中率（0–1）：会话累计、随每次模型调用实时更新；服务商从未报告缓存明细时为 null */
   cacheHitRate: number | null;
+};
+
+/**
+ * 单次模型调用的生成速度样本（右侧实时曲线）：按时间正序。
+ * 历史样本由 /session/messages 的 usageSamples 恢复；流中样本用 roundId 原地替换。
+ */
+export type SpeedSample = {
+  /** 流式样本的轮次 id；历史样本没有（同一轮已落盘，不会重复追加） */
+  roundId?: string;
+  /** 该次调用的生成速度（output token / 秒，首字之后计时） */
+  tokensPerSecond: number;
 };
 
 /**
@@ -563,6 +601,11 @@ export type ApiFormat = "anthropic-messages" | "openai-chat-completions" | "open
 export type InputModality = "text" | "image" | "pdf";
 
 export type ThemePreference = "system" | "light" | "dark";
+/**
+ * 配色方案：与明暗模式正交。classic = 加入配色之前的中性观感（默认）。
+ * 每套配色在深/浅下各有一套手调 token，见 theme/palettes.css。
+ */
+export type ThemePalette = "classic" | "lava" | "bee" | "mint" | "parchment" | "harmony";
 export type CloseAction = "ask" | "tray" | "quit";
 /** 用户可见回复的语色：普通（默认）/ 永雏塔菲 / 大嘴。 */
 export type SpeechStyle = "normal" | "tafei" | "dazui";
@@ -584,6 +627,8 @@ export type LanguagePreference =
 /** 不重启 agent server 的轻量偏好（外观 / 关闭方式 / 语言 / 工作区 / 归档列表 / 侧栏项目）。 */
 export type Preferences = {
   theme: ThemePreference;
+  /** 配色方案：缺省视为 classic（轻量通道，不重启 server） */
+  palette?: ThemePalette;
   closeAction: CloseAction;
   language?: LanguagePreference;
   /** 用户可见回复的语色：默认 normal；切换走轻量通道，不重启 server */
@@ -828,6 +873,8 @@ export type Settings = {
   providerId?: string;
   providers?: ProviderSettings[];
   theme?: ThemePreference;
+  /** 配色方案：缺省视为 classic */
+  palette?: ThemePalette;
   closeAction?: CloseAction;
   language?: LanguagePreference;
   /** 用户可见回复的语色：默认 normal */
@@ -894,10 +941,11 @@ export type SetMcpCredentialsResult = {
   warning?: string;
 };
 
-export type OauthPlatform = "gitee" | "gitcode" | "gitcode-community";
+export type OauthPlatform = "gitee" | "gitcode" | "gitcode-community" | "undermind";
 
 export const MCP_ENV_PLATFORMS: Record<string, OauthPlatform> = {
   MEOWCODE_GITEE_TOKEN: "gitee",
+  MEOWCODE_UNDERMIND_TOKEN: "undermind",
   MEOWCODE_GITCODE_TOKEN: "gitcode",
 };
 
@@ -905,6 +953,7 @@ export const MCP_PLATFORM_LABELS: Record<OauthPlatform, string> = {
   gitee: "Gitee",
   gitcode: "GitCode",
   "gitcode-community": "GitCode 社区", // i18n-allow 平台品牌名，按厂商官方叫法原样展示
+  undermind: "Undermind",
 };
 
 export type OauthPlatformStatus = {
@@ -971,7 +1020,8 @@ export type PluginDescriptor = {
 };
 
 export type McpServerState = {
-  status: "connecting" | "ready" | "failed" | "unconfigured";
+  /** needs_auth：远程 server 回 401，等用户点「授权」；不是故障 */
+  status: "connecting" | "ready" | "failed" | "unconfigured" | "needs_auth";
   toolCount: number;
   error?: string;
   /** unconfigured 时缺的 ${VAR} 名单 */
@@ -996,7 +1046,9 @@ export type InstalledSkill = {
   /** frontmatter 里的技能名 */
   name: string;
   description: string;
-  source: "project" | "user";
+  source: "project" | "user" | "builtin";
+  /** 技能目录里的 icon.svg / icon.png（data URL；缺省走字母兜底） */
+  iconUrl?: string;
 };
 
 export async function listSkills(workspace?: string): Promise<InstalledSkill[]> {
@@ -1201,6 +1253,22 @@ export async function getMemoryEnabled(): Promise<{ enabled: boolean }> {
 
 export async function setMemoryEnabled(enabled: boolean): Promise<{ enabled: boolean }> {
   return api<{ enabled: boolean }>("/config/memory", {
+    method: "PUT",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ enabled }),
+  });
+}
+
+/**
+ * 供应商故障转移开关（默认关闭，运行中实时生效；落盘走 saveProviderPrefs）。
+ * 开启后主服务商超时 / 限流 / 5xx 时，本回合自动切到链上的备用服务商。
+ */
+export async function getProviderFallback(): Promise<{ enabled: boolean }> {
+  return api<{ enabled: boolean }>("/config/provider-fallback");
+}
+
+export async function setProviderFallback(enabled: boolean): Promise<{ enabled: boolean }> {
+  return api<{ enabled: boolean }>("/config/provider-fallback", {
     method: "PUT",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ enabled }),
@@ -1446,6 +1514,8 @@ export type MarketplaceEntry = MarketplaceItem & {
   installed: boolean;
   /** mcp 专用：requiresEnv 是否已在 server 进程环境中 */
   envReady?: boolean;
+  /** mcp 专用：远程 server（配了 url）——可走 MCP 协议内 OAuth 授权 */
+  oauthCapable?: boolean;
 };
 
 export type MarketplaceListResult = {
@@ -1520,6 +1590,10 @@ export type MarketplaceEntryLike = MarketplaceEntry & {
   updateAvailable?: boolean;
   /** 第三方条目的来源（channel = "thirdparty" 时有值） */
   upstream?: ThirdPartySource;
+  /** 合成条目：本机已安装但不在市场索引里的 MCP —— 手动添加 / 直接写进 mcp.json */
+  localMcpSource?: "market" | "manual" | "local";
+  /** 合成条目：enabled:false 的 MCP 不会被启动，运行状态里查不到 */
+  localMcpEnabled?: boolean;
 };
 
 export type CommunityListResult = {
@@ -1633,6 +1707,8 @@ export type MineMcpEntry = {
   mcpStatus?: McpServerState["status"];
   toolCount?: number;
   error?: string;
+  /** 远程 server（配了 url）：可点「授权 / 重新授权」 */
+  oauthCapable?: boolean;
   /** mcpStatus 为 unconfigured 时缺的 ${VAR} 名单 */
   missingEnv?: string[];
 };
@@ -1645,6 +1721,33 @@ export type MineListResult = {
 
 export async function listMine(): Promise<MineListResult> {
   return api<MineListResult>("/marketplace/mine");
+}
+
+/**
+ * 本机已安装的全部 MCP（mcp.json 里的每个条目）。
+ * 市场索引只覆盖有安装标记的条目，这里补上手动添加与直接手写进 mcp.json 的那些。
+ */
+export type InstalledMcpEntry = {
+  id: string;
+  /** enabled:false 的条目不会被启动，运行状态里没有它 */
+  enabled: boolean;
+  /** market = 市场安装；manual = 手动添加；local = 直接写进 mcp.json */
+  source: "market" | "manual" | "local";
+  /** 连接方式摘要：stdio 是命令行，http 是地址 */
+  target: string;
+};
+
+export async function listInstalledMcp(): Promise<InstalledMcpEntry[]> {
+  return api<InstalledMcpEntry[]>("/marketplace/mcp/installed");
+}
+
+/** 删掉 mcp.json 里的一个本地条目（没有市场/手动标记的手写配置也能删） */
+export async function removeLocalMcp(id: string): Promise<void> {
+  await api<unknown>("/marketplace/mcp/remove", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ id }),
+  });
 }
 
 /** 手动导入本地内容：skill 传含 SKILL.md 的目录（或 SKILL.md 本身），plugin 传单文件或目录 */
@@ -1675,6 +1778,36 @@ export async function toggleManualMcp(id: string, enabled: boolean): Promise<{ i
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ id, enabled }),
+  });
+}
+
+/**
+ * 手动发起 MCP 的 OAuth 授权（远程 server 专用）。
+ * 后端会起浏览器并同步等待回环回调，最长约 5 分钟，授权成功后自动重连。
+ * force：先清本机 token 再授权（token 过期 / 换账号时用）。
+ */
+export async function authorizeMcp(
+  name: string,
+  force = false,
+): Promise<{ ok: boolean; mcp: Record<string, McpServerState> }> {
+  return api<{ ok: boolean; mcp: Record<string, McpServerState> }>("/plugins/mcp/authorize", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ name, force }),
+  });
+}
+
+/**
+ * 解除 MCP 的 OAuth 授权：清掉本机 token 并断开连接，状态回到「需要授权」。
+ * 不弹浏览器，立即返回；下次要用得重新点「授权」。
+ */
+export async function revokeMcp(
+  name: string,
+): Promise<{ ok: boolean; mcp: Record<string, McpServerState> }> {
+  return api<{ ok: boolean; mcp: Record<string, McpServerState> }>("/plugins/mcp/revoke", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ name }),
   });
 }
 
@@ -2076,6 +2209,20 @@ type TimelineTurnChanges = {
   files: TurnFileChangeStat[];
 };
 
+/** 回合运行耗时：每轮末尾一条，hover 该轮区域才淡入显示（可延展更多信息）。 */
+type TimelineTurnInfo = {
+  kind: "turn-info";
+  key: string;
+  turnId?: string;
+  /** 本回合总耗时（毫秒）；历史回放与流式结算都走此字段 */
+  durationMs: number;
+  status?: "completed" | "aborted" | "error" | "interrupted";
+  /** 回合结束时间（ISO）：操作行的时间 chip */
+  endedAt?: string;
+  /** 本回合主对话 Token 汇总 */
+  usage?: TurnUsageTotals;
+};
+
 type TimelineItem =
   | TimelineMessage
   | TimelineTool
@@ -2083,7 +2230,8 @@ type TimelineItem =
   | TimelineNotice
   | TimelineCompaction
   | TimelineCheckpoint
-  | TimelineTurnChanges;
+  | TimelineTurnChanges
+  | TimelineTurnInfo;
 
 /** 子 Agent 在渲染层累积的只读运行状态 */
 export type SubagentRun = SubagentSummary & {
@@ -2420,4 +2568,91 @@ export async function deleteApprovalRule(id: string): Promise<void> {
 
 export async function clearApprovalRules(): Promise<{ cleared: number }> {
   return api<{ cleared: number }>("/approval-rules?all=1", { method: "DELETE" });
+}
+
+// ---- 自动化（定时任务）：主进程调度器，触发/执行/结算全在 main.cjs ----
+
+export type AutomationScheduleKind =
+  | "interval"
+  | "daily"
+  | "weekly"
+  | "monthly"
+  | "cron"
+  | "once";
+
+export type AutomationHistoryStatus = "started" | "ok" | "error" | "missed";
+
+export type AutomationHistoryEntry = {
+  at: string;
+  status: AutomationHistoryStatus;
+  sessionId?: string;
+  error?: string;
+};
+
+export type Automation = {
+  id: string;
+  title: string;
+  /** 触发时投递的正文（主进程会加一行语言前缀） */
+  prompt: string;
+  /** 目标工作区绝对路径：每次触发都在这里新建会话 */
+  cwd: string;
+  kind: AutomationScheduleKind;
+  enabled: boolean;
+  /** once 恒为 false；周期任务 false 表示跑满 maxRuns 后停用 */
+  recurring: boolean;
+  /** interval：间隔分钟 */
+  intervalMinutes?: number;
+  /** daily/weekly/monthly：HH:MM */
+  time?: string;
+  /** weekly：0=周日 … 6=周六（本地时区） */
+  weekday?: number;
+  /** monthly：几号，缺月收敛到当月最后一天 */
+  dayOfMonth?: number;
+  /** cron：5 字段表达式（本地时区） */
+  cron?: string;
+  /** once：指定时间（ISO） */
+  onceAt?: string;
+  /** 触发 N 次后自动停用 */
+  maxRuns?: number;
+  createdAt: string;
+  updatedAt: string;
+  /** 已按调度触发的次数（手动「立即运行」不计入） */
+  fireCount: number;
+  nextRunAt: string | null;
+  /** 最新在前，封顶 20 条 */
+  history: AutomationHistoryEntry[];
+};
+
+/** 新建/更新输入：id 省略=新建；运行时字段由主进程维护，传了也会被覆盖 */
+export type AutomationInput = Partial<
+  Omit<Automation, "id" | "createdAt" | "updatedAt" | "fireCount" | "nextRunAt" | "history">
+> & { id?: string };
+
+export async function listAutomations(): Promise<Automation[]> {
+  return window.meow.listAutomations();
+}
+
+export async function saveAutomation(input: AutomationInput): Promise<Automation> {
+  return window.meow.saveAutomation(input);
+}
+
+export async function deleteAutomation(id: string): Promise<boolean> {
+  return window.meow.deleteAutomation(id);
+}
+
+export async function toggleAutomation(id: string, enabled: boolean): Promise<Automation> {
+  return window.meow.toggleAutomation(id, enabled);
+}
+
+export async function runAutomationNow(id: string): Promise<boolean> {
+  return window.meow.runAutomationNow(id);
+}
+
+/** 打开某次运行的历史会话（唤起主窗口并切过去） */
+export async function openAutomationSession(sessionId: string): Promise<void> {
+  await window.meow.openAutomationSession(sessionId);
+}
+
+export function onAutomationsChanged(listener: (list: Automation[]) => void): () => void {
+  return window.meow.onAutomationsChanged(listener);
 }

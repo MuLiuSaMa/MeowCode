@@ -6,6 +6,7 @@ import { parse as parseToml } from "smol-toml";
 import { readJsonFile, writeJsonAtomic, writeTextAtomic } from "../agent/atomic-json.js";
 import { SessionStore, flushSessionIndex, sessionFileName } from "../agent/session-store.js";
 import type { ChatMessage } from "../agent/types.js";
+import { writeManualMarkerFile } from "./marketplace.js";
 
 /**
  * 「数据导入」：从 Qoder CN IDE (~/.qoder + 桌面端 main.sqlite)、WorkBuddy (~/.workbuddy)、
@@ -1552,7 +1553,18 @@ export async function applyImportItem(
 
     if (item.group === "skills" && item.sourcePath) {
       const target = path.join(meowRoot, "skills", item.name);
-      if (await exists(target)) return { status: "skipped" };
+      // 「我的」只认 manual 标记：导入成功或被跳过（已存在）都要补标记，否则列表里看不到
+      const mark = async () => {
+        await writeManualMarkerFile(homeDir, {
+          type: "skill",
+          id: item.name,
+          target: `skills/${item.name}`,
+        }).catch(() => undefined);
+      };
+      if (await exists(target)) {
+        await mark();
+        return { status: "skipped" };
+      }
       await fs.mkdir(path.dirname(target), { recursive: true });
       await fs.cp(item.sourcePath, target, {
         recursive: true,
@@ -1561,6 +1573,7 @@ export async function applyImportItem(
           return base !== "node_modules" && base !== ".git";
         },
       });
+      await mark();
       return { status: "imported" };
     }
 

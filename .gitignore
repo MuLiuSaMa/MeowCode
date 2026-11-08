@@ -43,6 +43,10 @@ desktop/.vite/
 /.gemini/
 /.continue/
 /.aider*
+/.krow/
+/.zwork/
+/.codeflicker/
+/.venv/
 
 # 与 desktop/src/assets/fonts/MiSansVF.ttf 重复的 20MB 字体副本，构建不读它
 /MiSansVF.ttf

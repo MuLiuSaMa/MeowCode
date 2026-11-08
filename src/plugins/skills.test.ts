@@ -97,4 +97,25 @@ describe("loadSkillIndex", () => {
     const text = await loadSkillIndex({ workspace, homeDir: home });
     expect(text).toContain("- ws-skill: from workspace");
   });
+
+  it("内置技能进入索引，同名用户技能优先", async () => {
+    const marketplace = await makeTempDir();
+    const workspace = await makeTempDir();
+    const home = await makeTempDir();
+    const builtinDir = path.join(marketplace, "builtin-skills");
+    const builtinSkill = path.join(builtinDir, "maker");
+    await fs.mkdir(builtinSkill, { recursive: true });
+    await fs.writeFile(
+      path.join(builtinSkill, "SKILL.md"),
+      "---\nname: maker\ndescription: builtin maker\n---\nbody",
+    );
+
+    const builtinOnly = await loadSkillIndex({ workspace, homeDir: home, builtinDir });
+    expect(builtinOnly).toContain("builtin maker");
+
+    await writeSkill(home, "maker", "name: maker\ndescription: user maker", "user");
+    const overridden = await loadSkillIndex({ workspace, homeDir: home, builtinDir });
+    expect(overridden).toContain("user maker");
+    expect(overridden).not.toContain("builtin maker");
+  });
 });

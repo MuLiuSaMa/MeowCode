@@ -360,28 +360,255 @@
   cursor: default;
 }
 
-/* 会话信息 */
-.mc-rtp__fields {
+/* 会话信息：统计卡片 + 命中率曲线 */
+.mc-rtp__session {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  padding: 0 2px;
+  gap: 6px;
+  /* 会话信息专用色调：默认跟随强调色，经典色下面整体改为黑白灰 */
+  --mc-stat-read: var(--accent);
+  --mc-stat-write: var(--accent-violet);
+  --mc-stat-uncached: color-mix(in oklab, var(--accent) 48%, var(--surface));
+  --mc-stat-output: color-mix(in oklab, var(--fg) 32%, transparent);
 }
-.mc-rtp__field {
+
+/* 经典色（中性画布）：环形/曲线/比例条一律灰阶，避免一块蓝色跳出来 */
+:root[data-palette="classic"] .mc-rtp__session,
+[data-palette="classic"] .mc-rtp__session {
+  --mc-stat-read: var(--fg);
+  --mc-stat-write: color-mix(in oklab, var(--fg) 55%, transparent);
+  --mc-stat-uncached: color-mix(in oklab, var(--fg) 35%, transparent);
+  --mc-stat-output: color-mix(in oklab, var(--fg) 18%, transparent);
+}
+
+.mc-rtp__stats {
+  display: grid;
+  /* 面板宽度可拖拽：窄时自动堆叠，宽时并排 */
+  grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
+  gap: 6px;
+}
+
+.mc-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  min-width: 0;
+  padding: 10px 11px;
+  border-radius: var(--radius-lg);
+  corner-shape: superellipse(1.5);
+  background: var(--card);
+}
+
+.mc-stat__label {
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-medium);
+  letter-spacing: 0.02em;
+  color: var(--fg-subtlest);
+}
+
+.mc-stat--hero {
+  align-items: center;
+  text-align: center;
+}
+.mc-stat--hero .mc-stat__label {
+  align-self: flex-start;
+  text-align: left;
+}
+.mc-stat__ring {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px 0;
+}
+.mc-stat__hint {
+  font-size: var(--fs-xs);
+  color: var(--fg-subtlest);
+}
+
+/* Token 构成：一根比例条 + 图例 */
+.mc-tokenbar {
+  display: flex;
+  gap: 1px;
+  height: 6px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: var(--surface);
+}
+.mc-tokenbar__seg {
+  flex-basis: 0;
+  min-width: 2px;
+}
+.mc-tokenbar__seg--read {
+  background: var(--mc-stat-read);
+}
+.mc-tokenbar__seg--uncached {
+  background: var(--mc-stat-uncached);
+}
+.mc-tokenbar__seg--write {
+  background: var(--mc-stat-write);
+}
+.mc-tokenbar__seg--output {
+  background: var(--mc-stat-output);
+}
+
+.mc-tokenlegend {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.mc-tokenlegend__row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font-size: var(--fs-xs);
+  color: var(--fg-subtle);
+}
+.mc-tokenlegend__dot {
+  flex-shrink: 0;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+}
+.mc-tokenlegend__dot--read {
+  background: var(--mc-stat-read);
+}
+.mc-tokenlegend__dot--uncached {
+  background: var(--mc-stat-uncached);
+}
+.mc-tokenlegend__dot--write {
+  background: var(--mc-stat-write);
+}
+.mc-tokenlegend__dot--output {
+  background: var(--mc-stat-output);
+}
+.mc-tokenlegend__label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mc-tokenlegend__value {
+  flex-shrink: 0;
+  color: var(--fg);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* 最近回合命中率曲线 */
+.mc-chartcard {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  padding: 10px 11px 4px;
+  border-radius: var(--radius-lg);
+  corner-shape: superellipse(1.5);
+  background: var(--card);
+}
+.mc-chartcard__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+.mc-chartcard__title {
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-medium);
+  letter-spacing: 0.02em;
+  color: var(--fg-subtlest);
+}
+.mc-chartcard__meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: var(--fs-xs);
+  color: var(--fg-subtlest);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+/* 实时指示：曲线随每次模型调用更新，呼吸点提示它是活的 */
+.mc-chartcard__live {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--mc-stat-read);
+  animation: mc-pulse 1.8s var(--ease) infinite;
+}
+.mc-curve {
+  width: 100%;
+  min-width: 0;
+}
+.mc-chartcard__empty {
+  margin: 0;
+  padding: 26px 0 30px;
+  text-align: center;
+  font-size: var(--fs-xs);
+  color: var(--fg-subtlest);
+}
+
+/* 会话详情 + 本回合性能 */
+.mc-stat--details {
+  gap: 10px;
+}
+.mc-detailrows {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.mc-detailrow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  font-size: var(--fs-xs);
+}
+.mc-detailrow__label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  width: 72px;
+  color: var(--fg-subtlest);
+  white-space: nowrap;
+}
+.mc-detailrow__value {
+  flex: 1;
+  min-width: 0;
+  color: var(--fg-subtle);
+  text-align: right;
+}
+.mc-detailrow__value--mono {
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+}
+.mc-detailstats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(84px, 1fr));
+  gap: 8px 6px;
+  padding-top: 9px;
+  border-top: 1px solid var(--border);
+}
+.mc-mini {
   display: flex;
   flex-direction: column;
   gap: 3px;
   min-width: 0;
 }
-.mc-rtp__fieldlabel {
+.mc-mini__label {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 5px;
   font-size: var(--fs-xs);
   color: var(--fg-subtlest);
+  white-space: nowrap;
 }
-.mc-rtp__fieldvalue {
+.mc-mini__value {
   font-size: var(--fs-caption);
   color: var(--fg);
-  overflow-wrap: anywhere;
+  font-variant-numeric: tabular-nums;
 }

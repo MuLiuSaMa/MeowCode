@@ -92,6 +92,66 @@ describe("chat completions request body", () => {
   });
 });
 
+describe("prompt cache affinity", () => {
+  function captureFetch() {
+    const calls: Array<{ headers: Record<string, string>; body: Record<string, unknown> }> = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: string, init?: RequestInit) => {
+        calls.push({
+          headers: init?.headers as Record<string, string>,
+          body: JSON.parse(String(init?.body)) as Record<string, unknown>,
+        });
+        return sseResponse([{ choices: [{ delta: { content: "ok" }, finish_reason: "stop" }] }]);
+      }),
+    );
+    return calls;
+  }
+
+  it("sends the cache key in body and header on the official endpoint", async () => {
+    const calls = captureFetch();
+    await streamChatCompletion({
+      ...baseOptions,
+      provider: {
+        ...baseOptions.provider,
+        baseUrl: "https://api.openai.com/v1",
+        promptCacheKey: "sess:main",
+      },
+    });
+    expect(calls[0].body.prompt_cache_key).toBe("sess:main");
+    expect(calls[0].headers["x-session-id"]).toBe("sess:main");
+  });
+
+  it("keeps the body field off third-party gateways but still sends the header", async () => {
+    const calls = captureFetch();
+    await streamChatCompletion({
+      ...baseOptions,
+      provider: { ...baseOptions.provider, promptCacheKey: "sess:main" },
+    });
+    expect(calls[0].body).not.toHaveProperty("prompt_cache_key");
+    expect(calls[0].headers["x-session-id"]).toBe("sess:main");
+  });
+
+  it("uses a fresh x-request-id for every retry attempt", async () => {
+    const ids: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: string, init?: RequestInit) => {
+        ids.push(((init?.headers as Record<string, string> | undefined)?.["x-request-id"]) ?? "");
+        if (ids.length === 1) {
+          return new Response("busy", { status: 429, headers: { "retry-after": "0" } });
+        }
+        return sseResponse([{ choices: [{ delta: { content: "ok" }, finish_reason: "stop" }] }]);
+      }),
+    );
+    await streamChatCompletion(baseOptions);
+    expect(ids).toHaveLength(2);
+    expect(ids[0]).toMatch(/^[0-9a-f-]{36}$/);
+    expect(ids[1]).toMatch(/^[0-9a-f-]{36}$/);
+    expect(ids[0]).not.toBe(ids[1]);
+  });
+});
+
 describe("streamChatCompletion usage reporting", () => {
   it("reports the tail-block usage once, deduping repeated identical blocks", async () => {
     vi.stubGlobal(

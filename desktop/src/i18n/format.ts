@@ -6,6 +6,22 @@ export function formatNumber(value: number, options?: Intl.NumberFormatOptions):
   return new Intl.NumberFormat(currentLanguage(), options).format(value);
 }
 
+/** 运行耗时文案：<1s / X.X 秒 / X 分 X 秒。子 Agent 工具行与回合耗时信息条共用。 */
+export function formatDuration(ms: number): string {
+  if (ms < 1_000) return i18n.t("shell:taskRow.durationUnderSecond");
+  const seconds = ms / 1_000;
+  if (seconds < 60) {
+    return i18n.t("shell:taskRow.durationSeconds", {
+      value: formatNumber(seconds, { minimumFractionDigits: 1, maximumFractionDigits: 1 }),
+    });
+  }
+  const minutes = Math.floor(seconds / 60);
+  return i18n.t("shell:taskRow.durationMinutes", {
+    minutes: formatNumber(minutes),
+    seconds: formatNumber(Math.round(seconds % 60)),
+  });
+}
+
 function toMs(value: number | Date): number {
   return value instanceof Date ? value.getTime() : value;
 }

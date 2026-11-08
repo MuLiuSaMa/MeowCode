@@ -1,4 +1,4 @@
-import { useId, useState } from "react";
+import { useId, useMemo, useState } from "react";
 import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
 import { LuChevronRight, LuCircleCheck, LuCircleX, LuExternalLink, LuLoaderCircle } from "react-icons/lu";
@@ -6,6 +6,7 @@ import type { TimelineTool } from "../api";
 import { ToolBody } from "./toolviews/ToolBody";
 import { hasToolBody } from "./toolviews/registry";
 import { isAbsolutePath, panelPath } from "./toolviews/paths";
+import { toolSummary } from "./toolviews/summary";
 import "./ToolRow.css";
 
 type ToolStatus = "running" | "ok" | "failed";
@@ -374,6 +375,8 @@ export function ToolRow({
   const status: ToolStatus =
     item.ok === undefined ? (item.replayed ? "ok" : "running") : item.ok ? "ok" : "failed";
   const view = presentTool(item, status, t);
+  // 不展开也能看到的关键信息：参数 + 结果计数，贴行尾显示
+  const preview = useMemo(() => toolSummary(item, status, t), [item, status, t]);
   const [open, setOpen] = useState(false);
   const [bodyMounted, setBodyMounted] = useState(false);
   const detailId = useId();
@@ -424,6 +427,11 @@ export function ToolRow({
               {view.detail}
             </span>
           ) : null}
+        </span>
+      ) : null}
+      {preview ? (
+        <span className="mc-toolrow__preview" title={preview}>
+          {preview}
         </span>
       ) : null}
       {item.added !== undefined || item.removed !== undefined ? (

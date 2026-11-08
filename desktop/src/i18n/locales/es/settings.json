@@ -8,11 +8,7 @@
   "speech": {
     "section": "Tono",
     "field": "Tono de respuesta",
-    "desc": {
-      "normal": "Tono predeterminado: conciso, directo y profesional; solo lo esencial.",
-      "tafei": "Tono Taffy: una personalidad de chica gato juguetona que termina las frases con «miao» (喵) y usa ocasionalmente su frase característica; el contenido técnico sigue siendo preciso.",
-      "dazui": "Dazui: eh, esto, esto… ¿vale? El mejor tono por menos de diez millones."
-    },
+    "desc": "Elige el estilo de tono de las respuestas de la IA. Los cambios se aplican de inmediato.",
     "options": {
       "normal": "Normal",
       "tafei": "永雏塔菲",
@@ -69,6 +65,16 @@
     "themeSection": "Tema",
     "themeField": "Tema de color",
     "themeDesc": "«Sistema» sigue en tiempo real la configuración clara / oscura de Windows. El cambio se aplica al instante, sin reiniciar.",
+    "paletteSection": "Paleta de colores",
+    "paletteDesc": "Elige el color de acento y el tono del lienzo. Claro y oscuro se ajustan por separado, así que se adaptan solos al cambiar de modo.",
+    "palette": {
+      "classic": "Clásico",
+      "lava": "Naranja lava",
+      "bee": "Amarillo abeja",
+      "mint": "Verde menta",
+      "parchment": "Pergamino",
+      "harmony": "Azul armonía"
+    },
     "theme": {
       "system": "Sistema",
       "light": "Claro",
@@ -554,6 +560,11 @@
       "confirmHow": "Tras cada respuesta se envía una petición adicional al modelo actual para predecir tu próximo mensaje. Aparece en el campo vacío; pulsa Tab para insertarlo. No se envía nada automáticamente.",
       "confirmCost": "Esto consume tokens adicionales en cada turno. La petición reutiliza la caché de la conversación, así que suele ser barata, pero se factura igualmente.",
       "enable": "Activar"
+    },
+    "providerFallback": {
+      "field": "Conmutación por error del proveedor",
+      "desc": "Si el proveedor principal agota el tiempo, sufre límite de peticiones o error del servidor, este turno cambia automáticamente a otro proveedor habilitado (máx. 2 saltos).",
+      "toggleFailed": "No se pudo guardar la conmutación por error del proveedor"
     }
   },
   "proxy": {

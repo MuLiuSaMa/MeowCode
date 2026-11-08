@@ -219,6 +219,22 @@
     "stepCount_other": "{{count}} steps",
     "stepCount_few": "{{count}} steps",
     "stepCount_many": "{{count}} steps",
+    "lineCount_one": "{{count}} line",
+    "lineCount_other": "{{count}} lines",
+    "lineCount_few": "{{count}} lines",
+    "lineCount_many": "{{count}} lines",
+    "entryCount_one": "{{count}} entry",
+    "entryCount_other": "{{count}} entries",
+    "entryCount_few": "{{count}} entries",
+    "entryCount_many": "{{count}} entries",
+    "matchCount_one": "{{count}} match",
+    "matchCount_other": "{{count}} matches",
+    "matchCount_few": "{{count}} matches",
+    "matchCount_many": "{{count}} matches",
+    "resultCount_one": "{{count}} result",
+    "resultCount_other": "{{count}} results",
+    "resultCount_few": "{{count}} results",
+    "resultCount_many": "{{count}} results",
     "emptyOutput": "(no output)",
     "waitingOutput": "Waiting for output…",
     "outputNotSaved": "Output was not saved in history",
@@ -320,5 +336,13 @@
     "close": "Close workspace overview",
     "commitOrPush": "Commit or push",
     "switchBranch": "Switch branch"
+  },
+  "turnFooter": {
+    "copyMarkdown": "Copy as Markdown",
+    "copyPlain": "Copy as plain text",
+    "branch": "Create new branch",
+    "duration": "Duration",
+    "tokens": "Tokens used",
+    "time": "Conversation time"
   }
 }

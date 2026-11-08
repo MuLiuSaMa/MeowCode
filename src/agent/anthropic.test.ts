@@ -930,3 +930,31 @@ describe("thinking budget wiring", () => {
     expect(body.thinking).toEqual({ type: "enabled", budget_tokens: 8000 });
   });
 });
+
+describe("streamAnthropicMessages attribution headers", () => {
+  async function captureHeaders(promptCacheKey?: string) {
+    const fetchMock = vi.fn(async () => sseResponse([{ type: "message_stop" }]));
+    vi.stubGlobal("fetch", fetchMock);
+    await streamAnthropicMessages({
+      url: "https://api.anthropic.com/v1/messages",
+      model: "claude-sonnet-4-5",
+      promptCacheKey,
+      system: [],
+      messages: [{ role: "user", content: "hi" }],
+      tools: [],
+      onDelta: () => undefined,
+    });
+    return (fetchMock.mock.calls[0][1] as RequestInit).headers as Record<string, string>;
+  }
+
+  it("mirrors the cache key into x-session-id and stamps a request id", async () => {
+    const headers = await captureHeaders("sess:main");
+    expect(headers["x-session-id"]).toBe("sess:main");
+    expect(headers["x-request-id"]).toMatch(/^[0-9a-f-]{36}$/);
+  });
+
+  it("omits x-session-id when no cache key is set", async () => {
+    const headers = await captureHeaders(undefined);
+    expect(headers["x-session-id"]).toBeUndefined();
+  });
+});

@@ -1,0 +1,368 @@
+/*
+ * 配色方案（palette）—— 与明暗模式正交的第二维。
+ *
+ * 设计约束（改动前务必读）：
+ *   1. 本文件只覆盖「叶子 token」。--card / --card-hover / --accent-soft / --line-soft /
+ *      --bg-panel-soft / --text-secondary / --text-tertiary，以及深色下的 --overlay /
+ *      --input-fill 都是 color-mix(... var(--bg)) 表达式，在 html 元素上按覆盖后的 --bg
+ *      重新求值，会自动跟随，禁止在这里重复覆盖。
+ *   2. 语义色（--success / --warning / --danger / --diff-* / --code-tok-*）、--brand /
+ *      --brand-fg、--shadow-* 一律保持中性，不参与配色。
+ *   3. 经典色（classic）在本文件里不写全局规则：<html data-palette="classic"> 不命中任何
+ *      选择器，完全走 tokens.css，保证与加配色之前像素级一致。
+ *   4. 所有选择器必须写具体 palette id，禁止写裸 [data-palette]。
+ *   5. 每个块都写成两条选择器：
+ *        :root[data-theme][data-palette]   —— 特异性 (0,3,0)，稳压 tokens.css 的
+ *                                             :root[data-theme="light"] (0,2,0)，不依赖加载顺序；
+ *        [data-theme][data-palette]        —— 让任意元素局部套用一套配色。
+ *      设置页的骨架缩略图就是靠第二条：给元素挂上两个属性，它内部就变成那套配色。
+ *
+ * 取值思路：画布只混 3~6% 色相（"暖黑"/"薄荷白"），强调色按明暗分别校准，
+ * 正文/背景 ≥ 7:1，强调色/背景 ≥ 4.8:1。
+ */
+
+/* 非经典配色共用：思考强度滑杆渐变由强调色派生，省掉 5 条手写 8 色标 */
+:root[data-palette]:not([data-palette="classic"]),
+[data-palette]:not([data-palette="classic"]) {
+  --accent-gradient: linear-gradient(
+    90deg,
+    color-mix(in oklab, var(--accent) 60%, #0b0b12) 0%,
+    var(--accent) 30%,
+    color-mix(in oklab, var(--accent) 55%, var(--accent-violet)) 65%,
+    var(--accent-violet) 100%
+  );
+}
+
+/* ==========================================================================
+ * 熔岩橙 lava —— 暖橙红，深色像冷却中的熔岩，浅色像晨光下的米橙
+ * ========================================================================== */
+
+:root[data-theme="dark"][data-palette="lava"],
+[data-theme="dark"][data-palette="lava"] {
+  --bg-chrome: #0f0a08;
+  --bg-root: #0f0a08;
+  --bg: #120d0a;
+  --bg-panel: #18120e;
+  --bg-elevated: #221a14;
+
+  --fg: #fdf3ee;
+  --fg-subtle: rgba(253 243 238 / 0.60);
+  --fg-subtlest: rgba(253 243 238 / 0.34);
+
+  --surface: rgba(255 236 226 / 0.06);
+  --surface-hover: rgba(255 236 226 / 0.11);
+
+  --border: rgba(255 226 210 / 0.11);
+  --border-strong: rgba(255 226 210 / 0.18);
+  --border-hover: rgba(255 226 210 / 0.18);
+
+  --user-fill: color-mix(in oklab, #ffd8c6 12%, var(--bg));
+
+  --accent: #ff7a45;
+  --accent-violet: #ff3d2e;
+  --ring: rgba(255 138 92 / 0.55);
+  --ring-strong: rgba(255 138 92 / 0.82);
+}
+
+:root[data-theme="light"][data-palette="lava"],
+[data-theme="light"][data-palette="lava"] {
+  --bg-chrome: #f4e9e2;
+  --bg-root: #f8efe9;
+  --bg: #fdf7f3;
+  --bg-panel: #fffbf8;
+  --bg-elevated: #ffffff;
+
+  --fg: #1b120d;
+  --fg-subtle: rgba(27 18 13 / 0.60);
+  --fg-subtlest: rgba(27 18 13 / 0.40);
+
+  --overlay: #fffbf8;
+  --surface: rgba(27 18 13 / 0.045);
+  --surface-hover: rgba(27 18 13 / 0.075);
+
+  --border: rgba(74 36 16 / 0.12);
+  --border-strong: rgba(74 36 16 / 0.19);
+  --border-hover: rgba(74 36 16 / 0.19);
+
+  --user-fill: color-mix(in oklab, #c2410c 10%, var(--bg));
+  --input-fill: #fffdfb;
+
+  --accent: #c2410c;
+  --accent-violet: #b3261e;
+  --ring: rgba(194 65 12 / 0.50);
+  --ring-strong: rgba(194 65 12 / 0.74);
+}
+
+/* ==========================================================================
+ * 蜜蜂黄 bee —— 深色用亮金，浅色压成芥末金保证对比度，黄由画布染色承担
+ * ========================================================================== */
+
+:root[data-theme="dark"][data-palette="bee"],
+[data-theme="dark"][data-palette="bee"] {
+  --bg-chrome: #0d0c06;
+  --bg-root: #0d0c06;
+  --bg: #110f08;
+  --bg-panel: #17140c;
+  --bg-elevated: #211d11;
+
+  --fg: #fdf9e8;
+  --fg-subtle: rgba(253 249 232 / 0.60);
+  --fg-subtlest: rgba(253 249 232 / 0.34);
+
+  --surface: rgba(255 246 210 / 0.06);
+  --surface-hover: rgba(255 246 210 / 0.11);
+
+  --border: rgba(255 240 190 / 0.11);
+  --border-strong: rgba(255 240 190 / 0.18);
+  --border-hover: rgba(255 240 190 / 0.18);
+
+  --user-fill: color-mix(in oklab, #ffe9a3 12%, var(--bg));
+
+  --accent: #f5c518;
+  --accent-violet: #ff9f1c;
+  --ring: rgba(245 197 24 / 0.55);
+  --ring-strong: rgba(245 197 24 / 0.82);
+}
+
+:root[data-theme="light"][data-palette="bee"],
+[data-theme="light"][data-palette="bee"] {
+  --bg-chrome: #f7f1da;
+  --bg-root: #faf5e4;
+  --bg: #fdf9e9;
+  --bg-panel: #fffdf6;
+  --bg-elevated: #ffffff;
+
+  --fg: #1a1608;
+  --fg-subtle: rgba(26 22 8 / 0.60);
+  --fg-subtlest: rgba(26 22 8 / 0.40);
+
+  --overlay: #fffdf6;
+  --surface: rgba(26 22 8 / 0.045);
+  --surface-hover: rgba(26 22 8 / 0.075);
+
+  --border: rgba(88 70 8 / 0.13);
+  --border-strong: rgba(88 70 8 / 0.20);
+  --border-hover: rgba(88 70 8 / 0.20);
+
+  --user-fill: color-mix(in oklab, #8a6a00 10%, var(--bg));
+  --input-fill: #fffffb;
+
+  --accent: #8a6a00;
+  --accent-violet: #a15c00;
+  --ring: rgba(138 106 0 / 0.50);
+  --ring-strong: rgba(138 106 0 / 0.74);
+}
+
+/* ==========================================================================
+ * 薄荷绿 mint —— 清冷的绿调，深色偏墨绿，浅色偏水感
+ * ========================================================================== */
+
+:root[data-theme="dark"][data-palette="mint"],
+[data-theme="dark"][data-palette="mint"] {
+  --bg-chrome: #08100d;
+  --bg-root: #08100d;
+  --bg: #0b1310;
+  --bg-panel: #101c17;
+  --bg-elevated: #16241e;
+
+  --fg: #eefaf5;
+  --fg-subtle: rgba(238 250 245 / 0.60);
+  --fg-subtlest: rgba(238 250 245 / 0.34);
+
+  --surface: rgba(220 255 240 / 0.06);
+  --surface-hover: rgba(220 255 240 / 0.11);
+
+  --border: rgba(200 255 232 / 0.11);
+  --border-strong: rgba(200 255 232 / 0.18);
+  --border-hover: rgba(200 255 232 / 0.18);
+
+  --user-fill: color-mix(in oklab, #b6f2d8 12%, var(--bg));
+
+  --accent: #34d399;
+  --accent-violet: #22d3ee;
+  --ring: rgba(52 211 153 / 0.55);
+  --ring-strong: rgba(52 211 153 / 0.82);
+}
+
+:root[data-theme="light"][data-palette="mint"],
+[data-theme="light"][data-palette="mint"] {
+  --bg-chrome: #e8f3ee;
+  --bg-root: #ecf6f1;
+  --bg: #f5fbf8;
+  --bg-panel: #fbfffd;
+  --bg-elevated: #ffffff;
+
+  --fg: #0c1a15;
+  --fg-subtle: rgba(12 26 21 / 0.60);
+  --fg-subtlest: rgba(12 26 21 / 0.40);
+
+  --overlay: #ffffff;
+  --surface: rgba(12 26 21 / 0.045);
+  --surface-hover: rgba(12 26 21 / 0.075);
+
+  --border: rgba(14 60 46 / 0.12);
+  --border-strong: rgba(14 60 46 / 0.19);
+  --border-hover: rgba(14 60 46 / 0.19);
+
+  --user-fill: color-mix(in oklab, #047857 10%, var(--bg));
+  --input-fill: #ffffff;
+
+  --accent: #047857;
+  --accent-violet: #0e7490;
+  --ring: rgba(4 120 87 / 0.50);
+  --ring-strong: rgba(4 120 87 / 0.74);
+}
+
+/* ==========================================================================
+ * 羊皮纸 parchment —— 低彩度棕调，浅色是这套的主角（旧纸感），深色像油皮封面
+ * ========================================================================== */
+
+:root[data-theme="dark"][data-palette="parchment"],
+[data-theme="dark"][data-palette="parchment"] {
+  --bg-chrome: #0e0b07;
+  --bg-root: #0e0b07;
+  --bg: #110e09;
+  --bg-panel: #181310;
+  --bg-elevated: #231c14;
+
+  --fg: #f7efe1;
+  --fg-subtle: rgba(247 239 225 / 0.60);
+  --fg-subtlest: rgba(247 239 225 / 0.34);
+
+  --surface: rgba(255 238 205 / 0.06);
+  --surface-hover: rgba(255 238 205 / 0.11);
+
+  --border: rgba(240 220 185 / 0.12);
+  --border-strong: rgba(240 220 185 / 0.19);
+  --border-hover: rgba(240 220 185 / 0.19);
+
+  --user-fill: color-mix(in oklab, #e8cf9f 12%, var(--bg));
+
+  --accent: #d9a45b;
+  --accent-violet: #b87333;
+  --ring: rgba(217 164 91 / 0.55);
+  --ring-strong: rgba(217 164 91 / 0.82);
+}
+
+:root[data-theme="light"][data-palette="parchment"],
+[data-theme="light"][data-palette="parchment"] {
+  --bg-chrome: #f1e7d4;
+  --bg-root: #f4ecdb;
+  --bg: #fbf6ea;
+  --bg-panel: #fffbf2;
+  --bg-elevated: #fffdf7;
+
+  --fg: #1f1910;
+  --fg-subtle: rgba(31 25 16 / 0.60);
+  --fg-subtlest: rgba(31 25 16 / 0.40);
+
+  --overlay: #fffdf7;
+  --surface: rgba(31 25 16 / 0.045);
+  --surface-hover: rgba(31 25 16 / 0.075);
+
+  --border: rgba(74 55 20 / 0.13);
+  --border-strong: rgba(74 55 20 / 0.20);
+  --border-hover: rgba(74 55 20 / 0.20);
+
+  --user-fill: color-mix(in oklab, #8a5a1a 10%, var(--bg));
+  --input-fill: #fffdf7;
+
+  --accent: #8a5a1a;
+  --accent-violet: #a0522d;
+  --ring: rgba(138 90 26 / 0.50);
+  --ring-strong: rgba(138 90 26 / 0.74);
+}
+
+/* ==========================================================================
+ * 和谐蓝 harmony —— 冷调海军蓝画布 + 天蓝强调，与「中性灰底 + 蓝滑杆」的经典色区分开
+ * ========================================================================== */
+
+:root[data-theme="dark"][data-palette="harmony"],
+[data-theme="dark"][data-palette="harmony"] {
+  --bg-chrome: #070b13;
+  --bg-root: #070b13;
+  --bg: #0a0f18;
+  --bg-panel: #0f1723;
+  --bg-elevated: #15202e;
+
+  --fg: #eef4fd;
+  --fg-subtle: rgba(238 244 253 / 0.60);
+  --fg-subtlest: rgba(238 244 253 / 0.34);
+
+  --surface: rgba(210 230 255 / 0.06);
+  --surface-hover: rgba(210 230 255 / 0.11);
+
+  --border: rgba(190 215 255 / 0.11);
+  --border-strong: rgba(190 215 255 / 0.18);
+  --border-hover: rgba(190 215 255 / 0.18);
+
+  --user-fill: color-mix(in oklab, #b9d4f5 12%, var(--bg));
+
+  --accent: #38bdf8;
+  --accent-violet: #6366f1;
+  --ring: rgba(56 189 248 / 0.55);
+  --ring-strong: rgba(56 189 248 / 0.82);
+}
+
+:root[data-theme="light"][data-palette="harmony"],
+[data-theme="light"][data-palette="harmony"] {
+  --bg-chrome: #e7eef9;
+  --bg-root: #ebf1fa;
+  --bg: #f5f8fd;
+  --bg-panel: #fbfdff;
+  --bg-elevated: #ffffff;
+
+  --fg: #0d1524;
+  --fg-subtle: rgba(13 21 36 / 0.60);
+  --fg-subtlest: rgba(13 21 36 / 0.40);
+
+  --overlay: #ffffff;
+  --surface: rgba(13 21 36 / 0.045);
+  --surface-hover: rgba(13 21 36 / 0.075);
+
+  --border: rgba(20 45 85 / 0.12);
+  --border-strong: rgba(20 45 85 / 0.19);
+  --border-hover: rgba(20 45 85 / 0.19);
+
+  --user-fill: color-mix(in oklab, #0369a1 10%, var(--bg));
+  --input-fill: #ffffff;
+
+  --accent: #0369a1;
+  --accent-violet: #4f46e5;
+  --ring: rgba(3 105 161 / 0.50);
+  --ring-strong: rgba(3 105 161 / 0.74);
+}
+
+/* ==========================================================================
+ * 设置页「骨架缩略图」用的经典色。
+ *
+ * 缩略图的做法是：给缩略图元素同时挂 data-theme + data-palette，让上面那些
+ * 配色规则在该元素上重新定义变量，从而局部渲染出那套配色的真实观感。
+ * 但经典色不写规则（见文件头第 3 条），缩略图会继承 :root 上当前配色的值 ——
+ * 所以这里只给「带 data-thumb 的元素」补一份经典色，:root 不带这个属性，
+ * 全局经典色依旧零规则、像素级不变。
+ * ========================================================================== */
+
+/* 经典色本身是黑白的：缩略图里的强调线也用中性色，别让卡片看起来带蓝 */
+[data-thumb][data-theme="dark"][data-palette="classic"] {
+  --bg-chrome: #0a0a0a;
+  --bg: #0d0d0d;
+  --bg-panel: #131313;
+  --surface: rgba(255 255 255 / 0.05);
+  --border: rgba(255 255 255 / 0.10);
+  --border-strong: rgba(255 255 255 / 0.16);
+  --fg-subtle: rgba(245 245 245 / 0.60);
+  --accent: #f5f5f5;
+}
+
+[data-thumb][data-theme="light"][data-palette="classic"] {
+  --bg-chrome: #ececec;
+  --bg: #f7f7f7;
+  --bg-panel: #ffffff;
+  --surface: rgba(20 20 20 / 0.04);
+  --border: rgba(20 20 20 / 0.10);
+  --border-strong: rgba(20 20 20 / 0.16);
+  --fg-subtle: rgba(20 20 20 / 0.62);
+  --accent: #141414;
+}
+

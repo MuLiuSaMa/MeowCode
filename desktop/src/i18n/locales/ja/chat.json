@@ -219,6 +219,22 @@
     "stepCount_other": "{{count}} ステップ",
     "stepCount_few": "{{count}} ステップ",
     "stepCount_many": "{{count}} ステップ",
+    "lineCount_one": "{{count}} 行",
+    "lineCount_other": "{{count}} 行",
+    "lineCount_few": "{{count}} 行",
+    "lineCount_many": "{{count}} 行",
+    "entryCount_one": "{{count}} 件",
+    "entryCount_other": "{{count}} 件",
+    "entryCount_few": "{{count}} 件",
+    "entryCount_many": "{{count}} 件",
+    "matchCount_one": "{{count}} 件ヒット",
+    "matchCount_other": "{{count}} 件ヒット",
+    "matchCount_few": "{{count}} 件ヒット",
+    "matchCount_many": "{{count}} 件ヒット",
+    "resultCount_one": "{{count}} 件",
+    "resultCount_other": "{{count}} 件",
+    "resultCount_few": "{{count}} 件",
+    "resultCount_many": "{{count}} 件",
     "emptyOutput": "（出力なし）",
     "waitingOutput": "出力を待機中…",
     "outputNotSaved": "履歴に出力は保存されていません",
@@ -320,5 +336,13 @@
     "close": "ワークスペース概要を閉じる",
     "commitOrPush": "コミットまたはプッシュ",
     "switchBranch": "ブランチを切り替え"
+  },
+  "turnFooter": {
+    "copyMarkdown": "Markdown としてコピー",
+    "copyPlain": "プレーンテキストとしてコピー",
+    "branch": "新しいブランチを作成",
+    "duration": "所要時間",
+    "tokens": "使用 Token",
+    "time": "会話時間"
   }
 }

@@ -4,7 +4,8 @@ import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
-import { McpOAuthProvider } from "./mcp-oauth";
+import { auth } from "@modelcontextprotocol/sdk/client/auth.js";
+import { DEFAULT_MCP_CLIENT_METADATA_URL, McpOAuthProvider, browserOpenCommand } from "./mcp-oauth";
 import { readJsonFile } from "../agent/atomic-json";
 
 /**
@@ -14,6 +15,9 @@ import { readJsonFile } from "../agent/atomic-json";
 let fakeOrigin = "";
 let fakeServer: http.Server | null = null;
 let tokenRequests: URLSearchParams[] = [];
+let registerRequests: URLSearchParams[] = [];
+/** CIMD-only 模式：无 registration_endpoint，广播 client_id_metadata_document_supported */
+let cimdOnly = false;
 
 async function startFakeServer(): Promise<void> {
   fakeServer = http.createServer((request, response) => {
@@ -27,7 +31,9 @@ async function startFakeServer(): Promise<void> {
         issuer: fakeOrigin,
         authorization_endpoint: `${fakeOrigin}/authorize`,
         token_endpoint: `${fakeOrigin}/token`,
-        registration_endpoint: `${fakeOrigin}/register`,
+        ...(cimdOnly
+          ? { client_id_metadata_document_supported: true }
+          : { registration_endpoint: `${fakeOrigin}/register` }),
         response_types_supported: ["code"],
         grant_types_supported: ["authorization_code", "refresh_token"],
         code_challenge_methods_supported: ["S256"],
@@ -39,8 +45,9 @@ async function startFakeServer(): Promise<void> {
       let body = "";
       request.on("data", (chunk) => (body += chunk));
       request.on("end", () => {
+        registerRequests.push(new URLSearchParams(body));
         const metadata = JSON.parse(body) as { redirect_uris?: string[] };
-        expect(metadata.redirect_uris?.[0]).toContain("http://127.0.0.1:");
+        expect(metadata.redirect_uris?.[0]).toMatch(/^http:\/\/127\.0\.0\.1(:\d+)?\/callback$/);
         json({ client_id: "fake-client-id", redirect_uris: metadata.redirect_uris });
       });
       return;
@@ -80,6 +87,8 @@ describe("McpOAuthProvider", () => {
       homeDir = "";
     }
     tokenRequests = [];
+    registerRequests = [];
+    cimdOnly = false;
   });
 
   const makeProvider = (overrides: Partial<ConstructorParameters<typeof McpOAuthProvider>[0]> = {}) => {
@@ -174,5 +183,132 @@ describe("McpOAuthProvider", () => {
     await provider.close();
     expect(provider.redirectUrl).toBeUndefined();
     expect(captured).toHaveLength(1);
+  });
+
+  it("prepare() 后 redirectUrl 有真实回环端口（默认 53683，占用则随机）", async () => {
+    homeDir = await mkdtemp(path.join(tmpdir(), "meowcode-mcp-oauth-"));
+    const { provider } = makeProvider();
+    await provider.prepare();
+    const redirect = provider.redirectUrl;
+    expect(redirect).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/callback$/);
+    expect(redirect).not.toBe("http://127.0.0.1/callback");
+    await provider.close();
+  });
+
+  it("CIMD-only AS（无 registration_endpoint）：用 clientMetadataUrl 当 client_id，不走 DCR", async () => {
+    homeDir = await mkdtemp(path.join(tmpdir(), "meowcode-mcp-oauth-"));
+    cimdOnly = true;
+    const { provider, captured } = makeProvider({
+      clientMetadataUrl: "https://meowcode.cn/.well-known/oauth-client",
+    });
+    await provider.ensureAuthorized();
+    expect(registerRequests).toHaveLength(0);
+    expect(captured).toHaveLength(1);
+    const authorizeUrl = new URL(captured[0]);
+    expect(authorizeUrl.searchParams.get("client_id")).toBe(
+      "https://meowcode.cn/.well-known/oauth-client",
+    );
+    expect((await provider.tokens())?.access_token).toBe("access-1");
+  });
+
+  it("DCR AS（有 registration_endpoint）：即使开着 CIMD 探测也走 DCR，不拿外部文档当 client_id", async () => {
+    homeDir = await mkdtemp(path.join(tmpdir(), "meowcode-mcp-oauth-"));
+    // Cloudflare 这类 AS 只认自己 /register 发的 client_id；用 CIMD 文档会被判 invalid_client，
+    // 表现就是授权页压根不出现。所以 DCR 可用时必须压过 CIMD 探测。
+    const { provider, captured } = makeProvider({ probeCimd: true });
+    await provider.prepare();
+    expect(provider.clientMetadataUrl).toBeUndefined();
+    await provider.ensureAuthorized();
+    expect(registerRequests).toHaveLength(1);
+    const authorizeUrl = new URL(captured[0]);
+    expect(authorizeUrl.searchParams.get("client_id")).toBe("fake-client-id");
+    await provider.close();
+  });
+
+  it("显式关掉 CIMD 后，本地残留的 CIMD client_id 被作废并重新走 DCR", async () => {
+    homeDir = await mkdtemp(path.join(tmpdir(), "meowcode-mcp-oauth-"));
+    // 复现真实故障：之前用 CIMD 授权过，缓存里 client_id 是 HTTPS 文档地址；后来配置改成 DCR，
+    // SDK 见到 clientInformation 就不重注册，把文档地址当 client_id 发给 AS → "client_id is required"
+    await fs.writeFile(
+      path.join(homeDir, "test-server.json"),
+      JSON.stringify({
+        issuer: `${fakeOrigin}/mcp`,
+        clientInformation: { client_id: "https://opencode.ai/oauth/opencode/client.json" },
+      }),
+    );
+    const { provider, captured } = makeProvider({ clientMetadataUrl: "", probeCimd: true });
+    await provider.ensureAuthorized();
+    expect(registerRequests).toHaveLength(1);
+    expect(new URL(captured[0]).searchParams.get("client_id")).toBe("fake-client-id");
+    await provider.close();
+  });
+
+  it("预注册 clientId：跳过 DCR，授权 URL 用静态 client_id", async () => {
+    homeDir = await mkdtemp(path.join(tmpdir(), "meowcode-mcp-oauth-"));
+    const { provider, captured } = makeProvider({ clientId: "meowcode-pre-registered" });
+    await provider.ensureAuthorized();
+    expect(registerRequests).toHaveLength(0);
+    const authorizeUrl = new URL(captured[0]);
+    expect(authorizeUrl.searchParams.get("client_id")).toBe("meowcode-pre-registered");
+    expect((await provider.tokens())?.access_token).toBe("access-1");
+  });
+
+  it("transport 401 先 auth() 再 ensureAuthorized：浏览器只开一次，state/PKCE 不重置", async () => {
+    homeDir = await mkdtemp(path.join(tmpdir(), "meowcode-mcp-oauth-"));
+    const { provider, captured } = makeProvider();
+    // 工厂真序：先 prepare() 起回环，再让 transport 401 触发 auth()
+    await provider.prepare();
+    const first = await auth(provider, { serverUrl: `${fakeOrigin}/mcp` });
+    expect(first).toBe("REDIRECT");
+    expect(captured).toHaveLength(1);
+    const firstState = new URL(captured[0]).searchParams.get("state");
+    // MeowCode 工厂捕获 UnauthorizedError 后调 ensureAuthorized：不得再开浏览器 / 换 state
+    await provider.ensureAuthorized();
+    expect(captured).toHaveLength(1);
+    expect((await provider.tokens())?.access_token).toBe("access-1");
+    expect(firstState).toBeTruthy();
+    expect(provider.redirectUrl).toBeUndefined(); // 收尾已关回环
+  });
+
+  it("Windows 拉起浏览器不走命令行 shell：URL 里的 & 不会被当命令分隔符截断", () => {
+    // 真实故障：用 shell 的 start 打开时，& 之后的查询参数被吃掉，
+    // 浏览器只收到 ?response_type=code，授权页因此报 "client_id is required"。
+    const url =
+      "https://mcp.cloudflare.com/authorize?response_type=code&client_id=abc&code_challenge=xyz";
+    const { command, args } = browserOpenCommand("win32", url);
+    expect(command).toBe("rundll32");
+    expect(args.join(" ")).toContain("client_id=abc");
+    expect(args.join(" ")).toContain("code_challenge=xyz");
+  });
+
+  it("clientMetadataUrl 缺省关闭；显式或 HTTPS clientId 才启用 CIMD", () => {
+    homeDir = "";
+    const provider = new McpOAuthProvider({
+      serverName: "x",
+      serverUrl: "https://example.com/mcp",
+      homeDir: ".",
+    });
+    expect(provider.clientMetadataUrl).toBeUndefined();
+    const off = new McpOAuthProvider({
+      serverName: "x",
+      serverUrl: "https://example.com/mcp",
+      homeDir: ".",
+      clientMetadataUrl: "",
+    });
+    expect(off.clientMetadataUrl).toBeUndefined();
+    const explicit = new McpOAuthProvider({
+      serverName: "x",
+      serverUrl: "https://example.com/mcp",
+      homeDir: ".",
+      clientMetadataUrl: "https://example.com/client.json",
+    });
+    expect(explicit.clientMetadataUrl).toBe("https://example.com/client.json");
+    const httpsId = new McpOAuthProvider({
+      serverName: "x",
+      serverUrl: "https://example.com/mcp",
+      homeDir: ".",
+      clientId: "https://example.com/client.json",
+    });
+    expect(httpsId.clientMetadataUrl).toBe("https://example.com/client.json");
   });
 });

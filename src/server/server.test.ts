@@ -210,6 +210,45 @@ describe("memory config", () => {
   });
 });
 
+describe("provider fallback config", () => {
+  it("默认关闭：没有 env 时不切备用服务商", async () => {
+    const response = await fetch(`${baseUrl}/config/provider-fallback`, {
+      headers: { authorization: `Bearer ${TOKEN}` },
+    });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ enabled: false });
+  });
+
+  it("PUT switches the flag live and rejects non-boolean values", async () => {
+    const put = await fetch(`${baseUrl}/config/provider-fallback`, {
+      method: "PUT",
+      headers: { authorization: `Bearer ${TOKEN}`, "content-type": "application/json" },
+      body: JSON.stringify({ enabled: true }),
+    });
+    expect(put.status).toBe(200);
+    expect(await put.json()).toEqual({ enabled: true });
+
+    const get = await fetch(`${baseUrl}/config/provider-fallback`, {
+      headers: { authorization: `Bearer ${TOKEN}` },
+    });
+    expect(await get.json()).toEqual({ enabled: true });
+
+    const invalid = await fetch(`${baseUrl}/config/provider-fallback`, {
+      method: "PUT",
+      headers: { authorization: `Bearer ${TOKEN}`, "content-type": "application/json" },
+      body: JSON.stringify({ enabled: "yes" }),
+    });
+    expect(invalid.status).toBe(400);
+
+    // 复原，避免影响后续用例
+    await fetch(`${baseUrl}/config/provider-fallback`, {
+      method: "PUT",
+      headers: { authorization: `Bearer ${TOKEN}`, "content-type": "application/json" },
+      body: JSON.stringify({ enabled: false }),
+    });
+  });
+});
+
 describe("sandbox config", () => {
   it("GET returns the disabled defaults and platform support", async () => {
     const response = await fetch(`${baseUrl}/config/sandbox`, {

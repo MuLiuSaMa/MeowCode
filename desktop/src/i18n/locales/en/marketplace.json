@@ -29,9 +29,11 @@
   "platforms": {
     "gitee": "Gitee",
     "gitcode": "GitCode",
-    "gitcode-community": "GitCode Community"
+    "gitcode-community": "GitCode Community",
+    "undermind": "Undermind"
   },
   "actions": {
+    "aiAuthor": "Write with AI",
     "cancel": "Cancel",
     "close": "Close",
     "copied": "Copied",
@@ -91,10 +93,18 @@
     "project": "Project"
   },
   "mcp": {
+    "authorize": "Authorize",
+    "authorizeTitle": "Finish authorization in the browser; connects automatically when done",
+    "authorizing": "Waiting for authorization",
     "connecting": "Connecting",
+    "disabled": "Disabled",
     "envRequired": "Requires: {{names}}",
     "failed": "Failed",
     "failedDetail": "Failed · {{error}}",
+    "localBadge": "Local config",
+    "localNoTarget": "Local MCP server",
+    "needsAuth": "Authorization required",
+    "reauthorize": "Re-authorize",
     "ready": "Ready · {{count}} tools",
     "ready_one": "Ready · {{count}} tool",
     "ready_other": "Ready · {{count}} tools",
@@ -130,9 +140,10 @@
       "title": "Add an MCP server",
       "desc": "Add an MCP server manually: the config is written to ~/.meowcode/mcp.json and connects automatically after saving.",
       "idLabel": "Name (id) *",
-      "connTypeLabel": "Connection type",
-      "connStdio": "Local command (Stdio)",
-      "connHttp": "Remote URL (HTTP)",
+      "navLabel": "Connection mode",
+      "navStdio": "Local command",
+      "navHttp": "Remote URL",
+      "navJson": "JSON config",
       "commandLabel": "Command *",
       "argsLabel": "Arguments (one per line)",
       "urlLabel": "Server URL *",
@@ -141,7 +152,6 @@
       "envHint": "Supports ${VAR} references to MeowCode process environment variables.",
       "jsonLabel": "MCP config (JSON)",
       "jsonHint": "Accepts a {\"mcpServers\": {…}} wrapper (adds several at once) or a bare server object.",
-      "advancedToggle": "Advanced: paste JSON",
       "jsonInvalid": "Invalid JSON.",
       "jsonEmpty": "mcpServers contains no entries.",
       "jsonIdInvalid": "Invalid id \"{{id}}\": must start with a letter or digit and contain only letters, digits, dot, underscore, hyphen.",
@@ -151,7 +161,14 @@
       "headersInvalid": "Headers are not a valid JSON object.",
       "needCommand": "Please enter the launch command.",
       "needUrl": "Please enter the server URL.",
-      "toggleAria": "Toggle MCP {{id}}"
+      "toggleAria": "Toggle MCP {{id}}",
+      "authGroup": "Authentication",
+      "oauthToggle": "OAuth browser sign-in (remote MCP)",
+      "oauthHint": "The first connect opens a browser for sign-in; the token is stored locally in ~/.meowcode/mcp-oauth/ and never enters the chat.",
+      "oauthScopesLabel": "OAuth scopes (optional, space/comma separated)",
+      "oauthClientIdLabel": "OAuth client ID (optional, pre-registered)",
+      "oauthCimdLabel": "OAuth client metadata URL (optional)",
+      "oauthCimdHint": "Leave empty to use the official MeowCode CIMD document (meowcode.cn/.well-known/oauth-client). Set an empty string to disable the CIMD fallback."
     }
   },
   "body": {
@@ -271,8 +288,12 @@
     "desc": "The token is encrypted and stored on this machine and used to connect {{name}}. It is validated online before saving, then the server reconnects and loads its tools.",
     "empty": "Enter a token.",
     "hintFigma": "Create one in the Figma website under Settings → Security → Personal access tokens; read access to File content is enough.",
+    "hintLarkAppId": "App ID from the Feishu/Lark Open Platform developer console, e.g. cli_xxxx.",
+    "hintLarkSecret": "App Secret from the same app's detail page; both must belong to one custom app that is published with required scopes.",
     "hintLuckin": "Sign in at open.lkcoffee.com/mcp to create and copy a Token; used by the Luckin coffee-ordering MCP (order, track, pickup code).",
     "labelFigma": "Figma personal access token",
+    "labelLarkAppId": "Lark/Feishu App ID",
+    "labelLarkSecret": "Lark/Feishu App Secret",
     "labelLuckin": "Luckin Open Platform Token",
     "placeholder": "Paste access token",
     "title": "Set the {{name}} access token"

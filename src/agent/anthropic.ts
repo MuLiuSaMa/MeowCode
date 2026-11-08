@@ -402,6 +402,8 @@ export async function streamAnthropicMessages(options: {  url: string;
   reasoningEffort?: string;
   /** 显式思考预算（provider.thinkingBudget），覆盖按档位推导的值 */
   thinkingBudget?: number;
+  /** 会话亲和键：以 x-session-id 头发出，防止代理把两个会话的缓存串到一个分片 */
+  promptCacheKey?: string;
   system: AnthropicSystemBlock[];
   messages: Array<Record<string, unknown>>;
   tools: Array<Record<string, unknown>>;
@@ -427,6 +429,9 @@ export async function streamAnthropicMessages(options: {  url: string;
       // 空 apiKey = 用服务商原生鉴权（DSH 的约定），此时不带鉴权头；
       // authStyle 显式设置时按风格产出（Azure / Bedrock 网关代理 anthropic 协议时用）
       ...buildAuthHeaders(options.apiKey, options.authStyle, "x-api-key"),
+      // 会话亲和：原生端点靠 cache_control，兼容网关/代理还需要一个稳定键来粘住分片。
+      // 部分网关只认 header，body 没有等价字段，所以这里必须发。
+      ...(options.promptCacheKey ? { "x-session-id": options.promptCacheKey } : {}),
     },
     options.extraHeaders,
   );

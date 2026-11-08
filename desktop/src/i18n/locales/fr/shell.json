@@ -4,6 +4,7 @@
     "architecture": "Architecture de l’agent",
     "git": "Git",
     "plugins": "Place de marché",
+    "automation": "Automatisations",
     "settings": "Paramètres"
   },
   "update": {

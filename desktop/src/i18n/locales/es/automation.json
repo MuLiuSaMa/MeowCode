@@ -1,0 +1,99 @@
+{
+  "nav": {
+    "heading": "Automatización",
+    "subtitle": "La IA ejecuta tareas en un espacio de trabajo según un horario",
+    "ariaLabel": "Navegación de automatización"
+  },
+  "page": {
+    "empty": "Aún no hay automatizaciones. Crea una y deja que la IA trabaje según el horario.",
+    "loading": "Cargando…",
+    "nextRun": "Próxima ejecución {{time}}",
+    "noNextRun": "Desactivada",
+    "lastRun": "Última ejecución {{status}} · {{time}}",
+    "neverRun": "Nunca se ejecutó",
+    "runs": "{{count}} ejecuciones",
+    "cwd": "Espacio de trabajo: {{cwd}}"
+  },
+  "schedule": {
+    "interval": "Cada {{minutes}} min",
+    "hours": "Cada {{hours}} h",
+    "daily": "Diario a las {{time}}",
+    "weekly": "{{weekday}} a las {{time}}",
+    "monthly": "El día {{day}} de cada mes a las {{time}}",
+    "cron": "Cron: {{expr}}",
+    "once": "Una vez a las {{time}}"
+  },
+  "weekday": {
+    "0": "domingo",
+    "1": "lunes",
+    "2": "martes",
+    "3": "miércoles",
+    "4": "jueves",
+    "5": "viernes",
+    "6": "sábado"
+  },
+  "status": {
+    "started": "en curso",
+    "ok": "completada",
+    "error": "fallida",
+    "missed": "perdida",
+    "disabled": "Desactivada"
+  },
+  "actions": {
+    "create": "Nueva tarea",
+    "refresh": "Actualizar",
+    "runNow": "Ejecutar ahora",
+    "running": "Iniciando…",
+    "edit": "Editar",
+    "delete": "Eliminar",
+    "cancel": "Cancelar",
+    "save": "Guardar",
+    "saving": "Guardando…",
+    "openSession": "Abrir sesión",
+      "close": "Cerrar",
+    "enable": "Activar tarea",
+    "history": "Historial de ejecuciones"
+  },
+  "deleteDialog": {
+    "title": "Eliminar automatización",
+    "desc": "«{{title}}» se eliminará junto con su historial de ejecuciones. Esta acción no se puede deshacer."
+  },
+  "history": {
+    "title": "Historial de ejecuciones — {{title}}",
+    "empty": "Aún no hay ejecuciones.",
+    "status": "Estado",
+    "session": "Sesión"
+  },
+  "form": {
+    "createTitle": "Nueva automatización",
+    "editTitle": "Editar automatización",
+    "fieldTitle": "Nombre de la tarea",
+    "titlePlaceholder": "ej. Comprobar actualizaciones de dependencias cada día a las 9",
+    "fieldWorkspace": "Espacio de trabajo destino",
+    "fieldPrompt": "Contenido",
+    "promptPlaceholder": "Qué debe hacer la IA al ejecutarse la tarea. Cuanto más específico, mejor.",
+    "fieldSchedule": "Frecuencia",
+    "freq": {
+      "interval": "Intervalo",
+      "daily": "Diario",
+      "weekly": "Semanal",
+      "monthly": "Mensual",
+      "once": "Una vez",
+      "cron": "Cron"
+    },
+    "intervalMinutes": "Intervalo (minutos)",
+    "time": "Hora",
+    "weekday": "Día de la semana",
+    "dayOfMonth": "Día del mes",
+    "onceAt": "Ejecutar a las",
+      "today": "Hoy",
+    "advanced": "Ajustes avanzados",
+    "fieldCron": "Expresión cron",
+    "cronPlaceholder": "ej. 0 9 * * 1-5 (zona horaria local)",
+    "fieldMaxRuns": "Ejecuciones máximas",
+    "maxRunsPlaceholder": "Vacío = sin límite",
+    "errorRequired": "Completa los campos obligatorios",
+    "invalidCron": "Expresión cron no válida",
+    "saveFailed": "No se pudo guardar"
+  }
+}

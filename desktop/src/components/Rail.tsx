@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
+  LuAlarmClock,
   LuBlocks,
   LuCircleAlert,
   LuDownload,
@@ -30,15 +31,17 @@ export function Rail({
   onOpenPlugins,
   onOpenSettings,
   onOpenArchitecture,
+  onOpenAutomation,
   update = null,
   onUpdateClick,
 }: {
-  active?: "home" | "git" | "settings" | "plugins" | "architecture";
+  active?: "home" | "git" | "settings" | "plugins" | "architecture" | "automation";
   onHome: () => void;
   onOpenGit: () => void;
   onOpenPlugins: () => void;
   onOpenSettings: () => void;
   onOpenArchitecture: () => void;
+  onOpenAutomation: () => void;
   /** 静默下载更新的状态：null 时左下角不渲染任何东西 */
   update?: { status: RailUpdateStatus; percent: number } | null;
   /** 点击图标：done=重启安装 error=打开更新弹窗重试；downloading 时无需响应 */
@@ -89,6 +92,16 @@ export function Rail({
         onClick={onOpenPlugins}
       >
         <LuBlocks size={18} />
+      </button>
+      <button
+        type="button"
+        className="mc-rail__btn"
+        data-active={active === "automation"}
+        aria-label={t("rail.automation")}
+        title={t("rail.automation")}
+        onClick={onOpenAutomation}
+      >
+        <LuAlarmClock size={18} />
       </button>
       <button
         type="button"

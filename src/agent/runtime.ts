@@ -41,7 +41,14 @@ import { canReplayNativeCompaction, nativeCompactionMode, requestNativeCompactio
 import { createWebSearchBackend, WEB_SEARCH_MAX_RESULTS, type WebSearchResult } from "./web-search.js";
 import { fetchWebPage, type WebFetchOutcome } from "./web-fetch.js";
 import { multiEditPaths, readMultiEditGroups } from "./multi-edit.js";
-import { displayPath, isWithinWorkspace, resolveToolPath, resolveWithinWorkspace } from "./paths.js";
+import {
+  displayPath,
+  isWithinAppDataRoot,
+  isWithinWorkspace,
+  resolveToolPath,
+  resolveWithinWorkspace,
+  setAppDataRoot,
+} from "./paths.js";
 import { captureVersion } from "./read-state.js";
 import { LoopGuard } from "./loop-guard.js";
 import { SessionStore, listSessions, sessionFileName, type SessionSummary } from "./session-store.js";
@@ -89,9 +96,9 @@ import { streamChatCompletion, utilityProvider } from "./provider.js";
 import {
   sessionAffinityKey,
   resolveCachePlan,
-  supportsChatPromptCacheKey,
+  supportsLineageAffinity,
 } from "./cache-profile.js";
-import { classifyCache, type CacheState } from "./cache-diagnostics.js";
+import { classifyCache, TTL_MS, type CacheState } from "./cache-diagnostics.js";
 import { createToolCatalog, reconcileToolCatalog, type ToolCatalog } from "./tool-catalog.js";
 import { failoverReason, planFallbacks } from "./provider-fallback.js";
 import { boostEffort } from "./thinking-budget.js";
@@ -436,8 +443,8 @@ function validateToolArguments(
  * 工具审批模式（粒度由粗到细）：
  *  - "read-only"：只读，写/改/命令一律拒绝
  *  - "ask"：每次写/改/命令都弹审批（旧版 "default" 的语义）
- *  - "auto"：可写根（工作区）内的写/改、常规开发命令自动批准；凭据读取、下载执行、
- *    系统设置、发布部署、破坏性 git、工作区外路径与其它高危特征仍弹审批（启发式护栏）
+ *  - "auto"：可写根（工作区 + <home>/.meowcode）内的写/改、常规开发命令自动批准；
+ *    凭据读取、下载执行、系统设置、发布部署、破坏性 git、其它工作区外路径与高危特征仍弹审批（启发式护栏）
  *  - "full"：全部工具自动放行，并允许工作区外的绝对路径
  * 审批模式按会话持久化；旧会话里存的 "default" 读出来归一到 "ask"。
  */
@@ -552,6 +559,7 @@ function planModeRejection(tool: string): string {
 
 /**
  * codex 式「可写根」判定：目标路径经 realpath 后仍落在工作区内才算可自动批准。
+ * <home>/.meowcode（应用自己的记忆/技能/插件数据）与工作区同属可信根。
  * 返回第一个越界路径；全部在区内返回 null；参数里没有路径返回空串。
  * 用 resolveWithinWorkspace 而非字符串前缀比较，工作区内指向外部的软链接/junction 会被识别。
  */
@@ -566,6 +574,7 @@ async function writableRootViolation(
     try {
       await resolveWithinWorkspace(workspace, target);
     } catch {
+      if (isWithinAppDataRoot(target)) continue;
       return target;
     }
   }
@@ -613,15 +622,15 @@ const COMPACTION_PROACTIVE_RATIO = 0.85;
 const COMPACTION_QUALITY_WINDOW_TURNS = 5;
 
 /**
- * 缓存保活间隔：Anthropic 5m TTL 过期前重放一次前缀（295s 留 5s 余量）。
+ * 缓存保活间隔：Anthropic 5m TTL 过期前重放一次前缀（290s 留 10s 余量）。
  * 参考 aider 的 warm_cache（295s 周期、max_tokens=1）；本地六个参考项目都没有
  * 保活实现，只有 hermes 用「按请求来源选 TTL」替代。
  */
 const CACHE_KEEPALIVE_DELAY_MS = 290_000;
 /**
- * 连续保活上限：约 20 分钟空档覆盖。
- * 18 次保活 ≈ 1.8 倍前缀的 cache-read，长空档反而比让它过期后重写一次更贵；
- * Codex 也不做定时重放。超过 20 分钟允许下一轮重新写缓存。
+ * 连续保活上限：4 次 ≈ 19 分钟空档覆盖。
+ * 每次保活都要读回整段前缀，次数太多反而比让它过期后重写一次更贵；
+ * Codex 也不做定时重放。超过覆盖期允许下一轮重新写缓存。
  */
 const CACHE_KEEPALIVE_MAX_PINGS = 4;
 
@@ -833,6 +842,14 @@ function readLearningEnvDefault(): boolean {  const raw = process.env.MEOWCODE_S
   return normalized === "1" || normalized === "true" || normalized === "on";
 }
 
+/** 供应商故障转移开关的 env 初值：**默认关闭**，设置里显式开启才切备用服务商。 */
+function readProviderFallbackEnvDefault(): boolean {
+  const raw = process.env.MEOWCODE_PROVIDER_FALLBACK;
+  if (raw === undefined || raw.trim() === "") return false;
+  const normalized = raw.trim().toLowerCase();
+  return normalized === "1" || normalized === "true" || normalized === "on";
+}
+
 type ApprovalBy = "user" | "hook" | "abort";
 
 type ApprovalHandle = {
@@ -1028,6 +1045,8 @@ export class AgentRuntime {
   private instructions: string | undefined;
   /** AGENTS.md / CLAUDE.md 读取开关：设置页切换后实时生效 */
   private instructionSettings: InstructionSettings = {};
+  /** 内置技能根（server 注入；测试/嵌入场景缺省不加载随包技能） */
+  private readonly builtinSkillsDir?: string;
   /** instructions 里技能索引的大小与数量：上下文来源归因用 */
   private instructionSkills: { tokens: number; count: number } = { tokens: 0, count: 0 };
   /** 桌面端内嵌浏览器桥；无桌面环境（测试 / CLI）时为 null，浏览器工具不注册 */
@@ -1070,6 +1089,8 @@ export class AgentRuntime {
   private turnFileChanges = new Set<string>();
   /** 当前回合改动的行数统计（按路径聚合）：回合末汇总卡片数据源 */
   private turnFileStats = new Map<string, TurnFileChangeStat>();
+  /** 当前回合主对话累计 Token：turn_complete 带给前端「使用 Token」展示 */
+  private turnUsageTotals = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
   /** 文件快照开关与参数（会话回滚）；关闭时所有打点 no-op，checkpoint 不带 snapshot */
   private readonly snapshotOptions: {
     enabled: boolean;
@@ -1104,6 +1125,8 @@ export class AgentRuntime {
   }
   /** 用户可见回复的语色：server 的 /config/speech-style 可实时切换；子 Agent 不生效 */
   speechStyle: SpeechStyle = "normal";
+  /** 供应商故障转移：默认关闭；server 的 /config/provider-fallback 可实时切换 */
+  providerFallbackEnabled = false;
   /** 蒸馏一次只跑一个：请求在途时的新增量并入下回合（游标已推进到当次快照末尾） */
   private memoryExtractionBusy = false;
   /** 蒸馏成功后的下回合通知（绑定会话：切换会话即丢弃，避免跨会话误注入） */
@@ -1186,6 +1209,8 @@ export class AgentRuntime {
     allowedTools?: Iterable<string>;
     injectInstructions?: boolean;
     instructionSettings?: InstructionSettings;
+    /** 内置技能根：server 传入 MEOWCODE_MARKETPLACE_DIR/builtin-skills；缺省不加载 */
+    builtinSkillsDir?: string;
     /**
      * 实验开关（默认全关）：
      * - midstreamToolExec = 流中参数闭合即提前执行只读工具
@@ -1216,6 +1241,8 @@ export class AgentRuntime {
     snapshots?: { enabled?: boolean; maxBlobBytes?: number; keepCheckpoints?: number };
     /** 自我学习（技能/经验/用户模型）：缺省开启；server 从设置/env 传入 */
     learning?: boolean;
+    /** 供应商故障转移：缺省按 MEOWCODE_PROVIDER_FALLBACK，默认关闭；server 可实时切换 */
+    providerFallback?: boolean;
     /** 用户可见回复的语色：缺省普通；server 从设置/env 传入并支持热更新 */
     speechStyle?: SpeechStyle;
     /**
@@ -1239,6 +1266,8 @@ export class AgentRuntime {
     this.providerId = options.providerId ?? options.providers[0]?.id ?? "";
     this.sessionsDir = options.sessionsDir;
     this.homeDir = options.homeDir ?? os.homedir();
+    // 路径守卫和应用保持一致的可信根：user 记忆/技能/插件都在 <home>/.meowcode
+    setAppDataRoot(path.join(this.homeDir, ".meowcode"));
     this.browserHost = options.browserHost ?? null;
     this.enableTaskTool = options.enableTaskTool ?? true;
     this.sessionPace = options.sessionPace ?? "interactive";
@@ -1247,6 +1276,7 @@ export class AgentRuntime {
     this.allowedTools = options.allowedTools ? new Set(options.allowedTools) : null;
     this.injectInstructions = options.injectInstructions ?? true;
     this.instructionSettings = options.instructionSettings ?? {};
+    this.builtinSkillsDir = options.builtinSkillsDir;
     this.experimental = options.experimental ?? null;
     this.plugins = options.plugins ?? null;
     this.hookScope = options.hookScope ?? null;
@@ -1271,6 +1301,7 @@ export class AgentRuntime {
       onProgress: (event) => this.emit({ type: "learning_progress", ...event }),
     });
     this.speechStyle = normalizeSpeechStyle(options.speechStyle ?? readSpeechStyleFromEnv());
+    this.providerFallbackEnabled = options.providerFallback ?? readProviderFallbackEnvDefault();
     this.governance = options.governance ?? "goal";
     this.onFileChange = options.onFileChange;
     this.traceRecorder = new TraceRecorder(
@@ -2947,8 +2978,9 @@ export class AgentRuntime {
   }
 
   /**
-   * 回合结束后预测用户下一句：复用主对话前缀 + 合成指令，模型只回一句短建议。
-   * 禁止工具调用，但不改 provider/tools 参数，尽量命中主请求的缓存前缀。
+   * 回合结束后预测用户下一句：独立提示词 + 最近几条对话摘录（裁 1200 字），
+   * 不复用主对话前缀——避免主系统提示词把模型带回「助手回复」模式，输入也更小。
+   * 一次性形状（无工具、单 user 轮）由 isOneShotRequest 抑制缓存写入。
    */
   async suggestNextPrompt(): Promise<string | null> {
     const session = this.currentSession;
@@ -3023,10 +3055,10 @@ export class AgentRuntime {
    *  - pace：会话节奏，`cacheTtl: "auto"` 的判据（人驱动 vs 子代理/批量）。
    *    **必须在会话开始就定死且整个会话恒定**：TTL 是断点字段的一部分，
    *    中途改会让那个块及之后的整段前缀失配。
-   *  - promptCacheKey：OpenAI 系的亲和值，由 sessionId + 用途派生。
-   * 亲和键注入 openai-responses（全端点）与 chat-completions 的官方主机——
-   * 第三方网关对未知字段会 400，chat 路径由协议层的 omit 降级记忆兜住
-   * （400 一次即永久跳过该字段）。DeepSeek 等 OpenAI 系自带 IP/前缀分片，不注入。
+   *  - promptCacheKey：会话亲和值，由 sessionId + 用途派生。
+   * 三种协议都盖：Responses 与 Anthropic 用它发 `x-session-id`（防止代理把两个
+   * 会话的缓存串到一个分片，hermes 实测未钉住时 collapse 率 9.8%）；chat 的 body
+   * 字段仍由协议层按端点门禁（只发官方主机），第三方网关只拿到头，不会吃 400。
    */
   private applyCachePolicy(
     provider: ProviderConfig,
@@ -3034,9 +3066,15 @@ export class AgentRuntime {
     purpose = "main",
   ): ProviderConfig {
     const paced: ProviderConfig = { ...provider, pace: this.sessionPace };
-    const protocol = resolveCachePlan(provider).protocol;
-    if (protocol !== "openai-responses" && !supportsChatPromptCacheKey(provider)) return paced;
-    return { ...paced, promptCacheKey: sessionAffinityKey(sessionId, purpose) };
+    // 血缘亲和：fork 继承来源键、子 Agent 用父会话键（仅内容寻址的官方 OpenAI
+    // 端点）。切会话窗口里 currentSession 已指向新会话，用 id 比对避免把 A 的键
+    // 盖到 B 的请求上。已知局限：fork 只复制 messages 不复制 tool_digest，父会话
+    // 被冷 resume 剪枝过时 fork 首次重放会 miss 一次；内容寻址路由下无害。
+    const lineage =
+      supportsLineageAffinity(provider) && this.currentSession?.id === sessionId
+        ? this.currentSession.affinityRootId
+        : undefined;
+    return { ...paced, promptCacheKey: sessionAffinityKey(lineage ?? sessionId, purpose) };
   }
 
   async prompt(
@@ -3203,6 +3241,7 @@ export class AgentRuntime {
     this.lastErrorMessage = null;
     const turnId = randomUUID();
     this.currentTurnId = turnId;
+    const turnStartedAtMs = Date.now();
     this.partialRound = 0;
     this.partialDraft = null;
     this.subagentsStartedThisTurn = 0;
@@ -3210,6 +3249,7 @@ export class AgentRuntime {
     this.lspFeedbackThisTurn = 0;
     this.turnFileChanges.clear();
     this.turnFileStats.clear();
+    this.turnUsageTotals = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
     // 学习轨迹：本回合的工具/命令成败，回合末交给学习层做门禁与归因
     this.learningTrace = createTurnTrace();
     this.learningTrace.userTexts.push(text);
@@ -3483,6 +3523,23 @@ export class AgentRuntime {
         sessionId: session.id,
         status,
         turnId,
+        // 本回合总耗时（墙钟，含工具调用与续命段）：前端在该轮末尾定格显示
+        durationMs: Date.now() - turnStartedAtMs,
+        endedAt: new Date().toISOString(),
+        ...(() => {
+          const totals = this.turnUsageTotals;
+          return totals.input || totals.output || totals.cacheRead || totals.cacheWrite
+            ? {
+                turnUsage: {
+                  inputTokens: totals.input,
+                  outputTokens: totals.output,
+                  cacheReadTokens: totals.cacheRead,
+                  cacheWriteTokens: totals.cacheWrite,
+                  totalTokens: totals.input + totals.output,
+                },
+              }
+            : {};
+        })(),
         // 有文件改动才带：前端据此在本轮末尾显示「已编辑 N 个文件」卡片
         ...(turnFiles.length ? { files: turnFiles } : {}),
         ...(turnCheckpointId ? { checkpointId: turnCheckpointId } : {}),
@@ -3529,6 +3586,50 @@ export class AgentRuntime {
       }
     }
     return shrinkToolOutputs(messages, this.shrinkSpills.size ? { spilled: this.shrinkSpills } : {});
+  }
+
+  /**
+   * 冷 resume 预剪枝：空闲超过缓存 TTL 后，服务端前缀确定已过期，重放旧工具输出
+   * 只会按全价写一遍。既然这一段无论如何都要按全价重写，就先用零模型的头尾摘录
+   * 把它压小（cc-haha timeBasedMCConfig 同思路）。
+   *
+   * 必须持久化（tool_digest 通道），否则只省下本回合、下回合又按全量历史冷写一次，
+   * 净亏。已摘录的内容短到不再可剪，与溢出阶梯 stage 1 天然幂等。
+   *
+   * 取舍：长空闲后 transcript 里旧工具结果是机械摘录，不再是原文；完整内容仍在
+   * JSONL 与 spill locator 里，可随时 read_file 找回。回滚 = 删 runTurn 里的调用。
+   */
+  private async maybeShrinkColdResume(session: SessionStore, provider: ProviderConfig): Promise<void> {
+    // 只有 Anthropic 系（含 qwen/网关画像）能证明「TTL 过了缓存必死」；
+    // OpenAI/DeepSeek 的服务端缓存 TTL 不可证伪，剪了可能白白自毁热前缀。
+    if ((provider.protocol ?? "openai-chat-completions") !== "anthropic-messages") return;
+    const plan = resolveCachePlan(provider);
+    if (!plan.enabled) return;
+    const meta = this.providerRequestMeta.get(provider.id);
+    // 首次请求没有「上次触缓存」的时间点；保活成功的 ping 会刷新 meta.at，
+    // 所以被保热的缓存不会在这里误判为已过期。
+    if (!meta || Date.now() - meta.at <= TTL_MS[plan.ttl]) return;
+    const projected = projectForMainPath(session.effectiveMessages);
+    const shrunk = await this.shrinkWithSpill(session, projected);
+    if (!shrunk.changed) return;
+    // shrinkToolOutputs 保证等长（不等长会放弃改写），按下标对齐即可
+    const digests: Array<{ callId: string; digest: string }> = [];
+    for (let index = 0; index < projected.length; index += 1) {
+      const before = projected[index];
+      const after = shrunk.messages[index];
+      if (before.role !== "tool" || !before.tool_call_id) continue;
+      if (after.content !== before.content) {
+        digests.push({ callId: before.tool_call_id, digest: after.content ?? "" });
+      }
+    }
+    if (!digests.length) return;
+    await session.appendToolDigests(digests);
+    await session.flush().catch(() => undefined);
+    // 纪要改变了后续请求的组成，真实用量锚点随之失效
+    this.usageAnchor = null;
+    console.error(
+      `[meowcode] cold resume: shrunk ${digests.length} old tool outputs after cache TTL expiry`,
+    );
   }
 
   /** 若之前因后台子 Agent 暂缓了标题生成，现在没有 live 子 Agent 时补上。 */
@@ -3950,6 +4051,8 @@ export class AgentRuntime {
     await this.refreshInstructions(session);
     await this.ensurePlanContext(session);
     await this.ensureModeContext(session);
+    // 缓存确定已过期（空闲 > TTL）时先做免费剪枝，把冷重写体积直接压小
+    await this.maybeShrinkColdResume(session, provider);
     // 每回合重置循环检测：跨回合的相同调用多是用户再次要求，不算循环
     this.resetLoopState(session.id);
     // 薄循环/厚宿主：轮次迭代在 agent-loop.ts，这里把 runtime 能力按接口交出去
@@ -4058,6 +4161,8 @@ export class AgentRuntime {
        * 返回 null = 不切，让循环把原错误抛给用户。
        */
       fallbackProvider: (error) => {
+        // 设置里的「供应商故障转移」默认关闭：关闭时不切，原错误直接抛给用户
+        if (!this.providerFallbackEnabled) return null;
         const reason = failoverReason(error);
         if (!reason) return null;
         const chain = planFallbacks(
@@ -4281,7 +4386,12 @@ export class AgentRuntime {
         );
       },
 
-      recordUsage: async (usage) => {
+      recordUsage: async (usage, meta) => {
+        // 回合级汇总：只累计主对话（本回调仅处理 chat 源），turn_complete 带给前端
+        if (usage.inputTokens) this.turnUsageTotals.input += usage.inputTokens;
+        if (usage.outputTokens) this.turnUsageTotals.output += usage.outputTokens;
+        if (usage.cacheReadTokens) this.turnUsageTotals.cacheRead += usage.cacheReadTokens;
+        if (usage.cacheWriteTokens) this.turnUsageTotals.cacheWrite += usage.cacheWriteTokens;
         if (usage.inputTokens && this.currentSession?.id === session.id) {
           // 后台会话的用量不能覆盖当前正在看的会话的上下文占用。
           // 锚点覆盖到「刚 append 的assistant 回复」为止：之后新增的工具结果/回合
@@ -4300,6 +4410,7 @@ export class AgentRuntime {
           await session.appendUsage({
             ...usage,
             source: "chat",
+            ...(meta?.tokensPerSecond != null ? { tokensPerSecond: meta.tokensPerSecond } : {}),
             ...(this.currentTurnId ? { turnId: this.currentTurnId } : {}),
             // 用量记在实际应答的那一家头上（切链后与用户配置的 provider 可能不同）
             providerId: turnProvider.id,
@@ -5079,6 +5190,8 @@ export class AgentRuntime {
       providerId: params.providerId,
       sessionsDir: path.join(this.sessionsDir, "subagents", params.parentSessionId),
       workspace: params.cwd,
+      // 与父 Agent 同一 home：记忆/技能索引与路径守卫的可信根必须一致
+      homeDir: this.homeDir,
       browserHost: this.browserHost,
       // 嵌套深度与 trace 总配额同时限制；只读角色没有 task（白名单不含），不会走到这里
       enableTaskTool:
@@ -6622,6 +6735,13 @@ export class AgentRuntime {
         toolCacheAnchor: this.toolCacheAnchor(),
         signal: this.keepaliveAbort.signal,
         onDelta: () => undefined,
+        // 只 log 不落盘不广播（命中率口径保持干净），但必须能验证 ping 真的读回：
+        // cc-haha 实测 fork 参数差异曾让命中率 92.7%→61%，read=0 就说明保活在白写。
+        onUsage: (usage) => {
+          console.error(
+            `[meowcode] cache keepalive: read=${usage.cacheReadTokens ?? 0} write=${usage.cacheWriteTokens ?? 0} input=${usage.inputTokens}`,
+          );
+        },
       });
     } catch {
       // 端点失败（网络/鉴权/限流）就停止续保：下次真实请求会重新计时
@@ -6629,6 +6749,12 @@ export class AgentRuntime {
       return;
     } finally {
       this.keepaliveAbort = null;
+    }
+    // 成功 ping 就是一次真实触缓存：空闲诊断从它起算，
+    // 否则冷 resume 判定会把 ping 保热的缓存误判为已过期。
+    const meta = this.providerRequestMeta.get(provider.id);
+    if (meta && this.currentSession === session) {
+      this.providerRequestMeta.set(provider.id, { key: meta.key, at: Date.now() });
     }
     if (this.keepalivePingsLeft > 0 && this.currentSession === session && !this.turnAbort) {
       this.keepaliveTimer = setTimeout(
@@ -8169,11 +8295,16 @@ export class AgentRuntime {
     if (this.instructionsSessionId === session.id) return;
     this.instructionsSessionId = session.id;
     const detail = this.injectInstructions
-      ? await loadWorkspaceInstructionsDetail(session.cwd, this.homeDir, {
-          ...this.instructionSettings,
-          // 记忆总开关优先：关闭时不注入记忆索引，但 AGENTS.md / 规则照常
-          includeMemory: this.memoryEnabled,
-        })
+      ? await loadWorkspaceInstructionsDetail(
+          session.cwd,
+          this.homeDir,
+          {
+            ...this.instructionSettings,
+            // 记忆总开关优先：关闭时不注入记忆索引，但 AGENTS.md / 规则照常
+            includeMemory: this.memoryEnabled,
+          },
+          this.builtinSkillsDir,
+        )
       : undefined;
     this.instructions = detail?.text;
     this.instructionSkills = {

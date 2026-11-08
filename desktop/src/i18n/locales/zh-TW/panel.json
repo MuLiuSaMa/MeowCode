@@ -62,7 +62,10 @@
       "miss": "{{base}}（未命中）",
       "hitting": "{{base}}（命中中）"
     },
-    "tokenValue": "{{value}} tok"
+    "tokenValue": "{{value}} tok",
+    "sessionTotal": "工作階段累計",
+    "tokensTitle": "Token 組成",
+    "liveCalls": "即時 · 最近 {{count}} 次呼叫"
   },
   "subagent": {
     "fallbackTitle": "子 Agent",

@@ -6,6 +6,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { hasDynamicTool } from "../agent/tools.js";
 import { PluginRegistry } from "./registry.js";
 import { discoverPlugins, loadPlugins } from "./loader.js";
+import type { ExtensionHost } from "./types.js";
 
 const tempDirs: string[] = [];
 
@@ -303,5 +304,70 @@ describe("插件 UI 面板探测", () => {
     const { descriptors } = await loadPlugins({ workspace, homeDir: root, registry });
 
     expect(descriptors.find((item) => item.id === "dir-only")?.ui).toBeUndefined();
+  });
+});
+
+describe("插件头注释与宿主注入", () => {
+  it("读文件头 @meowcode name/description，列表显示中文名", async () => {
+    const home = await makeTempRoot();
+    const pluginsDir = path.join(home, ".meowcode", "plugins");
+    await fs.mkdir(pluginsDir, { recursive: true });
+    await fs.writeFile(
+      path.join(pluginsDir, "branded.ts"),
+      "// @meowcode name: 字数统计\n// @meowcode description: 统计文本字数\nexport default () => {}",
+    );
+    const registry = new PluginRegistry();
+    const workspace = await makeTempRoot();
+    const { descriptors } = await loadPlugins({ workspace, homeDir: home, registry });
+
+    const descriptor = descriptors.find((item) => item.id === "branded");
+    expect(descriptor?.displayName).toBe("字数统计");
+    expect(descriptor?.description).toBe("统计文本字数");
+    registry.unregisterAll();
+  });
+
+  it("host 能力通过 api.host 注入给插件", async () => {
+    const home = await makeTempRoot();
+    const pluginsDir = path.join(home, ".meowcode", "plugins");
+    await fs.mkdir(pluginsDir, { recursive: true });
+    await fs.writeFile(
+      path.join(pluginsDir, "needs-host.ts"),
+      "export default (api) => { if (!api.host) throw new Error('missing host'); api.registerTool({ name: 'host_probe', description: 'x', parameters: { type: 'object', properties: {} }, execute: async () => ({ ok: true, output: '1' }) }); }",
+    );
+    const registry = new PluginRegistry();
+    const workspace = await makeTempRoot();
+    const host: ExtensionHost = {
+      createSkill: async () => ({ ok: true as const, id: "x", path: "x" }),
+      createPlugin: async () => ({ ok: true as const, id: "x", path: "x" }),
+    };
+    const { descriptors } = await loadPlugins({ workspace, homeDir: home, registry, host });
+
+    const descriptor = descriptors.find((item) => item.id === "needs-host");
+    expect(descriptor?.error).toBeUndefined();
+    expect(descriptor?.toolNames).toContain("host_probe");
+    registry.unregisterAll();
+  });
+});
+
+describe("内置创作插件", () => {
+  it("extension-authoring 注入 host 后注册 create_skill / create_plugin", async () => {
+    const saved = process.env.MEOWCODE_BUILTIN_PLUGINS_DIR;
+    delete process.env.MEOWCODE_BUILTIN_PLUGINS_DIR;
+    try {
+      const workspace = await makeTempRoot();
+      const registry = new PluginRegistry();
+      const host: ExtensionHost = {
+        createSkill: async () => ({ ok: true as const, id: "x", path: "x" }),
+        createPlugin: async () => ({ ok: true as const, id: "x", path: "x" }),
+      };
+      const { descriptors } = await loadPlugins({ workspace, homeDir: workspace, registry, host });
+
+      const descriptor = descriptors.find((item) => item.id === "extension-authoring");
+      expect(descriptor?.error).toBeUndefined();
+      expect(descriptor?.toolNames).toEqual(expect.arrayContaining(["create_skill", "create_plugin"]));
+      registry.unregisterAll();
+    } finally {
+      if (saved !== undefined) process.env.MEOWCODE_BUILTIN_PLUGINS_DIR = saved;
+    }
   });
 });

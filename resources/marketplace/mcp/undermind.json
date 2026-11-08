@@ -1,0 +1,10 @@
+{
+  "description": "Undermind 官方远程 MCP：深度文献综述、论文检索、PDF 全文问答与研究工作区。点「连接 Undermind」走浏览器授权，token 存本机；深度检索单次可达数分钟，超时已放宽到 10 分钟。",
+  "server": {
+    "url": "https://mcp.undermind.ai/mcp",
+    "timeoutMs": 600000,
+    "headers": {
+      "Authorization": "Bearer ${MEOWCODE_UNDERMIND_TOKEN}"
+    }
+  }
+}

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { LuImport, LuRefreshCw, LuUpload } from "react-icons/lu";
+import { LuImport, LuRefreshCw, LuSparkles, LuUpload } from "react-icons/lu";
 import {
   installMarketplaceItem,
   installCommunityMarketplaceItem,
@@ -9,12 +9,17 @@ import {
   listCommunityMarketplace,
   listThirdPartySkills,
   listPlugins,
+  listInstalledMcp,
+  removeLocalMcp,
   setPluginsState,
   uninstallMarketplaceItem,
+  authorizeMcp,
+  revokeMcp,
   MCP_ENV_PLATFORMS,
   type MarketplaceEntryLike,
   type OauthPlatform,
   type OauthPlatformStatus,
+  type InstalledMcpEntry,
   type PluginsOverview,
   type PluginDescriptor,
   type ThirdPartySource,
@@ -25,6 +30,7 @@ import { ManualImportDialog } from "./ManualImportDialog";
 import { ManualMcpDialog } from "./ManualMcpDialog";
 import { ManualTokenDialog } from "./ManualTokenDialog";
 import { MinePage } from "./MinePage";
+import { localMcpEntries as localMcpEntryList } from "./local-mcp";
 import { PlatformOauthDialog } from "./PlatformOauthDialog";
 import { Button } from "../ui/Button";
 import { Dialog } from "../ui/Dialog";
@@ -42,16 +48,16 @@ import "./marketplace.css";
 
 const TAB_TYPE = { plugins: "plugin", skills: "skill", mcp: "mcp" } as const;
 
-/** 内置插件不在市场索引里：从 descriptor 合成一个市场条目，详情页照常渲染 */
-function builtinEntry(descriptor: PluginDescriptor): MarketplaceEntryLike {
+/** 已加载插件不在市场索引里（内置/手动/自建）：从 descriptor 合成条目，详情页照常渲染 */
+function descriptorEntry(descriptor: PluginDescriptor): MarketplaceEntryLike {
   return {
     id: descriptor.id,
     type: "plugin",
     name: descriptor.displayName ?? descriptor.id,
     description: descriptor.description ?? "",
-    category: categoryValue("builtin") ?? "",
-    source: "builtin",
-    tags: ["claude-code", "hooks"],
+    category: "",
+    source: descriptor.source,
+    tags: [],
     version: "1.0",
     installed: true,
   };
@@ -73,16 +79,21 @@ function oauthPlatformOf(entry: MarketplaceEntryLike): OauthPlatform | undefined
 export function MarketplaceBody({
   tab,
   onUseSkill,
+  onAuthorSkill,
   onOpenPluginPanel,
 }: {
   tab: MarketTab;
   onUseSkill: (entry: MarketplaceEntryLike, iconUrl?: string) => void;
+  /** 「AI 帮我写」：新建对话并引用技能与插件创作技能 */
+  onAuthorSkill?: () => void;
   /** 打开插件自带的面板页签（仅带 ui/index.html 的插件） */
   onOpenPluginPanel?: (pluginId: string, title: string) => void;
 }) {
   const { t } = useTranslation("marketplace");
   const [channel, setChannel] = useState<MarketChannel>("official");
   const [items, setItems] = useState<MarketplaceEntryLike[] | null>(null);
+  /** 本机已安装的全部 MCP（索引之外的那些也要进「已安装」分区） */
+  const [installedMcp, setInstalledMcp] = useState<InstalledMcpEntry[]>([]);
   const [icons, setIcons] = useState<Record<string, string>>({});
   const [overview, setOverview] = useState<PluginsOverview | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -141,9 +152,14 @@ export function MarketplaceBody({
     { platform: OauthPlatform; entry: MarketplaceEntryLike } | null
   >(null);
   const [manualTokenEntry, setManualTokenEntry] = useState<MarketplaceEntryLike | null>(null);
+  /** 正在等浏览器完成 MCP 协议内授权的 server id（同一时刻只允许一个） */
+  const [mcpAuthorizeId, setMcpAuthorizeId] = useState<string | null>(null);
   const [disconnectTarget, setDisconnectTarget] = useState<
     | { platform: "github" | OauthPlatform; label: string }
-    | { env: string; label: string }
+    /** 手动凭据条目：envs = requiresEnv 全量（飞书等双凭据条目整组清除） */
+    | { envs: string[]; label: string }
+    /** 远程 MCP 的 OAuth 解除授权：mcp = server id */
+    | { mcp: string; label: string }
     | null
   >(null);
   const [disconnecting, setDisconnecting] = useState(false);
@@ -171,39 +187,42 @@ export function MarketplaceBody({
       setRefreshing(true);
       try {
         // 三通道返回形状归一化：社区/官方无源健康状态与翻页游标
-        const [marketResult, pluginsResult, authResult, oauthResult] = await Promise.all([
-          channel === "community"
-            ? listCommunityMarketplace(force).then((r) => ({
-                items: r.items as MarketplaceEntryLike[],
-                icons: r.icons,
-                sources: null as Record<ThirdPartySource, "ok" | "failed"> | null,
-                nextCursors: null as Partial<Record<ThirdPartySource, string>> | null,
-              }))
-            : channel === "thirdparty"
-              ? listThirdPartySkills({
-                  ...(tpQuery.trim() ? { query: tpQuery.trim() } : {}),
-                  ...(tpSource !== "all" ? { source: tpSource } : {}),
-                  ...(force ? { refresh: true } : {}),
-                }).then((r) => ({
-                  items: r.items as MarketplaceEntryLike[],
-                  icons: r.icons,
-                  sources: r.sources,
-                  nextCursors: r.nextCursors,
-                }))
-              : listMarketplace().then((r) => ({
+        const [marketResult, pluginsResult, authResult, oauthResult, installedMcpResult] =
+          await Promise.all([
+            channel === "community"
+              ? listCommunityMarketplace(force).then((r) => ({
                   items: r.items as MarketplaceEntryLike[],
                   icons: r.icons,
                   sources: null as Record<ThirdPartySource, "ok" | "failed"> | null,
                   nextCursors: null as Partial<Record<ThirdPartySource, string>> | null,
-                })),
-          listPlugins(),
-          window.meow.githubAuthStatus
-            ? window.meow.githubAuthStatus().catch(() => null)
-            : Promise.resolve(null),
-          window.meow.oauthStatus
-            ? window.meow.oauthStatus().catch(() => null)
-            : Promise.resolve(null),
-        ]);
+                }))
+              : channel === "thirdparty"
+                ? listThirdPartySkills({
+                    ...(tpQuery.trim() ? { query: tpQuery.trim() } : {}),
+                    ...(tpSource !== "all" ? { source: tpSource } : {}),
+                    ...(force ? { refresh: true } : {}),
+                  }).then((r) => ({
+                    items: r.items as MarketplaceEntryLike[],
+                    icons: r.icons,
+                    sources: r.sources,
+                    nextCursors: r.nextCursors,
+                  }))
+                : listMarketplace().then((r) => ({
+                    items: r.items as MarketplaceEntryLike[],
+                    icons: r.icons,
+                    sources: null as Record<ThirdPartySource, "ok" | "failed"> | null,
+                    nextCursors: null as Partial<Record<ThirdPartySource, string>> | null,
+                  })),
+            listPlugins(),
+            window.meow.githubAuthStatus
+              ? window.meow.githubAuthStatus().catch(() => null)
+              : Promise.resolve(null),
+            window.meow.oauthStatus
+              ? window.meow.oauthStatus().catch(() => null)
+              : Promise.resolve(null),
+            // 本机已安装的 MCP：索引里没有的（手动添加 / 手写配置）也要进「已安装」分区
+            listInstalledMcp().catch(() => [] as InstalledMcpEntry[]),
+          ]);
         if (marketResult.sources) setTpSources(marketResult.sources);
         setTpCursors(
           marketResult.nextCursors && Object.keys(marketResult.nextCursors).length
@@ -212,6 +231,7 @@ export function MarketplaceBody({
         );
         setIcons(marketResult.icons ?? {});
         setItems(normalizeEntries(marketResult.items ?? []));
+        setInstalledMcp(installedMcpResult ?? []);
         setOverview(pluginsResult);
         setGithubConnected(Boolean(authResult?.connected));
         setOauthStatus(oauthResult);
@@ -336,6 +356,11 @@ export function MarketplaceBody({
   const uninstall = useCallback(
     (entry: MarketplaceEntryLike) => {
       setError(null);
+      // 直接手写进 mcp.json 的条目没有任何标记，官方卸载接口会拒绝：改走「删本地配置」
+      if (entry.localMcpSource === "local") {
+        void run(`${entry.type}:${entry.id}`, () => removeLocalMcp(entry.id));
+        return;
+      }
       // 社区条目写的是官方同格式安装标记：卸载统一走官方接口
       void run(`${entry.type}:${entry.id}`, () => uninstallMarketplaceItem(entry.id, entry.type));
     },
@@ -390,6 +415,29 @@ export function MarketplaceBody({
     if (platform) void window.meow.oauthConnectCancel?.({ platform });
   }, [oauthFlow]);
 
+  /**
+   * 远程 MCP 的协议内授权（区别于上面走主进程的平台 OAuth）：后端起浏览器并同步等回环回调，
+   * 最长约 5 分钟，成功后自动重连。force 只在已 failed 时给——token 过期了不清掉的话
+   * ensureAuthorized 见到旧 token 会直接返回，弹不出授权页。
+   */
+  const authorizeMcpEntry = useCallback(
+    async (row: MarketplaceEntryLike) => {
+      if (mcpAuthorizeId) return;
+      setError(null);
+      setMcpAuthorizeId(row.id);
+      try {
+        const status = (overview?.mcp ?? {})[row.id]?.status;
+        await authorizeMcp(row.id, status === "failed");
+        await refresh();
+      } catch (err) {
+        setError(err instanceof Error ? err.message : String(err));
+      } finally {
+        setMcpAuthorizeId(null);
+      }
+    },
+    [mcpAuthorizeId, overview, refresh],
+  );
+
   // 浏览器回跳是主进程收的：这里只轮询结果，成功后刷新 MCP 状态
   useEffect(() => {
     if (!oauthFlow || oauthFlow.phase !== "pending") return;
@@ -430,9 +478,11 @@ export function MarketplaceBody({
     if (!disconnectTarget) return;
     setDisconnecting(true);
     try {
-      let result: { warning?: string };
-      if ("env" in disconnectTarget) {
-        result = await window.meow.clearMcpToken({ name: disconnectTarget.env });
+      let result: { warning?: string } = {};
+      if ("mcp" in disconnectTarget) {
+        await revokeMcp(disconnectTarget.mcp);
+      } else if ("envs" in disconnectTarget) {
+        result = await window.meow.clearMcpToken({ names: disconnectTarget.envs });
       } else if (disconnectTarget.platform === "github") {
         result = await window.meow.githubDisconnect();
         setGithubConnected(false);
@@ -503,6 +553,8 @@ export function MarketplaceBody({
   const canDeleteEntry = useCallback(
     (entry: MarketplaceEntryLike) =>
       channel === "community" &&
+      // 合成条目（本机已装但不在索引里的 MCP）没有社区条目可删，别给它「删除 PR」入口
+      !entry.localMcpSource &&
       Boolean(communityLogin) &&
       (!entry.author ||
         entry.author.toLowerCase() === communityLogin?.toLowerCase() ||
@@ -557,9 +609,25 @@ export function MarketplaceBody({
     [iconUrlOf, installApi, markBusy, onUseSkill, refresh],
   );
 
+  /**
+   * 本机已安装、但当前通道索引里没有的 MCP（手动添加的、直接写进 mcp.json 的）：
+   * 合成一条「已安装」条目，让官方/社区通道的「已安装」分区也把它们列出来。
+   */
+  const localMcpEntries = useMemo<MarketplaceEntryLike[]>(() => {
+    // items 为 null = 正在加载：此时索引还没到手，先别把本机条目全当成「本地」闪一下
+    if (tab !== "mcp" || items === null) return [];
+    const indexed = new Set(items.filter((entry) => entry.type === "mcp").map((entry) => entry.id));
+    return localMcpEntryList(indexed, installedMcp, t("mcp.localNoTarget"));
+  }, [tab, items, installedMcp, t]);
+
   const tabItems = useMemo(
-    () => (items ?? []).filter((entry) => entry.type === TAB_TYPE[tab]),
-    [items, tab],
+    () => [
+      ...(items ?? []).filter((entry) => entry.type === TAB_TYPE[tab]),
+      // 本机条目（手装/手写 mcp.json）只在官方通道合并：社区页签应只展示社区收录
+      // 的内容，这些条目不在社区索引里，混进来会让「已安装」分区刷满全部本机 MCP
+      ...(channel !== "community" ? localMcpEntries : []),
+    ],
+    [items, tab, localMcpEntries, channel],
   );
 
   const filtered = useMemo(() => {
@@ -615,10 +683,8 @@ export function MarketplaceBody({
     const found = (items ?? []).find((entry) => entry.type === "plugin" && entry.id === pluginPageId);
     if (found) return found;
     // 市场索引里没有（内置插件）：从已加载 descriptor 合成条目
-    const builtinDescriptor = (overview?.plugins ?? []).find(
-      (p) => p.id === pluginPageId && p.source === "builtin",
-    );
-    return builtinDescriptor ? builtinEntry(builtinDescriptor) : null;
+    const builtinDescriptor = (overview?.plugins ?? []).find((p) => p.id === pluginPageId);
+    return builtinDescriptor ? descriptorEntry(builtinDescriptor) : null;
   }, [items, pluginPageId, overview]);
 
   // 官方/第三方/社区/我的通道 chips：mine 早退渲染也要显示，提出来共用
@@ -661,13 +727,93 @@ export function MarketplaceBody({
     </div>
   );
 
+  // ---- 插件详情页（覆盖整个主体；「我的」里的插件行也走这里）----
+  if (tab === "plugins" && pluginPageEntry) {
+    const pageDescriptor = (overview?.plugins ?? []).find((p) => p.id === pluginPageEntry.id);
+    return (
+      <PluginDetailPage
+        entry={pluginPageEntry}
+        iconUrl={pageDescriptor?.iconUrl ?? iconUrlOf(pluginPageEntry)}
+        descriptor={pageDescriptor}
+        busy={isBusy("plugin", pluginPageEntry.id)}
+        onBack={() => setPluginPageId(null)}
+        onInstall={install}
+        onToggle={togglePlugin}
+        onUninstall={(pageEntry) => uninstallPlugin(pageEntry.id)}
+      />
+    );
+  }
+
   // ---- 「我的」通道：手动条目管理，数据源独立于市场索引 ----
   if (channel === "mine") {
     return (
       <div className="mc-mkt__body">
         <div className="mc-mkt__inner">
+          <div className="mc-mkt__toolbar">
+            <input
+              type="search"
+              className="mc-mkt__search"
+              placeholder={
+                tab === "mcp"
+                  ? t("body.search.mcp")
+                  : tab === "skills"
+                    ? t("body.search.skills")
+                    : t("body.search.plugins")
+              }
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+            />
+          </div>
           {channelChips}
-          <MinePage tab={tab} />
+          <MinePage
+            tab={tab}
+            onUseSkill={(entry) =>
+              useSkill({
+                id: entry.id,
+                name: entry.name,
+                type: "skill",
+                description: "",
+                category: "",
+                source: "",
+                tags: [],
+                version: "",
+                installed: true,
+              })
+            }
+            onOpenSkill={(entry) =>
+              setDialogEntry({
+                id: entry.id,
+                type: "skill",
+                name: entry.name,
+                description: entry.description,
+                category: "",
+                source: "",
+                tags: [],
+                version: "",
+                installed: true,
+              })
+            }
+            onOpenPlugin={(id) => setPluginPageId(id)}
+            onConnectOauth={(payload) =>
+              connectOauth({
+                id: payload.id,
+                name: payload.id,
+                type: "mcp",
+                description: "",
+                category: "",
+                source: "",
+                tags: [],
+                version: "",
+                installed: true,
+                requiresEnv: [payload.env],
+              })
+            }
+            oauthFlowPlatform={oauthFlow?.platform}
+            oauthConnectedPlatforms={Object.fromEntries(
+              Object.entries(oauthStatus ?? {}).map(([key, value]) => [key, Boolean(value?.connected)]),
+            )}
+            query={query}
+          />
         </div>
       </div>
     );
@@ -710,6 +856,12 @@ export function MarketplaceBody({
             <button type="button" className="mc-mkt__reload" onClick={() => setSubmitOpen(true)}>
               <LuUpload size={13} />
               {t("body.submitEntry")}
+            </button>
+          ) : null}
+          {tab !== "mcp" ? (
+            <button type="button" className="mc-mkt__reload" onClick={() => onAuthorSkill?.()}>
+              <LuSparkles size={13} />
+              {t("actions.aiAuthor")}
             </button>
           ) : null}
           <button type="button" className="mc-mkt__reload" onClick={() => setImportOpen(true)}>
@@ -816,8 +968,8 @@ export function MarketplaceBody({
                   onConnectOauth={connectOauth}
                   onSetManualToken={setManualTokenEntry}
                   onDisconnectManualToken={(row) => {
-                    const env = (row.requiresEnv ?? [])[0];
-                    if (env) setDisconnectTarget({ env, label: row.name });
+                    const envs = (row.requiresEnv ?? []).filter(Boolean);
+                    if (envs.length) setDisconnectTarget({ envs, label: row.name });
                   }}
                   onDisconnectOauth={(row) => {
                     const platform = MCP_ENV_PLATFORMS[(row.requiresEnv ?? [])[0] ?? ""];
@@ -831,6 +983,9 @@ export function MarketplaceBody({
                     setDeleteMessage("");
                     setDeletePrUrl("");
                   }}
+                  onAuthorize={authorizeMcpEntry}
+                  onRevoke={(row) => setDisconnectTarget({ mcp: row.id, label: row.name })}
+                  authorizing={mcpAuthorizeId === entry.id}
                   canDelete={canDeleteEntry(entry)}
                 />
               ))}
@@ -871,8 +1026,8 @@ export function MarketplaceBody({
                   onConnectOauth={connectOauth}
                   onSetManualToken={setManualTokenEntry}
                   onDisconnectManualToken={(row) => {
-                    const env = (row.requiresEnv ?? [])[0];
-                    if (env) setDisconnectTarget({ env, label: row.name });
+                    const envs = (row.requiresEnv ?? []).filter(Boolean);
+                    if (envs.length) setDisconnectTarget({ envs, label: row.name });
                   }}
                   onDisconnectOauth={(row) => {
                     const platform = MCP_ENV_PLATFORMS[(row.requiresEnv ?? [])[0] ?? ""];
@@ -886,6 +1041,8 @@ export function MarketplaceBody({
                     setDeleteMessage("");
                     setDeletePrUrl("");
                   }}
+                  onAuthorize={authorizeMcpEntry}
+                  authorizing={mcpAuthorizeId === entry.id}
                   canDelete={canDeleteEntry(entry)}
                 />
               ))}
@@ -905,30 +1062,37 @@ export function MarketplaceBody({
                   {t("body.section.loadedPlugins", { count: pluginDescriptors.length })}
                 </p>
                 <div className="mc-mkt__rows">
-                  {pluginDescriptors.map((descriptor) => (
-                    <InstalledPluginRow
-                      key={descriptor.id}
-                      descriptor={descriptor}
-                      description={
-                        (items ?? []).find((entry) => entry.type === "plugin" && entry.id === descriptor.id)
-                          ?.description
-                      }
-                      iconUrl={icons[`plugin:${descriptor.id}`]}
-                      busy={isBusy("plugin", descriptor.id)}
-                      onToggle={togglePlugin}
-                      onUninstall={(descriptor) => uninstallPlugin(descriptor.id)}
-                      onOpen={(descriptor) => setPluginPageId(descriptor.id)}
-                      onOpenPanel={
-                        onOpenPluginPanel
-                          ? (descriptor) =>
-                              onOpenPluginPanel(
-                                descriptor.id,
-                                descriptor.ui?.panel.title ?? descriptor.displayName ?? descriptor.id,
-                              )
-                          : undefined
-                      }
-                    />
-                  ))}
+                  {pluginDescriptors.map((descriptor) => {
+                    // 市场安装的插件没有 descriptor.displayName：名称/描述/图标都回查市场条目
+                    const marketEntry = (items ?? []).find(
+                      (entry) => entry.type === "plugin" && entry.id === descriptor.id,
+                    );
+                    return (
+                      <InstalledPluginRow
+                        key={descriptor.id}
+                        descriptor={descriptor}
+                        name={marketEntry?.name}
+                        description={marketEntry?.description}
+                        iconUrl={icons[`plugin:${descriptor.id}`]}
+                        busy={isBusy("plugin", descriptor.id)}
+                        onToggle={togglePlugin}
+                        onUninstall={(descriptor) => uninstallPlugin(descriptor.id)}
+                        onOpen={(descriptor) => setPluginPageId(descriptor.id)}
+                        onOpenPanel={
+                          onOpenPluginPanel
+                            ? (descriptor) =>
+                                onOpenPluginPanel(
+                                  descriptor.id,
+                                  descriptor.ui?.panel.title ??
+                                    descriptor.displayName ??
+                                    marketEntry?.name ??
+                                    descriptor.id,
+                                )
+                            : undefined
+                        }
+                      />
+                    );
+                  })}
                 </div>
               </>
             ) : null}
@@ -1157,7 +1321,7 @@ export function MarketplaceBody({
         </span>
         <p className="mc-dialog__desc">
           {t("body.disconnect.desc", { platform: disconnectTarget?.label ?? "" })}
-          {disconnectTarget && "env" in disconnectTarget
+          {disconnectTarget && "envs" in disconnectTarget
             ? t("body.disconnect.envHint")
             : t("body.disconnect.platformHint", { platform: disconnectTarget?.label ?? "" })}
         </p>

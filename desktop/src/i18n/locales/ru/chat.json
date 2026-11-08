@@ -219,6 +219,22 @@
     "stepCount_other": "{{count}} шага",
     "stepCount_few": "{{count}} шага",
     "stepCount_many": "{{count}} шагов",
+    "lineCount_one": "{{count}} строка",
+    "lineCount_other": "{{count}} строки",
+    "lineCount_few": "{{count}} строки",
+    "lineCount_many": "{{count}} строк",
+    "entryCount_one": "{{count}} элемент",
+    "entryCount_other": "{{count}} элемента",
+    "entryCount_few": "{{count}} элемента",
+    "entryCount_many": "{{count}} элементов",
+    "matchCount_one": "{{count}} совпадение",
+    "matchCount_other": "{{count}} совпадения",
+    "matchCount_few": "{{count}} совпадения",
+    "matchCount_many": "{{count}} совпадений",
+    "resultCount_one": "{{count}} результат",
+    "resultCount_other": "{{count}} результата",
+    "resultCount_few": "{{count}} результата",
+    "resultCount_many": "{{count}} результатов",
     "emptyOutput": "(нет вывода)",
     "waitingOutput": "Ожидание вывода…",
     "outputNotSaved": "Вывод не сохранён в истории",
@@ -320,5 +336,13 @@
     "close": "Закрыть обзор рабочей области",
     "commitOrPush": "Закоммитить или запушить",
     "switchBranch": "Переключить ветку"
+  },
+  "turnFooter": {
+    "copyMarkdown": "Копировать как Markdown",
+    "copyPlain": "Копировать как обычный текст",
+    "branch": "Создать новую ветку",
+    "duration": "Длительность",
+    "tokens": "Использовано Token",
+    "time": "Время диалога"
   }
 }

@@ -7,7 +7,12 @@ import type {
   ToolDefinition,
 } from "./types.js";
 import { anthropicTools, streamAnthropicMessages, toAnthropicMessages } from "./anthropic.js";
-import { isOneShotRequest, resolveCachePlan, withoutCacheWrites } from "./cache-profile.js";
+import {
+  isOneShotRequest,
+  resolveCachePlan,
+  supportsChatPromptCacheKey,
+  withoutCacheWrites,
+} from "./cache-profile.js";
 import { buildAuthHeaders, fetchWithRetry, mergeExtraHeaders } from "./http.js";
 import { readSseFrames } from "./sse.js";
 import { responsesTools, streamResponses, toResponsesInput } from "./responses.js";
@@ -207,9 +212,11 @@ async function streamChatCompletions(options: {
     // 并行工具调用恒开（对齐 Codex client.rs）：批处理密度直接决定总输入 token。
     // 严格网关不认识会报 400，下面降级去掉重试。
     ...(includeParallel ? { parallel_tool_calls: true } : {}),
-    // 会话亲和键（applyCachePolicy 只在官方主机注入）：路由到同一缓存分片，
-    // 等价前缀跨请求命中同一桶。网关不认识会报 400，下面降级去掉重试。
-    ...(includeCacheKey && options.provider.promptCacheKey
+    // 会话亲和键：body 字段只发官方主机（第三方网关不认识会 400，下面降级去掉重试）；
+    // 网关走 x-session-id 头即可（头不会触发 400），防止代理按会话串缓存分片。
+    ...(includeCacheKey &&
+    supportsChatPromptCacheKey(options.provider) &&
+    options.provider.promptCacheKey
       ? { prompt_cache_key: options.provider.promptCacheKey }
       : {}),
     // 请求服务商回传真实用量（OpenAI 标准字段）。上下文占用圆圈依赖它；
@@ -230,6 +237,10 @@ async function streamChatCompletions(options: {
       {
         "content-type": "application/json",
         ...buildAuthHeaders(options.provider.apiKey, options.provider.authStyle, "bearer"),
+        // 与 Responses 同源：代理/网关按会话粘住缓存分片（部分代理只认头不认 body）
+        ...(options.provider.promptCacheKey
+          ? { "x-session-id": options.provider.promptCacheKey }
+          : {}),
       },
       options.provider.extraHeaders,
     );
@@ -443,6 +454,7 @@ export async function streamChatCompletion(options: {
       maxTokens: options.provider.maxTokens,
       reasoningEffort: options.provider.reasoningEffort,
       thinkingBudget: options.provider.thinkingBudget,
+      promptCacheKey: options.provider.promptCacheKey,
       system,
       messages,
       tools: anthropicTools(options.tools, cachePlan, options.toolCacheAnchor),

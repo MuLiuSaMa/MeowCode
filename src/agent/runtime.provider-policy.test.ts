@@ -22,10 +22,17 @@ vi.mock("./title-generator.js", () => ({
 const { ProviderRequestError } = await import("./provider-error.js");
 const { AgentRuntime } = await import("./runtime.js");
 
-async function newRuntime(providers: ProviderConfig[]) {
+async function newRuntime(
+  providers: ProviderConfig[],
+  options: { providerFallback?: boolean } = {},
+) {
   const sessionsDir = await mkdtemp(path.join(tmpdir(), "meowcode-policy-"));
   const workspace = await mkdtemp(path.join(tmpdir(), "meowcode-policy-ws-"));
-  const runtime = new AgentRuntime({ providers, sessionsDir });
+  const runtime = new AgentRuntime({
+    providers,
+    sessionsDir,
+    ...(options.providerFallback !== undefined ? { providerFallback: options.providerFallback } : {}),
+  });
   await runtime.newSession(workspace);
   return runtime;
 }
@@ -82,7 +89,9 @@ describe("provider fallback in a real turn", () => {
   }
 
   it("switches to the next enabled provider on 503 and reports the switch", async () => {
-    const runtime = await newRuntime([provider("main"), provider("backup")]);
+    const runtime = await newRuntime([provider("main"), provider("backup")], {
+      providerFallback: true,
+    });
     const events: MeowEvent[] = [];
     const stop = runtime.onEvent((event: MeowEvent) => events.push(event));
     streamMock
@@ -107,7 +116,9 @@ describe("provider fallback in a real turn", () => {
   });
 
   it("does not switch on 401", async () => {
-    const runtime = await newRuntime([provider("main"), provider("backup")]);
+    const runtime = await newRuntime([provider("main"), provider("backup")], {
+      providerFallback: true,
+    });
     streamMock.mockRejectedValueOnce(new ProviderRequestError(401, "invalid api key"));
 
     await runtime.prompt("hello").catch(() => undefined);
@@ -117,5 +128,18 @@ describe("provider fallback in a real turn", () => {
     );
     expect(providers).toEqual(["main"]);
     expect(runtime.lastError).toContain("401");
+  });
+
+  it("默认关闭：503 时不切备用服务商", async () => {
+    const runtime = await newRuntime([provider("main"), provider("backup")]);
+    streamMock.mockRejectedValueOnce(new ProviderRequestError(503, "service unavailable"));
+
+    await runtime.prompt("hello").catch(() => undefined);
+
+    const providers = streamMock.mock.calls.map(
+      (call) => (call[0] as { provider: ProviderConfig }).provider.id,
+    );
+    expect(providers).toEqual(["main"]);
+    expect(runtime.lastError).toContain("503");
   });
 });

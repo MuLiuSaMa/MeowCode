@@ -43,6 +43,8 @@ export function AboutSection({
 }) {
   const { t } = useTranslation("settings");
   const { resolved } = useTheme();
+  /** 商店版（MSIX）：更新交给 Microsoft Store，页面不出现检查更新按钮 */
+  const storeManaged = window.meow.storeManaged;
   // 文字 Logo 与左上角标题栏同一份资源：浅色主题用黑色字标，否则白字看不见
   const wordmark = resolved === "dark" ? wordmarkUrl : wordmarkBlackUrl;
   const [checking, setChecking] = useState(false);
@@ -101,7 +103,7 @@ export function AboutSection({
           <FieldRow label={t("about.version")}>
             <div className="mc-about__version">
               <span className="mc-about__value">v{appInfo.version}</span>
-              {updateRelease ? (
+              {storeManaged ? null : updateRelease ? (
                 <button type="button" className="mc-about__check" data-found onClick={onOpenUpdate}>
                   <LuArrowUpRight size={12} />
                   {t("about.newVersion")}

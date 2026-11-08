@@ -29,7 +29,7 @@ export const BREAKPOINT_CAP = 4;
 export type CachePlan = {
   profile: CacheProfileId;
   protocol: ApiFormat;
-  /** Anthropic 系：断点 TTL；缺省 5m（不发字段） */
+  /** Anthropic 系实际生效的断点 TTL；5m 不发字段（官方默认），auto 未盖章也回落 5m */
   ttl: "5m" | "1h";
   /** 是否应该打 cache_control（false = 完全不打） */
   enabled: boolean;
@@ -83,13 +83,16 @@ const MEASURED_1H_HOSTS = new Set(["api.anthropic.com"]);
  *
  * `auto` 的判据是**谁在驱动这个会话**，不是空闲时长：只有人驱动的会话才有 5–60
  * 分钟的空档去吃冷重写；子代理/批量是连续打点，给它 1h 只是多付写入溢价。
+ *
+ * 缺省就是 `auto`（hermes 实测：人驱动会话约 63% 的写入来自 5–60min 空档后的冷
+ * 重写，1h 能省下大部分；子代理给 1h 反而更贵）。未盖章 pace 的辅助请求按 5m。
  */
 function resolveCacheTtl(
   provider: ProviderConfig,
   profile: CacheProfileId,
   host: string,
 ): "5m" | "1h" {
-  const wanted = provider.cacheTtl ?? "5m";
+  const wanted = provider.cacheTtl ?? "auto";
   if (wanted === "5m") return "5m";
   if (profile !== "anthropic-native") return "5m";
   if (!MEASURED_1H_HOSTS.has(host)) return "5m";
@@ -167,6 +170,20 @@ export function hasBreakpoint(plan: CachePlan, breakpoint: CacheBreakpoint): boo
 export function supportsChatPromptCacheKey(provider: ProviderConfig): boolean {
   const protocol = provider.protocol ?? "openai-chat-completions";
   if (protocol !== "openai-chat-completions") return false;
+  return hostnameOf(provider.baseUrl) === "api.openai.com";
+}
+
+/**
+ * 血缘亲和：fork / 子 Agent 是否该继承来源会话的缓存键。
+ *
+ * 只在**内容寻址**的官方 OpenAI 端点上成立——缓存按前缀内容分片，同一份历史
+ * 无论挂在哪个会话名下都命中同一桶（opencode affinity.ts、codex 子代理继承父键）。
+ * 槽位/会话路由（xAI 等）按 key 分槽，共享键反而让不同角色互相顶掉，保持每会话
+ * 独立；第三方网关的分片规则不可证伪，同样不冒险。
+ */
+export function supportsLineageAffinity(provider: ProviderConfig): boolean {
+  const protocol = provider.protocol ?? "openai-chat-completions";
+  if (protocol !== "openai-responses" && protocol !== "openai-chat-completions") return false;
   return hostnameOf(provider.baseUrl) === "api.openai.com";
 }
 

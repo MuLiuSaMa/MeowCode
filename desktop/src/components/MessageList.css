@@ -26,18 +26,40 @@
   flex-direction: column;
   padding-bottom: 8px;
 }
-/* 工具行成组平铺：文本与工具、工具与工具之间收紧间距 */
-.mc-stream__list > * + * {
+/* 每一轮一个 hover 容器：轮内 body 保留原平铺间距语义，轮间统一 18px */
+.mc-turn {
+  display: flex;
+  flex-direction: column;
+}
+.mc-turn + .mc-turn {
   margin-top: 18px;
 }
-.mc-stream__list > * + .mc-toolrow {
+/* 轮容器与末尾落款 / 建议之间的间距（原本由 .mc-stream__list > * + * 提供） */
+.mc-stream__list > .mc-turn + .mc-statusline,
+.mc-stream__list > .mc-turn + .mc-suggestion,
+.mc-stream__list > .mc-statusline + .mc-suggestion {
+  margin-top: 18px;
+}
+.mc-turn__body {
+  display: flex;
+  flex-direction: column;
+}
+/* 工具行成组平铺：文本与工具、工具与工具之间收紧间距 */
+.mc-turn__body > * + * {
+  margin-top: 18px;
+}
+.mc-turn__body > * + .mc-toolrow {
   margin-top: 10px;
 }
-.mc-stream__list > .mc-toolrow + * {
+.mc-turn__body > .mc-toolrow + * {
   margin-top: 14px;
 }
-.mc-stream__list > .mc-toolrow + .mc-toolrow {
+.mc-turn__body > .mc-toolrow + .mc-toolrow {
   margin-top: 2px;
+}
+/* 每轮操作行：常驻显示 */
+.mc-turn > .mc-turninfo {
+  margin-top: 8px;
 }
 /* 切换会话的加载态：时间线被清空、目标会话还没到，居中转圈代替空白 */
 .mc-stream__switching {

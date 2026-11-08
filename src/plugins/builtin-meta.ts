@@ -8,7 +8,7 @@
  * 由服务端 /marketplace/detail 的 builtin 兜底分支返回。
  *
  * 图标风格与市场图标一致：48×48、rx=12、#181818 圆角方块 + 品牌色 glyph。
- * claude-code-hooks 用 Claude 的十二芒星标（品牌橙 #D97757）。
+ * claude-code-hooks 与模型映射用同一枚 Claude 官方星标（#ff7043）。
  */
 export type BuiltinPluginMeta = {
   /** 列表显示名（缺省显示插件 id） */
@@ -23,14 +23,11 @@ export type BuiltinPluginMeta = {
   tags?: string[];
 };
 
-/** Claude 品牌橙。 */
-const CLAUDE_ORANGE = "#D97757";
-
 /** 电脑控制：屏幕 + 光标（屏内十字准星），品牌青蓝。 */
 const COMPUTER_CONTROL_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48"><rect width="48" height="48" rx="12" fill="#181818"/><rect x="10" y="12" width="28" height="19" rx="2.5" fill="none" stroke="#4CC2FF" stroke-width="2.4"/><path d="M24 31v6M17 37h14" fill="none" stroke="#4CC2FF" stroke-width="2.4" stroke-linecap="round"/><circle cx="24" cy="21.5" r="6.5" fill="none" stroke="#4CC2FF" stroke-width="2.2"/><path d="M24 13v17M15.5 21.5h17" stroke="#4CC2FF" stroke-width="2.2" stroke-linecap="round"/></svg>`;
 
-/** Claude 十二芒星：中心 (24,24)、12 条 30° 间隔射线，r=11，圆头描边。 */
-const CLAUDE_STARBURST_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48"><rect width="48" height="48" rx="12" fill="#181818"/><path d="M24 24L35 24 M24 24L33.53 29.5 M24 24L29.5 33.53 M24 24L24 35 M24 24L18.5 33.53 M24 24L14.47 29.5 M24 24L13 24 M24 24L14.47 18.5 M24 24L18.5 14.47 M24 24L24 13 M24 24L29.5 14.47 M24 24L33.53 18.5" fill="none" stroke="${CLAUDE_ORANGE}" stroke-width="2.4" stroke-linecap="round"/></svg>`;
+/** Claude 官方星标（与模型映射 model-provider-claude 同款 glyph，品牌橙 #ff7043）。 */
+const CLAUDE_MARK_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48"><rect width="48" height="48" rx="12" fill="#181818"/><g transform="translate(11.4,11.4) scale(1.575)"><g fill="#ff7043"><path d="m14.375 6.48.49.28v.209l-.14.489-5.937 1.397-.558-1.387zm0 0"/><path d="m12.155 2.373.683.143.182.224.173.535-.072.342-3.983 5.447L7.81 7.737l3.673-4.82z"/><path d="m8.719 1.522.419-.28.349.14.349.49-.957 5.748-.65-.441-.279-.769.49-4.33z"/><path d="m4.239 1.614.43-.55L4.95 1l.558.081.275.216 2.004 4.442.724 2.11-.848.471-3.231-5.864z"/><path d="m2.154 4.665-.14-.56.42-.488.488.07h.14l2.933 2.165.908.698 1.257.978-.698 1.187-.629-.489-.419-.419-4.05-2.863z"/><path d="M1.316 8.296 1 7.946v-.31l.316-.108 3.562.21 3.491.279-.113.695-6.66-.346z"/><path d="M3.411 11.931h-.698l-.278-.32v-.382l1.186-.838 4.82-3.068.487.833z"/><path d="m4.738 13.883-.28.07-.418-.21.07-.35 4.12-5.446.558.768-3.072 4.05z"/><path d="m8.23 14.581-.21.28-.419.14-.349-.28-.21-.42L8.09 8.646l.629.07z"/><path d="M11.791 13.045v.558l-.07.21-.279.14-.489-.066-3.356-4.996 1.331-1.014 1.117 2.025.105.733z"/><path d="m13.398 12.207.07.349-.21.279-.21-.07-1.187-.838-1.815-1.606-1.397-.978.419-1.326.698.419.42.768z"/><path d="m12.49 8.645 1.746.14.419.28.279.418v.302l-.768.327-3.911-.978-1.606-.07.419-1.466 1.117.838z"/></g></g></svg>`;
 
 const CC_HOOKS_DETAIL = `把 **Claude Code 生态的 hooks 脚本**桥接进 MeowCode：读取 Claude Code 的 settings.json，按相同的事件语义与退出码约定执行你现成的 hook 脚本，无需改写。
 
@@ -86,12 +83,34 @@ const COMPUTER_CONTROL_DETAIL = `让 agent 看到、点到、打出你的电脑�
 **在插件页启用本插件 = 授权 agent 控制这台电脑**，工具调用不再逐次弹审批；会话时间线里每个动作可见、可中止。不需要时在插件页停用即可。
 `;
 
+/** 技能与插件创作：火花（lucide sparkles 风格），品牌琥珀。 */
+const EXTENSION_AUTHORING_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48"><rect width="48" height="48" rx="12" fill="#181818"/><g transform="translate(11.4,11.4) scale(1.05)" fill="none" stroke="#F5C451" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/><path d="M20 3v4"/><path d="M22 5h-4"/><path d="M4 17v2"/><path d="M5 18H3"/></g></svg>`;
+
+const EXTENSION_AUTHORING_DETAIL = `让 agent 直接帮你**新建技能或插件**，创建完就是已安装、可用的状态。
+
+## 它能做什么
+
+- **创建技能**（\`create_skill\`）：把一套流程或知识写成 \`SKILL.md\`，安装到 \`~/.meowcode/skills/<id>/\`。创建后出现在输入框 \`/\` 面板与「我的」，下一轮对话起进入技能索引。
+- **创建插件**（\`create_plugin\`）：生成单文件插件，安装到 \`~/.meowcode/plugins/<id>.ts\`，写入后热重载插件系统，新工具下一轮即可调用。可在「已加载插件」与「我的」看到。
+
+## 安全边界
+
+- 插件是**任意代码**：\`create_plugin\` 每次调用都会弹审批，确认后才落盘并加载；不需要时在插件页停用或卸载。
+- 只覆盖本功能创建的产物：已有同名技能/插件若不是 AI 创建的、或来自市场/内置，一律拒绝覆盖。
+- 技能创建会让上下文里的技能索引变化一次（下一轮生效）。
+- 当前只支持单文件插件；需要 UI 面板或多文件目录的插件请手动放置。
+
+## 使用方式
+
+对话里直接说「帮我做一个技能：……」「帮我加一个统计字数的插件」，模型会确认需求并调用对应工具；内置技能「技能与插件创作」里有完整的调用约定与插件 API 示例。
+`;
+
 export const BUILTIN_PLUGIN_META: Record<string, BuiltinPluginMeta> = {
   "claude-code-hooks": {
     displayName: "Claude Code hooks 桥接",
     description:
       "读取 ~/.claude 与工作区 .claude 下的 settings.json，把 Claude Code 生态的 hook 脚本桥接进 MeowCode：PreToolUse / PostToolUse / UserPromptSubmit / Stop / SessionStart 五个事件，退出码与 JSON stdout 语义与 Claude Code 一致。脚本即配即用，不需要时在插件页停用。",
-    iconSvg: CLAUDE_STARBURST_SVG,
+    iconSvg: CLAUDE_MARK_SVG,
     detail: CC_HOOKS_DETAIL,
     tags: ["claude-code", "hooks"],
   },
@@ -102,6 +121,14 @@ export const BUILTIN_PLUGIN_META: Record<string, BuiltinPluginMeta> = {
     iconSvg: COMPUTER_CONTROL_SVG,
     detail: COMPUTER_CONTROL_DETAIL,
     tags: ["computer", "windows", "automation"],
+  },
+  "extension-authoring": {
+    displayName: "技能与插件创作",
+    description:
+      "让 AI 直接帮你新建技能或插件：技能写入 ~/.meowcode/skills 并即刻可用，插件写入 ~/.meowcode/plugins 后热重载加载。插件是任意代码，创建前会弹审批。",
+    iconSvg: EXTENSION_AUTHORING_SVG,
+    detail: EXTENSION_AUTHORING_DETAIL,
+    tags: ["skill", "plugin", "authoring"],
   },
 };
 

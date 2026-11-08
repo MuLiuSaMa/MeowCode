@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { useTheme } from "../../theme/theme";
 import "./PluginFrameTab.css";
 
 /**
@@ -25,6 +26,7 @@ export function PluginFrameTab({
   sessionId?: string;
 }) {
   const { i18n } = useTranslation();
+  const { resolved, palette } = useTheme();
   const frameRef = useRef<HTMLIFrameElement | null>(null);
   const [started, setStarted] = useState(false);
   const [src, setSrc] = useState<string | null>(null);
@@ -72,7 +74,7 @@ export function PluginFrameTab({
       },
       "*",
     );
-  }, [i18n.language, pluginId, sessionId]);
+  }, [i18n.language, pluginId, sessionId, resolved, palette]);
 
   useEffect(() => {
     if (!started) return;
@@ -92,7 +94,10 @@ export function PluginFrameTab({
 
   useEffect(() => {
     if (!started) return;
-    pushContext();
+    // 延后一帧：切明暗 / 配色时子 effect 先于 ThemeProvider 执行，
+    // 立刻读会拿到上一套 CSS 变量，iframe 就会停在旧配色。
+    const frame = window.requestAnimationFrame(pushContext);
+    return () => window.cancelAnimationFrame(frame);
   }, [pushContext, started]);
 
   if (!src) {

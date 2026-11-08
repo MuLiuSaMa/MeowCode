@@ -1,0 +1,99 @@
+{
+  "nav": {
+    "heading": "Automação",
+    "subtitle": "A IA executa tarefas em um workspace conforme a programação",
+    "ariaLabel": "Navegação de automação"
+  },
+  "page": {
+    "empty": "Nenhuma automação ainda. Crie uma e deixe a IA trabalhar conforme a programação.",
+    "loading": "Carregando…",
+    "nextRun": "Próxima execução {{time}}",
+    "noNextRun": "Desativada",
+    "lastRun": "Última execução {{status}} · {{time}}",
+    "neverRun": "Nunca executou",
+    "runs": "{{count}} execuções",
+    "cwd": "Workspace: {{cwd}}"
+  },
+  "schedule": {
+    "interval": "A cada {{minutes}} min",
+    "hours": "A cada {{hours}} h",
+    "daily": "Diariamente às {{time}}",
+    "weekly": "{{weekday}} às {{time}}",
+    "monthly": "No dia {{day}} de cada mês às {{time}}",
+    "cron": "Cron: {{expr}}",
+    "once": "Uma vez às {{time}}"
+  },
+  "weekday": {
+    "0": "domingo",
+    "1": "segunda",
+    "2": "terça",
+    "3": "quarta",
+    "4": "quinta",
+    "5": "sexta",
+    "6": "sábado"
+  },
+  "status": {
+    "started": "em execução",
+    "ok": "concluída",
+    "error": "falhou",
+    "missed": "perdida",
+    "disabled": "Desativada"
+  },
+  "actions": {
+    "create": "Nova tarefa",
+    "refresh": "Atualizar",
+    "runNow": "Executar agora",
+    "running": "Iniciando…",
+    "edit": "Editar",
+    "delete": "Excluir",
+    "cancel": "Cancelar",
+    "save": "Salvar",
+    "saving": "Salvando…",
+    "openSession": "Abrir sessão",
+      "close": "Fechar",
+    "enable": "Ativar tarefa",
+    "history": "Histórico de execuções"
+  },
+  "deleteDialog": {
+    "title": "Excluir automação",
+    "desc": "“{{title}}” será excluída junto com o histórico de execuções. Esta ação não pode ser desfeita."
+  },
+  "history": {
+    "title": "Histórico de execuções — {{title}}",
+    "empty": "Ainda não há execuções.",
+    "status": "Status",
+    "session": "Sessão"
+  },
+  "form": {
+    "createTitle": "Nova automação",
+    "editTitle": "Editar automação",
+    "fieldTitle": "Nome da tarefa",
+    "titlePlaceholder": "ex. Verificar atualizações de dependências todo dia às 9h",
+    "fieldWorkspace": "Workspace de destino",
+    "fieldPrompt": "Conteúdo",
+    "promptPlaceholder": "O que a IA deve fazer quando a tarefa disparar. Quanto mais específico, melhor.",
+    "fieldSchedule": "Frequência",
+    "freq": {
+      "interval": "Intervalo",
+      "daily": "Diária",
+      "weekly": "Semanal",
+      "monthly": "Mensal",
+      "once": "Uma vez",
+      "cron": "Cron"
+    },
+    "intervalMinutes": "Intervalo (minutos)",
+    "time": "Horário",
+    "weekday": "Dia da semana",
+    "dayOfMonth": "Dia do mês",
+    "onceAt": "Executar às",
+      "today": "Hoje",
+    "advanced": "Configurações avançadas",
+    "fieldCron": "Expressão cron",
+    "cronPlaceholder": "ex. 0 9 * * 1-5 (fuso local)",
+    "fieldMaxRuns": "Máximo de execuções",
+    "maxRunsPlaceholder": "Vazio = ilimitado",
+    "errorRequired": "Preencha os campos obrigatórios",
+    "invalidCron": "Expressão cron inválida",
+    "saveFailed": "Falha ao salvar"
+  }
+}

@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import type { TFunction } from "i18next";
 import {
   LuCircleAlert,
   LuCircleCheck,
@@ -10,28 +9,13 @@ import {
 } from "react-icons/lu";
 import type { SubagentRun, TimelineTool } from "../api";
 import { SUBAGENT_ROLE_LABELS } from "../agentRoles";
-import { formatNumber } from "../i18n/format";
+import { formatDuration } from "../i18n/format";
 import "./TaskToolRow.css";
 
 function asRecord(input: unknown): Record<string, unknown> {
   return input && typeof input === "object" && !Array.isArray(input)
     ? (input as Record<string, unknown>)
     : {};
-}
-
-function formatDuration(ms: number, t: TFunction): string {
-  if (ms < 1_000) return t("taskRow.durationUnderSecond");
-  const seconds = ms / 1_000;
-  if (seconds < 60) {
-    return t("taskRow.durationSeconds", {
-      value: formatNumber(seconds, { minimumFractionDigits: 1, maximumFractionDigits: 1 }),
-    });
-  }
-  const minutes = Math.floor(seconds / 60);
-  return t("taskRow.durationMinutes", {
-    minutes: formatNumber(minutes),
-    seconds: formatNumber(Math.round(seconds % 60)),
-  });
 }
 
 export function TaskToolRow({
@@ -92,7 +76,7 @@ export function TaskToolRow({
       <span className="mc-taskrow__meta">
         <span className="mc-taskrow__state">{t(`taskRow.status.${agent.status}`)}</span>
         {durationMs != null ? (
-          <span className="mc-taskrow__time">{formatDuration(durationMs, t)}</span>
+          <span className="mc-taskrow__time">{formatDuration(durationMs)}</span>
         ) : null}
       </span>
       <LuPanelRightOpen size={14} className="mc-taskrow__open" aria-hidden="true" />

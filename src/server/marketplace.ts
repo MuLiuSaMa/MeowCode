@@ -38,6 +38,11 @@ export type MarketplaceEntry = MarketplaceItem & {
   installed: boolean;
   /** mcp 专用：requiresEnv 里的变量是否已在进程环境中 */
   envReady?: boolean;
+  /**
+   * mcp 专用：远程 server（server 配了 url）——可走 MCP 协议内 OAuth 授权。
+   * UI 据此显示「授权 / 重新授权」按钮；stdio server 没有这条通道。
+   */
+  oauthCapable?: boolean;
 };
 
 export type MarketplaceInstallResult = {
@@ -92,8 +97,89 @@ export type MineMcpEntry = {
   addedAt: string;
   status: "ok" | "missing";
   enabled: boolean;
+  /** 远程 server（配了 url）：UI 可以给「授权 / 重新授权」按钮 */
+  oauthCapable?: boolean;
 };
 export type MineList = { skills: MineSkillEntry[]; plugins: MinePluginEntry[]; mcp: MineMcpEntry[] };
+
+/**
+ * 给本机已存在但没有标记的技能补写 manual 标记。
+ * 「我的」只认 manual 标记；旧版数据导入/手放的历史内容没有标记，补一次后可见、可卸载。
+ * 市场/社区/第三方安装项（有 `<type>-<id>.json`）跳过；返回补写的条数。
+ */
+export async function backfillSkillMarkers(homeDir: string): Promise<number> {
+  const root = path.join(homeDir, ".meowcode");
+  const skillsDir = path.join(root, "skills");
+  const markerDir = path.join(root, ".marketplace");
+  let entries;
+  try {
+    entries = await fs.readdir(skillsDir, { withFileTypes: true });
+  } catch {
+    return 0;
+  }
+  const has = async (file: string): Promise<boolean> =>
+    fs.access(file).then(
+      () => true,
+      () => false,
+    );
+  let written = 0;
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue;
+    const id = entry.name;
+    if (!ID_PATTERN.test(id) || id.includes("..")) continue;
+    if (!(await has(path.join(skillsDir, id, "SKILL.md")))) continue;
+    if (await has(path.join(markerDir, `manual-skill-${id}.json`))) continue;
+    if (await has(path.join(markerDir, `skill-${id}.json`))) continue;
+    try {
+      await writeManualMarkerFile(homeDir, { type: "skill", id, target: `skills/${id}` });
+      written += 1;
+    } catch {
+      // 单个失败不影响其它技能
+    }
+  }
+  return written;
+}
+
+/**
+ * 写一条手动条目标记（~/.meowcode/.marketplace/manual-<type>-<id>.json）。
+ * 「我的」栏的数据源与卸载凭据；AI 自建技能/插件也复用这套标记。
+ */
+export async function writeManualMarkerFile(
+  homeDir: string,
+  input: { type: MarketItemType; id: string; target: string },
+): Promise<void> {
+  if (!ID_PATTERN.test(input.id) || input.id.includes("..")) {
+    throw new MarketplaceError("invalid_id", `invalid manual id: ${input.id}`);
+  }
+  const file = path.join(
+    homeDir,
+    ".meowcode",
+    ".marketplace",
+    `manual-${input.type}-${input.id}.json`,
+  );
+  await fs.mkdir(path.dirname(file), { recursive: true });
+  await writeJsonAtomic(file, {
+    id: input.id,
+    type: input.type,
+    target: input.target,
+    addedAt: new Date().toISOString(),
+  } satisfies ManualMarker);
+}
+
+/**
+ * 本机已安装的 MCP（~/.meowcode/mcp.json 里的全部条目）。
+ * 市场索引只认「有安装标记」的条目，手动添加与直接手写进 mcp.json 的都拿不到，
+ * 而「已安装」分区要展示的是本机真正在跑/配着的全部 MCP。
+ */
+export type InstalledMcpEntry = {
+  id: string;
+  /** enabled:false 的条目 McpManager 会跳过，不出现在运行状态里 */
+  enabled: boolean;
+  /** market = 市场安装；manual = 手动添加（对话框）；local = 直接写进 mcp.json */
+  source: "market" | "manual" | "local";
+  /** 连接方式摘要：stdio 是命令行，http 是地址；给列表行当副标题 */
+  target: string;
+};
 
 const ID_PATTERN = /^[a-z0-9][a-z0-9._-]*$/i;
 
@@ -113,6 +199,14 @@ export type MarketplaceContext = { homeDir: string };
  * ~/.meowcode/{skills,plugins,mcp.json}。纯 fs 逻辑，便于单测。
  */
 export function createMarketplaceStore(bundlesDir: string | undefined) {
+  /** mcp 条目是不是远程 server（server 配了 url）——决定 UI 有没有「授权」按钮 */
+  async function isRemoteMcpBundle(item: MarketplaceItem, dir: string): Promise<boolean> {
+    const bundle = await readJsonFile<{ server?: { url?: unknown } }>(
+      path.join(dir, item.entry),
+    ).catch(() => undefined);
+    return typeof bundle?.server?.url === "string" && bundle.server.url.length > 0;
+  }
+
   async function loadIndex(): Promise<MarketplaceItem[]> {
     if (!bundlesDir) return [];
     try {
@@ -182,6 +276,41 @@ export function createMarketplaceStore(bundlesDir: string | undefined) {
       path.join(meowRoot(ctx), "mcp.json"),
     );
     return config && typeof config === "object" ? config : {};
+  }
+
+  /**
+   * 精确大小写地读安装/手动标记的 id 集合。
+   * Windows 上文件名不区分大小写：按路径读标记会把 github 与 GitHub 认成同一个，
+   * 这里按文件名原样比对，避免把用户手写的同名条目误判成市场安装的。
+   */
+  async function markerIds(ctx: MarketplaceContext): Promise<{ market: Set<string>; manual: Set<string> }> {
+    let names: string[];
+    try {
+      names = await fs.readdir(path.join(meowRoot(ctx), ".marketplace"));
+    } catch {
+      return { market: new Set(), manual: new Set() };
+    }
+    const market = new Set<string>();
+    const manual = new Set<string>();
+    for (const name of names) {
+      if (!name.endsWith(".json")) continue;
+      if (name.startsWith("manual-mcp-")) {
+        manual.add(name.slice("manual-mcp-".length, -".json".length));
+      } else if (name.startsWith("mcp-")) {
+        market.add(name.slice("mcp-".length, -".json".length));
+      }
+    }
+    return { market, manual };
+  }
+
+  /** MCP 连接方式摘要：http 取地址，stdio 取命令行（含参数） */
+  function describeMcpTarget(server: Record<string, unknown>): string {
+    const url = typeof server.url === "string" ? server.url.trim() : "";
+    if (url) return url;
+    const command = typeof server.command === "string" ? server.command.trim() : "";
+    if (!command) return "";
+    const args = Array.isArray(server.args) ? server.args.map((arg) => String(arg)).join(" ") : "";
+    return args ? `${command} ${args}` : command;
   }
 
   async function exists(target: string): Promise<boolean> {
@@ -303,10 +432,16 @@ export function createMarketplaceStore(bundlesDir: string | undefined) {
               item.type === "mcp" && item.requiresEnv
                 ? item.requiresEnv.every((name) => Boolean(process.env[name]))
                 : undefined;
+            // 只对已安装的远程 MCP 读 bundle：未安装的没有授权入口，省掉 200+ 次无谓读盘
+            const oauthCapable =
+              item.type === "mcp" && installed && bundlesDir
+                ? await isRemoteMcpBundle(item, bundlesDir)
+                : undefined;
             return {
               ...item,
               installed,
               ...(envReady !== undefined ? { envReady } : {}),
+              ...(oauthCapable !== undefined ? { oauthCapable } : {}),
             };
           }),
         ),
@@ -420,7 +555,7 @@ export function createMarketplaceStore(bundlesDir: string | undefined) {
       );
       const skillById = new Map(skills.map((skill) => [path.basename(path.dirname(skill.path)), skill] as const));
       const mcpConfig = await readUserMcp(ctx);
-      const servers = (mcpConfig.mcpServers ?? {}) as Record<string, { enabled?: unknown }>;
+      const servers = (mcpConfig.mcpServers ?? {}) as Record<string, { enabled?: unknown; url?: unknown }>;
 
       const out: MineList = { skills: [], plugins: [], mcp: [] };
       for (const marker of markers) {
@@ -449,6 +584,7 @@ export function createMarketplaceStore(bundlesDir: string | undefined) {
             addedAt: marker.addedAt,
             status: server ? "ok" : "missing",
             enabled: server ? server.enabled !== false : false,
+            ...(typeof server?.url === "string" && server.url.length > 0 ? { oauthCapable: true } : {}),
           });
         }
       }
@@ -588,6 +724,47 @@ export function createMarketplaceStore(bundlesDir: string | undefined) {
       servers[input.id] = { ...(servers[input.id] as Record<string, unknown>), enabled: input.enabled };
       await writeJsonAtomic(path.join(meowRoot(ctx), "mcp.json"), { ...config, mcpServers: servers });
       return { id: input.id, enabled: input.enabled };
+    },
+
+    /**
+     * 本机已安装的全部 MCP：读 mcp.json 的每个键，再看它是市场装的、手动加的还是直接手写的。
+     * 市场索引里没有的条目也能被列出来——「已安装」分区展示的是本机真实配置，而不是索引子集。
+     */
+    async installedMcpList(ctx: MarketplaceContext): Promise<InstalledMcpEntry[]> {
+      const config = await readUserMcp(ctx);
+      const servers = (config.mcpServers ?? {}) as Record<string, unknown>;
+      const markers = await markerIds(ctx);
+      const out: InstalledMcpEntry[] = [];
+      for (const [id, raw] of Object.entries(servers)) {
+        if (!ID_PATTERN.test(id) || id.includes("..")) continue;
+        const server = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
+        out.push({
+          id,
+          enabled: server.enabled !== false,
+          source: markers.market.has(id) ? "market" : markers.manual.has(id) ? "manual" : "local",
+          target: describeMcpTarget(server),
+        });
+      }
+      return out.sort((a, b) => a.id.localeCompare(b.id));
+    },
+
+    /**
+     * 删掉 mcp.json 里的一个条目（没有任何标记的「本地配置」也能删）。
+     * 带市场/手动标记的条目请走 uninstall——那边还要清标记文件。
+     */
+    async mcpRemoveLocal(id: string, ctx: MarketplaceContext): Promise<void> {
+      assertSafeId(id);
+      const markers = await markerIds(ctx);
+      if (markers.market.has(id) || markers.manual.has(id)) {
+        throw new MarketplaceError("not_managed", `mcp/${id} is managed by the marketplace`);
+      }
+      const config = await readUserMcp(ctx);
+      const servers = { ...config.mcpServers };
+      if (!servers[id]) {
+        throw new MarketplaceError("not_found", `mcp/${id} not found in mcp.json`);
+      }
+      delete servers[id];
+      await writeJsonAtomic(path.join(meowRoot(ctx), "mcp.json"), { ...config, mcpServers: servers });
     },
   };
 }

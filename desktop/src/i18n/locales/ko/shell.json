@@ -4,6 +4,7 @@
     "architecture": "Agent 아키텍처",
     "git": "Git 관리",
     "plugins": "마켓플레이스",
+    "automation": "자동화",
     "settings": "설정"
   },
   "update": {

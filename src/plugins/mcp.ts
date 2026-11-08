@@ -22,10 +22,20 @@ export type McpServerConfig = {
   url?: string;
   headers?: Record<string, string>;
   /**
-   * OAuth（仅 streamable HTTP）：authorization_code + PKCE 公开客户端，动态注册，
+   * OAuth（仅 streamable HTTP）：authorization_code + PKCE 公开客户端，
    * 授权码走 127.0.0.1 回环回调，token 落 ~/.meowcode/mcp-oauth/。缺省或 stdio 无此字段。
+   *
+   * 客户端身份：`clientId` 为非 URL 时预注册跳过 DCR；HTTPS URL 或 `clientMetadataUrl`
+   * 走 CIMD（SEP-991）。都没配则默认带 MeowCode 官方 CIMD URL（仅 AS 广播支持时生效）。
    */
-  auth?: { type: "oauth"; scopes?: string[] };
+  auth?: {
+    type: "oauth";
+    scopes?: string[];
+    /** 预注册 client_id；HTTPS URL 形式则作为 CIMD 文档地址 */
+    clientId?: string;
+    /** CIMD 文档 URL；空串关闭官方 CIMD 回退 */
+    clientMetadataUrl?: string;
+  };
   /** 默认 true：MCP 工具免审批直接执行；显式 false 则该 server 的工具每次调用先弹审批 */
   trust?: boolean;
   /** callTool 超时毫秒，默认 60000 */
@@ -37,7 +47,11 @@ export type McpServerConfig = {
 export type McpConfigFile = { mcpServers?: Record<string, McpServerConfig> };
 
 export type McpServerState = {
-  status: "connecting" | "ready" | "failed" | "unconfigured";
+  /**
+   * needs_auth：远程 server 回了 401，等用户在 UI 点「授权」。
+   * 这不是故障——连接期不再自动弹浏览器等回调（那会把状态卡在 connecting 最长 5 分钟）。
+   */
+  status: "connecting" | "ready" | "failed" | "unconfigured" | "needs_auth";
   toolCount: number;
   error?: string;
   /** unconfigured 时缺的 ${VAR} 名单（给渲染层展示「待配置 · 缺 X」） */
@@ -423,6 +437,64 @@ export class McpManager {
     return Object.fromEntries([...this.servers].map(([name, entry]) => [name, { ...entry.state }]));
   }
 
+  /**
+   * 手动发起 OAuth 授权（UI「授权 / 重新授权」按钮的落点）。
+   *
+   * 连接时的 401 自动授权只在 transport 首次 connect 失败那一刻触发一次；失败后 entry 停在
+   * failed 不会自己重来，用户也没有重试入口——所以需要这条显式通道。
+   * force：先清掉本机 token。ensureAuthorized 见到已有 token 会直接返回，不清就弹不出授权页。
+   */
+  async authorize(name: string, options: { force?: boolean } = {}): Promise<void> {
+    const entry = this.servers.get(name);
+    if (!entry) throw new Error(`unknown MCP server "${name}"`);
+    if (typeof entry.config.url !== "string" || entry.config.url.length === 0) {
+      throw new Error(`MCP server "${name}" is not an HTTP server; OAuth does not apply`);
+    }
+    const homeDir = process.env.MEOWCODE_HOME_DIR || os.homedir();
+    const provider = createMcpOAuthProvider(entry.config, name, homeDir);
+    // prepare() 先起回环监听：redirectUrl 缺位时 SDK 会走 non-interactive 换 token，首次授权必败
+    await provider.prepare();
+    try {
+      if (options.force) await provider.clearTokens();
+      await provider.ensureAuthorized();
+    } finally {
+      await provider.close();
+    }
+    // 授权完成才进生命周期链重连：等用户点浏览器期间不该堵住 reload 和其他 server
+    await this.serialize(async () => {
+      const current = this.servers.get(name);
+      if (!current) return; // 授权期间被卸载/停用了
+      await this.teardownServer(name);
+      current.reconnects = 0;
+      current.state = { status: "connecting", toolCount: 0 };
+      await this.connectServer(name);
+    });
+  }
+
+  /**
+   * 解除授权：清掉本机保存的 token 并断开连接，状态回到 needs_auth。
+   * 与 authorize 相对，给「换个账号 / 不想再连了」一个出口。
+   * 只清 tokens 与 codeVerifier（保留 DCR 的 clientInformation，下次授权不必重新注册）。
+   */
+  async revoke(name: string): Promise<void> {
+    const entry = this.servers.get(name);
+    if (!entry) throw new Error(`unknown MCP server "${name}"`);
+    if (typeof entry.config.url !== "string" || entry.config.url.length === 0) {
+      throw new Error(`MCP server "${name}" is not an HTTP server; OAuth does not apply`);
+    }
+    const homeDir = process.env.MEOWCODE_HOME_DIR || os.homedir();
+    await createMcpOAuthProvider(entry.config, name, homeDir).clearTokens();
+    // 断开也进生命周期链：别和并发的 reload / 授权抢同一个 server
+    await this.serialize(async () => {
+      const current = this.servers.get(name);
+      if (!current) return; // 解除期间被卸载/停用了
+      await this.teardownServer(name);
+      current.reconnects = 0;
+      current.state = { status: "needs_auth", toolCount: 0 };
+      this.log("info", `mcp server "${name}" authorization revoked`);
+    });
+  }
+
   async callTool(
     server: string,
     tool: string,
@@ -596,6 +668,15 @@ export class McpManager {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       entry.client = null;
+      // 401 不是故障：等用户点「授权」。标成 failed 会显示红色失败徽标，也容易让人以为要重装
+      if (error instanceof McpAuthRequiredError) {
+        // 401 不是故障：标 needs_auth 等用户在市场 MCP 行点「授权」（协议内 OAuth，
+        // 起浏览器 + 等回环回调）。连接期绝不自动弹浏览器——启动时被强拉授权页
+        // 对不需要该 server 的用户是骚扰；状态徽标 + 「授权」按钮足够引导。
+        entry.state = { status: "needs_auth", toolCount: 0, error: message };
+        this.log("info", `mcp server "${name}" needs authorization`);
+        return;
+      }
       entry.state = { status: "failed", toolCount: 0, error: message };
       this.log("error", `mcp server "${name}" failed: ${message}`);
     }
@@ -626,42 +707,87 @@ export class McpManager {
   }
 }
 
+/** 判断连接错误是不是「需要授权」（SDK UnauthorizedError 或 StreamableHTTPError 401）。 */
+export function isUnauthorizedError(error: unknown): boolean {
+  if (!error) return false;
+  const name = (error as { constructor?: { name?: string } })?.constructor?.name;
+  if (name === "UnauthorizedError") return true;
+  const code = (error as { code?: unknown }).code;
+  if (code === 401) return true;
+  const message = error instanceof Error ? error.message : String(error);
+  return /\b401\b|unauthorized/i.test(message);
+}
+
+/**
+ * 按 server 配置构造 OAuth provider。
+ * 连接时 401 自动授权与 UI 手动授权共用同一套客户端身份规则（auth 字段缺省 = 探测 CIMD，再退 DCR）。
+ */
+export function createMcpOAuthProvider(
+  config: McpServerConfig,
+  serverName: string,
+  homeDir: string,
+): McpOAuthProvider {
+  const url = new URL(expandEnvTemplates(config.url ?? ""));
+  return new McpOAuthProvider({
+    serverName,
+    serverUrl: url.toString(),
+    homeDir,
+    ...(config.auth?.type === "oauth" && config.auth.scopes?.length ? { scopes: config.auth.scopes } : {}),
+    ...(config.auth?.type === "oauth" && config.auth.clientId !== undefined
+      ? { clientId: config.auth.clientId }
+      : {}),
+    ...(config.auth?.type === "oauth" && config.auth.clientMetadataUrl !== undefined
+      ? { clientMetadataUrl: config.auth.clientMetadataUrl }
+      : {}),
+    probeCimd: true,
+  });
+}
+
+/**
+ * 远程 server 回了 401：需要用户点「授权」走交互式 OAuth。
+ * 单独成类型，好让 McpManager 标成 needs_auth 而不是 failed——它不是故障。
+ */
+export class McpAuthRequiredError extends Error {
+  constructor(readonly serverName: string) {
+    super(`MCP server "${serverName}" requires authorization`);
+    this.name = "McpAuthRequiredError";
+  }
+}
+
 /** 默认工厂：stdio（spawn 子进程）或 streamable HTTP；env/headers 展开 ${VAR}。
- *  HTTP + auth.type="oauth" 时走 SDK 授权流程（回环回调 + 换 token），失败标 failed。 */
+ *  HTTP 401 不在这里弹浏览器：交互式授权由 McpManager.authorize 显式触发（UI「授权」按钮）。
+ *  连接期等回环回调最长 5 分钟，会把状态一直挂在 connecting 上。
+ */
 export const createStdioOrHttpClient: McpClientFactory = async (config, serverName): Promise<McpClientLike> => {
-  const client = new Client({ name: "meowcode", version: "1.0.0" });
   if (typeof config.url === "string" && config.url.length > 0) {
     const headers: Record<string, string> = {};
     for (const [key, value] of Object.entries(config.headers ?? {})) {
       headers[key] = expandEnvTemplates(value);
     }
     const url = new URL(expandEnvTemplates(config.url));
-    const provider =
-      config.auth?.type === "oauth"
-        ? new McpOAuthProvider({
-            serverName: serverName ?? url.host,
-            serverUrl: url.toString(),
-            homeDir: process.env.MEOWCODE_HOME_DIR || os.homedir(),
-            ...(config.auth.scopes?.length ? { scopes: config.auth.scopes } : {}),
-          })
-        : null;
-    const connect = async (): Promise<void> => {
-      const transport = new StreamableHTTPClientTransport(url, {
-        requestInit: { headers },
-        ...(provider ? { authProvider: provider } : {}),
-      });
-      await client.connect(transport);
-    };
-    try {
-      await connect();
-    } catch (error) {
-      // 401 → SDK 抛 UnauthorizedError：跑完整授权（拉浏览器 + 回环等 code），然后重连一次
-      if (!provider || error?.constructor?.name !== "UnauthorizedError") throw error;
-      await provider.ensureAuthorized();
-      await connect();
+    // config 里写死的 Authorization 优先，且 401 一律当失败（token 由桌面端刷新）
+    const hasAuthHeader = Object.keys(headers).some((key) => key.toLowerCase() === "authorization");
+    // 已授权的 token 直接当 Bearer 带上，不传 authProvider：
+    // SDK 拿到 authProvider 后遇 401 会走 auth() 弹浏览器并等回环回调，连接就卡死了。
+    if (!hasAuthHeader) {
+      const homeDir = process.env.MEOWCODE_HOME_DIR || os.homedir();
+      const tokens = await createMcpOAuthProvider(config, serverName ?? url.host, homeDir)
+        .tokens()
+        .catch(() => undefined);
+      if (tokens?.access_token) headers.Authorization = `Bearer ${tokens.access_token}`;
     }
-    return client as unknown as McpClientLike;
+    const client = new Client({ name: "meowcode", version: "1.1.0" });
+    const transport = new StreamableHTTPClientTransport(url, { requestInit: { headers } });
+    try {
+      // 裸连：Firecrawl 这类免 key HTTP MCP 直接通
+      await client.connect(transport);
+      return client as unknown as McpClientLike;
+    } catch (error) {
+      if (hasAuthHeader || !isUnauthorizedError(error)) throw error;
+      throw new McpAuthRequiredError(serverName ?? url.host);
+    }
   }
+  const client = new Client({ name: "meowcode", version: "1.1.0" });
   if (typeof config.command === "string" && config.command.length > 0) {
     const env: Record<string, string> = {};
     for (const [key, value] of Object.entries(process.env)) {
@@ -672,7 +798,8 @@ export const createStdioOrHttpClient: McpClientFactory = async (config, serverNa
     }
     const transport = new StdioClientTransport({
       command: config.command,
-      ...(config.args ? { args: config.args } : {}),
+      // args 里的 ${VAR} 也要展开（unresolvedEnvVars 同样扫 args，两者必须对称）
+      ...(config.args ? { args: config.args.map((arg) => expandEnvTemplates(arg)) } : {}),
       env,
     });
     await client.connect(transport);

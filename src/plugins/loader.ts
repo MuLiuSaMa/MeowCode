@@ -4,11 +4,16 @@ import { fileURLToPath } from "node:url";
 import { createJiti, type Jiti } from "jiti";
 import { builtinMeta, iconSvgToDataUrl } from "./builtin-meta.js";
 import type { PluginRegistry } from "./registry.js";
-import type { PluginDescriptor, PluginFactory, PluginLoadError, PluginSource } from "./types.js";
+import type {
+  ExtensionHost,
+  PluginDescriptor,
+  PluginFactory,
+  PluginLoadError,
+  PluginSource,
+} from "./types.js";
 
 /** 支持的插件文件扩展名 */
-const PLUGIN_EXTENSIONS = new Set([".ts", ".mts", ".js", ".mjs", ".cjs"]);
-/** 目录型插件的入口候选（按序尝试） */
+const PLUGIN_EXTENSIONS = new Set([".ts", ".mts", ".js", ".mjs", ".cjs"]);/** 目录型插件的入口候选（按序尝试） */
 const INDEX_CANDIDATES = ["index.ts", "index.mts", "index.js", "index.mjs", "index.cjs"];
 /** 跳过的文件：类型声明与测试文件不作为插件 */
 const IGNORED_BASENAMES = /\.(d\.ts|test\.tsx?|spec\.tsx?)$/i;
@@ -42,6 +47,25 @@ async function detectPluginUi(entryFile: string): Promise<{ title: string; entry
     return { title: path.basename(dir), entry: "index.html" };
   } catch {
     return null;
+  }
+}
+
+/**
+ * 插件文件头元数据：`// @meowcode name: ...` / `// @meowcode description: ...`。
+ * 自建插件没有市场条目，靠这两行在「已加载插件」里显示中文名与介绍。
+ */
+async function readPluginHeaderMeta(
+  filePath: string,
+): Promise<{ name?: string; description?: string }> {
+  try {
+    const head = (await fs.readFile(filePath, "utf8")).slice(0, 4_096);
+    const pick = (key: string): string | undefined => {
+      const match = new RegExp(`^\\s*//\\s*@meowcode\\s+${key}:\\s*(.+)$`, "im").exec(head);
+      return match?.[1]?.trim().slice(0, 200) || undefined;
+    };
+    return { name: pick("name"), description: pick("description") };
+  } catch {
+    return {};
   }
 }
 
@@ -151,6 +175,8 @@ export type LoadPluginsOptions = {
   /** 禁用插件 id 列表（desktop settings 全局启停） */
   disabled?: readonly string[];
   registry: PluginRegistry;
+  /** AI 自建能力宿主（server 注入；缺省时插件拿不到 api.host） */
+  host?: ExtensionHost;
 };
 
 /**
@@ -202,6 +228,11 @@ export async function loadPlugins(options: LoadPluginsOptions): Promise<{
         descriptor.description = meta.description;
         descriptor.iconUrl = iconSvgToDataUrl(meta.iconSvg);
       }
+    } else {
+      // 用户/项目插件：读文件头 `// @meowcode name/description`，让自建插件在列表里有中文名
+      const header = await readPluginHeaderMeta(item.path);
+      if (header.name) descriptor.displayName = header.name;
+      if (header.description) descriptor.description = header.description;
     }
     descriptors.push(descriptor);
     if (!descriptor.enabled) continue;
@@ -213,7 +244,12 @@ export async function loadPlugins(options: LoadPluginsOptions): Promise<{
     options.registry.addPlugin(item.id, item.source, item.path);
     try {
       const factory = await importPluginFactory(item.path);
-      const api = options.registry.createApi(item.id, options.workspace, options.homeDir);
+      const api = options.registry.createApi(
+        item.id,
+        options.workspace,
+        options.homeDir,
+        options.host,
+      );
       await factory(api);
       const toolNames = options.registry.toolNamesOf(item.id);
       const commandNames = options.registry

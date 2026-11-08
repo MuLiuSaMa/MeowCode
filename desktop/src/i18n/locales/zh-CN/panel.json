@@ -47,7 +47,7 @@
       "cacheStatus": "缓存状态",
       "cacheWrite": "缓存写入",
       "output": "输出",
-      "cacheHitRate": "缓存命中率（会话）",
+      "cacheHitRate": "缓存命中率",
       "speed": "生成速度",
       "response": "响应时间",
       "firstToken": "首字延迟"
@@ -62,7 +62,10 @@
       "miss": "{{base}}（未命中）",
       "hitting": "{{base}}（命中中）"
     },
-    "tokenValue": "{{value}} tok"
+    "tokenValue": "{{value}} tok",
+    "sessionTotal": "会话累计",
+    "tokensTitle": "Token 构成",
+    "liveCalls": "实时 · 最近 {{count}} 次调用"
   },
   "subagent": {
     "fallbackTitle": "子 Agent",

@@ -5,7 +5,8 @@ import { Button } from "../ui/Button";
 import { CustomSelect, type CustomSelectOption } from "../ui/CustomSelect";
 import { FieldRow, Section } from "../ui/Section";
 import { SegmentedControl } from "../ui/SegmentedControl";
-import type { ThemePreference } from "../../api";
+import { PaletteSwatches } from "./PaletteSwatches";
+import type { ThemePalette, ThemePreference } from "../../api";
 import "./AppearanceSection.css";
 
 /** 表里只存值：标签在组件里查表，切语言才会跟着刷新。 */
@@ -48,6 +49,8 @@ function fontLabel(family: string, fullName?: string): string {
 export function AppearanceSection({
   preference,
   onPreference,
+  palette,
+  onPalette,
   fontFamily,
   codeFontFamily,
   customFonts,
@@ -58,6 +61,9 @@ export function AppearanceSection({
 }: {
   preference: ThemePreference;
   onPreference: (value: ThemePreference) => void;
+  /** 配色方案：与明暗正交 */
+  palette: ThemePalette;
+  onPalette: (value: ThemePalette) => void;
   /** 界面字体：空串 = 默认 MiSans */
   fontFamily: string;
   /** 代码字体：空串 = 默认等宽栈 */
@@ -172,6 +178,15 @@ export function AppearanceSection({
             ariaLabel={t("appearance.themeField")}
           />
         </FieldRow>
+      </Section>
+
+      <Section
+        title={t("appearance.paletteSection")}
+        description={t("appearance.paletteDesc")}
+      >
+        <div className="mc-palette">
+          <PaletteSwatches value={palette} onChange={onPalette} />
+        </div>
       </Section>
 
       <Section

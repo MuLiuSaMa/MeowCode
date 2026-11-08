@@ -28,6 +28,7 @@ import type {
   SubagentSummary,
   SubagentType,
   ToolDocument,
+  TurnDurationGroup,
   TurnFileChangeGroup,
   TurnFileChangeStat,
   ToolImage,
@@ -189,6 +190,16 @@ export class SessionStore {
     return header.traceId ?? header.id;
   }
 
+  /**
+   * 缓存血缘根：fork 用来源会话，子 Agent 用直接父会话（rootSessionId）。
+   * 普通会话没有血缘，返回 undefined。
+   */
+  get affinityRootId(): string | undefined {
+    const header = this.entries[0];
+    if (header?.type !== "session") throw new Error("Session header is missing.");
+    return header.forkedFrom ?? header.rootSessionId;
+  }
+
   get worktree(): SessionWorktree | undefined {
     const header = this.entries[0];
     if (header?.type !== "session") throw new Error("Session header is missing.");
@@ -292,6 +303,94 @@ export class SessionStore {
         }
         current = null;
       }
+    }
+    return groups;
+  }
+
+  /**
+   * 按回合的运行耗时（历史回放）：首个 turn_start → 末个 turn_end 的墙钟差。
+   * messageIndex 与 turnFileChangeGroups 完全同口径（只数 message 条目）。
+   * 续命循环复用同 turnId 但不重写 turn_start，首尾差天然覆盖多段；
+   * 孤立 turn_start（崩溃未收尾）不出组，非法时间戳 / 负值一律丢弃。
+   * interrupted 轮的 turn_end 是下次启动时补写的，直接取差值会把停机时间算进去，
+   * 改用轮内最后一次活动时间作为终点。
+   */
+  get turnDurations(): TurnDurationGroup[] {
+    const startAt = new Map<string, number>();
+    const lastActivityAt = new Map<string, number>();
+    /** turnId → 主对话（source=chat）Token 汇总：usage 条目天然带 turnId */
+    const usageByTurn = new Map<
+      string,
+      { input: number; output: number; cacheRead: number; cacheWrite: number }
+    >();
+    const groups: TurnDurationGroup[] = [];
+    let openTurnId: string | null = null;
+    let messageCount = 0;
+    const bumpActivity = (turnId: string, ts: number) => {
+      if (!Number.isFinite(ts)) return;
+      lastActivityAt.set(turnId, Math.max(lastActivityAt.get(turnId) ?? ts, ts));
+    };
+    for (const entry of this.entries) {
+      // 会话头部没有 timestamp；其余条目都有
+      const ts = "timestamp" in entry ? Date.parse(entry.timestamp) : Number.NaN;
+      if (entry.type === "usage") {
+        // 旧记录没有 source：视为主对话；标题/压缩/建议等不计入回合用量
+        if (entry.turnId && (entry.source ?? "chat") === "chat") {
+          const acc = usageByTurn.get(entry.turnId) ?? {
+            input: 0,
+            output: 0,
+            cacheRead: 0,
+            cacheWrite: 0,
+          };
+          acc.input += entry.inputTokens ?? 0;
+          acc.output += entry.outputTokens ?? 0;
+          acc.cacheRead += entry.cacheReadTokens ?? 0;
+          acc.cacheWrite += entry.cacheWriteTokens ?? 0;
+          usageByTurn.set(entry.turnId, acc);
+        }
+      }
+      if (entry.type === "turn_end") {
+        const start = startAt.get(entry.turnId);
+        if (start === undefined) continue;
+        // 崩溃恢复补写的 turn_end 在重启时才落盘：用轮内最后活动时间，别把停机时间算进去
+        const end =
+          entry.status === "interrupted" ? (lastActivityAt.get(entry.turnId) ?? Number.NaN) : ts;
+        const durationMs = end - start;
+        openTurnId = null;
+        if (!Number.isFinite(durationMs) || durationMs < 0) continue;        // 同 turnId 可能有多段 turn_end：保留最后一段（首尾差），先移除旧的
+        const existing = groups.findIndex((group) => group.turnId === entry.turnId);
+        const acc = usageByTurn.get(entry.turnId);
+        const group: TurnDurationGroup = {
+          turnId: entry.turnId,
+          messageIndex: messageCount,
+          durationMs,
+          status: entry.status,
+          // 中断轮的结束时间同样取最后活动时刻（不是重启补写 turn_end 的时间）
+          endedAt: new Date(end).toISOString(),
+          ...(acc && (acc.input || acc.output || acc.cacheRead || acc.cacheWrite)
+            ? {
+                usage: {
+                  inputTokens: acc.input,
+                  outputTokens: acc.output,
+                  cacheReadTokens: acc.cacheRead,
+                  cacheWriteTokens: acc.cacheWrite,
+                  totalTokens: acc.input + acc.output,
+                },
+              }
+            : {}),
+        };
+        if (existing >= 0) groups[existing] = group;
+        else groups.push(group);
+        continue;
+      }
+      if (entry.type === "message") messageCount += 1;
+      if (entry.type === "turn_start") {
+        if (Number.isFinite(ts) && !startAt.has(entry.turnId)) startAt.set(entry.turnId, ts);
+        openTurnId = entry.turnId;
+        bumpActivity(entry.turnId, ts);
+        continue;
+      }
+      if (openTurnId != null) bumpActivity(openTurnId, ts);
     }
     return groups;
   }
@@ -915,6 +1014,8 @@ export class SessionStore {
     outputTokens?: number;
     cacheReadTokens?: number;
     cacheWriteTokens?: number;
+    /** 本轮生成速度（output token / 秒）；实时速度曲线回放用 */
+    tokensPerSecond?: number;
     source?: UsageSource;
     turnId?: string;
     providerId?: string;
@@ -1303,6 +1404,41 @@ export class SessionStore {
       cacheReported,
       hasUsage,
     };
+  }
+
+  /**
+   * 最近的主对话模型调用样本（时间正序）：右侧「实时命中率曲线」。
+   * 每条 source=chat 的 usage 条目 = 一次模型调用；只收报告过缓存读取的样本，
+   * 否则会在曲线上画出假的 0 命中。
+   */
+  get usageSamples(): Array<{
+    inputTokens: number;
+    outputTokens: number;
+    cacheReadTokens: number;
+    tokensPerSecond?: number;
+  }> {
+    const samples: Array<{
+      inputTokens: number;
+      outputTokens: number;
+      cacheReadTokens: number;
+      tokensPerSecond?: number;
+    }> = [];
+    for (const entry of this.entries) {
+      if (entry.type !== "usage") continue;
+      // 旧记录没有 source：视为主对话，与 turnDurations 同口径
+      if ((entry.source ?? "chat") !== "chat") continue;
+      if (typeof entry.cacheReadTokens !== "number") continue;
+      if (typeof entry.inputTokens !== "number" || entry.inputTokens <= 0) continue;
+      samples.push({
+        inputTokens: entry.inputTokens,
+        outputTokens: entry.outputTokens ?? 0,
+        cacheReadTokens: entry.cacheReadTokens,
+        ...(typeof entry.tokensPerSecond === "number"
+          ? { tokensPerSecond: entry.tokensPerSecond }
+          : {}),
+      });
+    }
+    return samples.slice(-30);
   }
 
   /**

@@ -41,6 +41,13 @@
 .mc-statusline__dots i:nth-child(3) {
   animation-delay: 0.3s;
 }
+/* 本回合已运行时间：常驻在状态文字右侧，数字等宽避免每秒跳动时抖动 */
+.mc-statusline__time {
+  flex-shrink: 0;
+  margin-left: 2px;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.85;
+}
 @keyframes mc-statusline-bounce {
   0%,
   60%,

@@ -33,6 +33,12 @@ const {
   shouldNotify,
 } = require("./notifications.cjs");
 const { readJsonWithBackup, writeJsonAtomic } = require("./persist.cjs");
+const { createScheduler } = require("./scheduler.cjs");
+const {
+  validateManualMcpToken,
+  credentialGroupOf,
+  credentialCheckName,
+} = require("./mcp-token-checks.cjs");
 const {
   defaultDataDir,
   locationPointerPath,
@@ -73,12 +79,14 @@ const serverToken = crypto.randomBytes(32).toString("base64url");
 
 /** GitHub OAuth access token 注入到这个环境变量；mcp.json 只保留 ${...} 占位模板。 */
 const GITHUB_TOKEN_ENV = "MEOWCODE_GITHUB_TOKEN";
-/** 手工令牌（Gitee/GitCode PAT、Figma/瑞幸访问令牌）：加密存 settings.mcpCredentials，启动/更新时注入进程 env。 */
+/** 手工令牌（Gitee/GitCode PAT、Figma/瑞幸访问令牌、飞书 App ID/Secret）：加密存 settings.mcpCredentials，启动/更新时注入进程 env。 */
 const MANUAL_MCP_TOKEN_ENVS = [
   "MEOWCODE_GITEE_TOKEN",
   "MEOWCODE_GITCODE_TOKEN",
   "MEOWCODE_FIGMA_TOKEN",
   "LUCKIN_MCP_TOKEN",
+  "MEOWCODE_LARK_APP_ID",
+  "MEOWCODE_LARK_APP_SECRET",
 ];
 /** 提前 5 分钟刷新，避开 MCP 请求中途过期。 */
 const GITHUB_REFRESH_MARGIN_MS = 5 * 60 * 1000;
@@ -141,6 +149,16 @@ function localOauthCredential(platform) {
  */
 function resolveOauthApp(settings, platform) {
   const config = OAUTH_PLATFORMS[platform];
+  // 公共客户端（PKCE、无 secret）：Undermind 等 CIMD-only 平台，client_id 用内置/自定义 ID 即可
+  if (config.publicClient) {
+    const storedApp = settings.oauthApps?.[platform] ?? {};
+    const customClientId = typeof storedApp.clientId === "string" ? storedApp.clientId.trim() : "";
+    return {
+      clientId: customClientId || config.defaultClientId || "",
+      clientSecret: "",
+      source: customClientId ? "settings" : "builtin",
+    };
+  }
   const storedApp = settings.oauthApps?.[platform] ?? {};
   const storedSecret = storedApp.clientSecretEncrypted
     ? decryptApiKey(storedApp.clientSecretEncrypted).trim()
@@ -226,6 +244,8 @@ function resolveSystemProxy() {
 }
 /** 主题偏好：跟随系统 / 浅色 / 深色 */
 const THEME_PREFERENCES = ["system", "light", "dark"];
+/** 配色方案：必须与 desktop/src/api.ts 的 ThemePalette / theme.tsx 的 PALETTE_VALUES 一致 */
+const PALETTES = ["classic", "lava", "bee", "mint", "parchment", "harmony"];
 /** 界面语言：跟随系统 + 11 个语种，必须与 desktop/src/i18n/languages.ts 的清单一致 */
 const LANGUAGE_PREFERENCES = [
   "system",
@@ -242,8 +262,15 @@ const LANGUAGE_PREFERENCES = [
   "pt",
 ];
 
-/** 主题 → 窗口底色，必须与 theme/tokens.css 的 --bg-root 一致 */
-const THEME_BACKGROUND = { dark: "#0a0a0a", light: "#e6e6e6" };
+/** 配色 + 明暗 → 窗口底色，必须与 theme/palettes.css 的 --bg-root 一致（classic 在 tokens.css） */
+const PALETTE_BACKGROUND = {
+  classic: { dark: "#0a0a0a", light: "#e6e6e6" },
+  lava: { dark: "#0f0a08", light: "#f8efe9" },
+  bee: { dark: "#0d0c06", light: "#faf5e4" },
+  mint: { dark: "#08100d", light: "#ecf6f1" },
+  parchment: { dark: "#0e0b07", light: "#f4ecdb" },
+  harmony: { dark: "#070b13", light: "#ebf1fa" },
+};
 
 /**
  * Windows 11（build ≥ 22000）启用系统亚克力背板：
@@ -527,6 +554,8 @@ function defaultSettings() {
     schemaVersion: 2,
     providers: [],
     theme: "system",
+    // 配色方案：classic = 中性观感（默认，与加配色之前一致）
+    palette: "classic",
     closeAction: "ask",
     language: "system",
     speechStyle: "normal",
@@ -534,6 +563,8 @@ function defaultSettings() {
     memoryEnabled: true,
     // 自我学习（技能 / 项目经验 / 用户模型）：实验性能力，默认关闭，设置页可开
     selfLearning: false,
+    // 供应商故障转移：默认关闭，开启后超时/限流/5xx 时本回合自动切备用服务商
+    providerFallback: false,
     // 命令沙箱（Windows 受限令牌 + ACL）：默认关闭，设置页显式开启
     sandbox: normalizeSandbox(),
     // 网络代理：direct = 直连（默认，与加代理之前行为一致）
@@ -620,6 +651,7 @@ function migrateSettings(raw) {
     schemaVersion: 2,
     providers: Array.isArray(parsed.providers) ? parsed.providers : [],
     language: LANGUAGE_PREFERENCES.includes(parsed.language) ? parsed.language : "system",
+    palette: PALETTES.includes(parsed.palette) ? parsed.palette : "classic",
     speechStyle: SPEECH_STYLES.includes(parsed.speechStyle) ? parsed.speechStyle : "normal",
     // 全新安装走 defaultSettings() 回退（显式 false）；已有 settings.json 缺字段的老用户补 true
     onboardingCompleted:
@@ -634,6 +666,8 @@ function migrateSettings(raw) {
           : true,
     // 自我学习：缺字段的老用户补 false（实验性，默认关闭）
     selfLearning: typeof parsed.selfLearning === "boolean" ? parsed.selfLearning : false,
+    // 供应商故障转移：缺字段的老用户补 false（新功能，默认关闭）
+    providerFallback: parsed.providerFallback === true,
     // 网络代理：缺字段的老用户补直连（保持原有网络行为）
     proxyMode: PROXY_MODES.includes(parsed.proxyMode) ? parsed.proxyMode : "direct",
     proxyUrl: typeof parsed.proxyUrl === "string" ? parsed.proxyUrl : "",
@@ -763,12 +797,14 @@ function publicOauthStatus(settings) {
     // Client ID 走内置应用（公开信息），Secret 可能来自设置页 / 环境变量 / 本机凭据文件
     const resolved = resolveOauthApp(settings, platform);
     status[platform] = {
-      configured: Boolean(resolved.clientId && resolved.clientSecret),
+      configured: config.publicClient
+        ? Boolean(resolved.clientId)
+        : Boolean(resolved.clientId && resolved.clientSecret),
       connected: Boolean(oauthStoredToken(settings, platform)),
       clientId: resolved.clientId,
       redirectUri: localOauthCallbackUri(platform),
       builtinClientId: Boolean(config.defaultClientId) && !app.clientId,
-      needsClientSecret: Boolean(resolved.clientId) && !resolved.clientSecret,
+      needsClientSecret: !config.publicClient && Boolean(resolved.clientId) && !resolved.clientSecret,
       /** secret 来源：settings（设置页保存）/ env（环境变量）/ file（oauth-apps.json）/ builtin（内置应用） */
       secretSource: resolved.source,
       ...(expiresAt ? { expiresAt } : {}),
@@ -782,6 +818,7 @@ function publicSettings(settings) {
     workspace: settings.workspace,
     providerId: settings.providerId,
     theme: settings.theme ?? "system",
+    palette: PALETTES.includes(settings.palette) ? settings.palette : "classic",
     closeAction: settings.closeAction ?? "ask",
     language: LANGUAGE_PREFERENCES.includes(settings.language) ? settings.language : "system",
     speechStyle: SPEECH_STYLES.includes(settings.speechStyle) ? settings.speechStyle : "normal",
@@ -795,6 +832,8 @@ function publicSettings(settings) {
           : true,
     /** 自我学习：实验性，默认关 */
     selfLearning: typeof settings.selfLearning === "boolean" ? settings.selfLearning : false,
+    /** 供应商故障转移：默认关（开 = 临时故障时本回合切备用服务商） */
+    providerFallback: settings.providerFallback === true,
     /** 网络代理：direct / system / manual */
     proxyMode: PROXY_MODES.includes(settings.proxyMode) ? settings.proxyMode : "direct",
     proxyUrl: typeof settings.proxyUrl === "string" ? settings.proxyUrl : "",
@@ -901,8 +940,9 @@ function applyWindowTheme(preference) {
   if (nativeTheme.themeSource !== next) nativeTheme.themeSource = next;
 }
 
-function windowBackground(preference) {
-  return THEME_BACKGROUND[resolveTheme(preference)];
+function windowBackground(preference, palette) {
+  const table = PALETTE_BACKGROUND[palette] ?? PALETTE_BACKGROUND.classic;
+  return table[resolveTheme(preference)];
 }
 
 // ---- Window bounds ----
@@ -1243,6 +1283,8 @@ function buildServerEnv(settings) {
     MEOWCODE_MEMORY: settings.memoryEnabled === false ? "0" : "1",
     // 自我学习开关：同上，运行中切换走 /config/learning（默认关）
     MEOWCODE_SELF_LEARNING: settings.selfLearning === true ? "1" : "0",
+    // 供应商故障转移：server 只认 env，运行中切换走 /config/provider-fallback（默认关）
+    MEOWCODE_PROVIDER_FALLBACK: settings.providerFallback === true ? "1" : "0",
     // 网络代理：system 模式在启动时把系统代理解析成具体地址传给 server
     // （agent 侧再退到 HTTPS_PROXY/HTTP_PROXY 兜底）；运行中切换走 /config/proxy
     MEOWCODE_PROXY_MODE: PROXY_MODES.includes(settings.proxyMode) ? settings.proxyMode : "direct",
@@ -1375,64 +1417,8 @@ function updateServerGithubToken(token) {
 }
 
 /** 手工令牌在线校验：Gitee/GitCode 走 query 参数，Figma 走 X-Figma-Token 请求头，瑞幸走 MCP initialize 握手。 */
-const MANUAL_MCP_TOKEN_CHECKS = {
-  MEOWCODE_GITEE_TOKEN: {
-    url: (token) => `https://gitee.com/api/v5/user?access_token=${encodeURIComponent(token)}`,
-    headers: () => ({}),
-  },
-  MEOWCODE_GITCODE_TOKEN: {
-    url: (token) => `https://api.gitcode.com/api/v5/user?access_token=${encodeURIComponent(token)}`,
-    headers: () => ({}),
-  },
-  MEOWCODE_FIGMA_TOKEN: {
-    url: () => "https://api.figma.com/v1/me",
-    headers: (token) => ({ "X-Figma-Token": token }),
-  },
-  LUCKIN_MCP_TOKEN: {
-    url: () => "https://gwmcp.lkcoffee.com/order/user/mcp",
-    method: "POST",
-    headers: (token) => ({
-      authorization: `Bearer ${token}`,
-      "content-type": "application/json",
-      accept: "application/json, text/event-stream",
-    }),
-    // 直接对 MCP 端点做 initialize 握手：401 = 令牌无效，2xx = 鉴权通过
-    body: () =>
-      JSON.stringify({
-        jsonrpc: "2.0",
-        method: "initialize",
-        params: {
-          protocolVersion: "2025-03-26",
-          capabilities: {},
-          clientInfo: { name: "MeowCode", version: "1.0.0" },
-        },
-        id: 1,
-      }),
-  },
-};
-
-async function validateManualMcpToken(name, token) {
-  const check = MANUAL_MCP_TOKEN_CHECKS[name];
-  if (!check) return { ok: false, message: "不支持的 MCP Token。" };
-  try {
-    const response = await fetch(check.url(token), {
-      method: check.method ?? "GET",
-      headers: { accept: "application/json", "user-agent": "MeowCode", ...check.headers(token) },
-      body: check.body ? check.body(token) : undefined,
-      signal: AbortSignal.timeout(15_000),
-    });
-    if (response.ok) return { ok: true };
-    return {
-      ok: false,
-      message: `Token 校验失败（HTTP ${response.status}），请确认是否是有效的私人令牌/访问令牌。`,
-    };
-  } catch (error) {
-    return {
-      ok: false,
-      message: `无法连接平台校验 Token：${error instanceof Error ? error.message : String(error)}`,
-    };
-  }
-}
+// 校验器与成组规则见 desktop/mcp-token-checks.cjs（values 化 + evaluate 业务码判定），
+// 这里只做 IPC 层的成组收集/合并/加密落盘。
 
 // ---- Gitee / GitCode OAuth（授权码 + 本地回跳）----
 
@@ -1490,6 +1476,7 @@ function handleOauthCallback(platform, url, response) {
       clientSecret,
       code,
       redirectUri: localOauthCallbackUri(platform),
+      ...(flow?.codeVerifier ? { codeVerifier: flow.codeVerifier } : {}),
     });
     if (!result.ok) {
       flow.status = "error";
@@ -2094,6 +2081,58 @@ async function focusSessionFromNotification(sessionId) {
   }
 }
 
+// ---- 自动化（定时任务）调度器 ----
+// 到点后新建会话投递 prompt（loopback HTTP）；transport 先等 server 就绪再发，
+// 启动竞态下重试才不会白跑。执行/事件/通知全部复用现有链路，agent server 零改动。
+const automationScheduler = createScheduler({
+  filePath: () =>
+    path.join(settingsDir ?? path.join(app.getPath("userData"), "agent"), "automations.json"),
+  transport: async ({ cwd, message }) => {
+    await waitForServerReady();
+    if (!serverUrl) throw new Error("agent server is not running");
+    const created = await fetch(`${serverUrl}/session/new`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${serverToken}`, "content-type": "application/json" },
+      body: JSON.stringify({ cwd }),
+    });
+    if (!created.ok) throw new Error(`create session failed (${created.status})`);
+    const createdBody = await created.json();
+    const sessionId = String(createdBody?.id ?? "");
+    if (!sessionId) throw new Error("create session returned no id");
+    const sent = await fetch(`${serverUrl}/session/prompt`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${serverToken}`, "content-type": "application/json" },
+      body: JSON.stringify({ sessionId, message }),
+    });
+    if (!sent.ok) {
+      const detail = await sent.text().catch(() => "");
+      throw new Error(`prompt failed (${sent.status}) ${detail.slice(0, 200)}`);
+    }
+    return { sessionId };
+  },
+  getPrefix: (automation) =>
+    String(uiStrings().automationPromptPrefix ?? "").replaceAll("{title}", automation?.title ?? ""),
+  onEvent: handleAutomationEvent,
+});
+
+/** 调度器事件：列表变化广播给所有窗口；触发失败弹系统通知。 */
+function handleAutomationEvent(event) {
+  if (!event || typeof event.type !== "string") return;
+  if (event.type === "changed") {
+    broadcast("meow:automations-changed", automationScheduler.list());
+    return;
+  }
+  if (event.type === "fire-failed") {
+    const labels = uiStrings();
+    const title = String(event.automation?.title ?? "");
+    const error = String(event.error ?? "").slice(0, 200);
+    showNotification({
+      title: String(labels.notifAutomationFailed ?? "自动化触发失败"),
+      body: `${title} — ${error}`,
+    });
+  }
+}
+
 function notifyTurnComplete(payload) {
   const sessionId = String(payload?.sessionId ?? "");
   if (!sessionId) return;
@@ -2163,7 +2202,11 @@ function notifyAskUser(payload) {
       return;
     case "turn_complete":
       // 子 Agent 收尾不代表主回合结束，不提示
-      if (!payload.agentId) notifyTurnComplete(payload);
+      if (!payload.agentId) {
+        notifyTurnComplete(payload);
+        // 自动化任务的会话在此结算历史（started → ok/error）
+        automationScheduler.handleTurnComplete(payload.sessionId, payload.status);
+      }
       return;
     case "approval_required":
       notifyApprovalRequired(payload);
@@ -2536,7 +2579,7 @@ function createWindow() {
     // Win11 用系统亚克力背板做毛玻璃边框；其他系统回退到跟随主题的实色底
     ...(ACRYLIC_BACKDROP ? { backgroundMaterial: "acrylic" } : {}),
     // 跟随主题，避免浅色主题下启动时先闪一下黑（亚克力模式下必须透明，否则挡住背板）
-    backgroundColor: ACRYLIC_BACKDROP ? "#00000000" : windowBackground(settings.theme),
+    backgroundColor: ACRYLIC_BACKDROP ? "#00000000" : windowBackground(settings.theme, settings.palette),
     icon: iconPath(),
     autoHideMenuBar: true,
     webPreferences: {
@@ -2608,10 +2651,11 @@ function createWindow() {
   // 系统主题切换时，跟随系统的窗口底色也跟着变
   nativeTheme.on("updated", () => {
     if (!mainWindow || mainWindow.isDestroyed()) return;
-    if ((readSettings().theme ?? "system") !== "system") return;
+    const current = readSettings();
+    if ((current.theme ?? "system") !== "system") return;
     // 亚克力模式下窗口底色是透明的，不能覆盖
     if (ACRYLIC_BACKDROP) return;
-    mainWindow.setBackgroundColor(windowBackground("system"));
+    mainWindow.setBackgroundColor(windowBackground("system", current.palette));
   });
 
   // 关闭方式：直接放行（真退出）/ 询问 / 托盘
@@ -2724,6 +2768,8 @@ ipcMain.handle("meow:save-settings", async (_event, nextSettings) => {
       providers[0]?.id ||
       previous.providerId,
     theme: THEME_PREFERENCES.includes(incoming.theme) ? incoming.theme : previous.theme,
+    // 重路径也接受配色：否则「保存设置」会把它回退成旧值
+    palette: PALETTES.includes(incoming.palette) ? incoming.palette : previous.palette,
     closeAction: CLOSE_ACTIONS.includes(incoming.closeAction)
       ? incoming.closeAction
       : previous.closeAction,
@@ -2889,43 +2935,78 @@ ipcMain.handle("meow:set-mcp-credentials", async (_event, payload) => {
   if (!env || typeof env !== "object" || Array.isArray(env)) {
     return { ok: false, message: "参数错误。" };
   }
-  const updates = [];
+  const incoming = {};
   for (const name of MANUAL_MCP_TOKEN_ENVS) {
     const value = env[name];
     if (typeof value !== "string" || !value.trim()) continue;
-    updates.push([name, value.trim()]);
+    incoming[name] = value.trim();
   }
-  if (!updates.length) return { ok: false, message: "请填写 Token。" };
-  for (const [name, value] of updates) {
-    const check = await validateManualMcpToken(name, value);
+  if (!Object.keys(incoming).length) return { ok: false, message: "请填写 Token。" };
+  const previous = readSettings();
+  // 成组校验的 values 用「旧存储解密 + 本次新值」合并：只填一半时另一半沿用旧值
+  const merged = {};
+  for (const name of MANUAL_MCP_TOKEN_ENVS) {
+    const stored = previous.mcpCredentials?.[name];
+    if (typeof stored === "string") {
+      try {
+        merged[name] = decryptApiKey(stored) ?? "";
+      } catch {
+        merged[name] = "";
+      }
+    }
+  }
+  Object.assign(merged, incoming);
+  // 成组完整性：组内任一 env 本次有新值（或已有旧值）时，组内全部 env 都必须有值
+  const touchedGroups = new Set(Object.keys(incoming).map(credentialGroupOf));
+  for (const group of touchedGroups) {
+    if (group.length < 2) continue;
+    const missing = group.filter((name) => !merged[name]);
+    if (missing.length) {
+      return {
+        ok: false,
+        message: `请同时填写完整凭据：缺少 ${missing.join("、")}。`,
+      };
+    }
+  }
+  // 校验每个被触碰组的组代表（values 里带整组值）
+  const checkNames = new Set([...touchedGroups].map((group) => credentialCheckName(group[0])));
+  for (const name of checkNames) {
+    const check = await validateManualMcpToken(name, merged);
     if (!check.ok) return check;
   }
-  const previous = readSettings();
   const nextCredentials = { ...(previous.mcpCredentials ?? {}) };
-  for (const [name, value] of updates) nextCredentials[name] = encryptApiKey(value);
+  for (const [name, value] of Object.entries(incoming)) {
+    nextCredentials[name] = encryptApiKey(value);
+  }
   const settings = migrateSettings({ ...previous, mcpCredentials: nextCredentials });
   writeSettings(settings);
-  const applied = await updateServerMcpCredentials(Object.fromEntries(updates));
+  const applied = await updateServerMcpCredentials(incoming);
   return {
     ok: true,
     ...(applied ? {} : { warning: "已保存，但 MCP 热更新失败，重启应用后生效。" }),
   };
 });
 
-// 清除手工令牌（如 Figma「解除授权」）：从 settings.mcpCredentials 删除，
+// 清除手工令牌（如 Figma「解除授权」、飞书双凭据）：从 settings.mcpCredentials 删除，
 // 并把 server 进程 env 置 null（=删除）触发热重载；对应的 MCP 会因缺令牌而断开。
+// payload.names 是数组（双凭据条目一次清整组）；兼容旧的 { name } 单值。
 ipcMain.handle("meow:clear-mcp-token", async (_event, payload) => {
   ensureDirs();
-  const name = String(payload?.name ?? "");
-  if (!MANUAL_MCP_TOKEN_ENVS.includes(name)) {
+  const names = Array.isArray(payload?.names) && payload.names.length
+    ? payload.names.map((value) => String(value))
+    : [String(payload?.name ?? "")].filter(Boolean);
+  if (!names.length || names.some((name) => !MANUAL_MCP_TOKEN_ENVS.includes(name))) {
     return { ok: false, message: "不支持的 MCP Token。" };
   }
   const previous = readSettings();
   const credentials = { ...(previous.mcpCredentials ?? {}) };
-  if (!(name in credentials)) return { ok: false, message: "没有已保存的令牌。" };
-  delete credentials[name];
+  const clearable = names.filter((name) => name in credentials);
+  if (!clearable.length) return { ok: false, message: "没有已保存的令牌。" };
+  for (const name of clearable) delete credentials[name];
   writeSettings(migrateSettings({ ...previous, mcpCredentials: credentials }));
-  const applied = await updateServerMcpCredentials({ [name]: null });
+  const applied = await updateServerMcpCredentials(
+    Object.fromEntries(clearable.map((name) => [name, null])),
+  );
   return {
     ok: true,
     ...(applied ? {} : { warning: "已清除本机令牌，但 MCP 热更新失败，重启应用后生效。" }),
@@ -3013,6 +3094,10 @@ ipcMain.handle("meow:oauth-verify-app", async (_event, payload) => {
  */
 async function pickWorkingCredentials(settings, platform) {
   const config = OAUTH_PLATFORMS[platform];
+  if (config.publicClient) {
+    const stored = resolveOauthApp(settings, platform);
+    return { clientId: stored.clientId, clientSecret: "", source: stored.source };
+  }
   const candidates = [];
   const stored = resolveOauthApp(settings, platform);
   if (stored.clientId && stored.clientSecret) {
@@ -3050,7 +3135,7 @@ ipcMain.handle("meow:oauth-connect-start", async (_event, payload) => {
   const settings = readSettings();
   const { clientId, clientSecret } = await pickWorkingCredentials(settings, platform);
   if (!clientId) return { ok: false, message: "缺少 Client ID，无法发起授权。" };
-  if (!clientSecret) {
+  if (!config.publicClient && !clientSecret) {
     return {
       ok: false,
       message: `${config.label} 换 token 需要 Client Secret，请先填写一次。`,
@@ -3069,6 +3154,12 @@ ipcMain.handle("meow:oauth-connect-start", async (_event, payload) => {
     };
   }
   const state = crypto.randomBytes(24).toString("base64url");
+  let codeVerifier = "";
+  let codeChallenge = "";
+  if (config.pkce) {
+    codeVerifier = crypto.randomBytes(48).toString("base64url");
+    codeChallenge = crypto.createHash("sha256").update(codeVerifier).digest("base64url");
+  }
   const timer = setTimeout(() => {
     const flow = platformOauthFlows.get(platform);
     if (flow?.status === "pending") {
@@ -3080,13 +3171,21 @@ ipcMain.handle("meow:oauth-connect-start", async (_event, payload) => {
   timer.unref?.();
   // 凭据对随 flow 记下：换 token 必须用「发起授权时那一对」，
   // 中途重新解析可能换成另一对（设置 vs 本机文件），平台会判 invalid_client。
-  platformOauthFlows.set(platform, { state, status: "pending", timer, clientId, clientSecret });
+  platformOauthFlows.set(platform, {
+    state,
+    status: "pending",
+    timer,
+    clientId,
+    clientSecret,
+    ...(config.pkce ? { codeVerifier } : {}),
+  });
   return {
     ok: true,
     authorizeUrl: buildOauthAuthorizeUrl(config, {
       clientId,
       redirectUri: localOauthCallbackUri(platform),
       state,
+      ...(codeChallenge ? { codeChallenge } : {}),
     }),
   };
 });
@@ -3710,6 +3809,7 @@ ipcMain.handle("meow:get-preferences", () => {
   const settings = readSettings();
   return {
     theme: THEME_PREFERENCES.includes(settings.theme) ? settings.theme : "system",
+    palette: PALETTES.includes(settings.palette) ? settings.palette : "classic",
     closeAction: CLOSE_ACTIONS.includes(settings.closeAction) ? settings.closeAction : "ask",
     language: LANGUAGE_PREFERENCES.includes(settings.language) ? settings.language : "system",
     speechStyle: SPEECH_STYLES.includes(settings.speechStyle) ? settings.speechStyle : "normal",
@@ -3754,6 +3854,10 @@ ipcMain.handle("meow:save-preferences", (_event, prefs) => {
   const next = { ...settings };
   if (prefs?.theme !== undefined && THEME_PREFERENCES.includes(prefs.theme)) {
     next.theme = prefs.theme;
+  }
+  // 配色方案：轻量通道，只写盘 + 换窗口底色，绝不重启 agent server
+  if (prefs?.palette !== undefined && PALETTES.includes(prefs.palette)) {
+    next.palette = prefs.palette;
   }
   if (prefs?.closeAction !== undefined && CLOSE_ACTIONS.includes(prefs.closeAction)) {
     next.closeAction = prefs.closeAction;
@@ -3813,6 +3917,10 @@ ipcMain.handle("meow:save-preferences", (_event, prefs) => {
   if (typeof prefs?.nextPromptSuggestions === "boolean") {
     next.nextPromptSuggestions = prefs.nextPromptSuggestions;
   }
+  // 供应商故障转移：默认关闭；实时生效走 /config/provider-fallback
+  if (typeof prefs?.providerFallback === "boolean") {
+    next.providerFallback = prefs.providerFallback;
+  }
   // Worktrees：创建前 fetch / 自动清理 / 保留上限
   if (typeof prefs?.worktreeFetchUpstream === "boolean") {
     next.worktreeFetchUpstream = prefs.worktreeFetchUpstream;
@@ -3839,7 +3947,13 @@ ipcMain.handle("meow:save-preferences", (_event, prefs) => {
   if (prefs?.theme !== undefined) {
     applyWindowTheme(next.theme);
     if (mainWindow && !mainWindow.isDestroyed() && !ACRYLIC_BACKDROP) {
-      mainWindow.setBackgroundColor(windowBackground(next.theme));
+      mainWindow.setBackgroundColor(windowBackground(next.theme, next.palette));
+    }
+  }
+  // 只换配色：明暗不变，但窗口底色要跟着换成新配色的 --bg-root，否则面板间隙会露出旧色
+  if (prefs?.theme === undefined && prefs?.palette !== undefined) {
+    if (mainWindow && !mainWindow.isDestroyed() && !ACRYLIC_BACKDROP) {
+      mainWindow.setBackgroundColor(windowBackground(next.theme, next.palette));
     }
   }
   // 悬浮岛开关变化：按需创建/销毁窗口（比较旧值，避免无谓重建闪一下）
@@ -3857,6 +3971,9 @@ ipcMain.handle("meow:save-preferences", (_event, prefs) => {
   broadcast("meow:preferences-changed", publicSettings(next));
   return {
     theme: next.theme,
+    // 这里是一份手写白名单，不是 publicSettings()：漏一个字段渲染层就收不到回执，
+    // 表现为「界面换色了但选中态不动」（乐观更新生效、落盘回执被丢弃）
+    palette: PALETTES.includes(next.palette) ? next.palette : "classic",
     closeAction: next.closeAction,
     language: LANGUAGE_PREFERENCES.includes(next.language) ? next.language : "system",
     onboardingCompleted:
@@ -4031,7 +4148,19 @@ ipcMain.handle("meow:remove-custom-font", async (_event, family) => {
 const { checkForUpdate } = require("./update-check.cjs");
 const { downloadToFile, safeAssetFileName } = require("./update-download.cjs");
 
-ipcMain.handle("meow:check-update", async () => checkForUpdate(app.getVersion()));
+// 商店版（MSIX）标记：更新由 Microsoft Store 接管，渲染层据此隐藏检查更新入口
+ipcMain.on("meow:store-managed", (event) => {
+  event.returnValue = process.windowsStore === true;
+});
+
+ipcMain.handle("meow:check-update", async () => {
+  // 商店版（MSIX）由 Microsoft Store 负责更新：不再引导用户下载 NSIS 安装包，
+  // 否则会装出一个并行的副本，也不符合商店对自更新的要求。
+  if (process.windowsStore) {
+    return { ok: true, current: app.getVersion(), latest: null, hasUpdate: false };
+  }
+  return checkForUpdate(app.getVersion());
+});
 
 /** 更新包存放目录：系统「下载」文件夹（用户自己也能找到安装包） */
 function updateDownloadsDir() {
@@ -4145,6 +4274,20 @@ ipcMain.handle("meow:island-notify-prompt", (_event, payload) => {
   });
 });
 
+// ---- 自动化（定时任务）：列表/保存/删除/启停/立即运行/打开历史会话 ----
+ipcMain.handle("meow:automations-list", () => automationScheduler.list());
+ipcMain.handle("meow:automations-save", (_event, input) => automationScheduler.save(input));
+ipcMain.handle("meow:automations-delete", (_event, id) => automationScheduler.remove(String(id ?? "")));
+ipcMain.handle("meow:automations-toggle", (_event, id, enabled) =>
+  automationScheduler.setEnabled(String(id ?? ""), Boolean(enabled)),
+);
+ipcMain.handle("meow:automations-run-now", (_event, id) => automationScheduler.runNow(String(id ?? "")));
+/** 历史里「打开会话」：与通知点击同一条跳转链路（唤窗 + 托盘切换通道） */
+ipcMain.handle("meow:automations-open-session", (_event, sessionId) => {
+  showMainWindow();
+  void focusSessionFromNotification(String(sessionId ?? ""));
+});
+
 // 单实例：两个进程共享 settings.json 和会话 JSONL 会互相覆盖
 const hasSingleInstanceLock = app.requestSingleInstanceLock();
 if (!hasSingleInstanceLock) {
@@ -4162,6 +4305,7 @@ if (!hasSingleInstanceLock) {
 
   app.whenReady().then(async () => {
     ensureDirs();
+    automationScheduler.start();
     ensureDefaultWorkspace();
     reportStartupStatistics();
     // 界面字体设置要枚举系统字体（Local Font Access）：应用窗口自身放行该权限，
@@ -4239,6 +4383,7 @@ app.on("before-quit", (event) => {
     event.preventDefault();
     appShutdownInFlight = true;
     isQuitting = true;
+    automationScheduler.stop();
     browserHost.stop();
     computerHost.stop();
     void stopServer().finally(() => {
@@ -4248,6 +4393,7 @@ app.on("before-quit", (event) => {
     return;
   }
   isQuitting = true;
+  automationScheduler.stop();
   browserHost.stop();
   computerHost.stop();
 });

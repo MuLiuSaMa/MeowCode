@@ -153,7 +153,7 @@ export function ModelsSection({
                           <div className="mc-models__modelrow" key={provider.id}>
                             <ProviderIcon
                               template={template}
-                              iconKey={modelIconKey(provider.model)}
+                              iconKey={modelIconKey(provider.model) ?? "meow"}
                               size={18}
                             />
                             <span className="mc-models__name">

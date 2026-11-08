@@ -29,9 +29,11 @@
   "platforms": {
     "gitee": "Gitee",
     "gitcode": "GitCode",
-    "gitcode-community": "Сообщество GitCode"
+    "gitcode-community": "Сообщество GitCode",
+    "undermind": "Undermind"
   },
   "actions": {
+    "aiAuthor": "Написать с ИИ",
     "cancel": "Отмена",
     "close": "Закрыть",
     "copied": "Скопировано",
@@ -91,10 +93,18 @@
     "project": "Проектный"
   },
   "mcp": {
+    "authorize": "Авторизовать",
+    "authorizeTitle": "Завершите авторизацию в браузере; после этого подключение произойдёт автоматически",
+    "authorizing": "Ожидание авторизации",
     "connecting": "Подключение",
+    "disabled": "Отключено",
     "envRequired": "Нужно задать: {{names}}",
     "failed": "Ошибка",
     "failedDetail": "Ошибка · {{error}}",
+    "localBadge": "Локальная конфигурация",
+    "localNoTarget": "Локальный MCP-сервер",
+    "needsAuth": "Требуется авторизация",
+    "reauthorize": "Повторная авторизация",
     "ready": "Готово · инструментов: {{count}}",
     "ready_one": "Готово · {{count}} инструмент",
     "ready_other": "Готово · инструментов: {{count}}",
@@ -220,8 +230,12 @@
     "desc": "Токен хранится на этом компьютере в зашифрованном виде и используется только для подключения {{name}}. Перед сохранением он проверяется онлайн, после проверки соединение восстанавливается и инструменты загружаются.",
     "empty": "Введите токен.",
     "hintFigma": "Создайте его на сайте Figma в Settings → Security → Personal access tokens; достаточно права на чтение File content.",
+    "hintLarkAppId": "App ID из консоли разработчика Feishu/Lark Open Platform, вида cli_xxxx.",
+    "hintLarkSecret": "App Secret со страницы того же приложения; оба значения должны относиться к одному приложению, опубликованному с нужными правами.",
     "hintLuckin": "Войдите на open.lkcoffee.com/mcp, создайте и скопируйте Token; используется MCP заказа Luckin (заказ, статус, код получения).",
     "labelFigma": "Личный токен доступа Figma",
+    "labelLarkAppId": "App ID Lark/Feishu",
+    "labelLarkSecret": "App Secret Lark/Feishu",
     "labelLuckin": "Token платформы Luckin",
     "placeholder": "Вставить токен доступа",
     "title": "Токен доступа {{name}}"
@@ -309,9 +323,10 @@
       "title": "添加 MCP 服务",
       "desc": "手动添加一个 MCP server：配置写入 ~/.meowcode/mcp.json，保存后自动连接。",
       "idLabel": "名称（id）*",
-      "connTypeLabel": "连接类型",
-      "connStdio": "本地命令（Stdio）",
-      "connHttp": "远程地址（HTTP）",
+      "navLabel": "Тип подключения",
+      "navStdio": "Локальная команда",
+      "navHttp": "Удалённый URL",
+      "navJson": "JSON-конфигурация",
       "commandLabel": "命令 *",
       "argsLabel": "参数（每行一个）",
       "urlLabel": "服务地址 *",
@@ -320,7 +335,6 @@
       "envHint": "支持 ${VAR} 形式引用 MeowCode 进程环境变量。",
       "jsonLabel": "MCP 配置（JSON）",
       "jsonHint": "接受 {\"mcpServers\": {…}} 包裹（可一次添加多个）或单个 server 对象。",
-      "advancedToggle": "高级：粘贴 JSON",
       "jsonInvalid": "不是合法的 JSON。",
       "jsonEmpty": "mcpServers 里没有条目。",
       "jsonIdInvalid": "条目 id「{{id}}」不合法：需以字母/数字开头，只含字母、数字、点、下划线、连字符。",
@@ -330,7 +344,14 @@
       "headersInvalid": "请求头不是合法的 JSON 对象。",
       "needCommand": "请填写启动命令。",
       "needUrl": "请填写服务地址。",
-      "toggleAria": "启停 MCP {{id}}"
+      "toggleAria": "启停 MCP {{id}}",
+      "authGroup": "Аутентификация",
+      "oauthToggle": "Авторизация OAuth в браузере (удалённый MCP)",
+      "oauthHint": "При первом подключении откроется браузер для входа; токен хранится локально в ~/.meowcode/mcp-oauth/.",
+      "oauthScopesLabel": "OAuth-скоупы (необязательно, пробел/запятая)",
+      "oauthClientIdLabel": "OAuth client ID (необязательно, предзарегистрированный)",
+      "oauthCimdLabel": "URL метаданных клиента OAuth (необязательно)",
+      "oauthCimdHint": "Пусто — официальный CIMD-документ MeowCode. Пустая строка отключает CIMD-fallback."
     }
   },
   "sources": {

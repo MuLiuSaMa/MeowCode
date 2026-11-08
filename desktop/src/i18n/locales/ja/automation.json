@@ -1,0 +1,99 @@
+{
+  "nav": {
+    "heading": "自動化",
+    "subtitle": "スケジュールに従って AI にワークスペースのタスクを実行させる",
+    "ariaLabel": "自動化ナビゲーション"
+  },
+  "page": {
+    "empty": "自動化タスクはまだありません。「新規タスク」で作成して、AI に定期的に作業させましょう。",
+    "loading": "読み込み中…",
+    "nextRun": "次回実行 {{time}}",
+    "noNextRun": "無効",
+    "lastRun": "前回{{status}} · {{time}}",
+    "neverRun": "実行履歴なし",
+    "runs": "{{count}} 回実行",
+    "cwd": "ワークスペース：{{cwd}}"
+  },
+  "schedule": {
+    "interval": "{{minutes}} 分ごと",
+    "hours": "{{hours}} 時間ごと",
+    "daily": "毎日 {{time}}",
+    "weekly": "{{weekday}} {{time}}",
+    "monthly": "毎月 {{day}} 日 {{time}}",
+    "cron": "Cron：{{expr}}",
+    "once": "{{time}} に 1 回"
+  },
+  "weekday": {
+    "0": "日曜",
+    "1": "月曜",
+    "2": "火曜",
+    "3": "水曜",
+    "4": "木曜",
+    "5": "金曜",
+    "6": "土曜"
+  },
+  "status": {
+    "started": "実行中",
+    "ok": "完了",
+    "error": "失敗",
+    "missed": "スキップ",
+    "disabled": "無効"
+  },
+  "actions": {
+    "create": "新規タスク",
+    "refresh": "更新",
+    "runNow": "今すぐ実行",
+    "running": "起動中…",
+    "edit": "編集",
+    "delete": "削除",
+    "cancel": "キャンセル",
+    "save": "保存",
+    "saving": "保存中…",
+    "openSession": "セッションを開く",
+      "close": "閉じる",
+    "enable": "タスクを有効化",
+    "history": "実行履歴"
+  },
+  "deleteDialog": {
+    "title": "自動化タスクを削除",
+    "desc": "「{{title}}」とその実行履歴が削除されます。この操作は元に戻せません。"
+  },
+  "history": {
+    "title": "実行履歴 — {{title}}",
+    "empty": "実行履歴はまだありません。",
+    "status": "状態",
+    "session": "セッション"
+  },
+  "form": {
+    "createTitle": "新規自動化タスク",
+    "editTitle": "自動化タスクを編集",
+    "fieldTitle": "タスク名",
+    "titlePlaceholder": "例：毎朝9時に依存関係の更新をチェック",
+    "fieldWorkspace": "対象ワークスペース",
+    "fieldPrompt": "実行内容",
+    "promptPlaceholder": "タスク実行時に AI が受け取る指示。具体的に書くほど良い結果になります。",
+    "fieldSchedule": "実行頻度",
+    "freq": {
+      "interval": "間隔",
+      "daily": "毎日",
+      "weekly": "毎週",
+      "monthly": "毎月",
+      "once": "1 回のみ",
+      "cron": "Cron"
+    },
+    "intervalMinutes": "間隔（分）",
+    "time": "時刻",
+    "weekday": "曜日",
+    "dayOfMonth": "日付",
+    "onceAt": "実行時刻",
+      "today": "今日",
+    "advanced": "詳細設定",
+    "fieldCron": "Cron 式",
+    "cronPlaceholder": "例：0 9 * * 1-5（ローカルタイムゾーン）",
+    "fieldMaxRuns": "最大実行回数",
+    "maxRunsPlaceholder": "空欄 = 無制限",
+    "errorRequired": "必須項目を入力してください",
+    "invalidCron": "Cron 式が無効です",
+    "saveFailed": "保存に失敗しました"
+  }
+}

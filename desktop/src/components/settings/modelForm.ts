@@ -178,6 +178,25 @@ export function providerLabel(provider: { displayName?: string; model: string })
 }
 
 /**
+ * 保存前合并服务商基础配置与单个模型行：端点 / 协议 / 密钥等共享字段一律以 base 为准。
+ * 行内 form 是创建时刻的快照，若让它覆盖 base，上方新填的地址/密钥会被旧值盖掉
+ * （新建时报「请求地址不能为空」，编辑已有服务商时静默存回旧值）。
+ * 行自有字段（模型 ID、显示名、容量、id 等）原样保留。
+ */
+export function mergeProviderRow(row: ProviderSettings, base: ProviderSettings): ProviderSettings {
+  return {
+    ...row,
+    name: base.name,
+    baseUrl: base.baseUrl,
+    protocol: base.protocol,
+    templateId: base.templateId,
+    apiKey: base.apiKey,
+    hasApiKey: base.hasApiKey,
+    authStyle: base.authStyle,
+  };
+}
+
+/**
  * 校验模型表单并生成要落盘的 ProviderSettings。
  * 设置页的 ModelFormDialog 与首次启动引导共用，保证两处字段和校验完全一致。
  */

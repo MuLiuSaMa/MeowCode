@@ -16,7 +16,7 @@ export function ProviderIcon({
   size = 20,
 }: {
   template?: ProviderTemplate;
-  /** 覆盖服务商图标（模型列表用模型品牌 Logo） */
+  /** 覆盖服务商图标（模型列表用模型品牌 Logo，认不出时传 "meow"） */
   iconKey?: string;
   size?: number;
 }) {

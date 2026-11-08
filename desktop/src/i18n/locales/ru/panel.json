@@ -62,7 +62,10 @@
       "miss": "{{base}} (промах)",
       "hitting": "{{base}} (попадание)"
     },
-    "tokenValue": "{{value}} tok"
+    "tokenValue": "{{value}} tok",
+    "sessionTotal": "Итого за сеанс",
+    "tokensTitle": "Состав токенов",
+    "liveCalls": "В реальном времени · последние {{count}} вызовов"
   },
   "subagent": {
     "fallbackTitle": "Субагент",

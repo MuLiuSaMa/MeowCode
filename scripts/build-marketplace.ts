@@ -14,6 +14,7 @@ import { cp, mkdir, readdir, readFile, rm, stat, writeFile } from "node:fs/promi
 import path from "node:path";
 import * as simpleIcons from "simple-icons";
 import { promisify } from "node:util";
+import { ZH_SKILL_TEXT } from "./marketplace-zh.js";
 
 /** execFile 裸调用返回 ChildProcess 而非 Promise，必须 promisify 才能真正等待 */
 const execFileAsync = promisify(execFile);
@@ -313,6 +314,7 @@ const BRAND_MAP: Record<string, string> = {
   "douyin-interactive-content-publish": "siTiktok",
   "douyinpay-payment-integration": "siTiktok",
   "byted-bp-cdn-pagesdeploy": "siBytedance",
+  "feishu": "siBytedance",
   "iga-pages": "siNetlify",
   "gh-cli": "siGithub",
   "git-commit": "siGithub",
@@ -394,6 +396,7 @@ const BRAND_MAP: Record<string, string> = {
   "js-reverse": "siJavascript",
   "firecrawl": "siFirecrawl",
   "figma-context": "siFigma",
+  cloudflare: "siCloudflare",
   // —— office / 文档族（MS/Adobe 品牌已被下架，用语义替代） ——
   "docx": "siGoogledocs",
   "xlsx": "siGooglesheets",
@@ -554,6 +557,17 @@ async function writeIcon(
   return `icons/${base}.svg`;
 }
 
+/** 拷贝 brand-icons/ 下的官方 PNG 作为市场图标；源缺失返回 null，由调用方回退合成 SVG。 */
+async function copyBrandIcon(file: string): Promise<string | null> {
+  try {
+    await mkdir(path.join(OUT, "icons"), { recursive: true });
+    await cp(path.join(REPO, "resources/brand-icons", file), path.join(OUT, "icons", file));
+    return `icons/${file}`;
+  } catch {
+    return null;
+  }
+}
+
 /** 展示名：中文标题优先（mcp github 与 skill github 同 id —— 用 CN_TITLES 里的键会撞，mcp 单独传名） */
 function displayName(id: string, fallback: string): string {
   const cn = CN_TITLES[id];
@@ -634,7 +648,8 @@ const taken = new Map<string, string>(); // id → 来源描述（先到先得�
 const takenMcp = new Map<string, string>(); // mcp 独立命名空间（install 按 {id,type} 定位）
 
 /** 采集黑名单：无效条目（server 为空/本地无意义的）不进目录；重建时保持剔除。 */
-const EXCLUDED_ENTRIES = new Set(["mcp:deployment"]);
+// mcp:cloudflare / cloudflare-api：授权体验差（needs_auth 反复出现）且用户明确不要在市场展示
+const EXCLUDED_ENTRIES = new Set(["mcp:deployment", "mcp:cloudflare", "mcp:cloudflare-api"]);
 
 function isTaken(id: string): boolean {
   return taken.has(id);
@@ -698,14 +713,19 @@ async function collectSkill(options: {
     console.log(`[skip] ${id} (${from}: no SKILL.md)`);
     return;
   }
+  const raw = await readFile(path.join(srcDir, "SKILL.md"), "utf8");
+  const meta = parseFrontmatter(raw);
+  const rawDescription = cleanDescription(meta.description, options.descriptionFallback);
+  const category = CATEGORY_BY_ID[id] ?? options.category ?? categorize(id, rawDescription);
+  // 数据分析分类只保留表格与笔记本：其余源头仍会被扫到，这里统一拦截（见 KEPT_ANALYSIS_SKILL_IDS）
+  if (category === "数据分析" && !KEPT_ANALYSIS_SKILL_IDS.has(id)) return;
   if (!claim(id, from)) return;
   const dest = path.join(OUT, "skills", id);
   await cp(srcDir, dest, { recursive: true });
-  const raw = await readFile(path.join(srcDir, "SKILL.md"), "utf8");
-  const meta = parseFrontmatter(raw);
-  const description = cleanDescription(meta.description, options.descriptionFallback);
-  const category = CATEGORY_BY_ID[id] ?? options.category ?? categorize(id, description);
-  const name = displayName(id, options.name ?? meta.name ?? id);
+  // 中文名称/介绍：源头 SKILL.md 多为英文，市场卡片统一用这里的中文文案
+  const zh = ZH_SKILL_TEXT[id];
+  const description = zh?.description ?? rawDescription;
+  const name = zh?.name ?? displayName(id, options.name ?? meta.name ?? id);
   const iconKey = BRAND_MAP[id] ? id : options.plugin && IMAGE_BRANDS[options.plugin] ? options.plugin : id;
   const icon = await writeIcon(id, category, undefined, iconKey, options.plugin);
   items.push({
@@ -724,6 +744,18 @@ async function collectSkill(options: {
 }
 
 // ---------------------------------------------------------------- Trae
+
+/**
+ * 「数据分析」分类只保留表格与笔记本技能（其余金融/研究类 skill 不再上架）。
+ * 源目录可能仍存在于采集源里，重跑脚本时在这里统一剔除。
+ */
+const KEPT_ANALYSIS_SKILL_IDS = new Set([
+  "xlsx",
+  "xlsx-viewer",
+  "audit-xls",
+  "office-recalculate",
+  "jupyter-notebook",
+]);
 
 type TraePluginInfo = { display_name?: string; description?: string; keywords?: string[]; version?: string };
 
@@ -755,8 +787,9 @@ async function collectTrae(): Promise<void> {
   const dictionary = await traeDictionary();
 
   // 1) 用户级技能目录
+  // lark-* 是旧的 CLI 系飞书技能（依赖 lark-cli 命令行），已被市场内的飞书 MCP + 技能包插件取代：不再收录
   for (const entry of await readdir(path.join(TRAE, "skills"), { withFileTypes: true })) {
-    if (!entry.isDirectory()) continue;
+    if (!entry.isDirectory() || entry.name.startsWith("lark-")) continue;
     const info = dictionary.get(entry.name);
     await collectSkill({
       srcDir: path.join(TRAE, "skills", entry.name),
@@ -768,9 +801,9 @@ async function collectTrae(): Promise<void> {
     });
   }
 
-  // 2) 内置技能（跳过 _shared）
+  // 2) 内置技能（跳过 _shared 与 lark-*）
   for (const entry of await readdir(path.join(TRAE, "builtin_skills"), { withFileTypes: true })) {
-    if (!entry.isDirectory() || entry.name === "_shared") continue;
+    if (!entry.isDirectory() || entry.name === "_shared" || entry.name.toLowerCase().startsWith("lark-")) continue;
     await collectSkill({
       srcDir: path.join(TRAE, "builtin_skills", entry.name),
       id: entry.name.toLowerCase(),
@@ -795,7 +828,7 @@ async function collectTrae(): Promise<void> {
     const skillsDir = path.join(pluginRoot, "skills");
     try {
       for (const skill of await readdir(skillsDir, { withFileTypes: true })) {
-        if (!skill.isDirectory()) continue;
+        if (!skill.isDirectory() || skill.name.startsWith("lark-")) continue;
         await collectSkill({
           srcDir: path.join(skillsDir, skill.name),
           id: skill.name,
@@ -1165,7 +1198,14 @@ async function collectPlugins(): Promise<void> {
   const pluginsDir = path.join(OUT, "plugins");
   const PLUGIN_META: Record<
     string,
-    { name: string; description: string; category: Category; usage: string }
+    {
+      name: string;
+      description: string;
+      category: Category;
+      usage: string;
+      /** 官方 PNG 品牌图（brand-icons/ 下文件名）：命中则直接拷贝，替代合成 SVG */
+      iconFile?: string;
+    }
   > = {
     "permission-gate": {
       name: "危险命令门禁",
@@ -1211,6 +1251,15 @@ async function collectPlugins(): Promise<void> {
       usage:
         "包含技能：`frontend-design` —— 生成有辨识度的生产级前端界面，避开通用 AI 审美。\n\n安装后对话中输入 `/frontend-design <需求>`，插件会把技能全文随需求一起发给模型：先确定设计方向（用途 / 调性 / 约束 / 记忆点），再输出可运行代码。",
     },
+    "feishu": {
+      name: "飞书",
+      iconFile: "mcp-feishu.png",
+      description:
+        "五个飞书技能命令（消息 / 云文档 / 多维表格 / 日历 / 任务），把对应场景的操作指南全文交给模型，引导它调用飞书 MCP（mcp__feishu__*）完成操作。",
+      category: "效率提升",
+      usage:
+        "包含技能：`feishu-im`（搜群/读消息）、`feishu-doc`（云文档搜索/创建/更新）、`feishu-base` / `feishu-calendar` / `feishu-task`（官方 OAuth 版暂不支持，需自建应用 lark-mcp）。\n\n对话中输入对应命令（如 `/feishu-doc 帮我建一篇周报文档`），插件会把技能全文随需求一起发给模型，引导它调用飞书 MCP 完成操作。\n\n前置条件：安装市场里的「飞书」MCP 并点「授权」登录飞书账号。",
+    },
   };
   for (const file of await readdir(pluginsDir)) {
     if (!file.endsWith(".ts")) continue;
@@ -1222,7 +1271,9 @@ async function collectPlugins(): Promise<void> {
       category: "效率提升" as Category,
       usage: "",
     };
-    const icon = await writeIcon(id, meta.category);
+    const icon =
+      (meta.iconFile ? await copyBrandIcon(meta.iconFile) : null) ??
+      (await writeIcon(id, meta.category));
     items.push({
       id,
       type: "plugin",
@@ -1297,6 +1348,36 @@ const MANUAL_MCPS: ManualMcp[] = [
     },
   },
   {
+    id: "cloudflare",
+    name: "Cloudflare",
+    description:
+      "Cloudflare 官方远程 MCP：一个入口覆盖全部 Cloudflare API（2500+ 端点：Workers、R2、D1、KV、DNS、Zero Trust）与开发者文档，Code Mode 仅暴露 search/execute/docs 三个工具，省上下文。点「连接」走浏览器 OAuth 授权，无需 API Token。",
+    category: "开发工具",
+    tags: ["mcp", "cloudflare", "workers", "dns", "oauth"],
+    version: "1.0.0",
+    server: {
+      url: "https://mcp.cloudflare.com/mcp",
+      // Cloudflare 只支持 DCR：显式关掉 CIMD 回退，否则会拿 opencode 的 CIMD 文档当 client_id 被拒
+      auth: { type: "oauth", clientMetadataUrl: "" },
+    },
+  },
+  {
+    id: "undermind",
+    name: "Undermind 深度文献检索",
+    description:
+      "Undermind 官方远程 MCP：深度文献综述、论文检索、PDF 全文问答与研究工作区。点「连接 Undermind」走浏览器授权，token 存本机；深度检索单次可达数分钟，超时已放宽到 10 分钟。",
+    category: "数据分析",
+    tags: ["mcp", "undermind", "research", "papers", "literature", "oauth"],
+    version: "1.0.0",
+    server: {
+      url: "https://mcp.undermind.ai/mcp",
+      timeoutMs: 600000,
+      headers: { Authorization: "Bearer ${MEOWCODE_UNDERMIND_TOKEN}" },
+    },
+    requiresEnv: ["MEOWCODE_UNDERMIND_TOKEN"],
+    brandIcon: { source: "resources/brand-icons/mcp-undermind.png", file: "mcp-undermind.png" },
+  },
+  {
     id: "figma-context",
     name: "Figma 设计稿上下文",
     description:
@@ -1341,6 +1422,21 @@ const MANUAL_MCPS: ManualMcp[] = [
     requiresEnv: ["LUCKIN_MCP_TOKEN"],
     brandIcon: { source: "resources/brand-icons/mcp-luckin-coffee.png", file: "mcp-luckin-coffee.png" },
   },
+  {
+    // 官方托管远程 MCP：OAuth 走飞书账号登录（accounts.feishu.cn/mcp），无需自建应用。
+    // 工具以云文档场景为主（搜索/创建/更新文档、评论、读消息/群组）；发消息/多维表格/
+    // 日历/任务等写操作需要自建应用 + lark-mcp（有需要时用户经「手动添加」自行配置）。
+    id: "feishu",
+    name: "飞书",
+    description:
+      "飞书官方 MCP（OAuth 登录）：安装后点「授权」，浏览器登录飞书账号即可，无需创建应用。云文档场景——搜索/创建/更新文档、评论、读群消息与群成员。",
+    category: "效率提升",
+    tags: ["mcp", "feishu", "lark", "飞书"],
+    version: "1.0.0",
+    server: { url: "https://mcp.feishu.cn/mcp" },
+    brandIcon: { source: "resources/brand-icons/mcp-feishu.png", file: "mcp-feishu.png" },
+  },
+
 ];
 
 /** 手工维护的技能条目（不来自采集源）：源头在此，重跑脚本不会丢。 */

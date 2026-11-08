@@ -587,6 +587,3 @@
   gap: 5px;
   color: var(--warning);
 }
-.mc-mine__advanced {
-  align-self: flex-start;
-}

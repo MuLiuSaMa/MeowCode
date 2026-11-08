@@ -29,9 +29,11 @@
   "platforms": {
     "gitee": "Gitee",
     "gitcode": "GitCode",
-    "gitcode-community": "GitCode 社群"
+    "gitcode-community": "GitCode 社群",
+    "undermind": "Undermind"
   },
   "actions": {
+    "aiAuthor": "AI 幫我寫",
     "cancel": "取消",
     "close": "關閉",
     "copied": "已複製",
@@ -91,10 +93,18 @@
     "project": "專案"
   },
   "mcp": {
+    "authorize": "授權",
+    "authorizeTitle": "在瀏覽器中完成授權，完成後自動連線",
+    "authorizing": "等待授權",
     "connecting": "連接中",
+    "disabled": "已停用",
     "envRequired": "需設定 {{names}}",
     "failed": "失敗",
     "failedDetail": "失敗 · {{error}}",
+    "localBadge": "本機設定",
+    "localNoTarget": "本機 MCP 服務",
+    "needsAuth": "需要授權",
+    "reauthorize": "重新授權",
     "ready": "就緒 · {{count}} 工具",
     "ready_one": "就緒 · {{count}} 工具",
     "ready_other": "就緒 · {{count}} 工具",
@@ -220,8 +230,12 @@
     "desc": "權杖只加密儲存在本機，用於連接 {{name}}；儲存前會在線驗證有效性，通過後立即重連並載入工具。",
     "empty": "請填寫 Token。",
     "hintFigma": "在 Figma 網頁版 Settings → Security → Personal access tokens 生成，File content 讀取權限即可。",
+    "hintLarkAppId": "飛書開放平台開發者後台 → 應用的 App ID，形如 cli_xxxx。",
+    "hintLarkSecret": "同一應用詳情頁的 App Secret；兩者需同屬一個自建應用，且應用已發布並開通對應權限。",
     "hintLuckin": "登入 open.lkcoffee.com/mcp 建立並複製 Token；用於瑞幸點單 MCP（下單、查訂單、取餐碼）。",
     "labelFigma": "Figma 個人存取權杖",
+    "labelLarkAppId": "飛書 App ID",
+    "labelLarkSecret": "飛書 App Secret",
     "labelLuckin": "瑞幸開放平台 Token",
     "placeholder": "貼上存取權杖",
     "title": "設定 {{name}} 存取權杖"
@@ -309,9 +323,10 @@
       "title": "添加 MCP 服务",
       "desc": "手动添加一个 MCP server：配置写入 ~/.meowcode/mcp.json，保存后自动连接。",
       "idLabel": "名称（id）*",
-      "connTypeLabel": "连接类型",
-      "connStdio": "本地命令（Stdio）",
-      "connHttp": "远程地址（HTTP）",
+      "navLabel": "接入方式",
+      "navStdio": "本地命令",
+      "navHttp": "遠端位址",
+      "navJson": "JSON 設定",
       "commandLabel": "命令 *",
       "argsLabel": "参数（每行一个）",
       "urlLabel": "服务地址 *",
@@ -320,7 +335,6 @@
       "envHint": "支持 ${VAR} 形式引用 MeowCode 进程环境变量。",
       "jsonLabel": "MCP 配置（JSON）",
       "jsonHint": "接受 {\"mcpServers\": {…}} 包裹（可一次添加多个）或单个 server 对象。",
-      "advancedToggle": "高级：粘贴 JSON",
       "jsonInvalid": "不是合法的 JSON。",
       "jsonEmpty": "mcpServers 里没有条目。",
       "jsonIdInvalid": "条目 id「{{id}}」不合法：需以字母/数字开头，只含字母、数字、点、下划线、连字符。",
@@ -330,7 +344,14 @@
       "headersInvalid": "请求头不是合法的 JSON 对象。",
       "needCommand": "请填写启动命令。",
       "needUrl": "请填写服务地址。",
-      "toggleAria": "启停 MCP {{id}}"
+      "toggleAria": "启停 MCP {{id}}",
+      "authGroup": "驗證",
+      "oauthToggle": "OAuth 瀏覽器授權（遠端 MCP）",
+      "oauthHint": "儲存後首次連線會開啟瀏覽器登入並授權；token 存在本機 ~/.meowcode/mcp-oauth/，不進聊天記錄。",
+      "oauthScopesLabel": "OAuth Scopes（可選，空格/逗號分隔）",
+      "oauthClientIdLabel": "OAuth Client ID（可選，預註冊）",
+      "oauthCimdLabel": "OAuth Client Metadata URL（可選）",
+      "oauthCimdHint": "留空使用 MeowCode 官方 CIMD 文件（meowcode.cn/.well-known/oauth-client）；填空字串可關閉 CIMD 回退。"
     }
   },
   "sources": {

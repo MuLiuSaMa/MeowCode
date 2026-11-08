@@ -455,6 +455,32 @@ export type PluginStorage = {
  */
 export type PluginFactory = (api: PluginAPI) => void | Promise<void>;
 
+/**
+ * AI 自建技能 / 插件的宿主能力：由 server 注入，内置创作插件通过 api.host 调用。
+ * 插件本身不碰文件系统，落盘、标记写入与热重载都由宿主统一处理。
+ */
+export type ExtensionHost = {
+  createSkill(input: {
+    id: string;
+    name?: string;
+    description: string;
+    body: string;
+    always?: boolean;
+  }): Promise<
+    | { ok: true; id: string; path: string }
+    | { ok: false; error: string; stage: "validate" | "write" | "refresh" }
+  >;
+  createPlugin(input: {
+    id: string;
+    name: string;
+    description: string;
+    code: string;
+  }): Promise<
+    | { ok: true; id: string; path: string; toolNames?: string[]; error?: string }
+    | { ok: false; error: string; stage: "validate" | "write" | "reload" }
+  >;
+};
+
 export interface PluginAPI {
   /** 注册 LLM 可调用工具；重名/保留名会被拒绝并通过 logger 告警 */
   registerTool(tool: PluginTool): void;
@@ -465,6 +491,8 @@ export interface PluginAPI {
   storage: PluginStorage;
   logger: PluginLogger;
   readonly workspace: string;
+  /** AI 自建能力（仅 server 注入的内置创作插件会用到；测试/嵌入式场景缺省） */
+  readonly host?: ExtensionHost;
 }
 
 // ---------------------------------------------------------------------------

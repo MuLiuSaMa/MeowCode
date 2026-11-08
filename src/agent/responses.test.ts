@@ -65,6 +65,118 @@ describe("streamResponses", () => {
     expect(result.usage).toEqual({ inputTokens: 3, outputTokens: 2 });
   });
 
+  it("parses cache read and write tokens from input_tokens_details", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        sseResponse([
+          {
+            type: "response.completed",
+            response: {
+              status: "completed",
+              usage: {
+                input_tokens: 100,
+                output_tokens: 5,
+                input_tokens_details: { cached_tokens: 80, cache_write_tokens: 20 },
+              },
+            },
+          },
+        ]),
+      ),
+    );
+    const onUsage = vi.fn();
+    const result = await streamResponses({
+      url: "https://example.test/v1/responses",
+      model: "m",
+      instructions: "",
+      input: [],
+      tools: [],
+      onDelta: () => undefined,
+      onUsage,
+    });
+    expect(result.usage).toEqual({
+      inputTokens: 100,
+      outputTokens: 5,
+      cacheReadTokens: 80,
+      cacheWriteTokens: 20,
+    });
+    expect(onUsage).toHaveBeenCalledWith(result.usage);
+  });
+
+  it("re-emits usage when only cache write tokens change", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        sseResponse([
+          {
+            type: "response.completed",
+            response: {
+              status: "completed",
+              usage: {
+                input_tokens: 100,
+                output_tokens: 5,
+                input_tokens_details: { cached_tokens: 80, cache_write_tokens: 0 },
+              },
+            },
+          },
+          {
+            type: "response.completed",
+            response: {
+              status: "completed",
+              usage: {
+                input_tokens: 100,
+                output_tokens: 5,
+                input_tokens_details: { cached_tokens: 80, cache_write_tokens: 20 },
+              },
+            },
+          },
+        ]),
+      ),
+    );
+    const onUsage = vi.fn();
+    await streamResponses({
+      url: "https://example.test/v1/responses",
+      model: "m",
+      instructions: "",
+      input: [],
+      tools: [],
+      onDelta: () => undefined,
+      onUsage,
+    });
+    expect(onUsage).toHaveBeenCalledTimes(2);
+    expect(onUsage.mock.calls[1][0]).toMatchObject({ cacheWriteTokens: 20 });
+  });
+
+  it("keeps cacheWriteTokens undefined when the endpoint does not report it", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        sseResponse([
+          {
+            type: "response.completed",
+            response: {
+              status: "completed",
+              usage: {
+                input_tokens: 100,
+                output_tokens: 5,
+                input_tokens_details: { cached_tokens: 80 },
+              },
+            },
+          },
+        ]),
+      ),
+    );
+    const result = await streamResponses({
+      url: "https://example.test/v1/responses",
+      model: "m",
+      instructions: "",
+      input: [],
+      tools: [],
+      onDelta: () => undefined,
+    });
+    expect(result.usage).toEqual({ inputTokens: 100, outputTokens: 5, cacheReadTokens: 80 });
+  });
+
   it("rejects response.failed", async () => {
     vi.stubGlobal(
       "fetch",
@@ -445,5 +557,10 @@ describe("streamResponses reasoning + cache headers", () => {
     expect(headers["x-session-id"]).toBe("sess:main");
     const none = await capture({});
     expect(none.headers["x-session-id"]).toBeUndefined();
+  });
+
+  it("stamps a per-request x-request-id", async () => {
+    const { headers } = await capture({});
+    expect(headers["x-request-id"]).toMatch(/^[0-9a-f-]{36}$/);
   });
 });

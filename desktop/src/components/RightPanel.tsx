@@ -19,6 +19,7 @@ import {
 } from "react-icons/lu";
 import type {
   ProviderSettings,
+  SpeedSample,
   SubagentRun,
   TurnMetrics,
   WorkflowRoadmap,
@@ -83,6 +84,7 @@ export function RightPanel({
   workspace,
   session,
   metrics,
+  speedSamples,
   provider,
   providers,
   onManageModels,
@@ -117,6 +119,8 @@ export function RightPanel({
   session: { id: string; cwd: string } | null;
   /** 最近一次 AI 回合的响应统计（会话信息） */
   metrics: TurnMetrics | null;
+  /** 实时生成速度曲线：最近若干次模型调用（时间正序） */
+  speedSamples: SpeedSample[];
   provider?: ProviderSettings;
   /** 全部服务商（侧边聊天的模型选择用） */
   providers: ProviderSettings[];
@@ -231,6 +235,7 @@ export function RightPanel({
                 workspace={workspace}
                 session={session}
                 metrics={metrics}
+                speedSamples={speedSamples}
                 provider={provider}
                 toolCount={toolCount}
               />

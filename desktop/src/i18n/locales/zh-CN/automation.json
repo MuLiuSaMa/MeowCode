@@ -1,0 +1,99 @@
+{
+  "nav": {
+    "heading": "自动化",
+    "subtitle": "定时让 AI 在指定工作区自动执行任务",
+    "ariaLabel": "自动化导航"
+  },
+  "page": {
+    "empty": "还没有自动化任务。点「新建任务」创建一个，让 AI 定时帮你干活。",
+    "loading": "加载中…",
+    "nextRun": "下次运行 {{time}}",
+    "noNextRun": "已停用",
+    "lastRun": "上次{{status}} · {{time}}",
+    "neverRun": "从未运行",
+    "runs": "已运行 {{count}} 次",
+    "cwd": "工作区：{{cwd}}"
+  },
+  "schedule": {
+    "interval": "每 {{minutes}} 分钟",
+    "hours": "每 {{hours}} 小时",
+    "daily": "每天 {{time}}",
+    "weekly": "{{weekday}} {{time}}",
+    "monthly": "每月 {{day}} 日 {{time}}",
+    "cron": "Cron：{{expr}}",
+    "once": "{{time}} 执行一次"
+  },
+  "weekday": {
+    "0": "周日",
+    "1": "周一",
+    "2": "周二",
+    "3": "周三",
+    "4": "周四",
+    "5": "周五",
+    "6": "周六"
+  },
+  "status": {
+    "started": "运行中",
+    "ok": "已完成",
+    "error": "失败",
+    "missed": "已错过",
+    "disabled": "已停用"
+  },
+  "actions": {
+    "create": "新建任务",
+    "refresh": "刷新",
+    "runNow": "立即运行",
+    "running": "触发中…",
+    "edit": "编辑",
+    "delete": "删除",
+    "cancel": "取消",
+    "save": "保存",
+    "saving": "保存中…",
+    "openSession": "打开会话",
+      "close": "关闭",
+    "enable": "启用任务",
+    "history": "运行历史"
+  },
+  "deleteDialog": {
+    "title": "删除自动化任务",
+    "desc": "「{{title}}」将被删除，运行历史不再保留。此操作无法撤销。"
+  },
+  "history": {
+    "title": "运行历史 — {{title}}",
+    "empty": "还没有运行记录。",
+    "status": "状态",
+    "session": "会话"
+  },
+  "form": {
+    "createTitle": "新建自动化任务",
+    "editTitle": "编辑自动化任务",
+    "fieldTitle": "任务名称",
+    "titlePlaceholder": "如：每天早上9点检查依赖更新",
+    "fieldWorkspace": "目标工作区",
+    "fieldPrompt": "执行内容",
+    "promptPlaceholder": "到点后 AI 会收到的任务描述，越具体越好。",
+    "fieldSchedule": "执行频率",
+    "freq": {
+      "interval": "按间隔",
+      "daily": "每天",
+      "weekly": "每周",
+      "monthly": "每月",
+      "once": "一次性",
+      "cron": "Cron"
+    },
+    "intervalMinutes": "间隔（分钟）",
+    "time": "时间",
+    "weekday": "星期",
+    "dayOfMonth": "日期",
+    "onceAt": "执行时间",
+      "today": "今天",
+    "advanced": "高级设置",
+    "fieldCron": "Cron 表达式",
+    "cronPlaceholder": "如：0 9 * * 1-5（本地时区）",
+    "fieldMaxRuns": "最大触发次数",
+    "maxRunsPlaceholder": "留空 = 不限次数",
+    "errorRequired": "请填写必填项",
+    "invalidCron": "Cron 表达式无效",
+    "saveFailed": "保存失败"
+  }
+}

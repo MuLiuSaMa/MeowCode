@@ -154,3 +154,21 @@
 .mc-oauth__altlink:hover {
   color: var(--fg);
 }
+
+/* 手动添加 MCP 的 OAuth 开关（Undermind 等远程 streamable HTTP + OAuth） */
+.mc-oauth__check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--mc-text, #ddd);
+  cursor: pointer;
+  user-select: none;
+}
+
+.mc-oauth__check input[type="checkbox"] {
+  width: 15px;
+  height: 15px;
+  accent-color: var(--mc-accent, #7c6ee6);
+  cursor: pointer;
+}

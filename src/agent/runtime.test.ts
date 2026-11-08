@@ -4,7 +4,7 @@ import path from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { BrowserHostClient, BrowserHostCommand } from "./browser-host";
 import { ProviderRequestError } from "./provider-error";
-import type { ChatMessage, MeowEvent, SessionEntry } from "./types";
+import type { ChatMessage, MeowEvent, ProviderConfig, SessionEntry } from "./types";
 import { SessionStore } from "./session-store";
 
 const { streamMock } = vi.hoisted(() => ({ streamMock: vi.fn() }));
@@ -1286,6 +1286,57 @@ describe("AgentRuntime full access mode", () => {
     expect(full?.content).toContain("1: secret");
     const restricted = await runRead("default");
     expect(restricted?.content).toContain("Path is outside the workspace");
+  });
+
+  it("auto mode reads and writes the app data dir (<home>/.meowcode) without full access", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "meowcode-runtime-"));
+    const workspace = await mkdtemp(path.join(tmpdir(), "meowcode-ws-"));
+    const runtime = makeRuntime(dir);
+    await runtime.newSession(workspace);
+    runtime.setApprovalMode("auto");
+    const target = path.join(dir, ".meowcode", "memory", "note.md");
+
+    streamMock
+      .mockResolvedValueOnce({
+        message: {
+          role: "assistant",
+          content: null,
+          tool_calls: [
+            {
+              id: "write-mem",
+              type: "function",
+              function: {
+                name: "write_file",
+                arguments: JSON.stringify({ path: target, content: "# note" }),
+              },
+            },
+          ],
+        },
+      })
+      .mockResolvedValueOnce({ message: { role: "assistant", content: "done" } });
+    await runtime.prompt("write app memory");
+    expect(await readFile(target, "utf8")).toContain("# note");
+
+    streamMock
+      .mockResolvedValueOnce({
+        message: {
+          role: "assistant",
+          content: null,
+          tool_calls: [
+            {
+              id: "read-mem",
+              type: "function",
+              function: { name: "read_file", arguments: JSON.stringify({ path: target }) },
+            },
+          ],
+        },
+      })
+      .mockResolvedValueOnce({ message: { role: "assistant", content: "done" } });
+    await runtime.prompt("read app memory");
+    const read = runtime.current!.effectiveMessages.find(
+      (message) => message.role === "tool" && message.name === "read_file",
+    );
+    expect(read?.content).toContain("1: # note");
   });
 });
 
@@ -3639,7 +3690,7 @@ describe("context_status virtual tool", () => {
     expect(request.provider.maxTokens).toBeLessThan(4_096);
   });
 
-  it("derives a session-stable prompt_cache_key for responses providers only", async () => {
+  it("derives a session-stable affinity key for every protocol", async () => {
     const dir = await mkdtemp(path.join(tmpdir(), "meowcode-runtime-"));
     const workspace = await mkdtemp(path.join(tmpdir(), "meowcode-ws-"));
     const runtime = new (await import("./runtime.js")).AgentRuntime({
@@ -3658,8 +3709,34 @@ describe("context_status virtual tool", () => {
     streamMock.mockResolvedValue({ message: { role: "assistant", content: "hi" } });
     await runtime.prompt("hello");
 
-    const provider = streamMock.mock.calls[0][0].provider as { promptCacheKey?: string };
+    const provider = streamMock.mock.calls[0][0].provider as {
+      promptCacheKey?: string;
+      pace?: string;
+    };
     expect(provider.promptCacheKey).toBe(`${runtime.current!.id}:main`);
+    expect(provider.pace).toBe("interactive");
+
+    // Anthropic 协议同样盖键（以 x-session-id 头发出），不再只服务 OpenAI 系
+    const anthropicDir = await mkdtemp(path.join(tmpdir(), "meowcode-runtime-"));
+    const anthropicWs = await mkdtemp(path.join(tmpdir(), "meowcode-ws-"));
+    const anthropicRuntime = new (await import("./runtime.js")).AgentRuntime({
+      providers: [
+        {
+          id: "ant",
+          name: "A",
+          baseUrl: "https://api.anthropic.com",
+          model: "claude-sonnet-4-5",
+          protocol: "anthropic-messages",
+        },
+      ],
+      sessionsDir: anthropicDir,
+    });
+    await anthropicRuntime.newSession(anthropicWs);
+    await anthropicRuntime.prompt("hello");
+    const anthropicSent = streamMock.mock.calls.at(-1)![0].provider as {
+      promptCacheKey?: string;
+    };
+    expect(anthropicSent.promptCacheKey).toBe(`${anthropicRuntime.current!.id}:main`);
   });
 });
 
@@ -3764,6 +3841,266 @@ describe("free tool-result pruning (over-budget shrink)", () => {
       const previous = requests[index - 1];
       expect(requests[index].slice(0, previous.length)).toEqual(previous);
     }
+  });
+});
+
+describe("cold resume pre-shrink (cache TTL expired)", () => {
+  const anthropicProvider: ProviderConfig = {
+    id: "p",
+    name: "P",
+    protocol: "anthropic-messages",
+    baseUrl: "http://localhost",
+    model: "m",
+    cacheTtl: "5m",
+    contextWindow: 1_000_000,
+  };
+
+  function bigFile(label: string): string {
+    return Array.from(
+      { length: 1_200 },
+      (_, index) => `${label} line ${index} with some padding text`,
+    ).join("\n");
+  }
+
+  function metaMapOf(runtime: InstanceType<typeof AgentRuntime>) {
+    return (
+      runtime as unknown as {
+        providerRequestMeta: Map<string, { key: string; at: number }>;
+      }
+    ).providerRequestMeta;
+  }
+
+  /**
+   * 三个大文件读取。返回每次请求时的消息快照——mock 记录的是同一个数组引用，
+   * agent loop 会在响应后把 assistant/tool 消息原地追加进去。
+   */
+  async function seedThreeReads(
+    runtime: InstanceType<typeof AgentRuntime>,
+    workspace: string,
+  ): Promise<ChatMessage[][]> {
+    for (const name of ["a.txt", "b.txt", "c.txt"]) {
+      await writeFile(path.join(workspace, name), bigFile(name));
+    }
+    runtime.setApprovalMode("full");
+    const replies = [
+      {
+        message: {
+          role: "assistant" as const,
+          content: null,
+          tool_calls: [readCall0("c1", "a.txt")],
+        },
+      },
+      {
+        message: {
+          role: "assistant" as const,
+          content: null,
+          tool_calls: [readCall0("c2", "b.txt")],
+        },
+      },
+      {
+        message: {
+          role: "assistant" as const,
+          content: null,
+          tool_calls: [readCall0("c3", "c.txt")],
+        },
+      },
+      { message: { role: "assistant" as const, content: "done" } },
+      { message: { role: "assistant" as const, content: "ok" } },
+    ];
+    const snapshots: ChatMessage[][] = [];
+    let index = 0;
+    streamMock.mockImplementation(async (options: { messages: ChatMessage[] }) => {
+      snapshots.push(structuredClone(options.messages));
+      const reply = replies[Math.min(index, replies.length - 1)];
+      index += 1;
+      return reply;
+    });
+    await runtime.prompt("read three files");
+    // 主路径 4 次请求（三条工具结果 + 收尾），后续 prompt 从这里续上
+    expect(snapshots).toHaveLength(4);
+    return snapshots;
+  }
+
+  async function makeColdRuntime(providers: ProviderConfig[]) {
+    const dir = await mkdtemp(path.join(tmpdir(), "meowcode-cold-"));
+    const workspace = await mkdtemp(path.join(tmpdir(), "meowcode-cold-ws-"));
+    const runtime = new (await import("./runtime.js")).AgentRuntime({
+      providers,
+      sessionsDir: dir,
+    });
+    await runtime.newSession(workspace);
+    return { runtime, workspace };
+  }
+
+  function summarizedToolMessages(messages: ChatMessage[]): ChatMessage[] {
+    return messages.filter(
+      (message) => message.role === "tool" && message.content.startsWith("[summarized]"),
+    );
+  }
+
+  it("shrinks old tool outputs after the TTL and persists the digests", async () => {
+    const { runtime, workspace } = await makeColdRuntime([anthropicProvider]);
+    const snapshots = await seedThreeReads(runtime, workspace);
+    const meta = metaMapOf(runtime).get("p");
+    metaMapOf(runtime).set("p", { key: meta!.key, at: Date.now() - 10 * 60_000 });
+
+    await runtime.prompt("continue");
+
+    const second = snapshots[4];
+    // 新 user 消息自己占一个「最近单元」：上一回合的工具结果也落到保留窗口之外，
+    // 冷缓存下把它们一起抽尾是预期行为（全文仍可由 spill locator 找回）。
+    const summarized = summarizedToolMessages(second);
+    expect(summarized).toHaveLength(3);
+    for (const message of summarized) {
+      expect(message.content).toContain("chars trimmed");
+    }
+
+    // 持久化：第 2 回合与后续回合的请求前缀逐字节一致（不会退回全量历史）
+    expect(await readFile(runtime.current!.filePath, "utf8")).toContain('"type":"tool_digest"');
+    await runtime.prompt("again");
+    const third = snapshots[5];
+    expect(third.slice(0, second.length)).toEqual(second);
+
+    // 已摘录的内容不再可剪：再一次冷 resume 不会追加新的纪要
+    const before = (
+      await readFile(runtime.current!.filePath, "utf8")
+    ).split('"type":"tool_digest"').length;
+    const freshMeta = metaMapOf(runtime).get("p");
+    metaMapOf(runtime).set("p", { key: freshMeta!.key, at: Date.now() - 10 * 60_000 });
+    await runtime.prompt("third");
+    const after = (
+      await readFile(runtime.current!.filePath, "utf8")
+    ).split('"type":"tool_digest"').length;
+    expect(after).toBe(before);
+  });
+
+  it("keeps the history intact while the cache is still warm", async () => {
+    const { runtime, workspace } = await makeColdRuntime([anthropicProvider]);
+    const snapshots = await seedThreeReads(runtime, workspace);
+    // 上一回合刚写过缓存：meta.at 是新鲜的
+    await runtime.prompt("continue");
+
+    expect(summarizedToolMessages(snapshots[4])).toHaveLength(0);
+    expect(await readFile(runtime.current!.filePath, "utf8")).not.toContain(
+      '"type":"tool_digest"',
+    );
+  });
+
+  it("never shrinks on protocols whose server TTL is unprovable", async () => {
+    const { runtime, workspace } = await makeColdRuntime([
+      {
+        id: "p",
+        name: "P",
+        baseUrl: "http://localhost",
+        model: "m",
+        contextWindow: 1_000_000,
+      },
+    ]);
+    const snapshots = await seedThreeReads(runtime, workspace);
+    const meta = metaMapOf(runtime).get("p");
+    metaMapOf(runtime).set("p", { key: meta!.key, at: Date.now() - 10 * 60_000 });
+
+    await runtime.prompt("continue");
+
+    expect(summarizedToolMessages(snapshots[4])).toHaveLength(0);
+  });
+
+  it("does not shrink before the first request ever touched the cache", async () => {
+    const { runtime } = await makeColdRuntime([anthropicProvider]);
+    const session = runtime.current!;
+    await session.appendMessage({ role: "user", content: "seed" });
+    await session.appendMessage({
+      role: "assistant",
+      content: null,
+      tool_calls: [readCall0("c1", "a.txt")],
+    });
+    await session.appendMessage({
+      role: "tool",
+      tool_call_id: "c1",
+      name: "read_file",
+      content: bigFile("seeded"),
+    });
+    await session.appendMessage({ role: "assistant", content: "seed done" });
+    await session.appendMessage({ role: "user", content: "seed question" });
+    await session.appendMessage({ role: "assistant", content: "seed answer" });
+    await session.flush();
+
+    streamMock.mockResolvedValue({ message: { role: "assistant", content: "ok" } });
+    await runtime.prompt("hello");
+
+    const first = streamMock.mock.calls[0][0].messages as ChatMessage[];
+    expect(summarizedToolMessages(first)).toHaveLength(0);
+    expect(await readFile(session.filePath, "utf8")).not.toContain('"type":"tool_digest"');
+  });
+});
+
+describe("lineage cache affinity", () => {
+  const official: ProviderConfig = {
+    id: "o",
+    name: "O",
+    protocol: "openai-responses",
+    baseUrl: "https://api.openai.com/v1",
+    model: "gpt-5.1",
+  };
+
+  function policyOf(
+    runtime: InstanceType<typeof AgentRuntime>,
+    provider: ProviderConfig,
+    purpose?: string,
+  ): ProviderConfig {
+    return (
+      runtime as unknown as {
+        applyCachePolicy(p: ProviderConfig, id: string, purpose?: string): ProviderConfig;
+      }
+    ).applyCachePolicy(provider, runtime.current!.id, purpose);
+  }
+
+  async function makeLineageRuntime(provider: ProviderConfig) {
+    const dir = await mkdtemp(path.join(tmpdir(), "meowcode-lineage-"));
+    const workspace = await mkdtemp(path.join(tmpdir(), "meowcode-lineage-ws-"));
+    const runtime = new AgentRuntime({ providers: [provider], sessionsDir: dir });
+    return { runtime, dir, workspace };
+  }
+
+  it("lets forks and sibling subagents share the source key on the official endpoint", async () => {
+    const { runtime, dir, workspace } = await makeLineageRuntime(official);
+    const source = await SessionStore.create(path.join(dir, "source.jsonl"), workspace);
+    await runtime.switchSession(source.filePath);
+    expect(policyOf(runtime, official).promptCacheKey).toBe(`${source.id}:main`);
+    // 用途后缀保留：标题请求仍与主对话区分分片
+    expect(policyOf(runtime, official, "title").promptCacheKey).toBe(`${source.id}:title`);
+
+    const fork = await SessionStore.create(path.join(dir, "fork.jsonl"), workspace, {
+      forkedFrom: source.id,
+    });
+    await runtime.switchSession(fork.filePath);
+    expect(policyOf(runtime, official).promptCacheKey).toBe(`${source.id}:main`);
+
+    const first = await SessionStore.create(path.join(dir, "child-a.jsonl"), workspace, {
+      parentSessionId: source.id,
+      agentKind: "subagent",
+    });
+    const second = await SessionStore.create(path.join(dir, "child-b.jsonl"), workspace, {
+      parentSessionId: source.id,
+      agentKind: "subagent",
+    });
+    await runtime.switchSession(first.filePath);
+    const firstKey = policyOf(runtime, official).promptCacheKey;
+    await runtime.switchSession(second.filePath);
+    const secondKey = policyOf(runtime, official).promptCacheKey;
+    expect(firstKey).toBe(`${source.id}:main`);
+    expect(secondKey).toBe(firstKey);
+  });
+
+  it("keeps each session's own key on non-official Responses hosts", async () => {
+    const gateway: ProviderConfig = { ...official, id: "g", baseUrl: "https://proxy.example.com/v1" };
+    const { runtime, dir, workspace } = await makeLineageRuntime(gateway);
+    const source = await SessionStore.create(path.join(dir, "source.jsonl"), workspace);
+    const fork = await SessionStore.create(path.join(dir, "fork.jsonl"), workspace, {
+      forkedFrom: source.id,
+    });
+    await runtime.switchSession(fork.filePath);
+    expect(policyOf(runtime, gateway).promptCacheKey).toBe(`${fork.id}:main`);
   });
 });
 

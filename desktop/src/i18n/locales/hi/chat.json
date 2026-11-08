@@ -219,6 +219,22 @@
     "stepCount_other": "{{count}} चरण",
     "stepCount_few": "{{count}} चरण",
     "stepCount_many": "{{count}} चरण",
+    "lineCount_one": "{{count}} पंक्ति",
+    "lineCount_other": "{{count}} पंक्तियाँ",
+    "lineCount_few": "{{count}} पंक्तियाँ",
+    "lineCount_many": "{{count}} पंक्तियाँ",
+    "entryCount_one": "{{count}} प्रविष्टि",
+    "entryCount_other": "{{count}} प्रविष्टियाँ",
+    "entryCount_few": "{{count}} प्रविष्टियाँ",
+    "entryCount_many": "{{count}} प्रविष्टियाँ",
+    "matchCount_one": "{{count}} मिलान",
+    "matchCount_other": "{{count}} मिलान",
+    "matchCount_few": "{{count}} मिलान",
+    "matchCount_many": "{{count}} मिलान",
+    "resultCount_one": "{{count}} परिणाम",
+    "resultCount_other": "{{count}} परिणाम",
+    "resultCount_few": "{{count}} परिणाम",
+    "resultCount_many": "{{count}} परिणाम",
     "emptyOutput": "(कोई आउटपुट नहीं)",
     "waitingOutput": "आउटपुट की प्रतीक्षा…",
     "outputNotSaved": "इतिहास में आउटपुट सहेजा नहीं गया",
@@ -320,5 +336,13 @@
     "close": "वर्कस्पेस अवलोकन बंद करें",
     "commitOrPush": "कमिट या पुश करें",
     "switchBranch": "ब्रांच बदलें"
+  },
+  "turnFooter": {
+    "copyMarkdown": "Markdown के रूप में कॉपी करें",
+    "copyPlain": "सादे टेक्स्ट के रूप में कॉपी करें",
+    "branch": "नई ब्रांच बनाएँ",
+    "duration": "अवधि",
+    "tokens": "उपयोग किए गए Token",
+    "time": "बातचीत का समय"
   }
 }

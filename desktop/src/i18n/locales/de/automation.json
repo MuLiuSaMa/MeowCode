@@ -1,0 +1,99 @@
+{
+  "nav": {
+    "heading": "Automatisierungen",
+    "subtitle": "AI erledigt nach Zeitplan Aufgaben im Workspace",
+    "ariaLabel": "Automatisierungs-Navigation"
+  },
+  "page": {
+    "empty": "Noch keine Automatisierungen. Erstelle eine Aufgabe – AI arbeitet dann nach Zeitplan.",
+    "loading": "Wird geladen…",
+    "nextRun": "Nächster Lauf {{time}}",
+    "noNextRun": "Deaktiviert",
+    "lastRun": "Letzter Lauf {{status}} · {{time}}",
+    "neverRun": "Noch nie gelaufen",
+    "runs": "{{count}} Läufe",
+    "cwd": "Workspace: {{cwd}}"
+  },
+  "schedule": {
+    "interval": "Alle {{minutes}} Min",
+    "hours": "Alle {{hours}} Std",
+    "daily": "Täglich um {{time}}",
+    "weekly": "{{weekday}} um {{time}}",
+    "monthly": "Monatlich am {{day}}. um {{time}}",
+    "cron": "Cron: {{expr}}",
+    "once": "Einmal um {{time}}"
+  },
+  "weekday": {
+    "0": "Sonntag",
+    "1": "Montag",
+    "2": "Dienstag",
+    "3": "Mittwoch",
+    "4": "Donnerstag",
+    "5": "Freitag",
+    "6": "Samstag"
+  },
+  "status": {
+    "started": "läuft",
+    "ok": "abgeschlossen",
+    "error": "fehlgeschlagen",
+    "missed": "verpasst",
+    "disabled": "Deaktiviert"
+  },
+  "actions": {
+    "create": "Neue Aufgabe",
+    "refresh": "Aktualisieren",
+    "runNow": "Jetzt ausführen",
+    "running": "Starte…",
+    "edit": "Bearbeiten",
+    "delete": "Löschen",
+    "cancel": "Abbrechen",
+    "save": "Speichern",
+    "saving": "Speichern…",
+    "openSession": "Sitzung öffnen",
+      "close": "Schließen",
+    "enable": "Aufgabe aktivieren",
+    "history": "Laufverlauf"
+  },
+  "deleteDialog": {
+    "title": "Automatisierung löschen",
+    "desc": "„{{title}}“ wird mitsamt Laufverlauf gelöscht. Dies kann nicht rückgängig gemacht werden."
+  },
+  "history": {
+    "title": "Laufverlauf — {{title}}",
+    "empty": "Noch keine Läufe.",
+    "status": "Status",
+    "session": "Sitzung"
+  },
+  "form": {
+    "createTitle": "Neue Automatisierung",
+    "editTitle": "Automatisierung bearbeiten",
+    "fieldTitle": "Aufgabenname",
+    "titlePlaceholder": "z. B. Täglich um 9 Uhr Abhängigkeiten prüfen",
+    "fieldWorkspace": "Ziel-Workspace",
+    "fieldPrompt": "Auftrag",
+    "promptPlaceholder": "Was die AI beim Auslösen tun soll. Je konkreter, desto besser.",
+    "fieldSchedule": "Zeitplan",
+    "freq": {
+      "interval": "Intervall",
+      "daily": "Täglich",
+      "weekly": "Wöchentlich",
+      "monthly": "Monatlich",
+      "once": "Einmalig",
+      "cron": "Cron"
+    },
+    "intervalMinutes": "Intervall (Minuten)",
+    "time": "Uhrzeit",
+    "weekday": "Wochentag",
+    "dayOfMonth": "Tag des Monats",
+    "onceAt": "Ausführen um",
+      "today": "Heute",
+    "advanced": "Erweiterte Einstellungen",
+    "fieldCron": "Cron-Ausdruck",
+    "cronPlaceholder": "z. B. 0 9 * * 1-5 (lokale Zeitzone)",
+    "fieldMaxRuns": "Maximale Läufe",
+    "maxRunsPlaceholder": "Leer = unbegrenzt",
+    "errorRequired": "Bitte Pflichtfelder ausfüllen",
+    "invalidCron": "Ungültiger Cron-Ausdruck",
+    "saveFailed": "Speichern fehlgeschlagen"
+  }
+}

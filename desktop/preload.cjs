@@ -181,6 +181,8 @@ contextBridge.exposeInMainWorld("meow", {
 
   // ---- 应用信息（关于页）----
   getAppInfo: () => ipcRenderer.invoke("meow:get-app-info"),
+  /** 商店版（MSIX）：更新交给 Microsoft Store，界面不出现检查更新入口 */
+  storeManaged: ipcRenderer.sendSync("meow:store-managed") === true,
   /** 检查更新：主进程拉 GitCode releases（渲染进程直连会被 CORS 拦） */
   checkUpdate: () => ipcRenderer.invoke("meow:check-update"),
   /** 下载更新包：主进程流式下载并广播 meow:update-progress */
@@ -227,6 +229,21 @@ contextBridge.exposeInMainWorld("meow", {
     const wrapped = (_event, payload) => listener(payload);
     ipcRenderer.on("meow:browser-select-tab", wrapped);
     return () => ipcRenderer.removeListener("meow:browser-select-tab", wrapped);
+  },
+
+  // ---- 自动化（定时任务）----
+  listAutomations: () => ipcRenderer.invoke("meow:automations-list"),
+  saveAutomation: (input) => ipcRenderer.invoke("meow:automations-save", input),
+  deleteAutomation: (id) => ipcRenderer.invoke("meow:automations-delete", id),
+  toggleAutomation: (id, enabled) => ipcRenderer.invoke("meow:automations-toggle", id, enabled),
+  runAutomationNow: (id) => ipcRenderer.invoke("meow:automations-run-now", id),
+  /** 打开某次运行的历史会话（唤起主窗口并切过去） */
+  openAutomationSession: (sessionId) => ipcRenderer.invoke("meow:automations-open-session", sessionId),
+  /** 任意变更（含调度器触发/结算）后的全量广播：渲染层据此刷新列表 */
+  onAutomationsChanged: (listener) => {
+    const wrapped = (_event, payload) => listener(payload);
+    ipcRenderer.on("meow:automations-changed", wrapped);
+    return () => ipcRenderer.removeListener("meow:automations-changed", wrapped);
   },
 
   // ---- 终端（右侧面板终端页签）----

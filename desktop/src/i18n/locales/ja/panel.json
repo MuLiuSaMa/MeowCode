@@ -62,7 +62,10 @@
       "miss": "{{base}}（ミス）",
       "hitting": "{{base}}（ヒット中）"
     },
-    "tokenValue": "{{value}} tok"
+    "tokenValue": "{{value}} tok",
+    "sessionTotal": "セッション累計",
+    "tokensTitle": "トークン構成",
+    "liveCalls": "リアルタイム · 直近 {{count}} 回の呼び出し"
   },
   "subagent": {
     "fallbackTitle": "サブエージェント",

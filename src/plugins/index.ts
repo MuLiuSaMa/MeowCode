@@ -1,7 +1,7 @@
 import { loadPlugins } from "./loader.js";
 import { McpManager, readMcpConfig } from "./mcp.js";
 import { PluginRegistry } from "./registry.js";
-import type { LoadPluginsResult, PluginDescriptor } from "./types.js";
+import type { ExtensionHost, LoadPluginsResult, PluginDescriptor } from "./types.js";
 
 export { PluginRegistry } from "./registry.js";
 export { runHook } from "./hooks.js";
@@ -35,6 +35,8 @@ export type CreatePluginSystemOptions = {
   homeDir: string;
   /** 禁用插件 id 列表（MEOWCODE_PLUGINS / desktop settings） */
   disabled?: readonly string[];
+  /** AI 自建能力宿主（server 注入；插件通过 api.host 调用） */
+  host?: ExtensionHost;
   /**
    * MCP 是否阻塞创建（默认 true）。
    * false 时 createPluginSystem 立刻返回，MCP 在后台连接；调用方应在真正需要

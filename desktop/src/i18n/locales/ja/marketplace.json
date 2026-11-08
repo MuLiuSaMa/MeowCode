@@ -29,9 +29,11 @@
   "platforms": {
     "gitee": "Gitee",
     "gitcode": "GitCode",
-    "gitcode-community": "GitCode コミュニティ"
+    "gitcode-community": "GitCode コミュニティ",
+    "undermind": "Undermind"
   },
   "actions": {
+    "aiAuthor": "AI に書いてもらう",
     "cancel": "キャンセル",
     "close": "閉じる",
     "copied": "コピーしました",
@@ -91,10 +93,18 @@
     "project": "プロジェクト"
   },
   "mcp": {
+    "authorize": "認証",
+    "authorizeTitle": "ブラウザで認証を完了してください。完了後、自動的に接続します",
+    "authorizing": "認証待ち",
     "connecting": "接続中",
+    "disabled": "無効",
     "envRequired": "設定が必要：{{names}}",
     "failed": "失敗",
     "failedDetail": "失敗 · {{error}}",
+    "localBadge": "ローカル設定",
+    "localNoTarget": "ローカル MCP サーバー",
+    "needsAuth": "認証が必要",
+    "reauthorize": "再認証",
     "ready": "準備完了 · ツール {{count}} 個",
     "ready_one": "準備完了 · ツール {{count}} 個",
     "ready_other": "準備完了 · ツール {{count}} 個",
@@ -220,8 +230,12 @@
     "desc": "トークンはこの端末で暗号化保存され、{{name}} の接続にのみ使われます。保存前に有効性をオンライン検証し、通過するとただちに再接続してツールを読み込みます。",
     "empty": "トークンを入力してください。",
     "hintFigma": "Figma のウェブ版で Settings → Security → Personal access tokens から発行します。File content の読み取り権限があれば十分です。",
+    "hintLarkAppId": "Feishu/Lark オープンプラットフォーム開発者コンソールのアプリ ID（例：cli_xxxx）。",
+    "hintLarkSecret": "同じアプリの詳細ページにある App Secret。両者は同じ自作アプリに属し、公開済みで必要な権限が有効である必要があります。",
     "hintLuckin": "open.lkcoffee.com/mcp にログインして Token を発行・コピーしてください。瑞幸コーヒー注文 MCP（注文・注文状況・ピックアップコード）で使用します。",
     "labelFigma": "Figma 個人アクセストークン",
+    "labelLarkAppId": "Lark/Feishu アプリ ID",
+    "labelLarkSecret": "Lark/Feishu アプリシークレット",
     "labelLuckin": "瑞幸（luckin）オープンプラットフォーム Token",
     "placeholder": "アクセストークンを貼り付け",
     "title": "{{name}} のアクセストークンを設定"
@@ -309,9 +323,10 @@
       "title": "添加 MCP 服务",
       "desc": "手动添加一个 MCP server：配置写入 ~/.meowcode/mcp.json，保存后自动连接。",
       "idLabel": "名称（id）*",
-      "connTypeLabel": "连接类型",
-      "connStdio": "本地命令（Stdio）",
-      "connHttp": "远程地址（HTTP）",
+      "navLabel": "接続方式",
+      "navStdio": "ローカルコマンド",
+      "navHttp": "リモート URL",
+      "navJson": "JSON 設定",
       "commandLabel": "命令 *",
       "argsLabel": "参数（每行一个）",
       "urlLabel": "服务地址 *",
@@ -320,7 +335,6 @@
       "envHint": "支持 ${VAR} 形式引用 MeowCode 进程环境变量。",
       "jsonLabel": "MCP 配置（JSON）",
       "jsonHint": "接受 {\"mcpServers\": {…}} 包裹（可一次添加多个）或单个 server 对象。",
-      "advancedToggle": "高级：粘贴 JSON",
       "jsonInvalid": "不是合法的 JSON。",
       "jsonEmpty": "mcpServers 里没有条目。",
       "jsonIdInvalid": "条目 id「{{id}}」不合法：需以字母/数字开头，只含字母、数字、点、下划线、连字符。",
@@ -330,7 +344,14 @@
       "headersInvalid": "请求头不是合法的 JSON 对象。",
       "needCommand": "请填写启动命令。",
       "needUrl": "请填写服务地址。",
-      "toggleAria": "启停 MCP {{id}}"
+      "toggleAria": "启停 MCP {{id}}",
+      "authGroup": "認証",
+      "oauthToggle": "OAuth ブラウザ認証（リモート MCP）",
+      "oauthHint": "初回接続時にブラウザが開き、ログインと認証を行います。トークンはローカルの ~/.meowcode/mcp-oauth/ に保存されます。",
+      "oauthScopesLabel": "OAuth スコープ（任意・空白/カンマ区切り）",
+      "oauthClientIdLabel": "OAuth クライアント ID（任意・事前登録）",
+      "oauthCimdLabel": "OAuth クライアントメタデータ URL（任意）",
+      "oauthCimdHint": "空欄で MeowCode 公式 CIMD ドキュメントを使用。空文字列で CIMD フォールバックを無効化。"
     }
   },
   "sources": {

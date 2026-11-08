@@ -3,7 +3,7 @@ import i18n from "i18next";
 import { setupI18n } from "../../i18n";
 import { setModelProfiles } from "../../modelProfiles";
 import { formatCapacity } from "../../util";
-import { applyDetectedCapabilities, buildProvider, providerLabel } from "./modelForm";
+import { applyDetectedCapabilities, buildProvider, mergeProviderRow, providerLabel } from "./modelForm";
 import type { ProviderSettings } from "../../api";
 
 // buildProvider 的报错文案走 i18next，取词发生在调用时：测试里要先初始化实例
@@ -78,6 +78,33 @@ describe("providerLabel", () => {
     expect(providerLabel({ displayName: " DeepSeek 对话 ", model: "deepseek-chat" })).toBe(
       "DeepSeek 对话",
     );
+  });
+});
+
+describe("mergeProviderRow", () => {
+  it("lets the provider-level base win over the stale row snapshot for shared fields", () => {
+    // 新建服务商的首行是挂载时的 draft 快照：地址还是空的，之后才在上层填好
+    const rowSnapshot: ProviderSettings = { ...base, baseUrl: "", model: "zcode/GLM-5.3-Flash" };
+    const filledBase: ProviderSettings = { ...base, baseUrl: "http://127.0.0.1:3425", apiKey: "sk-test" };
+    const merged = mergeProviderRow(rowSnapshot, filledBase);
+    expect(merged.baseUrl).toBe("http://127.0.0.1:3425");
+    expect(merged.apiKey).toBe("sk-test");
+    expect(merged.protocol).toBe(filledBase.protocol);
+    // 行自有字段（模型 ID、id）不被 base 的草稿值冲掉
+    expect(merged.model).toBe("zcode/GLM-5.3-Flash");
+    expect(merged.id).toBe(rowSnapshot.id);
+  });
+
+  it("keeps row-only fields such as display name and fallback chain", () => {
+    const row: ProviderSettings = {
+      ...base,
+      displayName: "备用端点",
+      fallbackIds: ["provider-9"],
+      baseUrl: "",
+    };
+    const merged = mergeProviderRow(row, base);
+    expect(merged.displayName).toBe("备用端点");
+    expect(merged.fallbackIds).toEqual(["provider-9"]);
   });
 });
 

@@ -1,8 +1,15 @@
 import { mkdtemp, realpath, rm, symlink, writeFile } from "node:fs/promises";
+import os from "node:os";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { displayPath, isWithinWorkspace, resolveToolPath, resolveWithinWorkspace } from "./paths";
+import {
+  displayPath,
+  isWithinWorkspace,
+  resolveToolPath,
+  resolveWithinWorkspace,
+  setAppDataRoot,
+} from "./paths";
 
 async function tempDir(prefix: string): Promise<string> {
   return mkdtemp(path.join(tmpdir(), prefix));
@@ -29,6 +36,31 @@ describe("workspace path guard", () => {
     expect(await resolveToolPath("D:/work", "src/a.ts", true)).toBe(
       path.resolve("D:/work/src/a.ts"),
     );
+  });
+
+  it("treats the app data root (home/.meowcode) as trusted", async () => {
+    const workspace = await tempDir("meowcode-ws-");
+    const appRoot = await tempDir("meowcode-app-");
+    const realAppRoot = await realpath(appRoot);
+    try {
+      setAppDataRoot(appRoot);
+      // 存在与不存在的文件都能解析（memory/ 目录通常是新建的）
+      await writeFile(path.join(appRoot, "memory-note.md"), "note");
+      expect(await resolveToolPath(workspace, path.join(appRoot, "memory-note.md"))).toBe(
+        path.join(realAppRoot, "memory-note.md"),
+      );
+      expect(await resolveToolPath(workspace, path.join(appRoot, "memory", "new.md"))).toBe(
+        path.join(realAppRoot, "memory", "new.md"),
+      );
+      // 应用根外仍然是工作区外
+      await expect(resolveToolPath(workspace, path.join(appRoot, "..", "outside.txt"))).rejects.toThrow(
+        "outside the workspace",
+      );
+    } finally {
+      setAppDataRoot(path.join(os.homedir(), ".meowcode"));
+      await rm(workspace, { recursive: true, force: true });
+      await rm(appRoot, { recursive: true, force: true });
+    }
   });
 
   it("resolves new files under the real workspace path", async () => {

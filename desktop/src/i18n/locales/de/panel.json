@@ -62,7 +62,10 @@
       "miss": "{{base}} (Fehlgriff)",
       "hitting": "{{base}} (Treffer)"
     },
-    "tokenValue": "{{value}} tok"
+    "tokenValue": "{{value}} tok",
+    "sessionTotal": "Sitzungssumme",
+    "tokensTitle": "Token-Zusammensetzung",
+    "liveCalls": "Live · letzte {{count}} Aufrufe"
   },
   "subagent": {
     "fallbackTitle": "Subagent",

@@ -1,4 +1,4 @@
-import type { ChatMessage, TimelineItem, TurnFileChangeGroup } from "./api";
+import type { ChatMessage, TimelineItem, TurnDurationGroup, TurnFileChangeGroup } from "./api";
 
 type KeyFactory = (prefix: string) => string;
 
@@ -59,6 +59,7 @@ export type HistoryCheckpoint = {
  * 传入压缩记录时，把每条压缩分隔线插回它发生的原始位置。
  * 传入检查点时同理插入检查点分隔线（同一位置可有多条，按 id 去重）。
  * 传入回合改动汇总时，在该回合结束的位置插回「已编辑 N 个文件」卡片。
+ * 传入回合耗时同理插回运行耗时信息条（紧跟在改动汇总之后）。
  */
 export function timelineFromHistory(
   messages: ChatMessage[],
@@ -66,6 +67,7 @@ export function timelineFromHistory(
   compaction?: HistoryCompaction | HistoryCompaction[] | null,
   checkpoints?: HistoryCheckpoint[] | null,
   turnChanges?: TurnFileChangeGroup[] | null,
+  turnDurations?: TurnDurationGroup[] | null,
 ): TimelineItem[] {
   const items: TimelineItem[] = [];
   const toolOutputs = new Map<string, string>();
@@ -136,10 +138,30 @@ export function timelineFromHistory(
     }
   };
 
+  // 回合运行耗时：与改动汇总同 messageIndex，插在其后（调用顺序：先 turn-changes 再 turn-info）
+  const turnDurationGroups = turnDurations ?? [];
+  const insertedTurnDurations = new Set<string>();
+  const insertTurnDurations = (index: number) => {
+    for (const group of turnDurationGroups) {
+      if (group.messageIndex !== index || insertedTurnDurations.has(group.turnId)) continue;
+      insertedTurnDurations.add(group.turnId);
+      items.push({
+        kind: "turn-info",
+        key: nextKey("turn-info"),
+        turnId: group.turnId,
+        durationMs: group.durationMs,
+        ...(group.status ? { status: group.status } : {}),
+        ...(group.endedAt ? { endedAt: group.endedAt } : {}),
+        ...(group.usage ? { usage: group.usage } : {}),
+      });
+    }
+  };
+
   for (let index = 0; index < messages.length; index += 1) {
     insertCompactions(index);
     insertCheckpoints(index);
     insertTurnChanges(index);
+    insertTurnDurations(index);
     const message = messages[index];
     if (message.role === "system" || message.role === "tool") continue;
 
@@ -209,6 +231,7 @@ export function timelineFromHistory(
   insertCompactions(messages.length);
   insertCheckpoints(messages.length);
   insertTurnChanges(messages.length);
+  insertTurnDurations(messages.length);
   return items;
 }
 

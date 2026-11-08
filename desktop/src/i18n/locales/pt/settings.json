@@ -8,11 +8,7 @@
   "speech": {
     "section": "Tom",
     "field": "Tom da resposta",
-    "desc": {
-      "normal": "Tom padrão: conciso, direto e profissional — apenas o essencial.",
-      "tafei": "Tom da Taffy: uma persona de garota-gato brincalhona que termina as frases com “miao” (喵) e às vezes usa sua frase de assinatura; o conteúdo técnico continua preciso.",
-      "dazui": "Dazui: ah, isto, isto… né? O melhor tom por menos de dez milhões."
-    },
+    "desc": "Escolha o estilo de tom das respostas da IA. As alterações entram em vigor imediatamente.",
     "options": {
       "normal": "Normal",
       "tafei": "永雏塔菲",
@@ -69,6 +65,16 @@
     "themeSection": "Tema",
     "themeField": "Tema de cores",
     "themeDesc": "\"Sistema\" acompanha em tempo real a configuração clara / escura do Windows. A mudança vale na hora, sem reiniciar.",
+    "paletteSection": "Paleta de cores",
+    "paletteDesc": "Escolha a cor de destaque e o tom da tela. Claro e escuro são ajustados separadamente, então se adaptam sozinhos ao trocar de modo.",
+    "palette": {
+      "classic": "Clássico",
+      "lava": "Laranja lava",
+      "bee": "Amarelo abelha",
+      "mint": "Verde menta",
+      "parchment": "Pergaminho",
+      "harmony": "Azul harmonia"
+    },
     "theme": {
       "system": "Sistema",
       "light": "Claro",
@@ -554,6 +560,11 @@
       "confirmHow": "Após cada resposta, uma requisição extra é enviada ao modelo atual para prever sua próxima mensagem. Ela aparece no campo vazio; pressione Tab para inserir. Nada é enviado automaticamente.",
       "confirmCost": "Isso consome tokens extras a cada turno. A requisição reutiliza o cache da conversa, então costuma ser barata, mas ainda é cobrada.",
       "enable": "Ativar"
+    },
+    "providerFallback": {
+      "field": "Failover do provedor",
+      "desc": "Quando o provedor principal expira, atinge limite de requisições ou retorna erro de servidor, este turno muda automaticamente para outro provedor habilitado (até 2 saltos).",
+      "toggleFailed": "Falha ao salvar a configuração de failover do provedor"
     }
   },
   "proxy": {

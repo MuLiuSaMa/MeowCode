@@ -161,7 +161,7 @@ export function ModelPopover({
                   >
                     <ProviderIcon
                       template={findTemplate(provider.templateId)}
-                      iconKey={modelIconKey(provider.model)}
+                      iconKey={modelIconKey(provider.model) ?? "meow"}
                       size={20}
                     />
                     <span className="mc-popover__itemname">

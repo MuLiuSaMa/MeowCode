@@ -1,0 +1,110 @@
+/* 每轮回复末尾的操作行：动作与对话时间并排靠左，常驻显示 */
+.mc-turninfo {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 10px;
+  min-height: 24px;
+  color: var(--fg-subtle);
+  font-size: var(--fs-xs, 12px);
+  line-height: var(--lh-normal);
+}
+.mc-turninfo__actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.mc-turninfo__action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  transition: background-color var(--dur, 0.15s) var(--ease, ease), color var(--dur, 0.15s) var(--ease, ease);
+}
+.mc-turninfo__action:hover {
+  background: var(--surface-hover);
+  color: var(--fg);
+}
+.mc-turninfo__action:focus-visible {
+  outline: none;
+  background: var(--surface-hover);
+  color: var(--fg);
+}
+/* 时间 chip：悬停/聚焦时在正上方弹出「耗时 / 使用 Token」卡片 */
+.mc-turninfo__timewrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px;
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--fg-subtle);
+  cursor: default;
+  outline: none;
+}
+.mc-turninfo__timewrap:focus-visible {
+  background: var(--surface-hover);
+  color: var(--fg);
+}
+.mc-turninfo__icon {
+  flex-shrink: 0;
+  opacity: 0.8;
+}
+.mc-turninfo__time {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.mc-turninfo__card {
+  position: absolute;
+  left: 0;
+  bottom: calc(100% + 6px);
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 158px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-elevated);
+  color: var(--fg);
+  box-shadow: var(--shadow-md);
+  white-space: nowrap;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(4px);
+  transition: opacity 0.15s var(--ease, ease), transform 0.15s var(--ease, ease);
+  pointer-events: none;
+}
+.mc-turninfo__timewrap:hover .mc-turninfo__card,
+.mc-turninfo__timewrap:focus-visible .mc-turninfo__card,
+.mc-turninfo__timewrap:focus-within .mc-turninfo__card {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
+}
+.mc-turninfo__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+}
+.mc-turninfo__row > :first-child {
+  color: var(--fg-subtle);
+}
+.mc-turninfo__row > :last-child {
+  font-variant-numeric: tabular-nums;
+}
+@media (prefers-reduced-motion: reduce) {
+  .mc-turninfo__card {
+    transition: none;
+  }
+}

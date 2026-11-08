@@ -25,8 +25,15 @@
                 ? "dark"
                 : "light";
           document.documentElement.dataset.theme = resolved;
+          // 配色（与明暗正交）：必须与主题在同一帧写下去，否则会先按经典色画一帧。
+          // key 与 src/theme/theme.tsx 的 PALETTE_STORAGE_KEY 一致，白名单与 api.ts 的 ThemePalette 一致。
+          var palettes = ["classic", "lava", "bee", "mint", "parchment", "harmony"];
+          var palette = localStorage.getItem("meow:palette");
+          document.documentElement.dataset.palette =
+            palette && palettes.indexOf(palette) >= 0 ? palette : "classic";
         } catch (error) {
           document.documentElement.dataset.theme = "dark";
+          document.documentElement.dataset.palette = "classic";
         }
         // 界面语言同理：异步 settings 要等 IPC，首帧前只能读 localStorage 镜像。
         // key 与 src/i18n/index.ts 的 LANGUAGE_STORAGE_KEY 一致，判定规则也与 languages.ts 对齐。

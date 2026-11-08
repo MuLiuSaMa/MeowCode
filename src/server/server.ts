@@ -1,8 +1,8 @@
 import http from "node:http";
 import path from "node:path";
-import { pathToFileURL } from "node:url";
+import { pathToFileURL, fileURLToPath } from "node:url";
 import os from "node:os";
-import { mkdirSync, existsSync, statSync } from "node:fs";
+import { mkdirSync, existsSync, statSync, realpathSync } from "node:fs";
 import { readFile, readdir, rm, stat, unlink, writeFile, cp } from "node:fs/promises";
 import { randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import { AgentRuntime, isApprovalMode, isSessionMode } from "../agent/runtime.js";
@@ -124,7 +124,9 @@ import {
   parseRunMode,
   summarizeHooks,
 } from "../plugins/builtin/claude-code-hooks/config.js";
-import { createMarketplaceStore, MarketplaceError } from "./marketplace.js";
+import { backfillSkillMarkers, createMarketplaceStore, MarketplaceError, type MarketplaceDetail } from "./marketplace.js";
+import { parseMarkdownFrontmatter } from "../plugins/frontmatter.js";
+import { createExtensionHost } from "./extensions.js";
 import { applyImport, applyImportItem, detectImportSources, planImport, type ImportAppId, type ImportGroupId } from "./data-import.js";
 
 /** /import/plan 与 /import/apply 共用的请求体校验。 */
@@ -139,10 +141,54 @@ function parseImportRequest(body: { appId?: unknown; groups?: unknown }):
     : [];
   return { appId: body.appId, groups };
 }
+
+/** 技能目录里的 icon.svg / icon.png → data URL：/skills 列表用它显示自建/内置技能图标。 */async function skillIconDataUrl(skillPath: string): Promise<string | undefined> {
+  const dir = path.dirname(skillPath);
+  const candidates: Array<[string, string]> = [
+    ["icon.svg", "image/svg+xml"],
+    ["icon.png", "image/png"],
+  ];
+  for (const [file, mime] of candidates) {
+    try {
+      const buf = await readFile(path.join(dir, file));
+      if (buf.length === 0 || buf.length > 64 * 1024) continue;
+      return `data:${mime};base64,${buf.toString("base64")}`;
+    } catch {
+      // 没有这个图标就试下一个
+    }
+  }
+  return undefined;
+}
+
+/** 本地（我的/自建）技能详情：市场索引没有该 id 时读 ~/.meowcode/skills/<id>/SKILL.md。 */
+async function readLocalSkillDetail(homeDir: string, id: string): Promise<MarketplaceDetail | null> {
+  if (!/^[a-z0-9][a-z0-9._-]*$/i.test(id) || id.includes("..")) return null;
+  try {
+    const raw = await readFile(path.join(homeDir, ".meowcode", "skills", id, "SKILL.md"), "utf8");
+    const { meta, body } = parseMarkdownFrontmatter(raw);
+    return {
+      item: {
+        id,
+        type: "skill",
+        name: meta.name || id,
+        description: meta.description || "",
+        category: "",
+        source: "local",
+        tags: [],
+        version: "",
+        entry: `skills/${id}`,
+        entryKind: "dir",
+      },
+      detail: body.slice(0, 60_000),
+    };
+  } catch {
+    return null;
+  }
+}
 import { createCommunitySource } from "./marketplace-community.js";
 import { createThirdPartySource, type ThirdPartySource } from "./marketplace-thirdparty.js";
 import { getLspManager } from "../lsp/manager.js";
-import { discoverSkills } from "../plugins/skills.js";
+import { builtinSkillsDir, discoverSkills } from "../plugins/skills.js";
 import type {
   PendingApproval,
   ProviderConfig,
@@ -153,7 +199,7 @@ import type {
   TurnStatus,
 } from "../agent/types.js";
 
-const APP_VERSION = "1.0.0";
+const APP_VERSION = "1.1.0";
 const DEFAULT_SESSIONS_DIR = path.join(os.homedir(), "AppData", "Roaming", "MeowCode", "agent", "sessions");
 
 /** 插件命令 chip 的展示标记：首行是名称/插件/命令，空行后才是实际 `/command` 文本 */
@@ -258,6 +304,14 @@ function readMemoryFromEnv(): boolean {
 /** 自我学习：**默认关闭**，只有显式写 1/true/on 才开启。 */
 function readLearningFromEnv(): boolean {
   const raw = process.env.MEOWCODE_SELF_LEARNING;
+  if (raw === undefined || raw.trim() === "") return false;
+  const normalized = raw.trim().toLowerCase();
+  return normalized === "1" || normalized === "true" || normalized === "on";
+}
+
+/** 供应商故障转移：**默认关闭**，设置里显式开启才在临时故障时切备用服务商。 */
+function readProviderFallbackFromEnv(): boolean {
+  const raw = process.env.MEOWCODE_PROVIDER_FALLBACK;
   if (raw === undefined || raw.trim() === "") return false;
   const normalized = raw.trim().toLowerCase();
   return normalized === "1" || normalized === "true" || normalized === "on";
@@ -408,8 +462,11 @@ const MCP_CREDENTIAL_ENV_NAMES = new Set([
   "MEOWCODE_GITHUB_TOKEN",
   "MEOWCODE_GITEE_TOKEN",
   "MEOWCODE_GITCODE_TOKEN",
+  "MEOWCODE_UNDERMIND_TOKEN",
   "MEOWCODE_FIGMA_TOKEN",
   "LUCKIN_MCP_TOKEN",
+  "MEOWCODE_LARK_APP_ID",
+  "MEOWCODE_LARK_APP_SECRET",
 ]);
 
 type ParsedAttachments = {
@@ -503,6 +560,8 @@ export async function startServer(options: { port?: number; token?: string } = {
   let memoryEnabled = readMemoryFromEnv();
   // 自我学习：env 给初值，PUT /config/learning 运行中实时切换
   let learningEnabled = readLearningFromEnv();
+  // 供应商故障转移：env 给初值，PUT /config/provider-fallback 运行中实时切换（默认关）
+  let providerFallbackEnabled = readProviderFallbackFromEnv();
   // 网络代理：env 给初值，PUT /config/proxy 运行中实时切换。
   // 必须在任何对外请求之前落地，否则首个 provider 调用会绕过代理。
   setProxyConfig(readProxyFromEnv());
@@ -524,12 +583,26 @@ export async function startServer(options: { port?: number; token?: string } = {
   // 测试经 MEOWCODE_HOME_DIR 整体隔离——缺了它单测会把真实 ~/.meowcode/mcp.json
   // 的 MCP 服务器拉起来，重连退避能把回合拖过测试超时（server.test.ts SSE 用例踩过）。
   const homeDir = process.env.MEOWCODE_HOME_DIR || os.homedir();
+  /** 「我的」历史技能补标记只跑一次：首次打开「我的」时执行（避免测试进程无谓写盘） */
+  let mineBackfillDone = false;
+  // AI 自建技能/插件：宿主能力先建（回调在下面定义后用可变引用回填），
+  // 内置创作插件通过 api.host 调到这里，落盘 + 标记 + 热更新统一处理。
+  let invalidateExtensionInstructions: () => void = () => undefined;
+  let refreshExtensionPlugins: (
+    id: string,
+  ) => Promise<{ toolNames?: string[]; error?: string }> = async () => ({});
+  const extensionHost = createExtensionHost({
+    homeDir,
+    onSkillCreated: () => invalidateExtensionInstructions(),
+    onPluginsChanged: (id) => refreshExtensionPlugins(id),
+  });
   // MCP 不阻塞 HTTP 服务就绪：gitcode 这类 stdio MCP 走 npx 拉起，光解析包 + 启动
   // 子进程就要好几秒，没必要让窗口空等。工具就绪前会被首个回合前的 awaitMcpReady 拦住。
   const pluginSystem: PluginSystem = await createPluginSystem({
     workspace: pluginsWorkspace,
     homeDir,
     blockOnMcp: false,
+    host: extensionHost,
     ...(() => {
       const { disabled } = readPluginsConfigFromEnv();
       return disabled.length > 0 ? { disabled } : {};
@@ -561,6 +634,15 @@ export async function startServer(options: { port?: number; token?: string } = {
     });
     // 插件/MCP 变更属于显式边界：应用会话里延后的工具删除/改写。
     runtime.rebuildToolCatalog("plugin_reload");
+  };
+  // AI 自建插件：重载后把该 id 的加载结果（工具名 / 错误）回给宿主，让模型能修错重试
+  refreshExtensionPlugins = async (id) => {
+    await reloadAfterMarketChange();
+    const descriptor = pluginSystem.descriptors().find((item) => item.id === id);
+    return {
+      ...(descriptor?.toolNames?.length ? { toolNames: descriptor.toolNames } : {}),
+      ...(descriptor?.error ? { error: descriptor.error } : {}),
+    };
   };
   /** mcp.json 变化（「我的」手动添加/启停）后 diff 重连 MCP：凭据与 enabled 变了必须重连子进程 */
   const reloadAfterMcpChange = async (): Promise<void> => {
@@ -625,7 +707,9 @@ export async function startServer(options: { port?: number; token?: string } = {
       mcpReady: pluginSystem.mcpReady,
       memory: memoryEnabled,
       learning: learningEnabled,
+      providerFallback: providerFallbackEnabled,
       instructionSettings,
+      builtinSkillsDir: builtinSkillsDir(),
       speechStyle,
       traceSink,
     });
@@ -897,7 +981,9 @@ export async function startServer(options: { port?: number; token?: string } = {
         enableTaskTool: false,
         memory: memoryEnabled,
         learning: learningEnabled,
+        providerFallback: providerFallbackEnabled,
         instructionSettings,
+        builtinSkillsDir: builtinSkillsDir(),
         speechStyle,
         traceSink,
       });
@@ -915,6 +1001,8 @@ export async function startServer(options: { port?: number; token?: string } = {
       instance.invalidateInstructions();
     }
   };
+  // AI 自建技能：落盘后让技能索引在下一轮重新生成
+  invalidateExtensionInstructions = invalidateInstructions;
   const restoreSideRuntime = async (filePath?: string): Promise<void> => {
     if (!filePath) return;
     try {
@@ -2046,6 +2134,8 @@ export async function startServer(options: { port?: number; token?: string } = {
             compactions: [],
             checkpoints: [],
             turnChanges: [],
+            turnDurations: [],
+            usageSamples: [],
             compactionQuality: null,
           });
           return;
@@ -2057,6 +2147,10 @@ export async function startServer(options: { port?: number; token?: string } = {
           checkpoints: session.checkpoints,
           // 按回合聚合的文件改动：历史回放时在每轮末尾重建「已编辑 N 个文件」卡片
           turnChanges: session.turnFileChangeGroups,
+          // 按回合的运行耗时：历史回放时在每轮末尾显示运行时间
+          turnDurations: session.turnDurations,
+          // 每次模型调用的用量样本：右侧命中率曲线的实时观感（重载后仍连续）
+          usageSamples: session.usageSamples,
           compactionQuality: session.lastCompactionQuality,
         });
         return;
@@ -3333,6 +3427,9 @@ export async function startServer(options: { port?: number; token?: string } = {
         if (result.status === "imported" && groupId === "mcp") {
           await reloadAfterMcpChange();
         }
+        if (groupId === "skills" && result.status !== "failed") {
+          invalidateInstructions();
+        }
         sendJson(response, 200, result);
         return;
       }
@@ -3347,6 +3444,9 @@ export async function startServer(options: { port?: number; token?: string } = {
         if (report.mcpChanged) {
           await reloadAfterMcpChange();
         }
+        if ((report.groups.find((group) => group.id === "skills")?.imported.length ?? 0) > 0) {
+          invalidateInstructions();
+        }
         sendJson(response, 200, report);
         return;
       }
@@ -3359,16 +3459,24 @@ export async function startServer(options: { port?: number; token?: string } = {
           [
             { dir: path.join(cwd, ".meowcode", "skills"), source: "project" },
             { dir: path.join(homeDir, ".meowcode", "skills"), source: "user" },
+            // 内置技能（AI 自建能力等）随包分发，不需要安装
+            { dir: builtinSkillsDir(), source: "builtin" },
           ],
           { allowMissingDescription: true },
         );
         sendJson(response, 200, {
-          skills: skills.map((skill) => ({
-            id: path.basename(path.dirname(skill.path)),
-            name: skill.name,
-            description: skill.description,
-            source: skill.source,
-          })),
+          skills: await Promise.all(
+            skills.map(async (skill) => {
+              const iconUrl = await skillIconDataUrl(skill.path);
+              return {
+                id: path.basename(path.dirname(skill.path)),
+                name: skill.name,
+                description: skill.description,
+                source: skill.source,
+                ...(iconUrl ? { iconUrl } : {}),
+              };
+            }),
+          ),
         });
         return;
       }
@@ -3440,6 +3548,52 @@ export async function startServer(options: { port?: number; token?: string } = {
         return;
       }
 
+      // MCP 手动 OAuth 授权：市场「授权 / 重新授权」按钮 → 起浏览器 + 等回环回调 + 重连。
+      // 同步等待（最长 5 分钟）：前端等待期间显示 pending，成功后直接拿新状态。
+      if (pathname === "/plugins/mcp/authorize" && request.method === "POST") {
+        const body = await readJsonBody<{ name?: unknown; force?: unknown }>(request);
+        if (typeof body.name !== "string" || !body.name.trim()) {
+          sendError(response, 400, "invalid_request", "name is required");
+          return;
+        }
+        try {
+          await pluginSystem.mcp.authorize(body.name.trim(), { force: body.force === true });
+          runtime.rebuildToolCatalog("plugin_reload");
+          sendJson(response, 200, { ok: true, mcp: pluginSystem.mcp.statuses() });
+        } catch (error) {
+          sendError(
+            response,
+            500,
+            "authorize_failed",
+            error instanceof Error ? error.message : String(error),
+          );
+        }
+        return;
+      }
+
+      // MCP 解除授权：清掉本机 token 并断开连接，状态回到「需要授权」。
+      // 与 authorize 相对，给「换账号 / 不想再连了」一个出口；不弹浏览器，立即返回。
+      if (pathname === "/plugins/mcp/revoke" && request.method === "POST") {
+        const body = await readJsonBody<{ name?: unknown }>(request);
+        if (typeof body.name !== "string" || !body.name.trim()) {
+          sendError(response, 400, "invalid_request", "name is required");
+          return;
+        }
+        try {
+          await pluginSystem.mcp.revoke(body.name.trim());
+          runtime.rebuildToolCatalog("plugin_reload");
+          sendJson(response, 200, { ok: true, mcp: pluginSystem.mcp.statuses() });
+        } catch (error) {
+          sendError(
+            response,
+            500,
+            "revoke_failed",
+            error instanceof Error ? error.message : String(error),
+          );
+        }
+        return;
+      }
+
       // 插件市场：bundles 索引 + 安装/卸载（目标固定 ~/.meowcode/）
       if (pathname === "/marketplace" && request.method === "GET") {
         const listing = await marketplace.list({ homeDir });
@@ -3466,6 +3620,14 @@ export async function startServer(options: { port?: number; token?: string } = {
             await marketplace.detail(detailId.trim(), detailType, { homeDir }),
           );
         } catch (error) {
+          // 本地/自建技能不在市场索引里：「我的」点开详情时回退读本地 SKILL.md
+          if (detailType === "skill" && error instanceof MarketplaceError && error.code === "not_found") {
+            const local = await readLocalSkillDetail(homeDir, detailId.trim());
+            if (local) {
+              sendJson(response, 200, local);
+              return;
+            }
+          }
           // 内置插件不在市场索引里：市场 not_found 时用 builtin manifest 兜底，
           // 桌面端点「已加载插件」里的内置行也能进详情页看使用说明
           const fallback = builtinDetailFallback(detailId.trim());
@@ -3491,7 +3653,17 @@ export async function startServer(options: { port?: number; token?: string } = {
         }
         try {
           const result = await marketplace.install(body.id.trim(), type, { homeDir });
-          if (type !== "skill") await reloadAfterMarketChange();
+          if (type === "plugin") await reloadAfterMarketChange();
+          // MCP 安装/卸载不阻塞响应：缺凭据或 OAuth 浏览器授权可能卡住 reload，
+          // 状态由前端轮询 /plugins 与 mcp.statuses() 刷新。
+          if (type === "mcp") {
+            void reloadAfterMarketChange().catch((error: unknown) => {
+              console.error(
+                "[mcp] reload after install failed:",
+                error instanceof Error ? error.message : String(error),
+              );
+            });
+          }
           sendJson(response, 200, result);
         } catch (error) {
           sendMarketplaceError(response, error);
@@ -3512,7 +3684,15 @@ export async function startServer(options: { port?: number; token?: string } = {
         }
         try {
           await marketplace.uninstall(body.id.trim(), type, { homeDir });
-          if (type !== "skill") await reloadAfterMarketChange();
+          if (type === "plugin") await reloadAfterMarketChange();
+          if (type === "mcp") {
+            void reloadAfterMarketChange().catch((error: unknown) => {
+              console.error(
+                "[mcp] reload after uninstall failed:",
+                error instanceof Error ? error.message : String(error),
+              );
+            });
+          }
           sendJson(response, 200, { uninstalled: true });
         } catch (error) {
           sendMarketplaceError(response, error);
@@ -3664,6 +3844,11 @@ export async function startServer(options: { port?: number; token?: string } = {
 
       // 「我的」列表：manual 标记 join 插件 descriptors 与 MCP 运行状态
       if (pathname === "/marketplace/mine" && request.method === "GET") {
+        // 旧版数据导入只复制目录、没写「我的」标记：首次打开「我的」时给历史技能补一次
+        if (!mineBackfillDone) {
+          mineBackfillDone = true;
+          await backfillSkillMarkers(homeDir).catch(() => undefined);
+        }
         const base = await marketplace.mineList({ homeDir });
         const descriptors = new Map(pluginSystem.descriptors().map((d) => [d.id, d]));
         const mcpStatuses = pluginSystem.mcp.statuses();
@@ -3736,7 +3921,13 @@ export async function startServer(options: { port?: number; token?: string } = {
             { id: body.id.trim(), server: body.server as Record<string, unknown> },
             { homeDir },
           );
-          await reloadAfterMcpChange();
+          // OAuth 浏览器授权可能等几分钟；保存接口必须立刻回，连接状态走 /plugins 轮询。
+          void reloadAfterMcpChange().catch((error: unknown) => {
+            console.error(
+              "[mcp] reload after manual save failed:",
+              error instanceof Error ? error.message : String(error),
+            );
+          });
           sendJson(response, 200, result);
         } catch (error) {
           sendMarketplaceError(response, error);
@@ -3756,8 +3947,45 @@ export async function startServer(options: { port?: number; token?: string } = {
             { id: body.id.trim(), enabled: body.enabled },
             { homeDir },
           );
-          await reloadAfterMcpChange();
+          void reloadAfterMcpChange().catch((error: unknown) => {
+            console.error(
+              "[mcp] reload after manual toggle failed:",
+              error instanceof Error ? error.message : String(error),
+            );
+          });
           sendJson(response, 200, result);
+        } catch (error) {
+          sendMarketplaceError(response, error);
+        }
+        return;
+      }
+
+      // 本机已安装的全部 MCP：官方/社区通道的「已安装」分区用它补齐索引外的条目
+      if (pathname === "/marketplace/mcp/installed" && request.method === "GET") {
+        try {
+          sendJson(response, 200, await marketplace.installedMcpList({ homeDir }));
+        } catch (error) {
+          sendMarketplaceError(response, error);
+        }
+        return;
+      }
+
+      // 删掉 mcp.json 里的本地条目（没有市场/手动标记的手写配置也能删）
+      if (pathname === "/marketplace/mcp/remove" && request.method === "POST") {
+        const body = await readJsonBody<{ id?: string }>(request);
+        if (typeof body.id !== "string" || !body.id.trim()) {
+          sendError(response, 400, "invalid_request", "id is required");
+          return;
+        }
+        try {
+          await marketplace.mcpRemoveLocal(body.id.trim(), { homeDir });
+          void reloadAfterMcpChange().catch((error: unknown) => {
+            console.error(
+              "[mcp] reload after local remove failed:",
+              error instanceof Error ? error.message : String(error),
+            );
+          });
+          sendJson(response, 200, { id: body.id.trim() });
         } catch (error) {
           sendMarketplaceError(response, error);
         }
@@ -3897,6 +4125,26 @@ export async function startServer(options: { port?: number; token?: string } = {
           instance.learning = body.enabled;
         }
         sendJson(response, 200, { enabled: learningEnabled });
+        return;
+      }
+      // 供应商故障转移开关：GET 查询；PUT 实时切换（默认关闭，与记忆/学习同款全 runtime 生效）
+      if (pathname === "/config/provider-fallback" && request.method === "GET") {
+        sendJson(response, 200, { enabled: providerFallbackEnabled });
+        return;
+      }
+      if (pathname === "/config/provider-fallback" && request.method === "PUT") {
+        const body = await readJsonBody<{ enabled?: unknown }>(request);
+        if (typeof body.enabled !== "boolean") {
+          sendError(response, 400, "invalid_request", "enabled must be a boolean");
+          return;
+        }
+        providerFallbackEnabled = body.enabled;
+        runtime.providerFallbackEnabled = body.enabled;
+        if (sideRuntime) sideRuntime.providerFallbackEnabled = body.enabled;
+        for (const instance of backgroundRuntimes.values()) {
+          instance.providerFallbackEnabled = body.enabled;
+        }
+        sendJson(response, 200, { enabled: providerFallbackEnabled });
         return;
       }
       // 网络代理：GET 查询；PUT 实时切换（下一次对外请求即生效，无需重启）。
@@ -4745,7 +4993,32 @@ export async function startServer(options: { port?: number; token?: string } = {
   return Object.assign(server, { shutdown });
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+/**
+ * 是否以脚本入口运行。
+ *
+ * 不能直接比 `import.meta.url === pathToFileURL(process.argv[1])`：MSIX 安装目录
+ * `C:\Program Files\WindowsApps` 是指向真实安装盘（如 `D:\WindowsApps`）的
+ * junction。Node 加载模块时 import.meta.url 已是解析后的真实路径，而 argv[1]
+ * 仍是 junction 路径，字面比较会把入口判成「被 import」，server 什么都不做就
+ * 以 0 退出，桌面端等到 15s 后报 "Agent server is not ready."。
+ * 两边都 realpath 后再比（Windows 路径大小写不敏感）。
+ */
+function isEntrypoint(): boolean {
+  const entry = process.argv[1];
+  if (!entry) return false;
+  try {
+    const current = realpathSync(fileURLToPath(import.meta.url));
+    const invoked = realpathSync(entry);
+    return process.platform === "win32"
+      ? current.toLowerCase() === invoked.toLowerCase()
+      : current === invoked;
+  } catch {
+    // 路径刚被删/无权限时退回字面比较
+    return import.meta.url === pathToFileURL(entry).href;
+  }
+}
+
+if (isEntrypoint()) {
   const envToken = process.env.MEOWCODE_SERVER_TOKEN?.trim();
   const token = envToken || randomBytes(32).toString("base64url");
   void startServer({ token })

@@ -8,11 +8,7 @@
   "speech": {
     "section": "Sprachstil",
     "field": "Antwortstil",
-    "desc": {
-      "normal": "Standardton: knapp, direkt und professionell – nur das Wesentliche.",
-      "tafei": "Taffy-Ton: eine verspielte Katzenmädchen-Persona, die Sätze mit „Miao“ (喵) beendet und gelegentlich ihren Erkennungssatz nutzt; technische Inhalte bleiben präzise.",
-      "dazui": "Dazui: äh, dies, dies … oder? Der beste Sprachstil unter zehn Millionen."
-    },
+    "desc": "Wähle den Tonstil für KI-Antworten. Änderungen wirken sofort.",
     "options": {
       "normal": "Normal",
       "tafei": "永雏塔菲",
@@ -69,6 +65,16 @@
     "themeSection": "Design",
     "themeField": "Farbschema",
     "themeDesc": "„Systemfarben“ folgt der Hell-/Dunkel-Einstellung von Windows in Echtzeit. Die Änderung wirkt sofort, ohne Neustart.",
+    "paletteSection": "Farbpalette",
+    "paletteDesc": "Akzentfarbe und Farbton der Oberfläche wählen. Hell und dunkel sind separat abgestimmt und passen sich beim Moduswechsel automatisch an.",
+    "palette": {
+      "classic": "Klassisch",
+      "lava": "Lavaorange",
+      "bee": "Bienengelb",
+      "mint": "Minzgrün",
+      "parchment": "Pergament",
+      "harmony": "Harmonieblau"
+    },
     "theme": {
       "system": "Systemfarben",
       "light": "Hell",
@@ -554,6 +560,11 @@
       "confirmHow": "Nach jeder Antwort wird eine zusätzliche Anfrage an das aktuelle Modell gesendet, um Ihre nächste Nachricht vorherzusagen. Sie erscheint im leeren Eingabefeld; Tab fügt sie ein. Es wird nichts automatisch gesendet.",
       "confirmCost": "Dadurch werden bei jedem Zug zusätzliche Token verbraucht. Die Anfrage nutzt den Gesprächs-Cache und ist daher meist günstig, wird aber trotzdem berechnet.",
       "enable": "Aktivieren"
+    },
+    "providerFallback": {
+      "field": "Anbieter-Failover",
+      "desc": "Bei Zeitüberschreitung, Ratenlimit oder Serverfehler des Hauptanbieters wechselt dieser Turn automatisch zu einem anderen aktivierten Anbieter (max. 2 Wechsel).",
+      "toggleFailed": "Anbieter-Failover-Einstellung konnte nicht gespeichert werden"
     }
   },
   "proxy": {

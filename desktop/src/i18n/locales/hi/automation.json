@@ -1,0 +1,99 @@
+{
+  "nav": {
+    "heading": "ऑटोमेशन",
+    "subtitle": "शेड्यूल के अनुसार AI वर्कस्पेस में कार्य चलाए",
+    "ariaLabel": "ऑटोमेशन नेविगेशन"
+  },
+  "page": {
+    "empty": "अभी कोई ऑटोमेशन नहीं है। एक बनाएँ और AI को शेड्यूल पर काम करने दें।",
+    "loading": "लोड हो रहा है…",
+    "nextRun": "अगला रन {{time}}",
+    "noNextRun": "अक्षम",
+    "lastRun": "पिछला रन {{status}} · {{time}}",
+    "neverRun": "कभी नहीं चला",
+    "runs": "{{count}} रन",
+    "cwd": "वर्कस्पेस: {{cwd}}"
+  },
+  "schedule": {
+    "interval": "हर {{minutes}} मिनट",
+    "hours": "हर {{hours}} घंटे",
+    "daily": "रोज़ {{time}}",
+    "weekly": "{{weekday}} {{time}}",
+    "monthly": "हर महीने की {{day}} तारीख {{time}}",
+    "cron": "Cron: {{expr}}",
+    "once": "{{time}} एक बार"
+  },
+  "weekday": {
+    "0": "रविवार",
+    "1": "सोमवार",
+    "2": "मंगलवार",
+    "3": "बुधवार",
+    "4": "गुरुवार",
+    "5": "शुक्रवार",
+    "6": "शनिवार"
+  },
+  "status": {
+    "started": "चल रहा है",
+    "ok": "पूर्ण",
+    "error": "विफल",
+    "missed": "छूटा",
+    "disabled": "अक्षम"
+  },
+  "actions": {
+    "create": "नया कार्य",
+    "refresh": "रिफ्रेश",
+    "runNow": "अभी चलाएँ",
+    "running": "शुरू हो रहा है…",
+    "edit": "संपादित करें",
+    "delete": "हटाएँ",
+    "cancel": "रद्द करें",
+    "save": "सहेजें",
+    "saving": "सहेज रहा है…",
+    "openSession": "सेशन खोलें",
+      "close": "बंद करें",
+    "enable": "कार्य सक्षम करें",
+    "history": "रन इतिहास"
+  },
+  "deleteDialog": {
+    "title": "ऑटोमेशन हटाएँ",
+    "desc": "「{{title}}」 रन इतिहास समेत हटा दिया जाएगा। यह क्रिया पूर्ववत नहीं हो सकती।"
+  },
+  "history": {
+    "title": "रन इतिहास — {{title}}",
+    "empty": "अभी कोई रन नहीं हुआ।",
+    "status": "स्थिति",
+    "session": "सेशन"
+  },
+  "form": {
+    "createTitle": "नया ऑटोमेशन",
+    "editTitle": "ऑटोमेशन संपादित करें",
+    "fieldTitle": "कार्य का नाम",
+    "titlePlaceholder": "जैसे: रोज़ सुबह 9 बजे डिपेंडेंसी अपडेट जाँचें",
+    "fieldWorkspace": "लक्षित वर्कस्पेस",
+    "fieldPrompt": "निर्देश",
+    "promptPlaceholder": "टास्क चलने पर AI को क्या करना है। जितना स्पष्ट हो, उतना बेहतर।",
+    "fieldSchedule": "अनुसूची",
+    "freq": {
+      "interval": "अंतराल",
+      "daily": "दैनिक",
+      "weekly": "साप्ताहिक",
+      "monthly": "मासिक",
+      "once": "एक बार",
+      "cron": "Cron"
+    },
+    "intervalMinutes": "अंतराल (मिनट)",
+    "time": "समय",
+    "weekday": "सप्ताह का दिन",
+    "dayOfMonth": "महीने का दिन",
+    "onceAt": "इस समय चलाएँ",
+      "today": "आज",
+    "advanced": "उन्नत सेटिंग्स",
+    "fieldCron": "Cron एक्सप्रेशन",
+    "cronPlaceholder": "जैसे: 0 9 * * 1-5 (स्थानीय समय क्षेत्र)",
+    "fieldMaxRuns": "अधिकतम रन",
+    "maxRunsPlaceholder": "खाली = असीमित",
+    "errorRequired": "आवश्यक फ़ील्ड भरें",
+    "invalidCron": "अमान्य Cron एक्सप्रेशन",
+    "saveFailed": "सहेजने में विफल"
+  }
+}

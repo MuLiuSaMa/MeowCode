@@ -41,6 +41,20 @@ const OAUTH_PLATFORMS = {
    * 社区市场独立登录：与 gitcode 槽位（MCP 连接）分属两个应用、两份 token。
    * 提交/删除社区条目需要 fork → 建分支 → 传文件 → 建 PR，scope 只申请这三组权限。
    */
+  undermind: {
+    label: "Undermind",
+    authorizeUrl: "https://api.undermind.ai/o/authorize/",
+    tokenUrl: "https://api.undermind.ai/o/token/",
+    scope: "mcp",
+    localCallbackPath: "/callback",
+    tokenEnv: "MEOWCODE_UNDERMIND_TOKEN",
+    appSetupUrl: "https://www.undermind.ai/mcp",
+    appSetupHint: "Undermind MCP（CIMD / 公共客户端）",
+    /** 暂借 OpenCode 公开 CIMD 文档当 client_id（loopback 任意端口）；发布 meowcode.cn 后可换回 */
+    defaultClientId: "https://opencode.ai/oauth/opencode/client.json",
+    pkce: true,
+    publicClient: true,
+  },
   "gitcode-community": {
     label: "GitCode 社区",
     authorizeUrl: "https://gitcode.com/oauth/authorize",
@@ -121,7 +135,7 @@ async function postForm(url, params, fetchImpl = fetch) {
   }
 }
 
-function buildAuthorizeUrl(config, { clientId, redirectUri, state }) {
+function buildAuthorizeUrl(config, { clientId, redirectUri, state, codeChallenge }) {
   const params = new URLSearchParams({
     client_id: clientId,
     redirect_uri: redirectUri,
@@ -129,21 +143,26 @@ function buildAuthorizeUrl(config, { clientId, redirectUri, state }) {
     state,
   });
   if (config.scope) params.set("scope", config.scope);
+  if (config.pkce && codeChallenge) {
+    params.set("code_challenge", codeChallenge);
+    params.set("code_challenge_method", "S256");
+  }
   return `${config.authorizeUrl}?${params.toString()}`;
 }
 
-async function exchangeCodeForToken(config, { clientId, clientSecret, code, redirectUri }, fetchImpl) {
-  const data = await postForm(
-    config.tokenUrl,
-    {
-      client_id: clientId,
-      client_secret: clientSecret,
-      code,
-      redirect_uri: redirectUri,
-      grant_type: "authorization_code",
-    },
-    fetchImpl,
-  );
+async function exchangeCodeForToken(config, { clientId, clientSecret, code, redirectUri, codeVerifier }, fetchImpl) {
+  const params = {
+    client_id: clientId,
+    code,
+    redirect_uri: redirectUri,
+    grant_type: "authorization_code",
+  };
+  if (config.pkce) {
+    if (codeVerifier) params.code_verifier = codeVerifier;
+  } else {
+    params.client_secret = clientSecret;
+  }
+  const data = await postForm(config.tokenUrl, params, fetchImpl);
   if (data.error || !data.access_token) {
     return { ok: false, code: data.error ?? "invalid_response", message: describeOauthError(data) };
   }
@@ -153,16 +172,13 @@ async function exchangeCodeForToken(config, { clientId, clientSecret, code, redi
 }
 
 async function refreshPlatformToken(config, { clientId, clientSecret, refreshToken }, fetchImpl) {
-  const data = await postForm(
-    config.tokenUrl,
-    {
-      client_id: clientId,
-      client_secret: clientSecret,
-      refresh_token: refreshToken,
-      grant_type: "refresh_token",
-    },
-    fetchImpl,
-  );
+  const params = {
+    client_id: clientId,
+    refresh_token: refreshToken,
+    grant_type: "refresh_token",
+  };
+  if (!config.publicClient) params.client_secret = clientSecret;
+  const data = await postForm(config.tokenUrl, params, fetchImpl);
   if (data.error || !data.access_token) {
     return { ok: false, code: data.error ?? "invalid_response", message: describeOauthError(data) };
   }

@@ -1,8 +1,13 @@
-import { mkdtemp, readFile, rm, writeFile, mkdir } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, rm, writeFile, mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { createMarketplaceStore, MarketplaceError } from "./marketplace";
+import {
+  backfillSkillMarkers,
+  createMarketplaceStore,
+  MarketplaceError,
+  writeManualMarkerFile,
+} from "./marketplace";
 
 let home: string;
 let bundles: string;
@@ -482,6 +487,82 @@ describe("mine/manual", () => {
     expect(mine.mcp[0]).toMatchObject({ id: "gone", status: "missing" });
   });
 
+  it("installedMcpList：列出 mcp.json 全部条目并区分来源；mcpRemoveLocal 只删无标记的本地配置", async () => {
+    const marketplace = store();
+    await mkdir(path.join(home, ".meowcode"), { recursive: true });
+    await writeFile(
+      path.join(home, ".meowcode", "mcp.json"),
+      JSON.stringify({
+        mcpServers: {
+          "hand-written": { command: "node", args: ["server.js"] },
+          "http-one": { url: "https://mcp.example.com" },
+          "stopped": { command: "npx", enabled: false },
+        },
+      }),
+    );
+    // 市场装的 + 手动加的各一个
+    await marketplace.install("demo-mcp", "mcp", { homeDir: home });
+    await marketplace.manualMcpSave({ id: "my-mcp", server: { command: "npx" } }, { homeDir: home });
+
+    const list = await marketplace.installedMcpList({ homeDir: home });
+    expect(list.map((entry) => entry.id)).toEqual([
+      "demo-mcp",
+      "hand-written",
+      "http-one",
+      "my-mcp",
+      "stopped",
+    ]);
+    expect(list.find((entry) => entry.id === "demo-mcp")).toMatchObject({ source: "market", enabled: true });
+    expect(list.find((entry) => entry.id === "my-mcp")).toMatchObject({ source: "manual", enabled: true });
+    // 手写进 mcp.json 的没有标记
+    expect(list.find((entry) => entry.id === "hand-written")).toMatchObject({
+      source: "local",
+      enabled: true,
+      target: "node server.js",
+    });
+    expect(list.find((entry) => entry.id === "http-one")).toMatchObject({
+      source: "local",
+      target: "https://mcp.example.com",
+    });
+    expect(list.find((entry) => entry.id === "stopped")).toMatchObject({ enabled: false });
+
+    // 带标记的条目不能走「删本地配置」——要留给 uninstall 清标记
+    await expect(marketplace.mcpRemoveLocal("demo-mcp", { homeDir: home })).rejects.toMatchObject({
+      code: "not_managed",
+    });
+    await expect(marketplace.mcpRemoveLocal("my-mcp", { homeDir: home })).rejects.toMatchObject({
+      code: "not_managed",
+    });
+    // 不存在的条目报 not_found
+    await expect(marketplace.mcpRemoveLocal("ghost", { homeDir: home })).rejects.toMatchObject({
+      code: "not_found",
+    });
+
+    // 本地配置删掉后从列表里消失，其余条目不受影响
+    await marketplace.mcpRemoveLocal("hand-written", { homeDir: home });
+    const config = JSON.parse(await readFile(path.join(home, ".meowcode", "mcp.json"), "utf8"));
+    expect(config.mcpServers["hand-written"]).toBeUndefined();
+    expect(config.mcpServers["http-one"]).toBeDefined();
+    expect((await marketplace.installedMcpList({ homeDir: home })).map((entry) => entry.id)).not.toContain(
+      "hand-written",
+    );
+  });
+
+  it("installedMcpList：标记按精确大小写比对，Windows 上 github 与 GitHub 不算同一个", async () => {
+    const marketplace = store();
+    await marketplace.install("demo-mcp", "mcp", { homeDir: home });
+    await writeFile(
+      path.join(home, ".meowcode", "mcp.json"),
+      JSON.stringify({
+        mcpServers: { "demo-mcp": { command: "x" }, "DEMO-MCP": { command: "y" } },
+      }),
+    );
+    const list = await marketplace.installedMcpList({ homeDir: home });
+    expect(list.find((entry) => entry.id === "demo-mcp")?.source).toBe("market");
+    // 标记文件名是 mcp-demo-mcp.json：Windows 不区分大小写，但只有完全一致的 id 才算它管的
+    expect(list.find((entry) => entry.id === "DEMO-MCP")?.source).toBe("local");
+  });
+
   it("manual skill 卸载删除目录与标记；无标记手放内容仍拒绝卸载", async () => {
     const marketplace = store();
     const sourceRoot = await mkdtemp(path.join(tmpdir(), "meow-mkt-src-"));
@@ -506,3 +587,51 @@ describe("mine/manual", () => {
   });
 });
 
+
+describe("writeManualMarkerFile", () => {
+  it("写 manual 标记后「我的」可见", async () => {
+    const skillDir = path.join(home, ".meowcode", "skills", "ai-skill");
+    await mkdir(skillDir, { recursive: true });
+    await writeFile(path.join(skillDir, "SKILL.md"), "---\nname: ai-skill\ndescription: x\n---\n");
+    await writeManualMarkerFile(home, { type: "skill", id: "ai-skill", target: "skills/ai-skill" });
+
+    const mine = await store().mineList({ homeDir: home });
+    expect(mine.skills.map((item) => item.id)).toContain("ai-skill");
+  });
+
+  it("非法 id 返回 invalid_id", async () => {
+    await expect(
+      writeManualMarkerFile(home, { type: "skill", id: "../evil", target: "skills/evil" }),
+    ).rejects.toMatchObject({ code: "invalid_id" });
+  });
+});
+
+describe("backfillSkillMarkers", () => {
+  it("给未标记的本机技能补 manual 标记，市场安装项跳过，幂等", async () => {
+    const skillsRoot = path.join(home, ".meowcode", "skills");
+    for (const id of ["local-one", "market-one"]) {
+      await mkdir(path.join(skillsRoot, id), { recursive: true });
+      await writeFile(
+        path.join(skillsRoot, id, "SKILL.md"),
+        `---\nname: ${id}\ndescription: desc\n---\n`,
+      );
+    }
+    await mkdir(path.join(home, ".meowcode", ".marketplace"), { recursive: true });
+    await writeFile(
+      path.join(home, ".meowcode", ".marketplace", "skill-market-one.json"),
+      JSON.stringify({ id: "market-one", type: "skill", source: "builtin", installedAt: "" }),
+    );
+
+    expect(await backfillSkillMarkers(home)).toBe(1);
+    const markers = await readdir(path.join(home, ".meowcode", ".marketplace"));
+    expect(markers).toContain("manual-skill-local-one.json");
+    expect(markers).not.toContain("manual-skill-market-one.json");
+
+    const mine = await store().mineList({ homeDir: home });
+    expect(mine.skills.map((item) => item.id)).toContain("local-one");
+    expect(mine.skills.map((item) => item.id)).not.toContain("market-one");
+
+    // 第二次幂等
+    expect(await backfillSkillMarkers(home)).toBe(0);
+  });
+});

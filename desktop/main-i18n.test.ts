@@ -20,7 +20,7 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 describe("main process i18n", () => {
   it("covers every supported language with the same keys", () => {
     const reference = Object.keys(MAIN_STRINGS["zh-CN"]).sort();
-    expect(reference.length).toBe(19);
+    expect(reference.length).toBe(21);
     for (const language of SUPPORTED_LANGUAGES) {
       const strings = MAIN_STRINGS[language];
       expect(strings, `missing main strings for ${language}`).toBeTruthy();

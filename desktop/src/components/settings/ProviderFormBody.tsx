@@ -16,6 +16,7 @@ import {
   buildProvider,
   detectApiFormat,
   formatExtraHeaders,
+  mergeProviderRow,
   parseExtraBody,
   parseExtraHeaders,
   providerLabel,
@@ -275,7 +276,7 @@ export function useProviderForm({
     const usedIds = new Set<string>();
     for (const row of rows) {
       const result = buildProvider(
-        { ...base, ...row.form, extraHeaders, extraBody },
+        { ...mergeProviderRow(row.form, base), extraHeaders, extraBody },
         row.contextInput,
         row.maxInput,
         labels,

@@ -1,4 +1,5 @@
 import { promises as fs, realpathSync } from "node:fs";
+import os from "node:os";
 import path from "node:path";
 
 /**
@@ -60,6 +61,21 @@ export function isWithinWorkspace(workspace: string, target: string): boolean {
 }
 
 /**
+ * 应用自己的用户数据根（~/.meowcode）：user 记忆、技能、插件与 MCP 配置都在这里。
+ * 它和工作区一样属于可信根——工作区内自动模式不该因为“在工作区外”就拒绝读写。
+ * 缺省按 os.homedir() 算；Runtime 构造时用注入的 homeDir 覆盖（测试/嵌入用临时目录）。
+ */
+let appDataRoot = path.join(os.homedir(), ".meowcode");
+
+export function setAppDataRoot(root: string | null): void {
+  appDataRoot = root ? path.resolve(root) : "";
+}
+
+export function isWithinAppDataRoot(target: string): boolean {
+  return Boolean(appDataRoot) && isWithinWorkspace(appDataRoot, target);
+}
+
+/**
  * 允许路径尾部尚不存在（新建文件）：向上找到最近存在的祖先做 realpath，
  * 再把缺失段拼回去。这样工作区内指向外部的软链接/junction 也会被解析出来。
  */
@@ -108,7 +124,18 @@ export async function resolveToolPath(
   allowOutsideWorkspace = false,
 ): Promise<string> {
   if (allowOutsideWorkspace) return path.resolve(workspace, target);
-  return resolveWithinWorkspace(workspace, target);
+  try {
+    return await resolveWithinWorkspace(workspace, target);
+  } catch (error) {
+    // 应用数据目录是可信根：读写记忆/技能/插件配置不该要求切到完全访问模式。
+    // 仍然 realpath 后再判一次，目录内指向外部的软链接照旧被拒。
+    const absolute = path.resolve(workspace, target);
+    if (isWithinAppDataRoot(absolute)) {
+      const real = await realpathWithMissingSegments(absolute);
+      if (isWithinAppDataRoot(real)) return real;
+    }
+    throw error;
+  }
 }
 
 export function displayPath(workspace: string, target: string): string {

@@ -17,6 +17,8 @@ import type {
   SetMcpCredentialsResult,
   Settings,
   UiState,
+  Automation,
+  AutomationInput,
 } from "./api";
 
 type UiStatePatch = Omit<Partial<UiState>, "drafts"> & {
@@ -76,7 +78,8 @@ declare global {
       /** 保存手工 Token（Gitee/GitCode PAT、Figma 访问令牌：校验通过后加密保存并热更新 MCP） */
       setMcpCredentials(payload: { env: Record<string, string> }): Promise<SetMcpCredentialsResult>;
       /** 清除手工令牌（解除授权：删本机存储并热更新 MCP） */
-      clearMcpToken(payload: { name: string }): Promise<SetMcpCredentialsResult>;
+      /** names：手动凭据条目的全部 env 名（飞书等双凭据一次清整组） */
+      clearMcpToken(payload: { names: string[] }): Promise<SetMcpCredentialsResult>;
       /** Gitee/GitCode OAuth 连接状态（不含 token/secret） */
       oauthStatus(): Promise<Record<OauthPlatform, OauthPlatformStatus>>;
       /** 保存平台的 OAuth 应用凭据（Client ID 留空=用内置应用；client secret 加密存本机） */
@@ -133,6 +136,8 @@ declare global {
         memoryEnabled?: boolean;
         /** 自我学习开关（实时生效走 /config/learning） */
         selfLearning?: boolean;
+        /** 供应商故障转移开关（实时生效走 /config/provider-fallback） */
+        providerFallback?: boolean;
         /** 网络代理模式（实时生效走 /config/proxy） */
         proxyMode?: "direct" | "system" | "manual";
         /** manual 模式下的代理地址 */
@@ -214,6 +219,8 @@ declare global {
 
       /** 应用信息（关于页） */
       getAppInfo(): Promise<AppInfo>;
+      /** 商店版（MSIX）：更新由 Microsoft Store 接管，界面隐藏自动检查与手动检查入口 */
+      readonly storeManaged: boolean;
       /** 检查更新：主进程请求 GitCode releases 并比较版本 */
       checkUpdate(): Promise<UpdateCheckResult>;
       /** 下载更新包（主进程流式下载） */
@@ -259,6 +266,16 @@ declare global {
       bindBrowserTab(payload: { tabId: string; webContentsId: number }): Promise<{ ok: boolean; tabId?: string }>;
       onEnsureBrowserTab(listener: (payload: { requestId: string; url: string }) => void): () => void;
       onSelectBrowserTab(listener: (payload: { tabId: string }) => void): () => void;
+
+      /** 自动化（定时任务）：列表 / 保存 / 删除 / 启停 / 立即运行 / 打开历史会话 */
+      listAutomations(): Promise<Automation[]>;
+      saveAutomation(input: AutomationInput): Promise<Automation>;
+      deleteAutomation(id: string): Promise<boolean>;
+      toggleAutomation(id: string, enabled: boolean): Promise<Automation>;
+      runAutomationNow(id: string): Promise<boolean>;
+      openAutomationSession(sessionId: string): Promise<void>;
+      /** 任意变更（含调度器触发/结算）后的全量广播：渲染层据此刷新列表 */
+      onAutomationsChanged(listener: (list: Automation[]) => void): () => void;
 
       /** 终端（右侧面板终端页签） */
       termCreate(options: {

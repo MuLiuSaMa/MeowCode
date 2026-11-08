@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import "./SegmentedControl.css";
 
 export function SegmentedControl<T extends string>({
@@ -8,7 +9,8 @@ export function SegmentedControl<T extends string>({
   ariaLabel,
 }: {
   value: T;
-  options: Array<{ value: T; label: string; disabled?: boolean }>;
+  /** 标签允许是节点（带图标的分段项），纯文本直接传字符串 */
+  options: Array<{ value: T; label: ReactNode; disabled?: boolean }>;
   onChange: (value: T) => void;
   disabled?: boolean;
   ariaLabel?: string;

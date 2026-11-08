@@ -488,6 +488,18 @@ describe("applyImport skills", () => {
       "utf8",
     );
     expect(copied).toContain("body");
+    // 导入同时写「我的」手动标记，否则技能页「我的」看不到
+    const marker = JSON.parse(
+      await readFile(
+        path.join(home, ".meowcode", ".marketplace", "manual-skill-present-skill.json"),
+        "utf8",
+      ),
+    );
+    expect(marker).toMatchObject({
+      id: "present-skill",
+      type: "skill",
+      target: "skills/present-skill",
+    });
   });
 
   it("WorkBuddy 与 Codex：各自来源正确（Codex 只有 .system → 全跳过为空操作）", async () => {

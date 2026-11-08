@@ -219,6 +219,22 @@
     "stepCount_other": "{{count}} 步",
     "stepCount_few": "{{count}} 步",
     "stepCount_many": "{{count}} 步",
+    "lineCount_one": "{{count}} 行",
+    "lineCount_other": "{{count}} 行",
+    "lineCount_few": "{{count}} 行",
+    "lineCount_many": "{{count}} 行",
+    "entryCount_one": "{{count}} 項",
+    "entryCount_other": "{{count}} 項",
+    "entryCount_few": "{{count}} 項",
+    "entryCount_many": "{{count}} 項",
+    "matchCount_one": "{{count}} 處命中",
+    "matchCount_other": "{{count}} 處命中",
+    "matchCount_few": "{{count}} 處命中",
+    "matchCount_many": "{{count}} 處命中",
+    "resultCount_one": "{{count}} 條結果",
+    "resultCount_other": "{{count}} 條結果",
+    "resultCount_few": "{{count}} 條結果",
+    "resultCount_many": "{{count}} 條結果",
     "emptyOutput": "（無輸出）",
     "waitingOutput": "等待輸出…",
     "outputNotSaved": "歷史記錄未儲存輸出",
@@ -320,5 +336,13 @@
     "close": "收起工作區概覽",
     "commitOrPush": "提交或推送",
     "switchBranch": "切換分支"
+  },
+  "turnFooter": {
+    "copyMarkdown": "複製為 Markdown",
+    "copyPlain": "複製為純文字",
+    "branch": "建立新分支",
+    "duration": "耗時",
+    "tokens": "使用 Token",
+    "time": "對話時間"
   }
 }

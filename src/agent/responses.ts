@@ -125,8 +125,8 @@ type ResponsesChunk = {
     usage?: {
       input_tokens?: number;
       output_tokens?: number;
-      /** 输入明细：缓存命中的 token 数（input_tokens 已包含它） */
-      input_tokens_details?: { cached_tokens?: number };
+      /** 输入明细：缓存命中/写入的 token 数（input_tokens 已包含命中部分） */
+      input_tokens_details?: { cached_tokens?: number; cache_write_tokens?: number };
     };
     status?: string;
     incomplete_details?: { reason?: string };
@@ -385,16 +385,19 @@ export async function streamResponses(options: {
         const reported = chunk.response.usage;
         // input_tokens 已包含缓存命中部分，原样作为总输入
         const cachedTokens = reported.input_tokens_details?.cached_tokens;
+        const cacheWriteTokens = reported.input_tokens_details?.cache_write_tokens;
         usage = {
           inputTokens: reported.input_tokens,
           outputTokens: reported.output_tokens,
           ...(cachedTokens !== undefined ? { cacheReadTokens: cachedTokens } : {}),
+          ...(cacheWriteTokens !== undefined ? { cacheWriteTokens } : {}),
         };
         if (
           reportedUsage === undefined ||
           reportedUsage.inputTokens !== usage.inputTokens ||
           reportedUsage.outputTokens !== usage.outputTokens ||
-          reportedUsage.cacheReadTokens !== usage.cacheReadTokens
+          reportedUsage.cacheReadTokens !== usage.cacheReadTokens ||
+          reportedUsage.cacheWriteTokens !== usage.cacheWriteTokens
         ) {
           reportedUsage = usage;
           options.onUsage?.(usage);

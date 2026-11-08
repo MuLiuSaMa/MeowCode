@@ -10,12 +10,19 @@ import "./PlatformOauthDialog.css";
 const TOKEN_LABEL_KEYS: Record<string, string> = {
   MEOWCODE_FIGMA_TOKEN: "manualToken.labelFigma",
   LUCKIN_MCP_TOKEN: "manualToken.labelLuckin",
+  MEOWCODE_LARK_APP_ID: "manualToken.labelLarkAppId",
+  MEOWCODE_LARK_APP_SECRET: "manualToken.labelLarkSecret",
 };
 
 const TOKEN_HINT_KEYS: Record<string, string> = {
   MEOWCODE_FIGMA_TOKEN: "manualToken.hintFigma",
   LUCKIN_MCP_TOKEN: "manualToken.hintLuckin",
+  MEOWCODE_LARK_APP_ID: "manualToken.hintLarkAppId",
+  MEOWCODE_LARK_APP_SECRET: "manualToken.hintLarkSecret",
 };
+
+/** 非敏感凭据（App ID 之类的公开标识）：明文输入而不是密码框 */
+const PLAIN_ENV_NAMES = new Set(["MEOWCODE_LARK_APP_ID"]);
 
 /**
  * 手动令牌弹窗：给没有 OAuth 通道的 MCP（如 Figma Context）粘贴访问令牌。
@@ -95,7 +102,7 @@ export function ManualTokenDialog({
             <span className="mc-oauth__fieldlabel">{labelKey ? t(labelKey) : name}</span>
             <input
               className="mc-dialog__input mc-oauth__input"
-              type="password"
+              type={PLAIN_ENV_NAMES.has(name) ? "text" : "password"}
               value={values[name] ?? ""}
               placeholder={t("manualToken.placeholder")}
               autoComplete="off"
