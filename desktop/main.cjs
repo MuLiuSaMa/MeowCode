@@ -2469,8 +2469,12 @@ ipcMain.handle("meow:close-decision", (_event, choice, remember) => {
 
 let islandScreenHooksInstalled = false;
 
-/** 渲染层上报的岛体交互矩形（屏幕坐标）：展开=面板，折叠=胶囊 */
-let islandHoverRect = null;
+/**
+ * 渲染层上报的岛体交互矩形（窗口内视口坐标）：展开=面板，折叠=胶囊。
+ * 屏幕坐标必须每次轮询用窗口当前位置现算——启动定位、显示器指标变化都会移动窗口，
+ * 缓存屏幕坐标会让命中区停留在旧位置，岛整体变成点不动的穿透窗口。
+ */
+let islandLocalRect = null;
 /** 主进程轮询判定的光标是否在岛上 */
 let islandCursorInside = false;
 let islandPollTimer = null;
@@ -2483,9 +2487,15 @@ function startIslandPoll() {
   if (islandPollTimer) return;
   islandPollTimer = setInterval(() => {
     const win = islandWindow;
-    if (!win || win.isDestroyed() || !islandHoverRect) return;
+    if (!win || win.isDestroyed() || !islandLocalRect) return;
     const pt = screen.getCursorScreenPoint();
-    const rect = islandHoverRect;
+    const bounds = win.getContentBounds();
+    const rect = {
+      x: bounds.x + islandLocalRect.x,
+      y: bounds.y + islandLocalRect.y,
+      width: islandLocalRect.width,
+      height: islandLocalRect.height,
+    };
     // 进入只留 4px（给 60ms 轮询一点提前量），离开 8px 回差避免边缘抖动。
     // 旧值 14/26 会在胶囊周围形成一圈可拦截点击的透明区域。
     const margin = islandCursorInside ? 8 : 4;
@@ -2508,7 +2518,7 @@ function stopIslandPoll() {
     islandPollTimer = null;
   }
   islandCursorInside = false;
-  islandHoverRect = null;
+  islandLocalRect = null;
 }
 
 /** 贴住主显示器工作区顶部居中；分辨率变化 / 插拔显示器时由 screen 事件回调自动校正 */
@@ -4503,7 +4513,7 @@ ipcMain.handle("meow:model-profiles", () => modelProfiles);
 
 // ---- AI 悬浮岛 IPC ----
 
-/** 渲染层上报岛体交互矩形（视口 CSS 坐标）：换算成屏幕坐标供轮询判定 */
+/** 渲染层上报岛体交互矩形（视口 CSS 坐标）：只存窗口内偏移，屏幕坐标由轮询实时换算 */
 ipcMain.handle("meow:island-rect", (_event, rect) => {
   const win = islandWindow;
   if (!win || win.isDestroyed() || !rect || typeof rect !== "object") return;
@@ -4512,8 +4522,7 @@ ipcMain.handle("meow:island-rect", (_event, rect) => {
   const width = Number(rect.width);
   const height = Number(rect.height);
   if (![x, y, width, height].every(Number.isFinite)) return;
-  const bounds = win.getContentBounds();
-  islandHoverRect = { x: bounds.x + x, y: bounds.y + y, width, height };
+  islandLocalRect = { x, y, width, height };
 });
 
 /** 悬浮岛发出的 prompt 广播给主窗口：当前会话命中时由渲染层补用户气泡（服务端事件不带用户消息文本） */

@@ -1,5 +1,9 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
-import type { DragEvent as ReactDragEvent, KeyboardEvent as ReactKeyboardEvent } from "react";
+import type {
+  DragEvent as ReactDragEvent,
+  KeyboardEvent as ReactKeyboardEvent,
+  WheelEvent as ReactWheelEvent,
+} from "react";
 import { useTranslation } from "react-i18next";
 import { LuArrowUp, LuBrain, LuChevronDown, LuFileText, LuPaperclip, LuSquare, LuX } from "react-icons/lu";
 import { applyLanguage } from "../i18n";
@@ -695,7 +699,15 @@ export default function IslandApp() {
   const onFeedScroll = useCallback(() => {
     const el = feedRef.current;
     if (!el) return;
-    stickRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 48;
+    // 只有真正贴底才重新吸底：中间区间保持用户的选择，避免流式更新把视图拽回底部
+    const distance = el.scrollHeight - el.scrollTop - el.clientHeight;
+    if (distance > 48) stickRef.current = false;
+    else if (distance < 1) stickRef.current = true;
+  }, []);
+
+  /** 流式更新可能抢在 scroll 事件之前：滚轮一向上就同步解除吸底 */
+  const onFeedWheel = useCallback((event: ReactWheelEvent<HTMLDivElement>) => {
+    if (event.deltaY < 0) stickRef.current = false;
   }, []);
 
   // ---- 发送 / 停止 / 打开主窗口 ----
@@ -905,7 +917,7 @@ export default function IslandApp() {
             ))}
           </div>
 
-          <div className="island-feed" ref={feedRef} onScroll={onFeedScroll}>
+          <div className="island-feed" ref={feedRef} onScroll={onFeedScroll} onWheel={onFeedWheel}>
             {!selected || selected.feed.length === 0 ? (
               <div className="island-empty">{t("island.empty")}</div>
             ) : (

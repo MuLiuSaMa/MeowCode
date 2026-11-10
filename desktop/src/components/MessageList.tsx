@@ -1,4 +1,13 @@
-import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, type ReactNode, type RefObject } from "react";
+import {
+  Fragment,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  type ReactNode,
+  type RefObject,
+  type WheelEvent,
+} from "react";
 import { useTranslation } from "react-i18next";
 import { LuCircleAlert, LuInfo } from "react-icons/lu";
 import type { SubagentRun, TimelineItem, TimelineMessage } from "../api";
@@ -218,8 +227,20 @@ export function MessageList({
   const handleScroll = () => {
     const el = scrollRef.current;
     if (!el) return;
-    stickRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+    // 只有真正贴底才重新吸底：中间区间保持用户上一次的选择，
+    // 否则向上滚一点（仍在 80px 内）会被下一次流式更新直接拽回底部
+    const distance = el.scrollHeight - el.scrollTop - el.clientHeight;
+    if (distance > 80) stickRef.current = false;
+    else if (distance < 1) stickRef.current = true;
     reportScrolledAway(el);
+  };
+
+  /**
+   * 流式输出时内容更新可能抢在 scroll 事件之前：滚轮一向上就同步解除吸底，
+   * 否则下一次 delta 到达时 stick 还是 true，会把用户刚滚上去的视图拽回底部。
+   */
+  const handleWheel = (event: WheelEvent<HTMLDivElement>) => {
+    if (event.deltaY < 0) stickRef.current = false;
   };
 
   // 滚到底 / 切换会话后重新上报一次（内容变化导致滚动位置被重置时同步按钮显隐）
@@ -354,7 +375,7 @@ export function MessageList({
 
   return (
     <div className="mc-streamwrap">
-      <div className="mc-stream" ref={scrollRef} onScroll={handleScroll}>
+      <div className="mc-stream" ref={scrollRef} onScroll={handleScroll} onWheel={handleWheel}>
         <div className="mc-stream__inner">
           {!items.length ? (
             loading ? (
@@ -391,7 +412,7 @@ export function MessageList({
                               key={`group:${buffer[0].key}`}
                               items={buffer}
                               renderItem={renderItem}
-                              turnRunning={turnStartedAt != null}
+                              turnRunning={isLast && turnStartedAt != null}
                             />,
                           );
                           buffer = [];

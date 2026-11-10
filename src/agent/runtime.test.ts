@@ -2515,7 +2515,12 @@ describe("midstream early tool execution (experimental)", () => {
           type: "function",
           function: { name: "read_file", arguments: JSON.stringify({ path: "a.txt" }) },
         });
-        await new Promise((resolve) => setTimeout(resolve, 20));
+        // 提前执行要先落盘 journal（flush 里是 datasync），CI Windows 上 I/O 抖动远超固定 20ms：
+        // 等事件真正发出再判断，断言的是「流结束前已启动」，不是某个时延 SLA
+        const deadline = Date.now() + 5000;
+        while (!events.some((event) => event.type === "tool_started") && Date.now() < deadline) {
+          await new Promise((resolve) => setTimeout(resolve, 10));
+        }
         // 流还没结束，tool_started 已发出（提前执行已启动）
         startedBeforeStreamEnd = events.some((event) => event.type === "tool_started");
         options.onDelta?.("ok");
