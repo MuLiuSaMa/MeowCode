@@ -9,8 +9,12 @@ import type {
   PluginDescriptor,
   PluginFactory,
   PluginLoadError,
+  PluginManifest,
+  PluginPermission,
   PluginSource,
+  PluginUiDescriptor,
 } from "./types.js";
+import { PLUGIN_PERMISSIONS } from "./types.js";
 
 /** 支持的插件文件扩展名 */
 const PLUGIN_EXTENSIONS = new Set([".ts", ".mts", ".js", ".mjs", ".cjs"]);/** 目录型插件的入口候选（按序尝试） */
@@ -50,6 +54,142 @@ async function detectPluginUi(entryFile: string): Promise<{ title: string; entry
   }
 }
 
+/** 子路径必须落在父目录内（防止 manifest 把入口指到插件目录外）。 */
+function isInside(parent: string, child: string): boolean {
+  const rel = path.relative(parent, child);
+  return rel !== "" && !rel.startsWith("..") && !path.isAbsolute(rel);
+}
+
+async function isFile(filePath: string): Promise<boolean> {
+  try {
+    return (await fs.stat(filePath)).isFile();
+  } catch {
+    return false;
+  }
+}
+
+/** client 脚本只允许 ui/ 下的 .js/.mjs，避免 loader 把任意文件当脚本执行。 */
+function validClientEntry(entry: string): boolean {
+  const normalized = entry.replace(/\\/g, "/");
+  return (
+    normalized.startsWith("ui/") &&
+    !normalized.includes("../") &&
+    /\.(?:js|mjs)$/i.test(normalized)
+  );
+}
+
+/**
+ * 读取 `<插件目录>/plugin.json`。不存在 → undefined（旧插件走权限全开的合成清单）；
+ * 存在但不合法 → throw，由 loadPlugins 记为该插件的加载错误。
+ */
+export async function readPluginManifest(
+  entryFile: string,
+  expectedId: string,
+): Promise<PluginManifest | undefined> {
+  const dir = path.dirname(entryFile);
+  const manifestPath = path.join(dir, "plugin.json");
+  let raw: string;
+  try {
+    raw = await fs.readFile(manifestPath, "utf8");
+  } catch {
+    return undefined;
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (error) {
+    throw new Error(`plugin.json is not valid JSON: ${error instanceof Error ? error.message : String(error)}`);
+  }
+  if (!parsed || typeof parsed !== "object") throw new Error("plugin.json must be a JSON object");
+  const object = parsed as Record<string, unknown>;
+
+  if (object.apiVersion !== 2) throw new Error("plugin.json apiVersion must be 2");
+  if (typeof object.id !== "string" || object.id !== expectedId) {
+    throw new Error(`plugin.json id must match the plugin directory name "${expectedId}"`);
+  }
+  if (typeof object.version !== "string" || !object.version.trim()) {
+    throw new Error("plugin.json version must be a non-empty string");
+  }
+  if (object.name !== undefined && typeof object.name !== "string") {
+    throw new Error("plugin.json name must be a string");
+  }
+
+  const permissionsRaw = object.permissions;
+  if (!Array.isArray(permissionsRaw)) throw new Error("plugin.json permissions must be an array");
+  const permissions: PluginPermission[] = [];
+  for (const value of permissionsRaw) {
+    if (typeof value !== "string" || !(PLUGIN_PERMISSIONS as readonly string[]).includes(value)) {
+      throw new Error(`plugin.json has an unknown permission: ${String(value)}`);
+    }
+    if (!permissions.includes(value as PluginPermission)) permissions.push(value as PluginPermission);
+  }
+
+  if (object.main !== undefined) {
+    if (typeof object.main !== "string" || !object.main.trim()) {
+      throw new Error("plugin.json main must be a non-empty string");
+    }
+    const mainPath = path.resolve(dir, object.main);
+    if (!isInside(dir, mainPath)) throw new Error("plugin.json main must stay inside the plugin directory");
+  }
+
+  let client: string | undefined;
+  if (object.client !== undefined) {
+    if (typeof object.client !== "string" || !validClientEntry(object.client)) {
+      throw new Error("plugin.json client must be a .js/.mjs file under ui/");
+    }
+    const clientPath = path.resolve(dir, object.client);
+    if (!isInside(dir, clientPath)) throw new Error("plugin.json client must stay inside the plugin directory");
+    if (!(await isFile(clientPath))) throw new Error(`plugin.json client file not found: ${object.client}`);
+    client = object.client.replace(/\\/g, "/");
+  } else {
+    const fallback = path.join(dir, "ui", "client.js");
+    if (await isFile(fallback)) client = "ui/client.js";
+  }
+
+  if (client && !permissions.includes("ui")) {
+    throw new Error('plugin.json declares a client entry but does not request the "ui" permission');
+  }
+
+  const engines =
+    object.engines && typeof object.engines === "object"
+      ? (object.engines as { meowcode?: unknown })
+      : undefined;
+  if (engines?.meowcode !== undefined && typeof engines.meowcode !== "string") {
+    throw new Error("plugin.json engines.meowcode must be a string");
+  }
+
+  return {
+    id: expectedId,
+    ...(typeof object.name === "string" ? { name: object.name } : {}),
+    version: object.version,
+    apiVersion: 2,
+    ...(typeof object.main === "string" ? { main: object.main } : {}),
+    ...(client ? { client } : {}),
+    permissions,
+    ...(engines?.meowcode !== undefined ? { engines: { meowcode: engines.meowcode } } : {}),
+  };
+}
+
+/** AI 创作工具写的标记：该插件由对话里的模型生成，渲染层免二次授权。 */
+async function hasAiPluginMarker(homeDir: string, id: string): Promise<boolean> {
+  try {
+    await fs.access(path.join(homeDir, ".meowcode", ".marketplace", `ai-plugin-${id}.json`));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** 把 manifest 的 client 入口映射成 `/plugin-ui/<id>/...` 下的相对路径。 */
+function clientDescriptor(manifest: PluginManifest | undefined): PluginUiDescriptor["client"] {
+  if (!manifest?.client) return undefined;
+  return {
+    entry: manifest.client.replace(/^ui\//, ""),
+    permissions: manifest.permissions,
+  };
+}
+
 /**
  * 插件文件头元数据：`// @meowcode name: ...` / `// @meowcode description: ...`。
  * 自建插件没有市场条目，靠这两行在「已加载插件」里显示中文名与介绍。
@@ -69,7 +209,13 @@ async function readPluginHeaderMeta(
   }
 }
 
-export type DiscoveredPlugin = { id: string; path: string; source: PluginSource };
+export type DiscoveredPlugin = {
+  id: string;
+  path: string;
+  source: PluginSource;
+  /** 目录型插件才可能有 plugin.json；单文件插件一律走旧行为。 */
+  directory?: boolean;
+};
 export type DiscoveryRoot = { dir: string; source: PluginSource };
 
 let jitiInstance: Jiti | null = null;
@@ -97,8 +243,21 @@ export async function importPluginFactory(pluginPath: string): Promise<PluginFac
   return factory as PluginFactory;
 }
 
-/** 目录型插件入口：index.* 优先，其次 package.json 的 main 指向的本地文件；都不是则 null */
+/**
+ * 目录型插件入口：plugin.json 的 main 优先，其次 index.*，
+ * 再次 package.json 的 main 指向的本地文件；都不是则 null。
+ */
 async function resolveDirectoryEntry(dir: string): Promise<string | null> {
+  try {
+    const raw = await fs.readFile(path.join(dir, "plugin.json"), "utf8");
+    const parsed = JSON.parse(raw) as { main?: unknown };
+    if (typeof parsed.main === "string" && parsed.main.length > 0) {
+      const mainPath = path.resolve(dir, parsed.main);
+      if (isInside(dir, mainPath) && (await isFile(mainPath))) return mainPath;
+    }
+  } catch {
+    /* 无 plugin.json / 格式不对：继续按旧规则找入口 */
+  }
   for (const name of INDEX_CANDIDATES) {
     const candidate = path.join(dir, name);
     try {
@@ -153,7 +312,7 @@ export async function discoverPlugins(
       } else if (entry.isDirectory()) {
         const entryFile = await resolveDirectoryEntry(full);
         if (!entryFile) continue;
-        const item: DiscoveredPlugin = { id: entry.name, path: entryFile, source };
+        const item: DiscoveredPlugin = { id: entry.name, path: entryFile, source, directory: true };
         const existing = byId.get(entry.name);
         if (!existing) byId.set(entry.name, item);
         else if (SOURCE_RANK[existing.source] > SOURCE_RANK[source]) shadowed.push(item);
@@ -234,14 +393,43 @@ export async function loadPlugins(options: LoadPluginsOptions): Promise<{
       if (header.name) descriptor.displayName = header.name;
       if (header.description) descriptor.description = header.description;
     }
+
+    // 目录型插件可带 plugin.json；非法 manifest 直接记为加载错误，不静默降级
+    let manifest: PluginManifest | undefined;
+    if (item.directory) {
+      try {
+        manifest = await readPluginManifest(item.path, item.id);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        descriptor.error = message;
+        errors.push({ path: item.path, error: message });
+        descriptors.push(descriptor);
+        continue;
+      }
+    }
+    if (manifest) {
+      descriptor.version = manifest.version;
+      descriptor.manifest = manifest;
+      if (manifest.name) descriptor.displayName = manifest.name;
+    }
+    if (item.source !== "builtin" && (await hasAiPluginMarker(options.homeDir, item.id))) {
+      descriptor.aiAuthored = true;
+    }
+
     descriptors.push(descriptor);
     if (!descriptor.enabled) continue;
 
-    // 目录型插件可以带 ui/index.html：登记成右侧面板（单文件插件没有目录，自然没有 UI）
-    const ui = await detectPluginUi(item.path);
-    if (ui) descriptor.ui = { panel: ui };
+    // 目录型插件可以带 ui/index.html（iframe 面板）与 ui/client.js（槽位脚本）
+    const panel = await detectPluginUi(item.path);
+    const client = clientDescriptor(manifest);
+    if (panel || client) {
+      descriptor.ui = {
+        ...(panel ? { panel } : {}),
+        ...(client ? { client } : {}),
+      };
+    }
 
-    options.registry.addPlugin(item.id, item.source, item.path);
+    options.registry.addPlugin(item.id, item.source, item.path, manifest, descriptor.ui);
     try {
       const factory = await importPluginFactory(item.path);
       const api = options.registry.createApi(

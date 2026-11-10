@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { LuBraces, LuGlobe, LuTerminal, LuTriangleAlert } from "react-icons/lu";
 import { saveManualMcp } from "../../api";
 import { Button } from "../ui/Button";
+import { Checkbox } from "../ui/Checkbox";
 import { Dialog } from "../ui/Dialog";
 import { SegmentedControl } from "../ui/SegmentedControl";
 import "./PlatformOauthDialog.css";
@@ -391,14 +392,12 @@ export function ManualMcpDialog({
           ) : null}
 
           {mode === "http" ? (
-            <label className="mc-oauth__check">
-              <input
-                type="checkbox"
-                checked={oauth}
-                onChange={(event) => setOauth(event.target.checked)}
-              />
-              <span>{t("mine.mcp.oauthToggle")}</span>
-            </label>
+            <Checkbox
+              className="mc-oauth__check"
+              checked={oauth}
+              onChange={setOauth}
+              label={t("mine.mcp.oauthToggle")}
+            />
           ) : null}
 
           {mode === "http" && oauth ? (

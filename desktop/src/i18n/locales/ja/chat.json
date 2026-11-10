@@ -39,7 +39,8 @@
   },
   "assistant": {
     "thinking": "思考プロセス",
-    "thinkingInProgress": "思考中…"
+    "thinkingInProgress": "思考中…",
+    "thinkingDone": "思考済み"
   },
   "status": {
     "idle": "おやつタイム",
@@ -291,7 +292,10 @@
       "added": "追加",
       "updated": "更新",
       "deleted": "削除済み"
-    }
+    },
+    "groupRan": "ツールを {{n}} 回実行",
+    "groupFailed": "、{{n}} 回失敗",
+    "groupThinking": "{{n}} 回の思考"
   },
   "role": {
     "general": "汎用",
@@ -332,6 +336,10 @@
     "gitFailed": "変更を読み取れませんでした",
     "agents": "エージェント",
     "noAgents": "サブエージェントはまだありません",
+    "terminals": "ターミナル",
+    "noTerminals": "実行中のターミナルはありません",
+    "stopTerminal": "ターミナルを停止",
+    "terminalRunning": "実行中",
     "open": "ワークスペース概要を開く",
     "close": "ワークスペース概要を閉じる",
     "commitOrPush": "コミットまたはプッシュ",

@@ -8,6 +8,8 @@ import {
   LuGitBranch,
   LuGitCommitHorizontal,
   LuPause,
+  LuSquare,
+  LuTerminal,
   LuX,
 } from "react-icons/lu";
 import {
@@ -49,25 +51,35 @@ function statusIcon(status: SubagentStatus) {
 
 /**
  * 聊天区右上角的工作区概览：默认收成胶囊（只显示 git 更改），
- * 展开后显示工作区全部 git 更改摘要、分支切换、提交或推送入口，
- * 以及当前会话的子智能体。子 Agent 启动时由 App 自动展开；点击子 Agent 打开右侧栏对话。
+ * 展开后显示工作区全部 git 更改摘要、分支切换、提交或推送入口、
+ * 当前会话的子智能体，以及 agent 启动的后台终端。
+ * 子 Agent 启动时由 App 自动展开；点击子 Agent 打开右侧栏对话。
+ * 后台终端只在这里列出，点一条才在右侧面板开页签；关页签不杀进程，条目也继续留着，
+ * 只有任务进程退出（跑完 / 被 Ctrl+C 中断 / 被 ■ 停掉）才由 App 移除条目。
  */
 export function WorkspaceOverview({
   status,
   subagents,
+  terminals,
   open,
   onToggle,
   onClose,
   onOpenGit,
   onOpenSubagent,
+  onOpenTerminal,
+  onStopTerminal,
 }: {
   status: GitStatus | null;
   subagents: SubagentRun[];
+  /** agent 启动的后台终端（运行中） */
+  terminals: Array<{ id: string; command: string }>;
   open: boolean;
   onToggle: () => void;
   onClose: () => void;
   onOpenGit: () => void;
   onOpenSubagent: (agentId: string) => void;
+  onOpenTerminal: (termId: string, command: string) => void;
+  onStopTerminal: (termId: string) => void;
 }) {
   const { t } = useTranslation(["chat", "panel"]);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -138,8 +150,8 @@ export function WorkspaceOverview({
     return branchName ? [{ value: branchName, label: branchName }] : [];
   }, [branchName, branches]);
 
-  if (!status && sorted.length === 0) return null;
-  if (status && !status.isRepo && sorted.length === 0) return null;
+  if (!status && sorted.length === 0 && terminals.length === 0) return null;
+  if (status && !status.isRepo && sorted.length === 0 && terminals.length === 0) return null;
 
   const isRepo = status?.isRepo === true;
   const failed = status?.reason === "git_failed" || status?.reason === "git_unavailable";
@@ -157,8 +169,8 @@ export function WorkspaceOverview({
         : t("overview.changes");
   const showStats = hasChanges;
 
-  // 干净工作区且没有子 Agent：右上角不保留一个空概览入口
-  if (isRepo && !hasChanges && sorted.length === 0) return null;
+  // 干净工作区且没有子 Agent / 后台终端：右上角不保留一个空概览入口
+  if (isRepo && !hasChanges && sorted.length === 0 && terminals.length === 0) return null;
 
   const switchBranch = async (name: string) => {
     if (branchBusy !== null || name === status?.branch) return;
@@ -275,6 +287,49 @@ export function WorkspaceOverview({
             </div>
           ) : (
             <p className="mc-workspaceov__empty">{t("overview.noAgents")}</p>
+          )}
+
+          <div className="mc-workspaceov__divider" />
+
+          <div className="mc-workspaceov__agenthead">
+            <span>{t("overview.terminals")}</span>
+            <span className="mc-workspaceov__count">{terminals.length}</span>
+          </div>
+
+          {terminals.length ? (
+            <div className="mc-workspaceov__agents">
+              {terminals.map((item) => (
+                <div key={item.id} className="mc-workspaceov__termrow">
+                  <button
+                    type="button"
+                    className="mc-workspaceov__agent mc-workspaceov__termopen"
+                    onClick={() => onOpenTerminal(item.id, item.command)}
+                    title={item.command}
+                  >
+                    <span className="mc-workspaceov__agenticon" aria-hidden>
+                      <LuTerminal size={13} />
+                    </span>
+                    <span className="mc-workspaceov__agenttext">
+                      <span className="mc-workspaceov__agentdesc">{item.command}</span>
+                      <span className="mc-workspaceov__agentmeta">
+                        {t("overview.terminalRunning")}
+                      </span>
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    className="mc-workspaceov__termstop"
+                    aria-label={t("overview.stopTerminal")}
+                    title={t("overview.stopTerminal")}
+                    onClick={() => onStopTerminal(item.id)}
+                  >
+                    <LuSquare size={11} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="mc-workspaceov__empty">{t("overview.noTerminals")}</p>
           )}
         </div>
       ) : null}

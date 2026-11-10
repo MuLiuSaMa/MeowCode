@@ -1,12 +1,14 @@
 import type {
   ApiFormat,
   ChatMessage,
+  ContextEditing,
   ProviderConfig,
   TokenUsage,
   ToolCall,
   ToolDefinition,
 } from "./types.js";
 import { anthropicTools, streamAnthropicMessages, toAnthropicMessages } from "./anthropic.js";
+import { estimateMessagesTokens } from "./context.js";
 import {
   isOneShotRequest,
   resolveCachePlan,
@@ -147,12 +149,14 @@ function toChatCompletionMessages(messages: ChatMessage[]): Array<Record<string,
         imageRefs: _imageRefs,
         documentRefs: _documentRefs,
         reasoning: _reasoning,
+        thinkingMs: _thinkingMs,
         anthropic_thinking: _thinking,
         ...rest
       } = message as ChatMessage & {
         imageRefs?: unknown;
         documentRefs?: unknown;
         reasoning?: unknown;
+        thinkingMs?: unknown;
         anthropic_thinking?: unknown;
       };
       return rest as unknown as Record<string, unknown>;
@@ -193,6 +197,8 @@ async function streamChatCompletions(options: {
   messages: ChatMessage[];
   tools: ToolDefinition[];
   signal?: AbortSignal;
+  /** 网络层尝试次数；缺省沿用 fetchWithRetry 默认（3）。辅助请求传 1 = 失败不重试。 */
+  fetchAttempts?: number;
   onDelta: (delta: string) => void;
   onThinking?: (delta: string) => void;
   /** 流中实时用量（同一轮可能多次：输入/缓存先到，输出随后增长） */
@@ -244,12 +250,16 @@ async function streamChatCompletions(options: {
       },
       options.provider.extraHeaders,
     );
-    return fetchWithRetry(url, {
-      method: "POST",
-      headers,
-      signal: options.signal,
-      body: JSON.stringify(buildBody(includeUsage, includeParallel, includeCacheKey)),
-    });
+    return fetchWithRetry(
+      url,
+      {
+        method: "POST",
+        headers,
+        signal: options.signal,
+        body: JSON.stringify(buildBody(includeUsage, includeParallel, includeCacheKey)),
+      },
+      { attempts: options.fetchAttempts },
+    );
   };
 
   // 400 降级记忆：网关拒绝过 parallel_tool_calls / prompt_cache_key 就不再发
@@ -401,7 +411,8 @@ export function utilityProvider(
     | "polish"
     | "memory"
     | "learning"
-    | "suggestion" = "compaction",
+    | "suggestion"
+    | "mail" = "compaction",
 ): ProviderConfig {
   return { ...provider, maxTokens, reasoningEffort: undefined, thinkingBudget: undefined };
 }
@@ -413,10 +424,17 @@ export async function streamChatCompletion(options: {
   /** Anthropic tools 断点锚点（会话目录快照末尾）；其他协议忽略 */
   toolCacheAnchor?: number;
   signal?: AbortSignal;
+  /** 网络层尝试次数；缺省沿用 fetchWithRetry 默认（3）。辅助请求传 1 = 失败不重试。 */
+  fetchAttempts?: number;
   onDelta: (delta: string) => void;
   onThinking?: (delta: string) => void;
   /** 流中实时用量（同一轮可能多次：输入/缓存先到，输出随后增长） */
   onUsage?: UsageListener;
+  /**
+   * 每请求最终用量：成功时取返回结果，失败时取流中最后观察到的快照。
+   * 后台一次性请求用它落账，避免把流中的多个累计快照当成多次调用。
+   */
+  onUsageFinal?: UsageListener;
   onToolCall?: (progress: ToolCallProgress) => void;
   /** 流式中某个工具调用参数完整闭合时立即回调（实验：流中提前执行只读工具） */
   onToolCallComplete?: (call: ToolCall) => void;
@@ -430,42 +448,80 @@ export async function streamChatCompletion(options: {
    *    且把写入断点前移到合成指令之前 —— 指令本身不会被后续请求读回。
    */
   cacheMode?: "auto" | "prefix-reuse";
+  /**
+   * 服务端 context editing（Anthropic clear_tool_uses）：只对支持它的端点传。
+   * 传了也不会白亏 —— 端点报错时协议层会去掉字段重试并记住。
+   */
+  contextEditing?: ContextEditing;
 }): Promise<StreamCompletionResult> {
   const protocol = options.provider.protocol ?? "openai-chat-completions";
+  const oneShot =
+    options.cacheMode !== "prefix-reuse" && isOneShotRequest(options.messages, options.tools);
+  // 一次性请求（标题 / 记忆 / 学习 / 工具纪要）永远不会被读回：丢掉亲和键，
+  // 别让它写一份没人读的缓存、还把主会话的条目挤出分片。
+  // 1024 是 OpenAI 的缓存粒度下限，低于它的请求本来也不写，保持原样。
+  const provider =
+    oneShot && estimateMessagesTokens(options.messages) >= 1_024
+      ? { ...options.provider, promptCacheKey: undefined }
+      : options.provider;
   // 缓存画像在这里解析一次：断点位置、TTL、retention 全部由 cache-profile 决定，
   // 协议层只消费裁剪好的计划（保证任何路径都不会超过 Anthropic 的 4 断点上限）。
-  const cachePlan =
-    options.cacheMode !== "prefix-reuse" && isOneShotRequest(options.messages, options.tools)
-      ? withoutCacheWrites(resolveCachePlan(options.provider))
-      : resolveCachePlan(options.provider);
+  const cachePlan = oneShot
+    ? withoutCacheWrites(resolveCachePlan(provider))
+    : resolveCachePlan(provider);
+
+  let latestUsage: TokenUsage | undefined;
+  const onUsage =
+    options.onUsage || options.onUsageFinal
+      ? (usage: TokenUsage) => {
+          latestUsage = usage;
+          options.onUsage?.(usage);
+        }
+      : undefined;
+  // 一次性请求只认最终值；失败时保留流中已观察到的部分用量（输入/缓存可能已计费）。
+  const run = async <T extends StreamCompletionResult>(request: () => Promise<T>): Promise<T> => {
+    try {
+      const result = await request();
+      const finalUsage = result.usage ?? latestUsage;
+      if (finalUsage) options.onUsageFinal?.(finalUsage);
+      return result;
+    } catch (error) {
+      if (latestUsage) options.onUsageFinal?.(latestUsage);
+      throw error;
+    }
+  };
 
   if (protocol === "anthropic-messages") {
     const { system, messages } = toAnthropicMessages(options.messages, cachePlan, {
       skipTailCacheWrite: options.cacheMode === "prefix-reuse",
     });
-    return streamAnthropicMessages({
-      url: completionUrl(options.provider.baseUrl, protocol),
-      providerId: options.provider.id,
-      apiKey: options.provider.apiKey,
-      authStyle: options.provider.authStyle,
-      extraHeaders: options.provider.extraHeaders,
-      extraBody: options.provider.extraBody,
-      model: options.provider.model,
-      maxTokens: options.provider.maxTokens,
-      reasoningEffort: options.provider.reasoningEffort,
-      thinkingBudget: options.provider.thinkingBudget,
-      promptCacheKey: options.provider.promptCacheKey,
-      system,
-      messages,
-      tools: anthropicTools(options.tools, cachePlan, options.toolCacheAnchor),
-      toolChoice: options.toolChoice,
-      signal: options.signal,
-      onDelta: options.onDelta,
-      onThinking: options.onThinking,
-      onUsage: options.onUsage,
-      onToolCall: options.onToolCall,
-      onToolCallComplete: options.onToolCallComplete,
-    });
+    return run(() =>
+      streamAnthropicMessages({
+        url: completionUrl(provider.baseUrl, protocol),
+        providerId: provider.id,
+        apiKey: provider.apiKey,
+        authStyle: provider.authStyle,
+        extraHeaders: provider.extraHeaders,
+        extraBody: provider.extraBody,
+        model: provider.model,
+        maxTokens: provider.maxTokens,
+        reasoningEffort: provider.reasoningEffort,
+        thinkingBudget: provider.thinkingBudget,
+        promptCacheKey: provider.promptCacheKey,
+        ...(options.contextEditing ? { contextEditing: options.contextEditing } : {}),
+        system,
+        messages,
+        tools: anthropicTools(options.tools, cachePlan, options.toolCacheAnchor),
+        toolChoice: options.toolChoice,
+        signal: options.signal,
+        fetchAttempts: options.fetchAttempts,
+        onDelta: options.onDelta,
+        onThinking: options.onThinking,
+        onUsage,
+        onToolCall: options.onToolCall,
+        onToolCallComplete: options.onToolCallComplete,
+      }),
+    );
   }
 
   if (protocol === "openai-responses") {
@@ -473,31 +529,34 @@ export async function streamChatCompletion(options: {
       .flatMap((message) => (message.role === "system" && message.content ? [message.content] : []))
       .join("\n\n");
     const input = toResponsesInput(options.messages);
-    return streamResponses({
-      url: completionUrl(options.provider.baseUrl, protocol),
-      apiKey: options.provider.apiKey,
-      authStyle: options.provider.authStyle,
-      extraHeaders: options.provider.extraHeaders,
-      extraBody: options.provider.extraBody,
-      model: options.provider.model,
-      maxTokens: options.provider.maxTokens,
-      reasoningEffort: options.provider.reasoningEffort,
-      reasoningSummary: options.provider.reasoningSummary,
-      promptCacheKey: options.provider.promptCacheKey,
-      cacheRetention: cachePlan.retention,
-      incremental: options.provider.incremental,
-      instructions: system,
-      input,
-      tools: responsesTools(options.tools),
-      toolChoice: options.toolChoice,
-      signal: options.signal,
-      onDelta: options.onDelta,
-      onThinking: options.onThinking,
-      onUsage: options.onUsage,
-      onToolCall: options.onToolCall,
-      onToolCallComplete: options.onToolCallComplete,
-    });
+    return run(() =>
+      streamResponses({
+        url: completionUrl(provider.baseUrl, protocol),
+        apiKey: provider.apiKey,
+        authStyle: provider.authStyle,
+        extraHeaders: provider.extraHeaders,
+        extraBody: provider.extraBody,
+        model: provider.model,
+        maxTokens: provider.maxTokens,
+        reasoningEffort: provider.reasoningEffort,
+        reasoningSummary: provider.reasoningSummary,
+        promptCacheKey: provider.promptCacheKey,
+        cacheRetention: cachePlan.retention,
+        incremental: provider.incremental,
+        instructions: system,
+        input,
+        tools: responsesTools(options.tools),
+        toolChoice: options.toolChoice,
+        signal: options.signal,
+        fetchAttempts: options.fetchAttempts,
+        onDelta: options.onDelta,
+        onThinking: options.onThinking,
+        onUsage,
+        onToolCall: options.onToolCall,
+        onToolCallComplete: options.onToolCallComplete,
+      }),
+    );
   }
 
-  return streamChatCompletions(options);
+  return run(() => streamChatCompletions({ ...options, provider, onUsage }));
 }

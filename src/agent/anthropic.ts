@@ -5,13 +5,17 @@ import { ProviderRequestError } from "./provider-error.js";
 import { isToolCallComplete, summarizeToolCalls, type ToolCallProgress } from "./tool-progress.js";
 import {
   cacheControlFor,
+  gatewayUsesMinimalCache,
   hasBreakpoint,
+  noteGatewayMinimalCache,
+  resetGatewayCacheDegradation,
   resolveCachePlan,
   type CachePlan,
 } from "./cache-profile.js";
 import { resolveThinkingBudget } from "./thinking-budget.js";
 import type {
   AnthropicThinkingBlock,
+  ContextEditing,
   ChatMessage,
   TokenUsage,
   ToolCall,
@@ -32,7 +36,8 @@ export const ANTHROPIC_VERSION = "2023-06-01";
 
 /**
  * 降级记忆（进程生命周期，按 provider id 记）：
- *  - 网关不认 cache_control：400 一次就永久跳过断点，省掉每轮一个 400 往返；
+ *  - 网关嫌断点太多：400 一次就降到 2 个断点并记住（不是直接全关）；
+ *  - 网关连 cache_control 字段都不认：降到 2 个仍 400 才彻底关闭；
  *  - 端点不认 thinking 参数：参数与历史思考块一并跳过；
  *  - 端点认 thinking 但拒绝回放的历史签名块（跨模型签名不可移植）：只剥历史、保留后续思考。
  * 降级是保守方向：记错的代价是少用缓存/思考，重试的代价是每个请求多一趟 400。
@@ -40,6 +45,10 @@ export const ANTHROPIC_VERSION = "2023-06-01";
 const cacheControlUnsupportedProviders = new Set<string>();
 const thinkingUnsupportedProviders = new Set<string>();
 const historyThinkingRejectedProviders = new Set<string>();
+/** 端点在处理前清掉更早的工具结果（不等同于「不认识」，也可能是不支持） */
+const contextEditingUnsupportedProviders = new Set<string>();
+/** context editing 的 beta 标识：不声明的话服务端不认 context_management 字段。 */
+const CONTEXT_MANAGEMENT_BETA = "context-management-2025-06-27";
 
 /**
  * 测试专用：清空降级记忆。模块级 Set 跨用例存活，测试文件里多个用例共用同一个
@@ -49,6 +58,8 @@ export function resetProviderDegradeMemoryForTests(): void {
   cacheControlUnsupportedProviders.clear();
   thinkingUnsupportedProviders.clear();
   historyThinkingRejectedProviders.clear();
+  contextEditingUnsupportedProviders.clear();
+  resetGatewayCacheDegradation();
 }
 
 /** 原生 Anthropic 与 Anthropic 兼容网关（GLM/Kimi/MiniMax 等）的字段集不同。 */
@@ -196,6 +207,39 @@ function stripCacheControl<T>(value: T): T {
     return out as T;
   }
   return value;
+}
+
+/**
+ * 降级档的请求体：只留 system 首块与最后一条非空消息的断点。
+ *
+ * 网关报 400 时不能直接判定「完全不支持缓存」——更常见的是嫌 4 个断点太贪。
+ * 这个形态（system + 尾条）是所有 Anthropic 兼容实现都认的最小集合，
+ * 降到它还能保住「稳定前缀」这一段，比一刀切关闭多救回一大截命中率。
+ * TTL 固定 5m：能走到这里的都是网关画像，而 1h 只在实测过的官方端点上才发。
+ */
+function buildMinimalCacheBodies(
+  system: AnthropicSystemBlock[],
+  messages: Array<Record<string, unknown>>,
+  tools: Array<Record<string, unknown>>,
+): {
+  system: Array<Record<string, unknown>>;
+  messages: Array<Record<string, unknown>>;
+  tools: Array<Record<string, unknown>>;
+} {
+  const control: CacheControl = { type: "ephemeral" };
+  const minimalSystem = system.map((block, index) => {
+    const clean = stripCacheControl(block) as Record<string, unknown>;
+    return index === 0 ? { ...clean, cache_control: control } : clean;
+  });
+  const minimalMessages = messages.map((message) => stripCacheControl(message));
+  for (let index = minimalMessages.length - 1; index >= 0; index -= 1) {
+    if (tagLastContentBlock(minimalMessages[index], control)) break;
+  }
+  return {
+    system: minimalSystem,
+    messages: minimalMessages,
+    tools: tools.map((tool) => stripCacheControl(tool)),
+  };
 }
 
 /** 把内部消息列表转成 Anthropic 的 messages（system 单独提出去）。 */
@@ -404,12 +448,16 @@ export async function streamAnthropicMessages(options: {  url: string;
   thinkingBudget?: number;
   /** 会话亲和键：以 x-session-id 头发出，防止代理把两个会话的缓存串到一个分片 */
   promptCacheKey?: string;
+  /** 服务端 context editing：处理前清掉更早的工具结果（不按输入计费，且不改本地历史） */
+  contextEditing?: ContextEditing;
   system: AnthropicSystemBlock[];
   messages: Array<Record<string, unknown>>;
   tools: Array<Record<string, unknown>>;
   /** 传工具定义但禁止实际调用（压缩摘要复用主前缀时需要） */
   toolChoice?: "none";
   signal?: AbortSignal;
+  /** 网络层尝试次数；缺省沿用 fetchWithRetry 默认（3）。辅助请求传 1 = 失败不重试。 */
+  fetchAttempts?: number;
   onDelta: (delta: string) => void;
   onThinking?: (delta: string) => void;
   /** 流中实时用量：message_start 就带输入/缓存，不必等流结束 */
@@ -432,6 +480,11 @@ export async function streamAnthropicMessages(options: {  url: string;
       // 会话亲和：原生端点靠 cache_control，兼容网关/代理还需要一个稳定键来粘住分片。
       // 部分网关只认 header，body 没有等价字段，所以这里必须发。
       ...(options.promptCacheKey ? { "x-session-id": options.promptCacheKey } : {}),
+      // context editing 需要声明 beta，否则字段被忽略（或被拒）
+      ...(options.contextEditing &&
+      !contextEditingUnsupportedProviders.has(options.providerId ?? options.url)
+        ? { "anthropic-beta": CONTEXT_MANAGEMENT_BETA }
+        : {}),
     },
     options.extraHeaders,
   );
@@ -453,27 +506,50 @@ export async function streamAnthropicMessages(options: {  url: string;
   let useThinking =
     (native ? thinkingBudget !== undefined : deepseek && Boolean(options.reasoningEffort)) &&
     !thinkingUnsupportedProviders.has(providerKey);
-  let useCacheControl = !cacheControlUnsupportedProviders.has(providerKey);
-
-  const buildBody = (withCache: boolean, withThinking: boolean) => ({
+  /**
+   * 缓存写入档位：
+   *  - full：画像给的全部断点（网关默认 4 个）
+   *  - minimal：被拒过就只留 system 首块 + 尾条（2 个，兼容面最广）
+   *  - off：连字段都不发（端点整体不认识 cache_control）
+   */
+  let contextEditingOn =
+    Boolean(options.contextEditing) && !contextEditingUnsupportedProviders.has(providerKey);
+  let cacheLevel: "full" | "minimal" | "off" = cacheControlUnsupportedProviders.has(providerKey)
+    ? "off"
+    : gatewayUsesMinimalCache(providerKey)
+      ? "minimal"
+      : "full";
+  // 懒构建：只有真降级时才深拷贝整段历史（大 history 上的 stripCacheControl 不便宜）
+  let minimalCache: ReturnType<typeof buildMinimalCacheBodies> | null = null;
+  const minimal = () =>
+    (minimalCache ??= buildMinimalCacheBodies(options.system, options.messages, options.tools));
+  const buildBody = (level: "full" | "minimal" | "off", withThinking: boolean) => ({
     model: options.model,
     max_tokens: options.maxTokens ?? 8192,
     system: options.system.length
-      ? options.system.map((block) =>
-          withCache ? block : { type: block.type, text: block.text },
-        )
+      ? level === "minimal"
+        ? minimal().system
+        : options.system.map((block) =>
+            level === "full" ? block : { type: block.type, text: block.text },
+          )
       : undefined,
     messages: stripThinkingBlocks(
-      withCache ? options.messages : stripCacheControl(options.messages),
+      level === "minimal"
+        ? minimal().messages
+        : level === "full"
+          ? options.messages
+          : stripCacheControl(options.messages),
       // 历史思考块被该端点拒绝过（跨模型签名）：剥历史但保留 thinking 参数，新回合照常思考
       withThinking && !historyThinkingStripped,
     ),
     tools: options.tools.length
-      ? options.tools.map((tool) =>
-          withCache
-            ? tool
-            : Object.fromEntries(Object.entries(tool).filter(([key]) => key !== "cache_control")),
-        )
+      ? level === "minimal"
+        ? minimal().tools
+        : options.tools.map((tool) =>
+            level === "full"
+              ? tool
+              : Object.fromEntries(Object.entries(tool).filter(([key]) => key !== "cache_control")),
+          )
       : undefined,
     ...(options.toolChoice === "none" && options.tools.length
       ? { tool_choice: { type: "none" } }
@@ -491,29 +567,74 @@ export async function streamAnthropicMessages(options: {  url: string;
     ...(withThinking && thinkingBudget !== undefined
       ? { thinking: { type: "enabled", budget_tokens: thinkingBudget } }
       : {}),
+    // 服务端 context editing：只声明「超过多少就清、保留最近几次工具调用」，
+    // 清哪些由服务端决定。被清掉的部分不进输入计费，本地历史一个字节都不动。
+    ...(contextEditingOn && options.contextEditing
+      ? {
+          context_management: {
+            edits: [
+              {
+                type: "clear_tool_uses_20250919",
+                trigger: { type: "input_tokens", value: options.contextEditing.triggerTokens },
+                keep: { type: "tool_uses", value: options.contextEditing.keepToolUses },
+                ...(options.contextEditing.clearAtLeastTokens
+                  ? {
+                      clear_at_least: {
+                        type: "input_tokens",
+                        value: options.contextEditing.clearAtLeastTokens,
+                      },
+                    }
+                  : {}),
+              },
+            ],
+          },
+        }
+      : {}),
     // 用户自定义字段最后展开：同名覆盖内置，用于网关特有的开关
     ...options.extraBody,
   });
-  const send = (withCache: boolean, withThinking: boolean) =>
-    fetchWithRetry(options.url, {
-      method: "POST",
-      headers,
-      signal: options.signal,
-      body: JSON.stringify(buildBody(withCache, withThinking)),
-    });
+  const send = (level: "full" | "minimal" | "off", withThinking: boolean) =>
+    fetchWithRetry(
+      options.url,
+      {
+        method: "POST",
+        headers,
+        signal: options.signal,
+        body: JSON.stringify(buildBody(level, withThinking)),
+      },
+      { attempts: options.fetchAttempts },
+    );
 
-  let response = await send(useCacheControl, useThinking);
+  let response = await send(cacheLevel, useThinking);
   let failureText = "";
   if (!response.ok) {
     failureText = await response.text().catch(() => "");
-    // 部分 Anthropic 兼容网关不认识 cache_control：仅在明确是缓存字段问题时降级重试一次并记住。
-    if (
+    // 部分 Anthropic 兼容网关不接受多个（或不认识）cache_control。
+    // 分级降级：4 个断点 → 2 个（system 首块 + 尾条）→ 完全关闭；每级重新判断
+    // 失败是否仍指向缓存字段。一上来就全关是以前的做法，等于「网关只是嫌断点多」
+    // 也要把缓存赔光。循环最多两圈（full → minimal → off）。
+    while (
+      cacheLevel !== "off" &&
       (response.status === 400 || response.status === 422) &&
       /cache_control|prompt.?cach|unknown.*cache|invalid.*cache/i.test(failureText)
     ) {
-      useCacheControl = false;
-      cacheControlUnsupportedProviders.add(providerKey);
-      response = await send(useCacheControl, useThinking);
+      cacheLevel = cacheLevel === "full" ? "minimal" : "off";
+      if (cacheLevel === "off") cacheControlUnsupportedProviders.add(providerKey);
+      else noteGatewayMinimalCache(providerKey);
+      response = await send(cacheLevel, useThinking);
+      failureText = response.ok ? "" : await response.text().catch(() => "");
+    }
+    // 端点不支持 context editing：去掉该字段重试一次并记住（只影响省 token 的手段，
+    // 不影响对话本身，所以不当作失败上报）。
+    if (
+      !response.ok &&
+      contextEditingOn &&
+      (response.status === 400 || response.status === 422) &&
+      /context[-_]management|clear_tool_uses|context editing/i.test(failureText)
+    ) {
+      contextEditingOn = false;
+      contextEditingUnsupportedProviders.add(providerKey);
+      response = await send(cacheLevel, useThinking);
       failureText = response.ok ? "" : await response.text().catch(() => "");
     }
     // 模型或网关不支持扩展思考：去掉 thinking 与历史 thinking 块再试一次。
@@ -530,7 +651,7 @@ export async function streamAnthropicMessages(options: {  url: string;
         thinkingUnsupportedProviders.add(providerKey);
         useThinking = false;
       }
-      response = await send(useCacheControl, false);
+      response = await send(cacheLevel, false);
       failureText = response.ok ? "" : await response.text().catch(() => "");
     }
     if (!response.ok) {

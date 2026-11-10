@@ -12,8 +12,10 @@ function childResult(overrides: Partial<ChildResult> = {}): ChildResult {
     status: "completed",
     summary: "did it",
     findings: [],
+    checked: ["src/a.ts:1"],
     filesChanged: ["src/a.ts"],
     commands: [],
+    blockMissing: false,
     valid: true,
     ...overrides,
   };

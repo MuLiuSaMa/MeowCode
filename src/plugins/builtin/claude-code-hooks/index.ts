@@ -424,8 +424,9 @@ export const shellRunner: HookCommandRunner = (command, { payload, cwd, timeoutM
 export const claudeCodeHooksPlugin: PluginFactory = (api: PluginAPI): void => {
   const workspace = api.workspace;
   const homeDir = process.env.MEOWCODE_CC_HOOKS_HOME || os.homedir();
-  const scope = parseHooksScope(process.env.MEOWCODE_CC_HOOKS_SCOPE);
-  const runMode = parseRunMode(process.env.MEOWCODE_HOOKS_RUN_MODE);
+  // 每次执行都读 env：设置页改「询问模式 / 工作区范围」后 server 热更新 env，不重启进程
+  const currentScope = () => parseHooksScope(process.env.MEOWCODE_CC_HOOKS_SCOPE);
+  const currentRunMode = () => parseRunMode(process.env.MEOWCODE_HOOKS_RUN_MODE);
   const runner = shellRunner;
   const log = (message: string) => api.logger.info(`[claude-code-hooks] ${message}`);
 
@@ -465,7 +466,7 @@ export const claudeCodeHooksPlugin: PluginFactory = (api: PluginAPI): void => {
       timeout: number;
       source?: string;
     }) => {
-      if (runMode !== "ask") return true;
+      if (currentRunMode() !== "ask") return true;
       const approved = approvedCommands.get(rootSessionId) ?? new Set<string>();
       if (approved.has(request.command)) return true;
       if (!ctx?.requestApproval) {
@@ -495,7 +496,12 @@ export const claudeCodeHooksPlugin: PluginFactory = (api: PluginAPI): void => {
   };
 
   const loadGroups = async (claudeEvent: ClaudeEvent): Promise<HookMatcherGroup[]> => {
-    const config = await loadHooksConfig({ homeDir, workspace, scope, runMode });
+    const config = await loadHooksConfig({
+      homeDir,
+      workspace,
+      scope: currentScope(),
+      runMode: currentRunMode(),
+    });
     return config.groups[claudeEvent] ?? [];
   };
 
@@ -746,6 +752,8 @@ export const claudeCodeHooksPlugin: PluginFactory = (api: PluginAPI): void => {
     description:
       "查看当前生效的 Claude Code hooks 配置（~/.claude 与工作区 .claude；工作区默认不执行）",
     run: async () => {
+      const scope = currentScope();
+      const runMode = currentRunMode();
       const config = await loadHooksConfig({ homeDir, workspace, scope, runMode, fresh: true });
       const summary = summarizeHooks(config);
       const lines: string[] = [

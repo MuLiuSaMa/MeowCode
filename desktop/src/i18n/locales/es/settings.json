@@ -15,6 +15,14 @@
       "dazui": "大嘴"
     }
   },
+  "progressPill": {
+    "field": "Píldora de información sobre el cuadro de texto",
+    "desc": "Cuándo se oculta la cápsula de estado sobre el cuadro de entrada: tras el commit o al terminar el turno.",
+    "options": {
+      "commit": "Ocultar tras el commit",
+      "turn-end": "Ocultar al terminar el turno"
+    }
+  },
   "nav": {
     "heading": "Configuración",
     "ariaLabel": "Secciones de configuración",
@@ -42,11 +50,7 @@
   "close": {
     "section": "Cierre de la ventana",
     "field": "Al cerrar la ventana",
-    "desc": {
-      "ask": "Preguntar cada vez si minimizar a la bandeja o salir.",
-      "tray": "Al cerrar se oculta en la bandeja del sistema y MeowCode sigue funcionando en segundo plano.",
-      "quit": "Cerrar la ventana sale de MeowCode de inmediato."
-    },
+    "desc": "Qué ocurre al cerrar la ventana principal: preguntar cada vez, ocultar en la bandeja del sistema y seguir en segundo plano, o salir.",
     "options": {
       "ask": "Preguntar",
       "tray": "A la bandeja",
@@ -56,10 +60,7 @@
   "update": {
     "section": "Actualizaciones",
     "field": "Descargar actualizaciones en segundo plano",
-    "desc": {
-      "on": "Al iniciar, la nueva versión se descarga en segundo plano. Después aparece un botón de reinicio abajo a la izquierda de la barra lateral: pulsa para instalar.",
-      "off": "Solo comprobar y avisar al iniciar; descargar e instalar sigue siendo manual en la página Acerca de."
-    }
+    "desc": "Las nuevas versiones se descargan en segundo plano; al terminar aparece un botón de reinicio abajo a la izquierda de la barra lateral para instalar."
   },
   "appearance": {
     "themeSection": "Tema",
@@ -205,6 +206,9 @@
     "empty": "Todavía no hay modelos configurados. Empieza con «Añadir modelo».",
     "deleteTitle": "Eliminar proveedor",
     "deleteMessage": "¿Eliminar \"{{name}}\"? Tendrás que configurarlo de nuevo para poder usarlo.",
+    "deleteGroupAria": "Eliminar proveedor {{name}}",
+    "deleteGroupTitle": "Eliminar proveedor",
+    "deleteGroupMessage": "¿Eliminar «{{name}}» y sus {{count}} modelos? Tendrás que configurarlo de nuevo para poder usarlo.",
     "restartTitle": "Guardar reinicia el servicio local",
     "restartMessage": "Los cambios de modelos reinician el servicio agent local e interrumpen el turno en curso. ¿Guardar igualmente?",
     "restartConfirm": "Guardar igualmente",
@@ -336,10 +340,7 @@
   "island": {
     "section": "AI 悬浮岛",
     "field": "启用悬浮岛",
-    "desc": {
-      "on": "悬浮岛已开启：屏幕顶部居中显示所有运行中会话的状态，鼠标放上去可展开查看对话、直接输入或停止任务。",
-      "off": "开启后在屏幕顶部居中显示一枚胶囊，实时显示所有运行中会话的状态；鼠标放上去可展开成对话小窗。"
-    }
+    "desc": "Una cápsula en la parte superior central de la pantalla muestra todas las sesiones en curso; al pasar el cursor se expande en una mini ventana de chat para responder o detener una tarea."
   },
   "hooks": {
     "loading": "Cargando la configuración de hooks…",
@@ -350,15 +351,9 @@
       "section": "Importar hooks de Claude Code",
       "description": "Lee ~/.claude/settings.json y las configuraciones .claude del espacio de trabajo. Las del espacio de trabajo no se ejecutan por defecto.",
       "master": "Activar hooks",
-      "masterHint": {
-        "on": "La configuración de hooks de Claude Code está cargada.",
-        "off": "Desactivado: la configuración solo se muestra y no se ejecutará."
-      },
+      "masterHint": "Cargar y ejecutar la configuración de hooks de Claude Code; desactivada se muestra solo para lectura y nunca se ejecuta.",
       "workspace": "Incluir la configuración .claude del espacio de trabajo",
-      "workspaceHint": {
-        "on": "Se ejecutarán los hooks de .claude/settings*.json del espacio de trabajo.",
-        "off": "Solo se ejecuta la configuración de ~/.claude; la del espacio de trabajo solo se muestra."
-      },
+      "workspaceHint": "Si se ejecutan los hooks de .claude/settings*.json del espacio de trabajo; desactivado, solo se ejecuta la configuración de ~/.claude.",
       "workspaceWarning": "Los hooks del espacio de trabajo provienen de archivos del repositorio y pueden contener comandos maliciosos. Actívalos solo si confías en este repositorio.",
       "disabledNote": "Los hooks están desactivados. Activa el interruptor de arriba para ejecutar comandos."
     },
@@ -548,10 +543,7 @@
     "desc": "Comportamiento diario. Los cambios se aplican al instante.",
     "notify": {
       "field": "Notificaciones del sistema",
-      "desc": {
-        "on": "Si la ventana está en segundo plano, mostrar una notificación al terminar un turno, pedir confirmación o interrumpirse (título de la conversación y resumen de la respuesta).",
-        "off": "No se mostrarán notificaciones del sistema."
-      }
+      "desc": "Mostrar una notificación del sistema con el título del chat y un resumen de la respuesta cuando un turno termina, requiere aprobación o se interrumpe y la ventana está en segundo plano."
     },
     "promptSuggestions": {
       "field": "Sugerencias de próximo mensaje",
@@ -565,6 +557,17 @@
       "field": "Conmutación por error del proveedor",
       "desc": "Si el proveedor principal agota el tiempo, sufre límite de peticiones o error del servidor, este turno cambia automáticamente a otro proveedor habilitado (máx. 2 saltos).",
       "toggleFailed": "No se pudo guardar la conmutación por error del proveedor"
+    },
+    "mailAi": {
+      "field": "Modelo fuera del chat",
+      "follow": "Seguir el chat"
+    },
+    "other": {
+      "section": "General"
+    },
+    "announcement": {
+      "field": "Anuncios",
+      "desc": "Mostrar anuncios oficiales en la barra de título (nuevas versiones y novedades de modelos)."
     }
   },
   "proxy": {

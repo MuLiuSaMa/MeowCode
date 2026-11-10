@@ -1,4 +1,4 @@
-import { commandEnv, withPythonUtf8Env } from "./env.js";
+import { commandEnv, withPlainOutputEnv, withPythonUtf8Env } from "./env.js";
 import { decodeCommandOutput, getLegacyOutputLabel } from "./encoding.js";
 import { powerShellArgv, resolvePowerShell } from "./powershell.js";
 import { runCapture } from "./capture.js";
@@ -34,10 +34,15 @@ export async function runShellCommand(options: {
     file: executable,
     args: powerShellArgv(options.command),
     cwd: options.workspace,
-    env: { ...withPythonUtf8Env(commandEnv()), POWERSHELL_TELEMETRY_OPTOUT: "1" },
+    env: withPlainOutputEnv({
+      ...withPythonUtf8Env(commandEnv()),
+      POWERSHELL_TELEMETRY_OPTOUT: "1",
+    }),
     timeoutMs: options.timeoutMs ?? DEFAULT_COMMAND_TIMEOUT_MS,
     maxCaptureBytes: MAX_COMMAND_OUTPUT_BYTES,
-    closeStdin: false,
+    // 没有 stdin 通道：交互式命令（Read-Host / pause / git commit 无 -m）必须立刻拿 EOF，
+    // 否则只会挂满整个超时时间
+    closeStdin: true,
     ...(options.signal ? { signal: options.signal } : {}),
   };
   let sandboxed = false;
@@ -64,8 +69,26 @@ export async function runShellCommand(options: {
     sandboxed = true;
   }
   const result = await runCapture(spec);
-  const stdoutText = decodeCommandOutput(result.stdout, legacyLabel);
-  const stderrText = decodeCommandOutput(result.stderr, legacyLabel);
+  /**
+   * 头 + 尾拼回一段可读文本。中间被省略的部分必须显式标出来：
+   * 直接首尾相接，模型会把两段读成连在一起的一句话。
+   */
+  const mergeTail = (head: string, tail: Buffer | undefined, omitted: number | undefined): string => {
+    if (!tail?.length) return head;
+    const tailText = decodeCommandOutput(tail, legacyLabel);
+    if (!tailText) return head;
+    return `${head}\n... [${omitted ?? 0} bytes omitted here; output kept its first and last part — filter it in the command (Select-Object -First, Select-String) to see the middle]\n${tailText}`;
+  };
+  const stdoutText = mergeTail(
+    decodeCommandOutput(result.stdout, legacyLabel),
+    result.stdoutTail,
+    result.stdoutOmittedBytes,
+  );
+  const stderrText = mergeTail(
+    decodeCommandOutput(result.stderr, legacyLabel),
+    result.stderrTail,
+    result.stderrOmittedBytes,
+  );
   return {
     ...result,
     stdoutText,

@@ -222,6 +222,8 @@
 /* ---- 主页签：工具网格 + 会话信息 ---- */
 .mc-rtp__home {
   padding: 12px;
+  /* 面板宽度可拖拽（最窄 240px）：卡片排版按容器宽度自适应，不跟随窗口宽度 */
+  container-type: inline-size;
 }
 
 .mc-rtp__section {
@@ -238,13 +240,22 @@
 
 .mc-rtp__grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  /* 窄面板先堆成 1 列，宽了才并排：写死 1fr 1fr 会把卡片挤出面板（右边被裁） */
+  grid-template-columns: 1fr;
   /* 卡片之间的缝隙收窄（原来 8px 显得松散） */
   gap: 4px;
+}
+/* 容器宽度 ≥260px（面板 ≈284px）才并排两列；再窄就单列，不做三列 */
+@container (min-width: 260px) {
+  .mc-rtp__grid {
+    grid-template-columns: 1fr 1fr;
+  }
 }
 
 .mc-rtp__cardwrap {
   position: relative;
+  /* 允许卡片跟着网格轨道收窄（默认 min-width:auto 会顶出面板） */
+  min-width: 0;
 }
 
 .mc-rtp__card {
@@ -282,6 +293,12 @@
   font-size: var(--fs-xs);
   color: var(--fg-subtlest);
   white-space: nowrap;
+}
+/* 很窄时先收起快捷键（名字优先），否则两列卡片里标签会被压成「侧…」 */
+@container (max-width: 330px) {
+  .mc-rtp__cardkbd {
+    display: none;
+  }
 }
 
 /* 卡片「…」：悬停浮出 */

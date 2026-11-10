@@ -102,7 +102,6 @@
 .mc-rewind__check {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
   font-size: var(--fs-sm);
   user-select: none;
 }

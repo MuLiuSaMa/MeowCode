@@ -4,10 +4,12 @@ import { LuCopy, LuMinus, LuSquare, LuX } from "react-icons/lu";
 import wordmarkBlackUrl from "../assets/wordmark-black.png";
 import wordmarkUrl from "../assets/wordmark.png";
 import { useTheme } from "../theme/theme";
+import { PluginSlot } from "../plugins/PluginSlot";
+import { AnnouncementBar } from "./AnnouncementBar";
 import "./TitleBar.css";
 
 /** forceDark：启动画面固定黑底，即使系统是浅色也要用白色字标。 */
-export function TitleBar({ forceDark = false }: { forceDark?: boolean }) {
+export function TitleBar({ forceDark = false, announcements = false }: { forceDark?: boolean; announcements?: boolean }) {
   const [maximized, setMaximized] = useState(false);
   const { resolved } = useTheme();
   const { t } = useTranslation("shell");
@@ -41,6 +43,13 @@ export function TitleBar({ forceDark = false }: { forceDark?: boolean }) {
     <header className="mc-titlebar">
       <div className="mc-titlebar__brand">
         <img className="mc-titlebar__wordmark" src={wordmark} alt="MeowCode" draggable={false} />
+      </div>
+
+      {/* 公告：紧跟 Logo 右侧，小字号、一行截断；点击弹窗看全文，× 关闭（设置 → 通用可关） */}
+      {announcements ? <AnnouncementBar /> : null}
+
+      <div className="mc-titlebar__plugins">
+        <PluginSlot name="titlebar.actions" props={{}} />
       </div>
 
       <div className="mc-titlebar__controls">

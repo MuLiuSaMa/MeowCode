@@ -39,5 +39,14 @@ export function createPluginStorage(pluginId: string, homeDir: string): PluginSt
       await fs.writeFile(tmp, JSON.stringify(data, null, 2), "utf8");
       await fs.rename(tmp, file);
     },
+    async delete(key: string): Promise<void> {
+      const data = await read();
+      if (!(key in data)) return;
+      delete data[key];
+      await fs.mkdir(path.dirname(file), { recursive: true });
+      const tmp = `${file}.${process.pid}.tmp`;
+      await fs.writeFile(tmp, JSON.stringify(data, null, 2), "utf8");
+      await fs.rename(tmp, file);
+    },
   };
 }

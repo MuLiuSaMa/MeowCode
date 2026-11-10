@@ -447,6 +447,7 @@ export type PluginCommandInfo = {
 export type PluginStorage = {
   get<T>(key: string): Promise<T | undefined>;
   set(key: string, value: unknown): Promise<void>;
+  delete(key: string): Promise<void>;
 };
 
 /**
@@ -475,8 +476,26 @@ export type ExtensionHost = {
     name: string;
     description: string;
     code: string;
+    /** 声明权限；缺省按「后端全开 / 带 UI 时全开」推导 */
+    permissions?: PluginPermission[];
+    /** 渲染器槽位脚本（纯 JS，无 import/JSX）；提供后自动带 "ui" 权限 */
+    client?: string;
+    /** 自带完整面板 HTML（ui/index.html，iframe 加载；可内联 CSS/JS） */
+    panel?: string;
+    /** manifest 版本，缺省 0.0.1 */
+    version?: string;
   }): Promise<
-    | { ok: true; id: string; path: string; toolNames?: string[]; error?: string }
+    | {
+        ok: true;
+        id: string;
+        path: string;
+        toolNames?: string[];
+        error?: string;
+        /** 是否写入了 ui/client.js */
+        client?: boolean;
+        /** 是否写入了 ui/index.html 面板 */
+        panel?: boolean;
+      }
     | { ok: false; error: string; stage: "validate" | "write" | "reload" }
   >;
 };
@@ -488,9 +507,14 @@ export interface PluginAPI {
   on<N extends PluginHookName>(event: N, handler: PluginHandler<N>): void;
   /** 注册斜杠命令；重名被拒 */
   registerCommand(cmd: PluginCommand): void;
+  /** 注册供插件 UI 通过 host.call 调用的方法；重名被拒 */
+  registerRpc(method: string, handler: PluginRpcHandler): void;
   storage: PluginStorage;
   logger: PluginLogger;
   readonly workspace: string;
+  /** 插件 manifest（无 plugin.json 的旧插件为合成清单，权限全开） */
+  readonly manifest: PluginManifest;
+  readonly permissions: ReadonlySet<PluginPermission>;
   /** AI 自建能力（仅 server 注入的内置创作插件会用到；测试/嵌入式场景缺省） */
   readonly host?: ExtensionHost;
 }
@@ -500,6 +524,56 @@ export interface PluginAPI {
 // ---------------------------------------------------------------------------
 
 export type PluginSource = "project" | "user" | "builtin";
+
+/** 插件能力权限：manifest 里声明，registry 按此拒绝未授权注册。 */
+export const PLUGIN_PERMISSIONS = [
+  "tools",
+  "hooks",
+  "commands",
+  "storage",
+  "rpc",
+  "ui",
+  "prompt",
+] as const;
+export type PluginPermission = (typeof PLUGIN_PERMISSIONS)[number];
+
+/**
+ * `<插件目录>/plugin.json` 的解析结果。无 manifest 的旧插件由 loader 合成
+ * 一份权限全开的清单，保证注册行为不变。
+ */
+export type PluginManifest = {
+  id: string;
+  name?: string;
+  version: string;
+  apiVersion: 2;
+  main?: string;
+  client?: string;
+  permissions: PluginPermission[];
+  engines?: { meowcode?: string };
+};
+
+/** RPC handler 的调用上下文：只带 server 侧可信任的信息。 */
+export type PluginRpcContext = {
+  pluginId: string;
+  workspace: string;
+  sessionId?: string;
+};
+
+export type PluginRpcHandler = (
+  args: unknown,
+  context: PluginRpcContext,
+) => unknown | Promise<unknown>;
+
+/** 权限不足时抛出的错误：插件 UI/宿主都应把它当作可展示的拒绝。 */
+export class PluginPermissionError extends Error {
+  constructor(
+    readonly pluginId: string,
+    readonly permission: PluginPermission,
+  ) {
+    super(`plugin "${pluginId}" did not declare the "${permission}" permission`);
+    this.name = "PluginPermissionError";
+  }
+}
 
 export type PluginDescriptor = {
   id: string;
@@ -517,22 +591,34 @@ export type PluginDescriptor = {
   description?: string;
   /** 内置插件图标 dataUrl（builtin 元数据；其他来源缺省，UI 回落市场图标表） */
   iconUrl?: string;
+  /** manifest 版本（无 plugin.json 的旧插件缺省） */
+  version?: string;
+  /** 解析后的 manifest（含权限，供设置页展示）；旧插件缺省 */
+  manifest?: PluginManifest;
+  /** 由 AI 创作工具创建：渲染层免二次授权（创建工具的审批已覆盖代码） */
+  aiAuthored?: boolean;
   /**
-   * 插件自带的界面面板：`<插件目录>/ui/index.html` 存在时自动登记。
-   * 渲染层用 iframe 加载（`GET /plugin-ui/<id>/...`），单文件插件无法携带 UI。
+   * 插件自带的界面：`ui/index.html` 面板（iframe）与 `ui/client.js` 槽位脚本。
+   * 渲染层都通过 `GET /plugin-ui/<id>/...` 取资源。
    */
   ui?: PluginUiDescriptor;
 };
 
 export type PluginLoadError = { path: string; error: string };
 
-/** 插件面板描述：入口固定为插件目录里的 ui/index.html（相对路径，不含目录前缀）。 */
+/** 插件 UI 描述：面板入口与渲染器内槽位脚本都相对于插件目录的 ui/。 */
 export type PluginUiDescriptor = {
-  panel: {
+  panel?: {
     /** 面板标题（缺省用插件 id） */
     title: string;
     /** ui/ 目录内的相对入口，如 "index.html" */
     entry: string;
+  };
+  client?: {
+    /** ui/ 目录内的相对入口，如 "client.js" */
+    entry: string;
+    /** 脚本可用的客户端权限（来自 manifest） */
+    permissions: PluginPermission[];
   };
 };
 

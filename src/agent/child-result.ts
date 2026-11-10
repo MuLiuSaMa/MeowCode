@@ -2,9 +2,13 @@ import type { AgentRole } from "./types.js";
 
 /**
  * 子 Agent 结果契约（参考 metis 的 ChildResult + fail-closed 校验）：
- * implementer / reviewer / verifier 的最终报告必须携带一个 JSON 块；
- * 宿主用自己观测到的事实（文件改动、执行过的命令）覆盖模型自述，
- * 再按角色做 fail-closed 校验——"宣称完成但宿主观测不到证据"直接判无效。
+ * 契约角色的最终报告必须携带一个 JSON 块；宿主用自己观测到的事实
+ * （文件改动、执行过的命令）覆盖模型自述，再按角色做 fail-closed 校验。
+ *
+ * fail-closed 的两层含义：
+ *  1. 缺块 / 解析失败 = 无效，不再默认「completed + valid」——没交契约就是没交证据；
+ *  2. 每个门禁角色都有必须存在的证据字段（implementer 文件改动、verifier 命令、
+ *     评审类角色 checked 清单、juror verdict），缺一项即 invalid。
  */
 export type ChildFinding = {
   severity: "critical" | "major" | "minor";
@@ -14,13 +18,22 @@ export type ChildFinding = {
 
 export type ChildResultStatus = "completed" | "failed" | "blocked";
 
+/** juror 的终审结论；缺省一律按 FAIL 处理（default-FAIL）。 */
+export type ChildVerdict = "PASS" | "FAIL";
+
 export type ChildResult = {
   status: ChildResultStatus;
   summary: string;
   findings: ChildFinding[];
+  /** 模型自述「我实际打开过什么」（file:line / 命令 / diff 片段）；评审类角色的必填证据 */
+  checked: string[];
+  /** juror 专用：PASS / FAIL；其余角色忽略 */
+  verdict?: ChildVerdict;
   /** 宿主观测 ground truth（mergeHostObservations 覆盖模型自述） */
   filesChanged: string[];
   commands: Array<{ argv: string; exitCode: number }>;
+  /** 报告里没有可解析的契约 JSON 块：契约角色一律判无效 */
+  blockMissing: boolean;
   /** fail-closed 校验结果；invalid 时 invalidReason 给出机器可读原因 */
   valid: boolean;
   invalidReason?: string;
@@ -39,12 +52,22 @@ export const CHILD_RESULT_ROLES: ReadonlySet<AgentRole> = new Set([
   "goal-checker",
 ]);
 
+/** 必须给出 checked 清单（「我亲手打开过什么」）的评审类角色。 */
+export const EVIDENCE_ROLES: ReadonlySet<AgentRole> = new Set([
+  "reviewer",
+  "scoper",
+  "depth-prober",
+  "sweeper",
+  "goal-checker",
+  "juror",
+]);
+
 /** 角色系统提示词末尾附加的结果契约文本。 */
-export const CHILD_RESULT_CONTRACT = `End your FINAL message with a fenced json block in exactly this shape:
+export const CHILD_RESULT_CONTRACT = `End your FINAL message with a fenced json block, exactly:
 \`\`\`json
-{"status": "completed", "summary": "one short paragraph", "findings": []}
+{"status":"completed","summary":"one short paragraph","checked":["path/file.ts:12","pnpm test → exit 0"],"findings":[]}
 \`\`\`
-status: completed | failed | blocked. findings: [{"severity": "critical|major|minor", "message": "...", "location": "path/file.ts:12"}] — reviewers list every finding; implementers/verifiers usually omit it or list unresolved ones.`;
+status: completed | failed | blocked. checked: what you actually opened (file:line, command, diff) — required for review/scope/probe/sweep/goal-check/juror; a completed report without it is rejected. findings: [{"severity":"critical|major|minor","message":"...","location":"path/file.ts:12"}]. juror adds "verdict":"PASS"|"FAIL"; a missing verdict counts as FAIL. No block, no credit.`;
 
 type RawFinding = { severity?: unknown; message?: unknown; location?: unknown };
 
@@ -86,17 +109,42 @@ function normalizeFindings(value: unknown): ChildFinding[] {
   return findings;
 }
 
+/** checked 归一化：只保留非空字符串，去重，限 20 条 / 每条 200 字符。 */
+function normalizeChecked(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const raw of value.slice(0, 20)) {
+    const text = typeof raw === "string" ? raw.trim() : "";
+    if (!text) continue;
+    const item = text.slice(0, 200);
+    if (seen.has(item)) continue;
+    seen.add(item);
+    out.push(item);
+  }
+  return out;
+}
+
+function normalizeVerdict(value: unknown): ChildVerdict | undefined {
+  const text = typeof value === "string" ? value.trim().toUpperCase() : "";
+  return text === "PASS" || text === "FAIL" ? text : undefined;
+}
+
 /**
- * 宽容归一化子代理最终报告：解析末尾 JSON 块，失败或字段异常时降级为
- * {status: "completed", summary: 全文}——信任与否交给 validate 决定。
+ * 宽容归一化子代理最终报告：解析末尾 JSON 块。
+ * 缺块 / 解析失败 / 非对象时保留全文摘要但标记 blockMissing，
+ * 由 validateChildResult 判无效——归一化不替模型补证据。
  */
 export function normalizeChildResult(report: string): ChildResult {
+  const text = report.trim();
   const fallback: ChildResult = {
     status: "completed",
-    summary: report.trim().slice(0, 600),
+    summary: text.slice(0, 600),
     findings: [],
+    checked: [],
     filesChanged: [],
     commands: [],
+    blockMissing: true,
     valid: true,
   };
   const block = extractJsonBlock(report);
@@ -113,12 +161,18 @@ export function normalizeChildResult(report: string): ChildResult {
     typeof parsed.summary === "string" && parsed.summary.trim()
       ? parsed.summary.trim().slice(0, 600)
       : fallback.summary;
+  const verdict = normalizeVerdict(parsed.verdict);
+  const status = normalizeStatus(parsed.status);
   return {
-    status: normalizeStatus(parsed.status),
+    // verdict=FAIL 与 status=completed 自相矛盾：终审说 FAIL 就是没通过
+    status: verdict === "FAIL" && status === "completed" ? "failed" : status,
     summary,
     findings: normalizeFindings(parsed.findings),
+    checked: normalizeChecked(parsed.checked),
+    ...(verdict ? { verdict } : {}),
     filesChanged: [],
     commands: [],
+    blockMissing: false,
     valid: true,
   };
 }
@@ -139,11 +193,14 @@ export function mergeHostObservations(
 }
 
 /**
- * fail-closed 校验：宣称完成但宿主观测不到对应证据即判无效。
- * - implementer completed 必须观测到文件改动
- * - verifier completed 必须观测到执行过命令
- * - reviewer failed 必须带 findings
+ * fail-closed 校验：宣称完成但宿主/报告里观测不到对应证据即判无效。
+ * - 契约角色缺 JSON 块 → 无效（没交契约就是没交证据）
  * - 任何 completed 必须有非空 summary
+ * - implementer completed 必须观测到文件改动
+ * - verifier / fresh-verifier completed 必须观测到执行过命令
+ * - 评审类角色 completed 必须给出非空 checked（亲手打开过的证据）
+ * - juror 必须给出 verdict；缺省即 FAIL，FAIL 不能算 completed
+ * - reviewer failed 必须带 findings
  */
 export function validateChildResult(role: AgentRole, result: ChildResult): ChildResult {
   const invalid = (reason: string): ChildResult => ({
@@ -151,6 +208,7 @@ export function validateChildResult(role: AgentRole, result: ChildResult): Child
     valid: false,
     invalidReason: reason,
   });
+  if (result.blockMissing) return invalid("MISSING_RESULT_BLOCK");
   if (result.status !== "completed") {
     if (role === "reviewer" && result.status === "failed" && !result.findings.length) {
       return invalid("REVIEW_FAILED_WITHOUT_FINDINGS");
@@ -161,8 +219,15 @@ export function validateChildResult(role: AgentRole, result: ChildResult): Child
   if (role === "implementer" && !result.filesChanged.length) {
     return invalid("IMPLEMENTER_COMPLETED_WITHOUT_FILE_CHANGES");
   }
-  if (role === "verifier" && !result.commands.length) {
+  if ((role === "verifier" || role === "fresh-verifier") && !result.commands.length) {
     return invalid("VERIFIER_COMPLETED_WITHOUT_COMMANDS");
+  }
+  if (role === "juror") {
+    if (!result.verdict) return invalid("JUROR_MISSING_VERDICT");
+    if (result.verdict === "FAIL") return invalid("JUROR_FAILED_CANNOT_COMPLETE");
+  }
+  if (EVIDENCE_ROLES.has(role) && !result.checked.length) {
+    return invalid("COMPLETED_WITHOUT_CHECKED_EVIDENCE");
   }
   return result;
 }
@@ -188,8 +253,10 @@ export function buildChildResult(input: {
       status: "blocked",
       summary: input.report.trim().slice(0, 600) || "aborted before finishing",
       findings: [],
+      checked: [],
       filesChanged: [],
       commands: [],
+      blockMissing: false,
       valid: true,
     };
   } else {
@@ -197,8 +264,10 @@ export function buildChildResult(input: {
       status: "failed",
       summary: (input.errorMessage ?? input.report).trim().slice(0, 600) || "failed",
       findings: [],
+      checked: [],
       filesChanged: [],
       commands: [],
+      blockMissing: false,
       valid: true,
     };
   }
@@ -212,7 +281,9 @@ export function renderChildResult(result: ChildResult): string {
     status: result.status,
     valid: result.valid,
     ...(result.invalidReason ? { invalidReason: result.invalidReason } : {}),
+    ...(result.verdict ? { verdict: result.verdict } : {}),
     summary: result.summary,
+    ...(result.checked.length ? { checked: result.checked } : {}),
     ...(result.filesChanged.length ? { filesChanged: result.filesChanged } : {}),
     ...(result.commands.length
       ? {

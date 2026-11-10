@@ -1,15 +1,16 @@
-import { useEffect, useLayoutEffect, useMemo, useRef } from "react";
+import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, type ReactNode, type RefObject } from "react";
 import { useTranslation } from "react-i18next";
 import { LuCircleAlert, LuInfo } from "react-icons/lu";
 import type { SubagentRun, TimelineItem, TimelineMessage } from "../api";
 import logo from "../assets/icon.png";
-import { AssistantMessage } from "./AssistantMessage";
+import { AssistantMessage, ThinkingRow } from "./AssistantMessage";
 import { AssistantStatusLine, type AssistantStatus } from "./AssistantStatusLine";
 import { CheckpointMarker } from "./CheckpointMarker";
 import { CompactionBanner } from "./CompactionBanner";
 import { MessageNavigator } from "./MessageNavigator";
 import { PromptSuggestion } from "./PromptSuggestion";
 import { Spinner } from "./ui/Spinner";
+import { ToolGroup } from "./ToolGroup";
 import { TaskToolRow } from "./TaskToolRow";
 import { ToolRow } from "./ToolRow";
 import { TurnChangesCard } from "./TurnChangesCard";
@@ -65,6 +66,7 @@ export function MessageList({
   preparingTool,
   loading,
   subagentsByCallId,
+  subagentsById,
   onOpenSubagent,
   onOpenFile,
   onRestoreCheckpoint,
@@ -75,6 +77,8 @@ export function MessageList({
   suggestion,
   onSuggestionUse,
   onSuggestionDismiss,
+  onScrolledAwayChange,
+  scrollApiRef,
 }: {
   items: TimelineItem[];
   canUse: boolean;
@@ -93,8 +97,14 @@ export function MessageList({
   } | null;
   /** 正在加载会话：时间线暂时为空时不渲染欢迎页，避免切换时闪烁 */
   loading?: boolean;
+  /** 消息流是否已滚离底部（用于显示「返回底部」按钮） */
+  onScrolledAwayChange?: (away: boolean) => void;
+  /** 暴露给宿主的滚动操作（返回底部） */
+  scrollApiRef?: RefObject<{ scrollToBottom: () => void } | null>;
   /** 主对话 task 工具行 → 子 Agent 状态（按 callId） */
   subagentsByCallId?: Record<string, SubagentRun>;
+  /** 续聊 task 行没有新 callId：按输入里的 agent_id 回落到原子 Agent */
+  subagentsById?: Record<string, SubagentRun>;
   onOpenSubagent?: (agentId: string) => void;
   /** read_file 工具行点击 → 右侧「文件」页签打开（不传则回落为展开输入/输出） */
   onOpenFile?: (path: string) => void;
@@ -116,6 +126,15 @@ export function MessageList({
   const { t } = useTranslation("chat");
   const scrollRef = useRef<HTMLDivElement>(null);
   const stickRef = useRef(true);
+  /** 上次上报的「是否滚离底部」，只在状态变化时通知宿主 */
+  const scrolledAwayRef = useRef(false);
+  const reportScrolledAway = (el: HTMLDivElement | null) => {
+    if (!el) return;
+    const away = el.scrollHeight - el.scrollTop - el.clientHeight > 200;
+    if (away === scrolledAwayRef.current) return;
+    scrolledAwayRef.current = away;
+    onScrolledAwayChange?.(away);
+  };
 
   /** 回合进行中才显示：具体进度 > 压缩 > 等你回答 > 思考中 > 等待模型响应 > 随机文案；回合结束隐藏。 */
   const statusLine = useMemo<{ visible: boolean; status: AssistantStatus | null }>(() => {
@@ -200,7 +219,38 @@ export function MessageList({
     const el = scrollRef.current;
     if (!el) return;
     stickRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+    reportScrolledAway(el);
   };
+
+  // 滚到底 / 切换会话后重新上报一次（内容变化导致滚动位置被重置时同步按钮显隐）
+  useLayoutEffect(() => {
+    reportScrolledAway(scrollRef.current);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [items]);
+
+  // 展开/折叠工具组会改变内容高度但不产生 scroll 事件：用 ResizeObserver 同步「是否离开底部」
+  useEffect(() => {
+    const el = scrollRef.current;
+    const inner = el?.firstElementChild;
+    if (!el || !(inner instanceof HTMLElement)) return;
+    const observer = new ResizeObserver(() => reportScrolledAway(el));
+    observer.observe(inner);
+    return () => observer.disconnect();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (!scrollApiRef) return;
+    scrollApiRef.current = {
+      scrollToBottom: () => {
+        const el = scrollRef.current;
+        if (el) el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+      },
+    };
+    return () => {
+      scrollApiRef.current = null;
+    };
+  }, [scrollApiRef]);
 
   // turn-info 不在流里平铺渲染，改由每轮末尾的 TurnInfoBar 承载
   const renderItem = (item: TimelineItem) =>
@@ -228,7 +278,18 @@ export function MessageList({
       />
     ) : item.kind === "tool" ? (
       (() => {
-        const agent = item.tool === "task" ? subagentsByCallId?.[item.callId] : undefined;
+        const args =
+          item.input && typeof item.input === "object" && !Array.isArray(item.input)
+            ? (item.input as Record<string, unknown>)
+            : {};
+        const resumeId =
+          item.tool === "task" && args.mode === "resume" && typeof args.agent_id === "string"
+            ? args.agent_id.trim()
+            : "";
+        const agent =
+          item.tool === "task"
+            ? (subagentsByCallId?.[item.callId] ?? (resumeId ? subagentsById?.[resumeId] : undefined))
+            : undefined;
         return agent && onOpenSubagent ? (
           <TaskToolRow key={item.key} item={item} agent={agent} onOpen={onOpenSubagent} />
         ) : (
@@ -269,13 +330,26 @@ export function MessageList({
         }
       />
     ) : (
-      <AssistantMessage
-        key={item.key}
-        content={item.content}
-        thinking={item.thinking}
-        messageIndex={item.messageIndex}
-        streaming={item.streaming}
-      />
+      <Fragment key={item.key}>
+        {/* 思考行与工具行同级：共用 turn-body 的工具行间距规则 */}
+        {item.thinking ? (
+          <ThinkingRow
+            key={`${item.key}:thinking`}
+            thinking={item.thinking}
+            thinkingMs={item.thinkingMs}
+            streaming={item.streaming}
+            messageIndex={item.messageIndex}
+          />
+        ) : null}
+        {item.content || !item.thinking ? (
+          <AssistantMessage
+            key={item.key}
+            content={item.content}
+            messageIndex={item.messageIndex}
+            streaming={item.streaming}
+          />
+        ) : null}
+      </Fragment>
     );
 
   return (
@@ -305,23 +379,67 @@ export function MessageList({
                 return (
                   <div className="mc-turn" key={turn[0]?.key ?? `turn-${turnIndex}`}>
                     <div className="mc-turn__body">
-                      {turn.map(renderItem)}
-                      {isLast && preparingTool ? (
-                        // 参数还在流式生成：先占一条工具行，明确告诉用户正在写入/修改文件
-                        <ToolRow
-                          key="__preparing_file__"
-                          item={{
+                      {(() => {
+                        // 只有模型输出正文才算「一轮」：正文之前的思考/工具行归入同一组，
+                        // 组头显示「执行工具 N 次，其中 X 次失败」，运行中展开、本轮结束后折叠。
+                        const nodes: ReactNode[] = [];
+                        let buffer: TimelineItem[] = [];
+                        const flush = () => {
+                          if (!buffer.length) return;
+                          nodes.push(
+                            <ToolGroup
+                              key={`group:${buffer[0].key}`}
+                              items={buffer}
+                              renderItem={renderItem}
+                              turnRunning={turnStartedAt != null}
+                            />,
+                          );
+                          buffer = [];
+                        };
+                        for (const item of turn) {
+                          const isText =
+                            item.kind === "message" &&
+                            item.role === "assistant" &&
+                            item.content.trim().length > 0;
+                          if (isText) {
+                            // 正文消息自带的思考行属于本轮工作，并入组内展示；
+                            // 正文本身作为轮边界单独渲染（分两个副本，避免重复 key 冲突）
+                            if (item.thinking) {
+                              buffer.push({ ...item, content: "" } as TimelineItem);
+                            }
+                            flush();
+                            nodes.push(
+                              renderItem(
+                                item.thinking
+                                  ? ({ ...item, thinking: undefined } as TimelineItem)
+                                  : item,
+                              ),
+                            );
+                          } else if (
+                            item.kind === "tool" ||
+                            (item.kind === "message" && item.role === "assistant")
+                          ) {
+                            buffer.push(item);
+                          } else {
+                            flush();
+                            nodes.push(renderItem(item));
+                          }
+                        }
+                        // 参数还在流式生成：把「写入中 / 修改中」占位行放回当前组，
+                        // 否则它会掉到组外，等 tool_started 再跳回组里
+                        if (isLast && preparingTool) {
+                          const target = preparingTool.path ?? preparingTool.fallbackPath;
+                          buffer.push({
                             kind: "tool",
                             key: "__preparing_file__",
                             callId: "__preparing_file__",
                             tool: preparingTool.tool,
-                            input: (() => {
-                              const target = preparingTool.path ?? preparingTool.fallbackPath;
-                              return target ? { path: target } : {};
-                            })(),
-                          }}
-                        />
-                      ) : null}
+                            input: target ? { path: target } : {},
+                          } as TimelineItem);
+                        }
+                        flush();
+                        return nodes;
+                      })()}
                     </div>
                     {info?.kind === "turn-info" ? (
                       <TurnInfoBar

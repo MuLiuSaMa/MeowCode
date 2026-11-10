@@ -1,5 +1,33 @@
 import { marked } from "marked";
 import DOMPurify from "dompurify";
+import type {
+  MailAccountSavePayload,
+  MailAccountSaveResult,
+  MailAccountTestPayload,
+  MailAccountTestResult,
+  MailAccountsResult,
+  MailAttachmentDownloadPayload,
+  MailAttachmentDownloadResult,
+  MailCounts,
+  MailDeletePayload,
+  MailDeleteResult,
+  MailDraft,
+  MailDraftSaveResult,
+  MailDraftsListResult,
+  MailEvent,
+  MailListPayload,
+  MailListResult,
+  MailMessagePayload,
+  MailMessageResult,
+  MailOutboxListResult,
+  MailOutboxResult,
+  MailPickAttachmentsResult,
+  MailSeenPayload,
+  MailSendPayload,
+  MailSendResult,
+  MailSyncPayload,
+  MailSyncResult,
+} from "./mail/types";
 
 export type SubagentStatus = "running" | "completed" | "failed" | "aborted" | "interrupted";
 
@@ -103,6 +131,8 @@ export type MeowEvent = {
   truncated?: boolean;
   /** 完整内容已落盘的相对路径 */
   spilled?: string;
+  /** assistant_delta / message_complete：思考时长（毫秒） */
+  thinkingMs?: number;
   ok?: boolean;
   delta?: string;
   text?: string;
@@ -147,6 +177,7 @@ export type MeowEvent = {
   command?: string;
   hookEvent?: string;
   matcher?: string;
+  /** approval_required / usage 事件：来源；usage 缺省 = 主对话 */
   source?: string;
   hookReason?: string;
   /** approval_required 事件：沙箱拒绝后的「沙箱外重试」审批 */
@@ -481,6 +512,8 @@ export type ChatMessage = {
   content: string | null;
   /** 模型思考过程（会话存档里有就带上） */
   reasoning?: string;
+  /** 思考时长（毫秒）：思考块右侧显示 */
+  thinkingMs?: number;
   tool_call_id?: string;
   name?: string;
   tool_calls?: unknown[];
@@ -633,6 +666,8 @@ export type Preferences = {
   language?: LanguagePreference;
   /** 用户可见回复的语色：默认 normal；切换走轻量通道，不重启 server */
   speechStyle?: SpeechStyle;
+  /** 输入框上方信息胶囊的收起时机：默认 commit（提交后消失） */
+  progressPillDismiss?: ProgressPillDismiss;
   /** 下次新建会话的默认工作区；切换走轻量通道，不重启 server */
   workspace?: string;
   /** 首次启动引导是否已完成 */
@@ -648,10 +683,14 @@ export type Preferences = {
   silentUpdate?: boolean;
   /** 系统通知：回合结束 / 需要审批 / 被中断且窗口不在前台时提示（默认开） */
   notifications?: boolean;
+  /** 标题栏公告：显示官方公告条（默认开） */
+  announcements?: boolean;
   /** AI 悬浮岛：屏幕顶部胶囊显示所有运行中会话状态（默认关） */
   floatingIsland?: boolean;
   /** 输入建议：回合结束后额外请求一次，预测下一句（默认关） */
   nextPromptSuggestions?: boolean;
+  /** 邮件「AI 写」使用的模型 id；空串 = 跟随聊天模型 */
+  mailAiProviderId?: string;
   /** Worktrees：创建前先 fetch 上游更新（默认关） */
   worktreeFetchUpstream?: boolean;
   /** Worktrees：自动清理旧 worktree（默认开） */
@@ -676,9 +715,24 @@ export type Preferences = {
   proxyMode?: ProxyMode;
   /** manual 模式下的代理地址，如 http://127.0.0.1:7890 */
   proxyUrl?: string;
+  /**
+   * 插件 UI 授权记忆（按插件 id 合并）：启用插件时弹授权，批准走轻量通道。
+   * 不能走 saveSettings —— 那条路会重启 agent server，把运行中的回合直接杀掉。
+   */
+  pluginApprovals?: Record<
+    string,
+    { version: string; permissions: PluginPermission[]; approvedAt: string; declined?: boolean }
+  >;
 };
 
 export type ProxyMode = "direct" | "system" | "manual";
+
+/**
+ * 输入框上方信息胶囊（步骤 x/y · n 个文件已修改）的收起时机：
+ * - commit：工作区还有未提交改动就一直显示，提交后自动收起（默认，旧行为）
+ * - turn-end：回合结束就收起，且下一轮要等新的步骤或改动才重新出现
+ */
+export type ProgressPillDismiss = "commit" | "turn-end";
 
 export type ProxyConfig = { mode: ProxyMode; url: string };
 
@@ -879,6 +933,8 @@ export type Settings = {
   language?: LanguagePreference;
   /** 用户可见回复的语色：默认 normal */
   speechStyle?: SpeechStyle;
+  /** 输入框上方信息胶囊的收起时机：commit = 提交后消失 / turn-end = 对话结束后消失 */
+  progressPillDismiss?: ProgressPillDismiss;
   /** 网络代理模式：direct / system / manual */
   proxyMode?: ProxyMode;
   /** manual 模式下的代理地址 */
@@ -894,7 +950,14 @@ export type Settings = {
   /** 已移除（侧栏隐藏）的项目 cwd 列表 */
   removedProjects?: string[];
   /** 插件启停：禁用的插件 id 列表（全局） */
-  plugins?: { disabled?: string[] };
+  plugins?: {
+    disabled?: string[];
+    /** 插件 UI 首次授权记录：按插件 id 存版本、权限与拒绝标记 */
+    approvals?: Record<
+      string,
+      { version: string; permissions: PluginPermission[]; approvedAt: string; declined?: boolean }
+    >;
+  };
   /** 会话回滚：文件快照开关（默认开；改后重启 agent server 生效） */
   rewindSnapshots?: boolean;
   /** 会话回滚：每会话保留的快照索引数滑窗（默认 120） */
@@ -913,10 +976,14 @@ export type Settings = {
   silentUpdate?: boolean;
   /** 系统通知：回合结束 / 需要审批 / 被中断且窗口不在前台时提示（缺省视为开启） */
   notifications?: boolean;
+  /** 标题栏公告：显示官方公告条（缺省视为开启） */
+  announcements?: boolean;
   /** AI 悬浮岛：屏幕顶部胶囊显示所有运行中会话状态（默认关） */
   floatingIsland?: boolean;
   /** 输入建议：回合结束后额外请求一次，预测下一句（默认关） */
   nextPromptSuggestions?: boolean;
+  /** 邮件「AI 写」使用的模型 id；空串 = 跟随聊天模型 */
+  mailAiProviderId?: string;
   /** Worktrees：创建前先 fetch 上游更新（默认关） */
   worktreeFetchUpstream?: boolean;
   /** Worktrees：自动清理旧 worktree（默认开） */
@@ -999,6 +1066,24 @@ export type OauthConnectPollResult =
 
 export type PluginSource = "project" | "user" | "builtin";
 
+export type PluginPermission =
+  | "tools"
+  | "hooks"
+  | "commands"
+  | "storage"
+  | "rpc"
+  | "ui"
+  | "prompt";
+
+export type PluginManifestView = {
+  id: string;
+  name?: string;
+  version: string;
+  apiVersion: 2;
+  permissions: PluginPermission[];
+  engines?: { meowcode?: string };
+};
+
 export type PluginDescriptor = {
   id: string;
   path: string;
@@ -1015,8 +1100,18 @@ export type PluginDescriptor = {
   description?: string;
   /** 内置插件图标 dataUrl（其他来源缺省，UI 回落市场图标表） */
   iconUrl?: string;
-  /** 插件自带面板（`<pluginDir>/ui/index.html`）：渲染层用 iframe 加载 */
-  ui?: { panel: { title: string; entry: string } };
+  version?: string;
+  manifest?: PluginManifestView;
+  /** AI 创作工具创建的插件：渲染层免二次授权 */
+  aiAuthored?: boolean;
+  /**
+   * 插件自带界面：panel（`ui/index.html` iframe）与 client（`ui/client.js` 槽位脚本）。
+   * 渲染层统一通过 `/plugin-ui/<id>/...` 取资源。
+   */
+  ui?: {
+    panel?: { title: string; entry: string };
+    client?: { entry: string; permissions: PluginPermission[] };
+  };
 };
 
 export type McpServerState = {
@@ -1040,6 +1135,66 @@ export async function listPlugins(): Promise<PluginsOverview> {
   return api<PluginsOverview>("/plugins");
 }
 
+/** 插件 UI → host 的命名空间 RPC；host 抛错时转成异常，调用方按插件错误展示。 */
+export async function pluginRpc<T = unknown>(
+  pluginId: string,
+  method: string,
+  args?: unknown,
+  sessionId?: string,
+): Promise<T> {
+  const response = await api<{ ok: boolean; result?: T; error?: string }>(
+    `/plugins/${encodeURIComponent(pluginId)}/rpc`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ method, args, ...(sessionId ? { sessionId } : {}) }),
+    },
+  );
+  if (!response.ok) throw new Error(response.error ?? "plugin rpc failed");
+  return response.result as T;
+}
+
+export async function pluginStorageGet<T = unknown>(
+  pluginId: string,
+  key: string,
+): Promise<T | undefined> {
+  const response = await api<{ ok: boolean; value?: T }>(
+    `/plugins/${encodeURIComponent(pluginId)}/storage?key=${encodeURIComponent(key)}`,
+  );
+  return response.value;
+}
+
+export async function pluginStorageSet(
+  pluginId: string,
+  key: string,
+  value: unknown,
+): Promise<void> {
+  await api(`/plugins/${encodeURIComponent(pluginId)}/storage`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ key, value }),
+  });
+}
+
+export async function pluginStorageDelete(pluginId: string, key: string): Promise<void> {
+  await api(`/plugins/${encodeURIComponent(pluginId)}/storage?key=${encodeURIComponent(key)}`, {
+    method: "DELETE",
+  });
+}
+
+/** 渲染层插件脚本加载/渲染失败：只上报，不阻断其他插件。 */
+export async function reportPluginUiError(
+  pluginId: string,
+  message: string,
+  slot?: string,
+): Promise<void> {
+  await api(`/plugins/${encodeURIComponent(pluginId)}/ui-error`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ message, ...(slot ? { slot } : {}) }),
+  }).catch(() => undefined);
+}
+
 export type InstalledSkill = {
   /** 技能目录名（市场图标 key：skill:<id>） */
   id: string;
@@ -1061,7 +1216,7 @@ export async function reloadPlugins(): Promise<PluginsOverview> {
   return api<PluginsOverview>("/plugins/reload", { method: "POST" });
 }
 
-/** 插件启停：写 settings.plugins.disabled 后主进程重启 agent server 生效 */
+/** 插件启停：写 settings.plugins.disabled 后热更新运行中的 server（不重启，不中断对话） */
 export async function setPluginsState(disabled: string[]): Promise<Settings> {
   return window.meow.setPluginsState({ disabled }) as Promise<Settings>;
 }
@@ -2072,6 +2227,8 @@ type TimelineMessage = {
   content: string;
   /** 思考过程（流式增量累加；会话回放时来自 message.reasoning） */
   thinking?: string;
+  /** 思考时长（毫秒）：思考块右侧显示（实时来自事件，回放来自消息存档） */
+  thinkingMs?: number;
   streaming?: boolean;
   /** 用户消息附带的图片（仅本进程内存，重载会话后不再保留） */
   images?: TimelineImage[];
@@ -2655,4 +2812,113 @@ export async function openAutomationSession(sessionId: string): Promise<void> {
 
 export function onAutomationsChanged(listener: (list: Automation[]) => void): () => void {
   return window.meow.onAutomationsChanged(listener);
+}
+
+// ---- 邮箱聚合 ----
+
+export async function mailAccounts(): Promise<MailAccountsResult> {
+  return window.meow.mailAccountsList();
+}
+
+export async function mailSaveAccount(payload: MailAccountSavePayload): Promise<MailAccountSaveResult> {
+  return window.meow.mailAccountSave(payload);
+}
+
+export async function mailRemoveAccount(accountId: string): Promise<{ ok: boolean }> {
+  return window.meow.mailAccountRemove(accountId);
+}
+
+export async function mailTestAccount(payload: MailAccountTestPayload): Promise<MailAccountTestResult> {
+  return window.meow.mailAccountTest(payload);
+}
+
+export async function mailSync(payload: MailSyncPayload): Promise<MailSyncResult> {
+  return window.meow.mailSync(payload);
+}
+
+export async function mailCounts(accountId: string): Promise<MailCounts> {
+  return window.meow.mailCounts(accountId);
+}
+
+export async function mailList(payload: MailListPayload): Promise<MailListResult> {
+  return window.meow.mailList(payload);
+}
+
+export async function mailMessage(payload: MailMessagePayload): Promise<MailMessageResult> {
+  return window.meow.mailMessage(payload);
+}
+
+export async function mailSetSeen(payload: MailSeenPayload): Promise<{ ok: boolean; code?: string; detail?: string }> {
+  return window.meow.mailSetSeen(payload);
+}
+
+export async function mailDelete(payload: MailDeletePayload): Promise<MailDeleteResult> {
+  return window.meow.mailDelete(payload);
+}
+
+export async function mailDownloadAttachment(
+  payload: MailAttachmentDownloadPayload,
+): Promise<MailAttachmentDownloadResult> {
+  return window.meow.mailDownloadAttachment(payload);
+}
+
+export async function mailPickAttachments(): Promise<MailPickAttachmentsResult> {
+  return window.meow.mailPickAttachments();
+}
+
+export async function mailDrafts(accountId: string): Promise<MailDraftsListResult> {
+  return window.meow.mailDraftsList(accountId);
+}
+
+export async function mailSaveDraft(
+  draft: Partial<MailDraft> & { accountId: string },
+): Promise<MailDraftSaveResult> {
+  return window.meow.mailDraftSave({ draft });
+}
+
+export async function mailDeleteDraft(id: string): Promise<{ ok: boolean }> {
+  return window.meow.mailDraftDelete(id);
+}
+
+export async function mailSend(payload: MailSendPayload): Promise<MailSendResult> {
+  return window.meow.mailSend(payload);
+}
+
+export async function mailOutbox(accountId: string): Promise<MailOutboxListResult> {
+  return window.meow.mailOutboxList(accountId);
+}
+
+export async function mailRetryOutbox(id: string): Promise<MailOutboxResult> {
+  return window.meow.mailOutboxRetry(id);
+}
+
+export async function mailRemoveOutbox(id: string): Promise<MailOutboxResult> {
+  return window.meow.mailOutboxDelete(id);
+}
+
+export function onMailEvent(listener: (event: MailEvent) => void): () => void {
+  return window.meow.onMailEvent?.(listener) ?? (() => {});
+}
+
+export type MailAiComposePayload = {
+  mode: "new" | "reply" | "forward";
+  instruction?: string;
+  to?: string;
+  subject?: string;
+  original?: string;
+  draft?: string;
+  /** 发件人身份，供模型正确署名 */
+  from?: { name?: string; email?: string };
+  /** 指定模型；缺省 = 跟随聊天当前激活模型 */
+  providerId?: string;
+};
+
+/** 写信页「AI 写」：由 agent server 使用当前激活的模型生成正文。 */
+export async function composeMailWithAi(payload: MailAiComposePayload): Promise<string> {
+  const result = await api<{ text: string }>("/mail/compose", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  return result.text;
 }

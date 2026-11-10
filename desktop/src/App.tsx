@@ -66,6 +66,9 @@ import {
   shouldRecommendCompaction,
 } from "./api";
 import { setModelProfiles, type ModelProfile } from "./modelProfiles";
+import { PluginPage } from "./plugins/PluginPage";
+import { PluginPageNav } from "./plugins/PluginPageNav";
+import { PluginRuntimeProvider, usePluginSlot } from "./plugins/runtime";
 import { AppShell } from "./components/AppShell";
 import { GlobalTooltip } from "./components/ui/GlobalTooltip";
 import { ApprovalDialog } from "./components/ApprovalDialog";
@@ -99,6 +102,9 @@ import { MarketplaceNav, type MarketTab } from "./components/marketplace/Marketp
 import { MarketplaceBody } from "./components/marketplace/MarketplaceBody";
 import { AutomationNav } from "./components/automation/AutomationNav";
 import { AutomationPage } from "./components/automation/AutomationPage";
+import { MailNav } from "./components/mail/MailNav";
+import { MailPage } from "./components/mail/MailPage";
+import { MailProvider } from "./components/mail/MailProvider";
 import { Onboarding } from "./components/onboarding/Onboarding";
 import { TitleBar } from "./components/TitleBar";
 import { Toast } from "./components/Toast";
@@ -131,11 +137,14 @@ import {
   totalsFromServer,
   type UsageSample,
 } from "./usage-meter";
+import { reconcileProviderEcho } from "./provider-save";
 import i18n from "./i18n";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 
-type View = "chat" | "settings" | "plugins" | "architecture" | "git" | "automation";
+type CoreView = "chat" | "settings" | "plugins" | "architecture" | "git" | "automation" | "mail";
+/** 插件页面：plugin:<pluginId>:<pageId> */
+type View = CoreView | `plugin:${string}`;
 const REPO_URL = "https://github.com/MuLiuSaMa/MeowCode";
 
 /**
@@ -342,7 +351,8 @@ function trackResizeCursor(event: ReactPointerEvent<HTMLDivElement>) {
 }
 
 export default function App() {
-  const { t } = useTranslation("shell");
+  const { t, i18n } = useTranslation("shell");
+  const pluginPages = usePluginSlot("pages");
   const [ready, setReady] = useState(false);
   /** 启动画面至少展示约 1 秒，避免数据秒回时 Logo 一闪而过 */
   const [splashDone, setSplashDone] = useState(false);
@@ -374,6 +384,9 @@ export default function App() {
   /** 当前会话标题：AI 生成（session_title 事件）或手动设置；null = 还没生成 */
   const [sessionTitle, setSessionTitle] = useState<string | null>(null);
   const [plan, setPlan] = useState<PlanState | null>(null);
+  /** 消息流滚动操作（返回底部按钮用）与「已滚离底部」状态 */
+  const chatScrollApiRef = useRef<{ scrollToBottom: () => void } | null>(null);
+  const [chatScrolledAway, setChatScrolledAway] = useState(false);
   /** 输入框悬浮胶囊：本会话已修改文件（只取统计，不含 diff；渲染前按 git status 过滤已提交） */
   const [sessionChanges, setSessionChanges] = useState<SessionChangeSummary[]>([]);
   /** 回合结束后预测的下一句：显示在对话末尾，点击填入输入框 */
@@ -385,6 +398,11 @@ export default function App() {
   const starPromptHandledRef = useRef(false);
   /** 右上角工作区概览：默认收起，子 Agent 启动时自动展开 */
   const [workspaceOverviewOpen, setWorkspaceOverviewOpen] = useState(false);
+  /**
+   * agent 后台任务终端：只在概览卡片里列出，点开才在右侧面板建页签。
+   * 关掉页签不会杀 PTY，命令继续跑；要停得用卡片里的「停止」。
+   */
+  const [jobTerminals, setJobTerminals] = useState<Array<{ id: string; command: string }>>([]);
   const sessionIdRef = useRef<string | null>(null);
   const changesRefreshTimer = useRef<number | null>(null);
   const changesRequestSeq = useRef(0);
@@ -618,6 +636,14 @@ export default function App() {
     setQueuedPrompts(items);
   }, []);
   const [view, setView] = useState<View>("chat");
+  // 插件被停用/卸载后，停留在它的页面要自动退回对话
+  useEffect(() => {
+    if (!view.startsWith("plugin:")) return;
+    const alive = pluginPages.some(
+      (page) => `plugin:${page.pluginId}:${page.entry.id}` === view,
+    );
+    if (!alive) setView("chat");
+  }, [view, pluginPages]);
   const [settingsSection, setSettingsSection] = useState<SettingsSectionId>("general");
   const [architectureAgentId, setArchitectureAgentId] = useState<string | null>(null);
   const [architectureAgents, setArchitectureAgents] = useState<HarnessAgentEntry[]>([]);
@@ -701,6 +727,21 @@ export default function App() {
     sideTabsRef.current = sideTabs;
   });
 
+  /** 点「运行中的终端」里的一条：这时才在右侧面板开终端页签（叉掉页签不杀进程，条目仍在） */
+  const openJobTerminalById = useCallback(
+    (termId: string, command: string) => {
+      sideTabs.openJobTerminal(termId, command);
+      setShowInspector(true);
+    },
+    [sideTabs],
+  );
+
+  /** 停止终端：杀掉 PTY 并从列表移除；关页签不杀进程，只有这里会停 */
+  const stopJobTerminal = useCallback(async (termId: string) => {
+    setJobTerminals((current) => current.filter((item) => item.id !== termId));
+    await window.meow.termKill(termId).catch(() => undefined);
+  }, []);
+
   /** 浏览器 host 的建页签 / 激活指令：自动展开检查器并切到 agent 浏览器页签 */
   useEffect(() => {
     const offEnsure = window.meow.onEnsureBrowserTab(({ url }) => {
@@ -711,15 +752,42 @@ export default function App() {
       sideTabsRef.current.activate(tabId);
       setShowInspector(true);
     });
-    // agent 启动后台任务：打开（或复用）对应终端页签，用户可直接接管输入
+    /** agent 启动后台任务：只在概览卡片里登记，不再自动开右侧终端页签 */
     const offJob = window.meow.onEnsureJobTab(({ id, command }) => {
-      sideTabsRef.current.openJobTerminal(id, command);
-      setShowInspector(true);
+      setJobTerminals((current) => {
+        const existing = current.find((item) => item.id === id);
+        if (existing) {
+          return current.map((item) =>
+            item.id === id ? { ...item, command: command || item.command } : item,
+          );
+        }
+        return [...current, { id, command }];
+      });
     });
+    // 任务进程退出（命令跑完 / 被 Ctrl+C 中断 / 被停掉）：从「运行中的终端」里移除；
+    // 缓冲还会保留 5 分钟供智能体读退出码与最后输出，不在这里展示。
+    const offExit = window.meow.onTermExit(({ id }) => {
+      setJobTerminals((current) => current.filter((item) => item.id !== id));
+    });
+    // 窗口重载（开发态 HMR）后 PTY 还在主进程里活着，但事件已经错过了：补一次全量
+    void window.meow
+      .termList()
+      .then((sessions) => {
+        const running = sessions
+          .filter((session) => session.command && !session.exited)
+          .map((session) => ({ id: session.id, command: session.command ?? "" }));
+        if (!running.length) return;
+        setJobTerminals((current) => {
+          const seen = new Set(current.map((item) => item.id));
+          return [...current, ...running.filter((item) => !seen.has(item.id))];
+        });
+      })
+      .catch(() => undefined);
     return () => {
       offEnsure();
       offSelect();
       offJob();
+      offExit();
     };
   }, []);
 
@@ -1101,10 +1169,16 @@ export default function App() {
   /** 按会话的运行状态版本：当前会话自己的事件才让它的队列/压缩状态回填失效 */
   const sessionRunVersionsRef = useRef<Record<string, number>>({});
   /**
-   * 正在落盘的模型列表改动。增删模型要重启 agent server（模型列表走 env 传给子进程），
-   * 这段时间里新模型对 server 还不存在 —— 切模型前先等它落地，否则 PUT /session/model 会 400。
+   * 正在落盘/推送的模型列表改动。新模型要等这次保存完成才对 server 可见 ——
+   * 切模型前先等它落地，否则 PUT /session/model 会 400。
    */
   const providersSaveRef = useRef<Promise<boolean> | null>(null);
+  /**
+   * 模型列表的「代」：每次本地变更 providers 都 +1。
+   * 落盘回执是异步的，旧回执带着旧列表回来时必须丢弃，
+   * 否则会把用户刚删掉的模型又写回界面。
+   */
+  const providersEpochRef = useRef(0);
   const [appInfo, setAppInfo] = useState<AppInfo | null>(null);
   const [themePreference, setThemePreference] = useState<ThemePreference>("system");
   /**
@@ -1128,6 +1202,13 @@ export default function App() {
   const providers = useMemo(() => settings?.providers ?? [], [settings]);
   /** 当前生效的工作区：优先跟随会话 cwd，没有会话时用设置里的工作区 */
   const activeWorkspace = session?.cwd ?? settings?.workspace;
+  /** 插件槽位拿到的明暗：system 跟系统偏好，其余直接用用户选择 */
+  const pluginTheme: "light" | "dark" =
+    themePreference === "system"
+      ? window.matchMedia?.("(prefers-color-scheme: dark)")?.matches
+        ? "dark"
+        : "light"
+      : themePreference;
   /** 当前项目目录：worktree 会话归回原项目，避免侧栏把它当成新项目 */
   const projectCwd = session?.worktree?.sourceCwd ?? session?.cwd ?? settings?.workspace;
   /** 标题栏第二行：worktree 会话显示「项目 · 分支」，悬停给完整 worktree 路径 */
@@ -1215,6 +1296,14 @@ export default function App() {
     }
     return map;
   }, [subagentRuns, session?.id]);
+  /** 续聊 task 行没有新 callId，按 agent_id 回落到原子 Agent */
+  const subagentsById = useMemo(() => {
+    const map: Record<string, SubagentRun> = {};
+    for (const run of Object.values(subagentRuns)) {
+      if (run.parentSessionId === session?.id) map[run.agentId] = run;
+    }
+    return map;
+  }, [subagentRuns, session?.id]);
   const preferences = useMemo<Preferences>(
     () => ({
       theme: settings?.theme ?? "system",
@@ -1222,10 +1311,13 @@ export default function App() {
       closeAction: settings?.closeAction ?? "ask",
       language: settings?.language ?? "system",
       speechStyle: settings?.speechStyle ?? "normal",
+      progressPillDismiss: settings?.progressPillDismiss ?? "commit",
       silentUpdate: settings?.silentUpdate ?? true,
       notifications: settings?.notifications ?? true,
+      announcements: settings?.announcements ?? true,
       floatingIsland: settings?.floatingIsland ?? false,
       nextPromptSuggestions: settings?.nextPromptSuggestions ?? false,
+      mailAiProviderId: settings?.mailAiProviderId ?? "",
       worktreeFetchUpstream: settings?.worktreeFetchUpstream ?? false,
       worktreeAutoCleanup: settings?.worktreeAutoCleanup ?? true,
       worktreeMaxKeep: settings?.worktreeMaxKeep ?? 15,
@@ -1240,10 +1332,13 @@ export default function App() {
       settings?.closeAction,
       settings?.language,
       settings?.speechStyle,
+      settings?.progressPillDismiss,
       settings?.silentUpdate,
       settings?.notifications,
+      settings?.announcements,
       settings?.floatingIsland,
       settings?.nextPromptSuggestions,
+      settings?.mailAiProviderId,
       settings?.worktreeFetchUpstream,
       settings?.worktreeAutoCleanup,
       settings?.worktreeMaxKeep,
@@ -1574,6 +1669,35 @@ export default function App() {
     [sessionChanges, workspaceGitStatus, session?.cwd, settings?.workspace],
   );
   const [gitBranchOpen, setGitBranchOpen] = useState(false);
+
+  /**
+   * 输入框上方信息胶囊的收起状态（设置「对话结束后消失」模式）：
+   * 回合结束就收起，并且下一轮开始时不会把上一轮的内容再拿回来——只有新一轮真的更新了
+   * 步骤 / 改动（内容签名变了）才重新出现。
+   */
+  const progressPillDismiss = settings?.progressPillDismiss ?? "commit";
+  const progressPillSignature = useMemo(
+    () =>
+      JSON.stringify({
+        steps: (plan?.steps ?? []).map((step) => [step.title, step.status]),
+        files: uncommittedSessionChanges.map((item) => [item.path, item.added, item.removed]),
+      }),
+    [plan?.steps, uncommittedSessionChanges],
+  );
+  /** 收起那一刻的内容签名：内容还是这一套就一直不显示 */
+  const [dismissedPillSignature, setDismissedPillSignature] = useState<string | null>(null);
+  useEffect(() => {
+    if (progressPillDismiss !== "turn-end") {
+      setDismissedPillSignature(null);
+      return;
+    }
+    // 回合进行中不记：等回合结束那一刻拍快照（含结尾几次 file_changed 的后续更新）
+    if (streaming) return;
+    setDismissedPillSignature(progressPillSignature);
+  }, [progressPillDismiss, progressPillSignature, streaming]);
+  const progressPillDismissed =
+    progressPillDismiss === "turn-end" &&
+    (!streaming || progressPillSignature === dismissedPillSignature);
 
   /**
    * 更新（GitCode releases）：检查到新版本后可以下载安装包并打开安装程序。
@@ -2489,16 +2613,30 @@ export default function App() {
         }
         case "assistant_delta": {
           const last = next.at(-1);
+          const thinkingMs = event.thinkingMs;
           if (last?.kind === "message" && last.role === "assistant" && last.streaming) {
-            next[next.length - 1] = { ...last, content: last.content + (event.delta ?? "") };
+            next[next.length - 1] = {
+              ...last,
+              content: last.content + (event.delta ?? ""),
+              ...(thinkingMs !== undefined ? { thinkingMs } : {}),
+            };
           } else {
             next.push({
               kind: "message",
               key: nextKey("assistant"),
               role: "assistant",
               content: event.delta ?? "",
+              ...(thinkingMs !== undefined ? { thinkingMs } : {}),
               streaming: true,
             });
+          }
+          break;
+        }
+        case "thinking_complete": {
+          // 只有工具调用的轮次没有正文增量：思考时长在消息落盘时补一个事件
+          const last = next.at(-1);
+          if (last?.kind === "message" && last.role === "assistant") {
+            next[next.length - 1] = { ...last, thinkingMs: event.thinkingMs };
           }
           break;
         }
@@ -2510,6 +2648,7 @@ export default function App() {
               content: event.text ?? last.content,
               // 思考流已经累加在 item.thinking 里；complete 事件带回的全文优先（会话重连等场景）
               thinking: event.reasoning ?? last.thinking,
+              ...(event.thinkingMs !== undefined ? { thinkingMs: event.thinkingMs } : {}),
               streaming: false,
             };
           } else {
@@ -2519,6 +2658,7 @@ export default function App() {
               role: "assistant",
               content: event.text ?? "",
               thinking: event.reasoning,
+              ...(event.thinkingMs !== undefined ? { thinkingMs: event.thinkingMs } : {}),
             });
           }
           break;
@@ -2686,20 +2826,24 @@ export default function App() {
       void refreshContextUsage();
     }
     if (event.type === "usage") {
+      // 旁路请求（如 provider 原生联网搜索）只进会话总量，不覆盖主对话的上下文圆圈/速度曲线
+      const isChat = event.source === undefined || event.source === "chat";
       // 真实 inputTokens 到达即更新圆圈，不用再拉一次接口；
       // 分类明细沿用上一次接口结果（回合结束会重拉刷新），没有就置零
-      setContextUsage((prev) => {
-        if (!event.inputTokens) return prev;
-        const contextWindow = prev?.contextWindow ?? null;
-        return {
-          contextWindow,
-          usedTokens: event.inputTokens,
-          source: "usage",
-          breakdown: prev?.breakdown ?? { system: 0, tools: 0, skills: 0, messages: 0, other: 0 },
-          skillCount: prev?.skillCount,
-          recommendedCompaction: shouldRecommendCompaction(event.inputTokens, contextWindow),
-        };
-      });
+      if (isChat) {
+        setContextUsage((prev) => {
+          if (!event.inputTokens) return prev;
+          const contextWindow = prev?.contextWindow ?? null;
+          return {
+            contextWindow,
+            usedTokens: event.inputTokens,
+            source: "usage",
+            breakdown: prev?.breakdown ?? { system: 0, tools: 0, skills: 0, messages: 0, other: 0 },
+            skillCount: prev?.skillCount,
+            recommendedCompaction: shouldRecommendCompaction(event.inputTokens, contextWindow),
+          };
+        });
+      }
       // 响应统计：流中会多次上报同一轮，按 roundId 替换样本后派生累计
       const totals = updateUsageSample(event);
       const now = performance.now();
@@ -2707,34 +2851,36 @@ export default function App() {
       const roundOutput = typeof event.outputTokens === "number" ? event.outputTokens : null;
       // 生成速度实时曲线：同一 roundId 原地替换（流中输出在增长），撤回则删点。
       // 起点是当轮首个流式增量（与下方 turnMetrics 的 final 结算同口径）。
-      if (event.retracted) {
-        const retractedId = event.roundId;
-        if (retractedId) {
-          setSpeedSamples((prev) => prev.filter((sample) => sample.roundId !== retractedId));
-        }
-      } else if (event.roundId && roundOutput != null && roundOutput > 0 && roundStart != null) {
-        const elapsed = (now - roundStart) / 1000;
-        if (elapsed >= 0.05) {
-          const roundId = event.roundId;
-          const point: SpeedSample = { roundId, tokensPerSecond: roundOutput / elapsed };
-          setSpeedSamples((prev) => {
-            const index = prev.findIndex((sample) => sample.roundId === roundId);
-            const next =
-              index >= 0
-                ? [...prev.slice(0, index), point, ...prev.slice(index + 1)]
-                : [...prev, point];
-            return next.length > 30 ? next.slice(-30) : next;
-          });
+      if (isChat) {
+        if (event.retracted) {
+          const retractedId = event.roundId;
+          if (retractedId) {
+            setSpeedSamples((prev) => prev.filter((sample) => sample.roundId !== retractedId));
+          }
+        } else if (event.roundId && roundOutput != null && roundOutput > 0 && roundStart != null) {
+          const elapsed = (now - roundStart) / 1000;
+          if (elapsed >= 0.05) {
+            const roundId = event.roundId;
+            const point: SpeedSample = { roundId, tokensPerSecond: roundOutput / elapsed };
+            setSpeedSamples((prev) => {
+              const index = prev.findIndex((sample) => sample.roundId === roundId);
+              const next =
+                index >= 0
+                  ? [...prev.slice(0, index), point, ...prev.slice(index + 1)]
+                  : [...prev, point];
+              return next.length > 30 ? next.slice(-30) : next;
+            });
+          }
         }
       }
       // 速度只在最终真值上结算：实时样本提前清掉起点会把本轮速度算到下一轮头上
       const final = event.final === true;
-      const seconds = final && roundStart != null ? (now - roundStart) / 1000 : 0;
+      const seconds = final && isChat && roundStart != null ? (now - roundStart) / 1000 : 0;
       const speed =
-        final && roundOutput != null && roundOutput > 0 && seconds >= 0.05
+        final && isChat && roundOutput != null && roundOutput > 0 && seconds >= 0.05
           ? roundOutput / seconds
           : null;
-      if (final) roundFirstTokenAtRef.current = null;
+      if (final && isChat) roundFirstTokenAtRef.current = null;
       setTurnMetrics((prev) => {
         const base = prev ?? EMPTY_TURN_METRICS;
         return {
@@ -2747,9 +2893,9 @@ export default function App() {
           cacheHitRate: hitRate(totals),
         };
       });
-      // 缓存诊断（只在最终真值上结算）：本轮读/写给弹层，状态/原因与失配计数进聚合。
+      // 缓存诊断（只在主对话最终真值上结算）：本轮读/写给弹层，状态/原因与失配计数进聚合。
       // bust 基线按模型分：换模型后的读数跌落是冷启动，不算失配。
-      if (final) {
+      if (final && isChat) {
         const sample = event.roundId ? usageSamplesRef.current.get(event.roundId) : undefined;
         const read = sample?.cacheReported ? sample.cacheRead : null;
         const write = sample?.cacheWrite ?? null;
@@ -3338,6 +3484,20 @@ export default function App() {
     if (nextNotifications !== undefined) {
       setSettings((prev) => (prev ? { ...prev, notifications: nextNotifications } : prev));
     }
+    // 公告开关同理：点一下立刻收起/显示公告条，落盘失败再回滚
+    const nextAnnouncements = prefs.announcements;
+    const previousAnnouncements = settings?.announcements ?? true;
+    if (nextAnnouncements !== undefined) {
+      setSettings((prev) => (prev ? { ...prev, announcements: nextAnnouncements } : prev));
+    }
+    // 邮件 AI 模型：下拉立即显示新选择，不等 IPC 回执
+    const nextMailAiProviderId = prefs.mailAiProviderId;
+    const previousMailAiProviderId = settings?.mailAiProviderId ?? "";
+    if (nextMailAiProviderId !== undefined) {
+      setSettings((prev) =>
+        prev ? { ...prev, mailAiProviderId: nextMailAiProviderId } : prev,
+      );
+    }
     try {
       const saved = await window.meow.savePreferences(prefs);
       setSettings((prev) =>
@@ -3349,6 +3509,7 @@ export default function App() {
               closeAction: saved?.closeAction ?? prev.closeAction,
               language: saved?.language ?? prev.language,
               speechStyle: saved?.speechStyle ?? prev.speechStyle,
+              progressPillDismiss: saved?.progressPillDismiss ?? prev.progressPillDismiss,
               onboardingCompleted: saved?.onboardingCompleted ?? prev.onboardingCompleted,
               silentUpdate: typeof saved?.silentUpdate === "boolean" ? saved.silentUpdate : prev.silentUpdate,
               notifications:
@@ -3361,6 +3522,10 @@ export default function App() {
                 typeof saved?.nextPromptSuggestions === "boolean"
                   ? saved.nextPromptSuggestions
                   : prev.nextPromptSuggestions,
+              mailAiProviderId:
+                typeof saved?.mailAiProviderId === "string"
+                  ? saved.mailAiProviderId
+                  : nextMailAiProviderId ?? prev.mailAiProviderId,
               worktreeFetchUpstream:
                 typeof saved?.worktreeFetchUpstream === "boolean"
                   ? saved.worktreeFetchUpstream
@@ -3413,11 +3578,26 @@ export default function App() {
       if (nextNotifications !== undefined) {
         setSettings((prev) => (prev ? { ...prev, notifications: previousNotifications } : prev));
       }
+      if (nextAnnouncements !== undefined) {
+        setSettings((prev) => (prev ? { ...prev, announcements: previousAnnouncements } : prev));
+      }
+      if (nextMailAiProviderId !== undefined) {
+        setSettings((prev) =>
+          prev ? { ...prev, mailAiProviderId: previousMailAiProviderId } : prev,
+        );
+      }
       if (prefs.palette !== undefined) setThemePalette(previousPalette);
       pushError(err instanceof Error ? err.message : String(err));
       return false;
     }
-  }, [pushError, settings?.speechStyle, settings?.notifications, settings?.palette]);
+  }, [
+    pushError,
+    settings?.speechStyle,
+    settings?.notifications,
+    settings?.announcements,
+    settings?.palette,
+    settings?.mailAiProviderId,
+  ]);
 
   // ---- 界面字体（外观设置）：导入的自定义字体注册成 @font-face，选中字体写进 --font-app ----
 
@@ -4091,9 +4271,8 @@ export default function App() {
 
   /**
    * 保存模型列表（增删改 / 启用开关）。
-   * 走 saveSettings —— 会重启 agent server，因为模型列表要进 MEOWCODE_PROVIDERS 环境变量。
-   * 重启期间 stopServer 优雅退出最多要 3 秒，所以**先把新列表落到 UI** 再等落盘，
-   * 否则点完「添加/删除」列表要愣一两秒才变（用户感知成「卡住了」）。
+   * 走 saveProviders（轻量 IPC）：只写盘 + 热更新运行中的 server，不重启进程、不杀会话。
+   * 仍然先把新列表落到 UI，避免等落盘回执时列表愣一下。
    */
   const saveProviders = useCallback(
     (nextProviders: ProviderSettings[], nextActiveId?: string): Promise<boolean> => {
@@ -4112,13 +4291,35 @@ export default function App() {
       };
       // 乐观更新：列表、模型胶囊立即反映改动
       setSettings(nextSettings);
+      // 每次模型列表变更都推进一代：落盘是异步的，期间用户再删一个模型就会产生
+      // 两次并发的保存。旧那次的回执里带着旧列表，
+      // 无条件 setSettings(saved) 会把刚删掉的模型又放回界面（磁盘其实是对的，
+      // 于是表现为「删掉过一会又出现了」）。只有最新一代的回执才允许写回。
+      const epoch = (providersEpochRef.current += 1);
+      // 串行化：避免两次保存同时写盘 / 推送
+      const gate = providersSaveRef.current ?? Promise.resolve(true);
       const run = (async () => {
+        await gate.catch(() => undefined);
         try {
-          const saved = await window.meow.saveSettings(nextSettings);
-          setSettings(saved);
+          const saved = await window.meow.saveProviders({
+            providers: nextSettings.providers ?? [],
+            providerId: nextSettings.providerId,
+          });
+          // 回执里的模型集合以本次提交为准：主进程若因为读到旧文件/备份而回来一份
+          // 旧列表，用户刚删掉的模型就会「过一会又出现」。对账规则见 provider-save.ts。
+          const echo = reconcileProviderEcho({
+            saved: { providers: saved.providers, providerId: saved.providerId },
+            submitted: { providers: nextSettings.providers, providerId: nextSettings.providerId },
+          });
+          const reconciled: Settings = {
+            ...saved,
+            providers: echo.providers ?? nextSettings.providers,
+            providerId: echo.providerId,
+          };
+          if (providersEpochRef.current === epoch) setSettings(reconciled);
           return true;
         } catch (err) {
-          setSettings(previous);
+          if (providersEpochRef.current === epoch) setSettings(previous);
           pushError(err instanceof Error ? err.message : String(err));
           return false;
         }
@@ -4150,12 +4351,14 @@ export default function App() {
       const previous = settings;
       // 开关先落 UI，再在后台落盘 + 热切换；失败回滚
       setSettings({ ...settings, providers: nextProviders, providerId: activeId });
+      // 与保存在的同一个代里：期间如果删了模型，这次回执里的旧列表不能覆盖界面
+      const epoch = (providersEpochRef.current += 1);
       try {
         const saved = await window.meow.saveProviderPrefs({
           providers: [{ id: providerId, enabled }],
           ...(activeId && activeId !== settings.providerId ? { providerId: activeId } : {}),
         });
-        setSettings(saved);
+        if (providersEpochRef.current === epoch) setSettings(saved);
         if (activeId && activeId !== settings.providerId) {
           await api("/session/model", {
             method: "PUT",
@@ -4163,7 +4366,7 @@ export default function App() {
           });
         }
       } catch (err) {
-        setSettings(previous);
+        if (providersEpochRef.current === epoch) setSettings(previous);
         pushError(err instanceof Error ? err.message : String(err));
       }
     },
@@ -4674,7 +4877,32 @@ export default function App() {
     >
       {/* 接管全应用 title 提示，统一换成自绘气泡（不弹原生 tooltip） */}
       <GlobalTooltip />
+      <PluginRuntimeProvider
+        actions={{
+          sendPrompt: (text) => sendPrompt(text),
+          insertComposerText: (text) => setInput(text),
+          openPanel: (pluginId) => {
+            sideTabs.open({ kind: "plugin", pluginId, title: pluginId });
+            setView("chat");
+          },
+          toast: showToast,
+          openExternal: async (url) => {
+            await window.meow?.openExternal?.(url);
+          },
+          openView: (next) => setView(next as View),
+          showChat: () => setView("chat"),
+        }}
+        state={{
+          sessionId: session?.id,
+          workspace: activeWorkspace,
+          theme: pluginTheme,
+          locale: i18n.language,
+          view,
+        }}
+      >
+      <MailProvider onToast={showToast} aiProviderId={preferences.mailAiProviderId ?? ""}>
       <AppShell
+        announcements={settings?.announcements ?? true}
         listWidth={listWidthLive.current}
         listColRef={listColRef}
         listResizer={
@@ -4691,21 +4919,11 @@ export default function App() {
         }
         rail={
           <Rail
-            active={
-              view === "settings"
-                ? "settings"
-                : view === "plugins"
-                  ? "plugins"
-                  : view === "architecture"
-                    ? "architecture"
-                    : view === "git"
-                      ? "git"
-                      : view === "automation"
-                        ? "automation"
-                        : "home"
-            }
+            view={view}
             onHome={() => setView("chat")}
+            onOpenView={(next) => setView(next as View)}
             onOpenGit={() => setView("git")}
+            onOpenMail={() => setView("mail")}
             onOpenPlugins={() => setView("plugins")}
             onOpenSettings={() => setView("settings")}
             onOpenArchitecture={() => setView("architecture")}
@@ -4728,8 +4946,10 @@ export default function App() {
           />
         }
         conversations={
-          /* 设置/市场/Git 管理视图：对应导航栏取代对话列表的槽位 */
-          view === "git" ? (
+          /* 设置/市场/Git/插件页面视图：对应导航栏取代对话列表的槽位 */
+          view.startsWith("plugin:") ? (
+            <PluginPageNav view={view} onOpen={(next) => setView(next as View)} />
+          ) : view === "git" ? (
             <GitNav git={git} onOpenBranches={() => setGitBranchOpen(true)} />
           ) : view === "settings" ? (
             <SettingsNav section={settingsSection} onSection={setSettingsSection} />
@@ -4751,6 +4971,8 @@ export default function App() {
             />
           ) : view === "automation" ? (
             <AutomationNav />
+          ) : view === "mail" ? (
+            <MailNav />
           ) : (
             <ConversationPanel
               sessions={sessions}
@@ -4855,6 +5077,9 @@ export default function App() {
             inspectorOpen={showInspector}
             onToggleInspector={toggleInspector}
             onOpenSearch={() => setSearchOpen(true)}
+            {...(session?.id ? { sessionId: session.id } : {})}
+            running={streaming}
+            mode={chatMode}
             overview={
               <WorkspaceOverview
                 status={workspaceGitStatus}
@@ -4867,6 +5092,9 @@ export default function App() {
                   closeWorkspaceOverview();
                 }}
                 onOpenSubagent={openSubagentById}
+                terminals={jobTerminals}
+                onOpenTerminal={openJobTerminalById}
+                onStopTerminal={(termId) => void stopJobTerminal(termId)}
               />
             }
           />
@@ -4908,6 +5136,8 @@ export default function App() {
           >
             <MessageList
               items={timeline}
+              scrollApiRef={chatScrollApiRef}
+              onScrolledAwayChange={setChatScrolledAway}
               canUse={canUse}
               waiting={waiting}
               turnStartedAt={turnStartedAt}
@@ -4915,6 +5145,7 @@ export default function App() {
               preparingTool={preparingTool}
               loading={sessionLoading}
               subagentsByCallId={subagentsByCallId}
+              subagentsById={subagentsById}
               onOpenSubagent={openSubagentById}
               onOpenFile={(path) => {
                 sideTabs.openFile(path);
@@ -5022,6 +5253,9 @@ export default function App() {
               onRemoveProject={removeProject}
               plan={plan}
               changes={uncommittedSessionChanges}
+              pillDismissed={progressPillDismissed}
+              showJumpBottom={chatScrolledAway}
+              onJumpBottom={() => chatScrollApiRef.current?.scrollToBottom()}
             />
             {emptyConversation ? (
               <EmptySuggestions
@@ -5061,6 +5295,15 @@ export default function App() {
           onClose={() => setUpdateOpen(false)}
         />
 
+        {view.startsWith("plugin:") ? (
+          <PluginPage
+            view={view}
+            {...(session?.id ? { sessionId: session.id } : {})}
+            {...(activeWorkspace ? { workspace: activeWorkspace } : {})}
+            onShowChat={() => setView("chat")}
+          />
+        ) : null}
+
         {view === "settings" ? (
           <SettingsBody
             section={settingsSection}
@@ -5070,6 +5313,8 @@ export default function App() {
             appInfo={appInfo}
             providers={providers}
             activeProviderId={activeProviderId}
+            mailAiProviderId={preferences.mailAiProviderId ?? ""}
+            onChangeMailAiProvider={(id) => void savePreferences({ mailAiProviderId: id })}
             effort={activeProvider?.reasoningEffort ?? ""}
             turnRunning={runningSessionIds.length > 0}
             sessions={sessions}
@@ -5151,7 +5396,11 @@ export default function App() {
         {view === "automation" ? (
           <AutomationPage workspace={settings?.workspace ?? null} projects={projects} />
         ) : null}
+
+        {view === "mail" ? <MailPage /> : null}
       </AppShell>
+      </MailProvider>
+      </PluginRuntimeProvider>
 
       {starPromptOpen ? (
         <StarPrompt onAccept={acceptStarPrompt} onDismiss={dismissStarPrompt} />

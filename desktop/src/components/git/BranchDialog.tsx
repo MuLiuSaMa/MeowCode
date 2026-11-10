@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { LuCheck, LuGitBranch, LuLoaderCircle } from "react-icons/lu";
+import { Checkbox } from "../ui/Checkbox";
 import { Dialog } from "../ui/Dialog";
 import type { GitView } from "../../git/useGitView";
 import "./git.css";
@@ -115,14 +116,19 @@ export function BranchDialog({
       </div>
 
       <div className="mc-gitdlg__options">
-        <label className="mc-gitdlg__check">
-          <input type="checkbox" checked={stash} onChange={(event) => setStash(event.target.checked)} />
-          {t("branch.stash")}
-        </label>
-        <label className="mc-gitdlg__check" data-danger={force ? "true" : undefined}>
-          <input type="checkbox" checked={force} onChange={(event) => setForce(event.target.checked)} />
-          {t("branch.force")}
-        </label>
+        <Checkbox
+          className="mc-gitdlg__check"
+          checked={stash}
+          onChange={setStash}
+          label={t("branch.stash")}
+        />
+        <Checkbox
+          className="mc-gitdlg__check"
+          checked={force}
+          onChange={setForce}
+          label={t("branch.force")}
+          danger={force}
+        />
       </div>
 
       <div className="mc-gitdlg__newbranch">

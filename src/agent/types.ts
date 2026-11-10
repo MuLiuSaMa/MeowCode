@@ -22,8 +22,36 @@ export type SubagentStatus = "running" | "completed" | "failed" | "aborted" | "i
 /** 前缀缓存诊断状态：warm 命中 / cold 首次写入或前缀变化 / evicted 疑似逐出 / unsupported 不支持 / unknown 未报告 */
 export type CacheState = "warm" | "cold" | "evicted" | "unsupported" | "unknown";
 
-/** 工具目录重建原因（缓存安全边界） */
-export type ToolCatalogReason = "session" | "compaction" | "profile" | "plugin_reload";
+/**
+ * 服务端 context editing（Anthropic `clear_tool_uses_20250919`）。
+ *
+ * 客户端照常发完整历史，由服务端在处理前把「更早的工具结果」清掉：
+ * 被清掉的部分不按输入计费，而我们不用改写任何本地历史 —— 这正是它比
+ * 本地 microcompact 强的地方（本地改写会让前缀缓存从改动点起失效）。
+ */
+export type ContextEditing = {
+  /** 输入达到这个 token 数才动手 */
+  triggerTokens: number;
+  /** 保留最近多少次工具调用（更早的才可清） */
+  keepToolUses: number;
+  /** 一次至少清掉这么多 token，避免每轮都动一点、把缓存切碎 */
+  clearAtLeastTokens?: number;
+};
+
+/**
+ * 工具目录重建原因（缓存安全边界）。
+ * cold_resume = 服务端前缀缓存已确定过期（空闲超过 TTL），整段本来就要按全价重写，
+ * 顺手把延后的删除/改写一起应用，不额外付缓存代价。
+ */
+export type ToolCatalogReason =
+  | "session"
+  | "compaction"
+  | "profile"
+  | "plugin_reload"
+  | "providers"
+  | "cold_resume"
+  /** 回合边界：目录里有下线的工具在继续被广告，宁可吃一次前缀重建也要撤下 */
+  | "turn_boundary";
 
 /**
  * 子 Agent 角色（metis 式角色注册表的键）：每个角色在 agent-definition.ts
@@ -78,8 +106,21 @@ export type MeowEvent = AgentEventMeta &
     }
   /** 模型思考内容（reasoning/thinking）的流式增量，先于正文 delta */
   | { type: "thinking_delta"; sessionId: string; delta: string }
-  | { type: "assistant_delta"; sessionId: string; delta: string }
-  | { type: "message_complete"; sessionId: string; text: string; reasoning?: string }
+  | {
+      type: "assistant_delta";
+      sessionId: string;
+      delta: string;
+      /** 思考刚结束、首个正文增量时携带一次：思考过程块右侧显示时长 */
+      thinkingMs?: number;
+    }
+  | {
+      type: "message_complete";
+      sessionId: string;
+      text: string;
+      reasoning?: string;
+      thinkingMs?: number;
+    }
+  | { type: "thinking_complete"; sessionId: string; thinkingMs: number }
   | { type: "tool_started"; sessionId: string; callId: string; tool: string; input: unknown }
   | {
       type: "tool_output";
@@ -89,6 +130,8 @@ export type MeowEvent = AgentEventMeta &
       truncated: boolean;
       /** 完整内容已落盘时的相对路径（UI 显示「已落盘」） */
       spilled?: string;
+      /** 工具返回的图片（截图类）：UI 工具行展开可见，模型侧走 tool 消息 */
+      images?: ToolImage[];
     }
   | { type: "tool_finished"; sessionId: string; callId: string; ok: boolean }
   | {
@@ -178,6 +221,8 @@ export type MeowEvent = AgentEventMeta &
       retracted?: boolean;
       /** 实际应答的模型名（前端 cache-bust 检测按模型分基线） */
       model?: string;
+      /** 调用来源：主对话 / 后台工具旁路等；缺省 = 主对话（兼容旧事件） */
+      source?: UsageSource;
       /** 本次调用总输入（含缓存读/写） */
       inputTokens?: number;
       outputTokens?: number;
@@ -556,6 +601,8 @@ export type ChatMessage =
       content: string | null;
       /** 模型思考过程（reasoning_content / thinking），仅存档展示，不回传给服务商 */
       reasoning?: string;
+      /** 思考时长（毫秒）：首个思考增量 → 首个正文增量（没有正文则在消息落盘时结算），仅存档展示 */
+      thinkingMs?: number;
       /** Anthropic 原生 thinking 块（含签名）；只在开启 thinking 的请求里回灌 */
       anthropic_thinking?: AnthropicThinkingBlock[];
       tool_calls?: ToolCall[];
@@ -646,6 +693,8 @@ export type ToolDocument = {
   mimeType: string;
   /** 展示名（通常是文件名），Anthropic / Responses 都会带上 */
   name: string;
+  /** 页数：仅用于上下文估算，不下发给服务商 */
+  pages?: number;
 };
 
 /**
@@ -1246,6 +1295,14 @@ export type SessionEntry =
        * 旧会话数据缺省视为 0（与旧行为一致：只保留摘要之后的消息）。
        */
       keepRecentMessages?: number;
+      /**
+       * 保留段里从第几条开始**继续携带** thinking 块（之前的一律在重放时剥掉）。
+       *
+       * 压缩边界是唯一可以安全改写历史的时刻：整段前缀本来就要重写，此刻把旧回合的
+       * thinking 一次性剥掉不额外付缓存代价；留在上下文里却会永久占窗口，把下一次
+       * 压缩的触发点整体前移。缺省视为 0 = 不剥（旧会话行为不变）。
+       */
+      thinkingKeepFromRetained?: number;
     }
   | {
       /**
@@ -1267,7 +1324,7 @@ export type SessionEntry =
       parentId: string | null;
       timestamp: string;
       /** plugin = context_inject hook 注入（会话日志 schema v2 内向后兼容） */
-      source: "plan" | "file" | "subagent" | "workflow" | "plugin";
+      source: "plan" | "file" | "subagent" | "workflow" | "plugin" | "style";
       content: string;
     }
   | {

@@ -25,6 +25,8 @@ export type PluginSystem = {
   descriptors(): PluginDescriptor[];
   errors(): NonNullable<LoadPluginsResult["errors"]>;
   mcpErrors(): string[];
+  /** 更新禁用列表（运行中热生效，不重启 server） */
+  setDisabled(disabled: readonly string[]): void;
   /** 重载：清空全部插件注册 → 重新发现加载 → 按需重连 MCP（运行中回合不受影响） */
   reload(options?: { restartMcp?: boolean }): Promise<LoadPluginsResult>;
   dispose(): Promise<void>;
@@ -49,7 +51,9 @@ export type CreatePluginSystemOptions = {
 export async function createPluginSystem(options: CreatePluginSystemOptions): Promise<PluginSystem> {
   const registry = new PluginRegistry();
   const mcp = new McpManager();
-  let last = await loadPlugins({ ...options, registry });
+  /** 运行期可变的禁用列表：desktop 启停插件走 /plugins/disabled，不再重启 server */
+  let disabled = [...(options.disabled ?? [])];
+  let last = await loadPlugins({ ...options, disabled, registry });
 
   const mcpConfig = await readMcpConfig(options);
   let currentMcpServers = mcpConfig.servers;
@@ -76,9 +80,12 @@ export async function createPluginSystem(options: CreatePluginSystemOptions): Pr
     descriptors: () => last.descriptors,
     errors: () => last.errors,
     mcpErrors: () => currentMcpErrors,
+    setDisabled: (next: readonly string[]): void => {
+      disabled = [...next];
+    },
     reload: async (reloadOptions?: { restartMcp?: boolean }): Promise<LoadPluginsResult> => {
       registry.unregisterAll();
-      last = await loadPlugins({ ...options, registry });
+      last = await loadPlugins({ ...options, disabled, registry });
       const nextMcp = await readMcpConfig(options);
       currentMcpErrors = nextMcp.errors;
       // 插件安装/卸载只改 plugins/，没必要重连全部 MCP（npx 启动很慢）；

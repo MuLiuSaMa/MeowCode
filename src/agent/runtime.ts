@@ -19,6 +19,7 @@ import {
   stripReferenceHeader,
 } from "./file-mentions.js";
 import {
+  instructionSourceSignature,
   loadWorkspaceInstructionsDetail,
   type InstructionSettings,
 } from "./instructions.js";
@@ -50,7 +51,7 @@ import {
   setAppDataRoot,
 } from "./paths.js";
 import { captureVersion } from "./read-state.js";
-import { LoopGuard } from "./loop-guard.js";
+import { LoopGuard, type ReadCoverageSnapshot } from "./loop-guard.js";
 import { SessionStore, listSessions, sessionFileName, type SessionSummary } from "./session-store.js";
 import { SnapshotStore, type SnapshotTarget } from "./snapshot-store.js";
 import { recoverSession } from "./session-recovery.js";
@@ -95,12 +96,21 @@ import { browserToolDefinitions, executeBrowserTool, isBrowserTool } from "./bro
 import { streamChatCompletion, utilityProvider } from "./provider.js";
 import {
   sessionAffinityKey,
+  isOfficialAnthropicEndpoint,
+  isOfficialOpenAIEndpoint,
   resolveCachePlan,
   supportsLineageAffinity,
 } from "./cache-profile.js";
-import { classifyCache, TTL_MS, type CacheState } from "./cache-diagnostics.js";
+import {
+  classifyCache,
+  diffPrefix,
+  prefixChangeSegments,
+  TTL_MS,
+  type CacheState,
+  type PrefixSnapshot,
+} from "./cache-diagnostics.js";
 import { createToolCatalog, reconcileToolCatalog, type ToolCatalog } from "./tool-catalog.js";
-import { failoverReason, planFallbacks } from "./provider-fallback.js";
+import { FAILOVER_WALL_CLOCK_MS, failoverReason, planFallbacks } from "./provider-fallback.js";
 import { boostEffort } from "./thinking-budget.js";
 import { projectForMainPath, projectForRequest } from "./request-projection.js";
 import { SUGGESTION_SYSTEM_PROMPT, SUGGESTION_USER_PROMPT, usableSuggestion } from "./prompt-suggestion.js";
@@ -115,15 +125,18 @@ import {
   clampOutputTokens,
   compactionTriggerTokens,
   estimateContextTokens,
+  estimateMessageTokens,
   estimateMessagesTokens,
   estimateTokens,
   estimateToolDefinitionsTokens,
+  PromptTooLargeError,
   shouldRecommendCompaction,
   shrinkToolOutputs,
   trimMessages,
   type ContextUsageAnchor,
   type MessageBreakdown,
 } from "./context.js";
+import { CONTEXT_SAFETY_TOKENS } from "./output-budget.js";
 import {
   runAgentLoop,
   type AgentLoopHost,
@@ -131,9 +144,10 @@ import {
   type AgentStreamOptions,
   type ToolResultMessage,
 } from "./agent-loop.js";
-import { AGENT_ROLE_HINTS, definitionFor, isAgentRole } from "./agent-definition.js";
+import { AGENT_ROLE_HINTS, definitionFor, isAgentRole, roleDeniesTool } from "./agent-definition.js";
 import {
   BASE_SYSTEM_PROMPT,
+  MAX_BACKGROUND_SUBAGENTS,
   agentProfileFor,
   normalizeAgentProfile,
   profileAllowsTool,
@@ -161,6 +175,7 @@ import {
   type ApprovalDecision,
   type ApprovalRememberScope,
   type ChatMessage,
+  type ContextEditing,
   type CommandRisk,
   type CommandRiskCategory,
   type MeowEvent,
@@ -182,6 +197,7 @@ import {
   type ToolResult,
   type TurnFileChangeStat,
   type TurnStatus,
+  type UsageSource,
   type UsageSummary,
 } from "./types.js";
 import type { SandboxDenial } from "./sandbox/types.js";
@@ -193,6 +209,32 @@ export { BASE_SYSTEM_PROMPT };
 
 const PLAN_CONTEXT_PREFIX = "Runtime context: current task plan";
 const MODE_NOTE_PREFIX = "Runtime context: [mode]";
+
+/**
+ * 语色注记：以前语色是第 3 条 system，运行中切换会改变 system 条数，
+ * 让 tools 之后整段前缀失效（OpenAI 上整段 instructions 变）。改成 in-history
+ * 注记后切换只追加一条，前缀字节不变。
+ */
+const SPEECH_STYLE_PREFIX = "Runtime context: [speech style]";
+
+/**
+ * fork 契约：子 Agent 复制父历史后追加在尾部（不动前缀），只约束交互方式。
+ * 语色沿用父对话，是预期行为，不在这里中和。
+ */
+const FORK_CONTRACT_NOTE =
+  "Runtime context: [fork] You are a fork of the main conversation. You cannot ask the user questions; return a report instead. Keep the parent's speech style.";
+
+/** 历史里最后一条语色注记；没有注记按 normal 处理（只看最近 30 条，被压缩挤掉就重挂）。 */
+function lastSpeechStyleFrom(messages: ChatMessage[]): string {
+  for (let index = messages.length - 1; index >= 0 && index >= messages.length - 30; index -= 1) {
+    const message = messages[index];
+    if (message.role !== "user" || typeof message.content !== "string") continue;
+    if (!message.content.startsWith(SPEECH_STYLE_PREFIX)) continue;
+    const match = /\[speech style\]\s+(\S+)/.exec(message.content);
+    return match?.[1] ?? "normal";
+  }
+  return "normal";
+}
 const SUBAGENT_PARENT_GOAL_MAX_CHARS = 1500;
 
 /** 计划快照文本：工具结果与压缩后的上下文 note 共用同一渲染。 */
@@ -273,6 +315,18 @@ const GOAL_MODE_PROMPT = `Goal mode is active for this session. Keep working aut
 Start by calling admit to declare the task shape (T0 trivial / T1 single lane / T2 parallel lanes); mutating tools stay gated until then. Record the steps with update_plan and keep that plan current.
 Work lane by lane: implement (yourself or via an implementer subagent), then close every gate in the order your architecture graph defines, dispatching exactly the role each gate names (G4 implement → G5 review → G6 verification, plus the extra gates your graph adds). Never weaken a failing test — a regression is a signal.
 Stop only when every lane has passed G6 (the run completes itself), or you are blocked on a decision that truly needs the user. When stopping, state what is done, what remains, and what you need.`;
+
+/** 连续 N 次文件变更没有更新计划 → 轮间提醒一次（每再涨 N 次再提醒） */
+const PLAN_NUDGE_STEP = 4;
+/** 计入「计划新鲜度」的文件变更工具 */
+const PLAN_MUTATION_TOOLS = new Set([
+  "write_file",
+  "edit_file",
+  "multi_edit",
+  "apply_patch",
+  "delete_file",
+  "move_file",
+]);
 
 const APPROVAL_TOOLS = new Set([
   "write_file",
@@ -604,6 +658,16 @@ type WarmupCompaction = {
  * 阈值本身由 compactionTriggerTokens 计算：在比值之外还要减掉输出预留 + headroom
  * （开源同类都这么做），否则小窗口上 80% 就已经没有输出的余地。
  */
+/**
+ * 服务端 context editing 的门槛与参数（仅实验开关下启用）：
+ * 越过窗口 75% 才武装；保留最近 3 次工具调用；一次至少清 20k token。
+ * 默认关闭：keep「最近 3 次」会让清理边界随每个新 tool_use 前移，边界之后的
+ * messages 每轮重写；本地压缩（80%/85%）已经兜住溢出。
+ */
+const CONTEXT_EDITING_TRIGGER_RATIO = 0.75;
+const CONTEXT_EDITING_KEEP_TOOL_USES = 3;
+const CONTEXT_EDITING_CLEAR_AT_LEAST_TOKENS = 20_000;
+
 const COMPACTION_WARMUP_RATIO = 0.8;
 /** 总量硬闸：按窗口比值算，不随预留口径移动（codex 的全窗守卫同款纪律）。 */
 const COMPACTION_WARMUP_MAX_RATIO = 0.95;
@@ -650,6 +714,8 @@ const IDLE_COMPACTION_MIN_RATIO = 0.6;
  * 参考 ZCode 的 MAX_CONSECUTIVE_AUTOCOMPACT_FAILURES。
  */
 const COMPACTION_FAILURE_LIMIT = 3;
+/** 摘要连续失败 / 连续压不下去后的冷却时间：冷却期内溢出直接零模型兜底。 */
+const COMPACTION_COOLDOWN_MS = 600_000;
 const SHRINK_SPILL_MAP_MAX = 400;
 
 /**
@@ -909,8 +975,13 @@ export class AgentRuntime {
   private pendingUsageRoundId: string | null = null;
 
   /** 流中实时样本：只发事件，不落盘、不动 usageAnchor（这些仍归 recordUsage）。 */
-  private emitUsageSample(session: SessionStore, roundId: string, usage: TokenUsage): void {
-    this.emit({ type: "usage", sessionId: session.id, roundId, ...usage });
+  private emitUsageSample(
+    session: SessionStore,
+    roundId: string,
+    usage: TokenUsage,
+    source: UsageSource = "chat",
+  ): void {
+    this.emit({ type: "usage", sessionId: session.id, roundId, source, ...usage });
   }
 
   /** 放弃上一轮未提交的样本（模型重试、回合被中止）。 */
@@ -971,11 +1042,17 @@ export class AgentRuntime {
   private compactingSession = false;
   /** 输入建议请求：新回合/切会话时中止，避免晚到的结果覆盖新草稿 */
   private suggestionAbort: AbortController | null = null;
+  /** 服务端 context editing 已武装（粘滞到压缩/新会话）：避免阈值附近开关抖动。 */
+  private contextEditingArmed = false;
   /** 实验开关（默认全关），见 constructor options.experimental */
   private experimental: {
     midstreamToolExec?: boolean;
     incrementalResponses?: boolean;
     nativeCompaction?: boolean;
+    /** 服务端 clear_tool_uses：默认关，见 contextEditingFor 的说明 */
+    contextEditing?: boolean;
+    /** fork 继承父 system/instructions 以复用前缀缓存；默认开，置 false 回退旧行为 */
+    forkPrefixReuse?: boolean;
   } | null = null;
   /**
    * 治理层（metis 式 admission + gate 状态机）。只有根 runtime 驱动它：
@@ -984,8 +1061,14 @@ export class AgentRuntime {
    */
   private readonly governance: GovernanceMode;
   private workflow = new WorkflowRuntime();
-  /** 连续变更类工具没更新 update_plan 的计数：达 8 次在轮间注入提醒 */
+  /** 连续文件变更没更新 update_plan 的计数（所有会话都算，不只治理模式） */
   private mutationsSincePlanCheck = 0;
+  /** 上次注入计划提醒时的计数：再涨 PLAN_NUDGE_STEP 次才提醒下一次 */
+  private planNudgeAt = 0;
+  /** 本轮思考计时：首个 thinking_delta 开始，到首个正文增量（没有正文则在消息落盘时结算） */
+  private thinkingStartedAt: number | null = null;
+  /** 本轮思考时长（毫秒）：只算一次，后续事件与落盘复用 */
+  private thinkingMs: number | null = null;
   /**
    * 流中提前执行的只读工具（实验开关 midstreamToolExec）：参数闭合即启动执行，
    * 结果等分派阶段按原序落盘。按 callId 幂等，回合开始时清空。
@@ -1016,6 +1099,11 @@ export class AgentRuntime {
   private warmupCompaction: WarmupCompaction | null = null;
   /** 连续预热失败计数：达到上限后本会话不再预热，避免失败请求反复烧 token */
   private warmupFailures = 0;
+  /** 摘要失败后的冷却截止：连续 2 次失败进 600s，避免每轮白烧全量输入。 */
+  private compactionCooldownUntil = 0;
+  private compactionFailureStreak = 0;
+  /** 摘要成功但占用仍 ≥80% 的无效压缩次数；连续 2 次进冷却。 */
+  private ineffectiveCompactions = 0;
   /** 当前回合 id：工具/审批事件与 partial 检查点都挂在它下面 */
   private currentTurnId: string | null = null;
   /** 流式回答的临时检查点；正常落 assistant 消息后丢弃，异常时补成半截回答 */
@@ -1069,6 +1157,8 @@ export class AgentRuntime {
   }) => void | Promise<void>;
   /** 工具白名单：Explore 子 Agent 只挂只读工具 */
   private allowedTools: Set<string> | null;
+  /** 禁止 run_code 宿主写桥（验证类角色：能跑命令、不能改文件） */
+  private denyHostWrites = false;
   /** 插件注册表（server 启动时注入；null = 未启用插件系统，hook 直通） */
   private plugins: PluginRegistry | null;
   /** 子 Agent 标识：hook payload 的 agent_id/agent_type 与 SubagentStop 判定 */
@@ -1168,8 +1258,10 @@ export class AgentRuntime {
   private dynamicToolBudgetWarned = false;
   /** MCP 工具注册完成只等一次：就绪前不发首个模型请求，避免工具中途追加整段重算 */
   private mcpWaited = false;
-  /** AGENTS.md 会话级快照：每个会话只读一次，中途修改不生效（重开会话重新加载） */
+  /** AGENTS.md 快照归属的会话 id；配合 instructionsSignature 判定是否需要重读 */
   private instructionsSessionId: string | null = null;
+  /** 上次读到的指令源指纹（AGENTS.md / CLAUDE.md / 规则目录的 mtime+size） */
+  private instructionsSignature = "";
   /** MCP 就绪信号：由 server 注入 plugins.mcpReady；缺省跳过等待 */
   private readonly mcpReady: Promise<void> | null;
   /** 会话级工具目录快照：新增立即追加，删除/改写延后到缓存安全边界 */
@@ -1177,7 +1269,10 @@ export class AgentRuntime {
   /** 原始工具表缓存：只有目录输入（动态版本 / 档位 / provider 等）变化才重建 */
   private rawToolsCache: { key: string; tools: ToolDefinition[] } | null = null;
   /** 每个 provider 上一次请求的前缀指纹与时间：缓存诊断用 */
-  private providerRequestMeta = new Map<string, { key: string; at: number }>();
+  private providerRequestMeta = new Map<
+    string,
+    { key: string; at: number; snapshot: PrefixSnapshot }
+  >();
   /** 本次请求的前缀信息（stream 前置记录，recordUsage 消费） */
   private currentRequest: {
     providerId: string;
@@ -1185,6 +1280,8 @@ export class AgentRuntime {
     samePrefix: boolean;
     hadPrevious: boolean;
     idleMs: number;
+    /** 前缀变化落在哪几段（tools / system_count / system[i]）；空表示无从归因 */
+    changedSegments: string[];
   } | null = null;
   /** 每个会话+provider 已提示过的缓存状态，避免重复提醒 */
   private emittedCacheStates = new Map<string, CacheState>();
@@ -1207,6 +1304,11 @@ export class AgentRuntime {
     sessionPace?: "interactive" | "machine";
     systemPrompt?: string;
     allowedTools?: Iterable<string>;
+    /**
+     * 禁止 run_code 的宿主写桥（meow.write / edit / multiEdit / delete / move）。
+     * 验证类角色（verifier / fresh-verifier）用它：能跑命令，但不能改文件。
+     */
+    denyHostWrites?: boolean;
     injectInstructions?: boolean;
     instructionSettings?: InstructionSettings;
     /** 内置技能根：server 传入 MEOWCODE_MARKETPLACE_DIR/builtin-skills；缺省不加载 */
@@ -1221,6 +1323,8 @@ export class AgentRuntime {
       midstreamToolExec?: boolean;
       incrementalResponses?: boolean;
       nativeCompaction?: boolean;
+      contextEditing?: boolean;
+      forkPrefixReuse?: boolean;
     };
     /** 插件注册表（server 级单例）：null/缺省 = 未启用插件系统，hook 直通、无动态工具 */
     plugins?: PluginRegistry | null;
@@ -1274,6 +1378,7 @@ export class AgentRuntime {
     this.systemPrompt = options.systemPrompt ?? BASE_SYSTEM_PROMPT;
     this.customSystemPrompt = options.systemPrompt !== undefined;
     this.allowedTools = options.allowedTools ? new Set(options.allowedTools) : null;
+    this.denyHostWrites = options.denyHostWrites === true;
     this.injectInstructions = options.injectInstructions ?? true;
     this.instructionSettings = options.instructionSettings ?? {};
     this.builtinSkillsDir = options.builtinSkillsDir;
@@ -1461,6 +1566,17 @@ export class AgentRuntime {
       resolve: resolveWait,
       settled: false,
     });
+    // 回合中止即结算：审批 Promise 不响应 abort 时，任何一条漏掉
+    // settlePendingApprovals 的路径都会让 runTurn 永远挂着。
+    const signal = this.turnAbort?.signal;
+    const onAbort = () => {
+      this.settleApproval(details.callId, { approved: false }, "abort");
+    };
+    if (signal) {
+      if (signal.aborted) onAbort();
+      else signal.addEventListener("abort", onAbort, { once: true });
+      wait.finally(() => signal.removeEventListener("abort", onAbort)).catch(() => undefined);
+    }
     this.emit({ type: "approval_required", ...details });
     return {
       wait,
@@ -1934,7 +2050,9 @@ export class AgentRuntime {
     if (this.enableTaskTool) {
       base = base.map((definition) => {
         if (definition.function.name !== "task") return definition;
-        return this.withSubagentRoles(this.withSubagentProviderHint(definition));
+        return this.withSubagentRoles(
+          this.withSubagentBudgetHint(this.withSubagentProviderHint(definition)),
+        );
       });
     }
     // 插件 / MCP 动态工具：同样受 allowedTools 白名单约束（Explore 子 Agent 只挂只读工具）
@@ -2004,6 +2122,20 @@ export class AgentRuntime {
     this.lastPrefixChangeReason = reason;
   }
 
+  /**
+   * 回合边界：目录里有已下线或已改写的工具时立刻重建。
+   *
+   * `reconcileToolCatalog` 为了保前缀缓存，把删除与改写一直延后，等一个「缓存
+   * 反正要重写」的边界。但代码里原本没有任何回合级触发点——停用 MCP server 之后，
+   * 模型仍会对着已经不存在的工具反复调用，然后拿到一个莫名其妙的错误。
+   * 一次前缀重建远比一轮错误的工具调用便宜。
+   */
+  private rebuildToolCatalogAtTurnBoundary(): void {
+    const catalog = this.ensureToolCatalog();
+    if (!catalog.delta.removed.length && !catalog.delta.rewritten.length) return;
+    this.rebuildToolCatalog("turn_boundary");
+  }
+
   /** 把可选 provider / 思考强度写进 task 工具描述，让主模型能按子任务选择更快的模型。 */
   private withSubagentProviderHint(definition: ToolDefinition): ToolDefinition {
     const options = this.providers
@@ -2021,6 +2153,22 @@ export class AgentRuntime {
       function: {
         ...definition.function,
         description: `${definition.function.description} Optional subagent providers: ${options}. Use provider/reasoning_effort only when a faster or different model is clearly better.`,
+      },
+    };
+  }
+
+  /**
+   * 把本档的每回合子 Agent 预算写进 task 描述：模型要按整个回合规划派发，
+   * 而不是看到上限数字后再按“每批”理解。
+   */
+  private withSubagentBudgetHint(definition: ToolDefinition): ToolDefinition {
+    const max = this.activeProfile.maxSubagents;
+    const unit = max === 1 ? "subagent start" : "subagent starts";
+    return {
+      ...definition,
+      function: {
+        ...definition.function,
+        description: `${definition.function.description} This session allows at most ${max} ${unit} per user turn, counted across the whole turn (background: at most ${MAX_BACKGROUND_SUBAGENTS} at once). Calls over the cap are rejected — do not exceed it.`,
       },
     };
   }
@@ -2217,6 +2365,7 @@ export class AgentRuntime {
     }
     this.currentSession = session;
     this.usageAnchor = null;
+    this.contextEditingArmed = false;
     this.cancelIdleTimers(); // 换会话：旧保活计时器作废
     // 新会话 = 缓存本来就是冷的：工具目录整体重建，顺带应用所有延后的删除/改写。
     this.toolCatalog = null;
@@ -2227,6 +2376,9 @@ export class AgentRuntime {
     this.lastPrefixChangeReason = null;
     this.cancelWarmupCompaction();
     this.warmupFailures = 0;
+    this.compactionCooldownUntil = 0;
+    this.compactionFailureStreak = 0;
+    this.ineffectiveCompactions = 0;
     this.approvalMode = "auto";
     // 新会话没有模式记录：显式回到 default，避免沿用上一个会话的 plan/goal
     this.chatMode = "default";
@@ -2241,6 +2393,8 @@ export class AgentRuntime {
     this.currentTurnId = null;
     this.partialDraft = null;
     this.loopGuard.clearReadVersions();
+    // 同一会话的落盘快照可能仍然成立（文件没变）：恢复它，省掉重启后的整段重读
+    await this.restoreReadCoverage(session);
     // 压缩基线与熔断计数都是「当前会话」的状态：切走必须清掉，
     // 否则会把 compaction_quality 写进新会话，或让新会话继承旧会话的熔断。
     this.compactionQuality = null;
@@ -2294,6 +2448,7 @@ export class AgentRuntime {
     }
     this.currentSession = session;
     this.usageAnchor = null;
+    this.contextEditingArmed = false;
     this.cancelIdleTimers(); // 换会话：旧保活计时器作废
     // 新会话 = 缓存本来就是冷的：工具目录整体重建，顺带应用所有延后的删除/改写。
     this.toolCatalog = null;
@@ -2304,6 +2459,9 @@ export class AgentRuntime {
     this.lastPrefixChangeReason = null;
     this.cancelWarmupCompaction();
     this.warmupFailures = 0;
+    this.compactionCooldownUntil = 0;
+    this.compactionFailureStreak = 0;
+    this.ineffectiveCompactions = 0;
     this.approvalMode = "auto";
     this.promptQueue = [];
     this.pendingSteers = [];
@@ -2312,6 +2470,8 @@ export class AgentRuntime {
     this.currentTurnId = null;
     this.partialDraft = null;
     this.loopGuard.clearReadVersions();
+    // 同一会话的落盘快照可能仍然成立（文件没变）：恢复它，省掉重启后的整段重读
+    await this.restoreReadCoverage(session);
     // 压缩基线与熔断计数都是「当前会话」的状态：切走必须清掉，
     // 否则会把 compaction_quality 写进新会话，或让新会话继承旧会话的熔断。
     this.compactionQuality = null;
@@ -2376,6 +2536,25 @@ export class AgentRuntime {
     this.cancelWarmupCompaction();
     this.cancelIdleTimers(); // 换端点 = 换缓存分片，旧保活计划作废
     this.notifyModelSwitch(before, { providerId, model: provider.model }, "user");
+  }
+
+  /**
+   * 运行中替换服务商列表（设置页增删改模型）：不清会话、不中断回合。
+   * 显式缓存边界：子 Agent 可选模型提示写在工具描述里，列表变化必须重建目录。
+   * 进行中的请求继续用旧配置，下一次请求起生效。
+   */
+  replaceProviders(providers: ProviderConfig[], activeProviderId?: string): void {
+    this.providers = JSON.parse(JSON.stringify(providers)) as ProviderConfig[];
+    if (activeProviderId) this.providerId = activeProviderId;
+    else if (!this.providers.some((item) => item.id === this.providerId)) {
+      // 当前项被删掉：和 activeProviderId getter 一样回退到首个可用项
+      this.providerId = this.activeProviderId;
+    }
+    this.usageAnchor = null; // 服务商/模型变了，旧用量不再代表当前上下文
+    this.syncNativeReplay();
+    this.cancelWarmupCompaction();
+    this.cancelIdleTimers(); // 换端点 = 换缓存分片，旧保活计划作废
+    this.rebuildToolCatalog("providers");
   }
 
   /**
@@ -2457,9 +2636,23 @@ export class AgentRuntime {
   ): Promise<string[]> {
     this.pendingAskDetails = { callId, sessionId: session.id, questions };
     this.emit({ type: "ask_user", sessionId: session.id, callId, questions });
-    if (this.turnAbort?.signal.aborted) return questions.map(() => "");
+    const signal = this.turnAbort?.signal;
+    if (signal?.aborted) return questions.map(() => "");
+    // abort 必须能把挂起解掉：只要有一条路径漏掉 settlePendingApprovals，
+    // runTurn 就永远退不出来（UI 显示已停止，后台回合还挂着）。
     return new Promise<string[]>((resolve) => {
-      this.pendingAsks.set(callId, resolve);
+      const settle = (answers: string[]): void => {
+        this.pendingAsks.delete(callId);
+        if (this.pendingAskDetails?.callId === callId) this.pendingAskDetails = null;
+        if (signal && onAbort) signal.removeEventListener("abort", onAbort);
+        resolve(answers);
+      };
+      let onAbort: (() => void) | undefined;
+      if (signal) {
+        onAbort = () => settle(questions.map(() => ""));
+        signal.addEventListener("abort", onAbort, { once: true });
+      }
+      this.pendingAsks.set(callId, settle);
     });
   }
 
@@ -3029,7 +3222,7 @@ export class AgentRuntime {
         tools: [],
         signal: controller.signal,
         onDelta: () => undefined,
-        onUsage: (usage) => {
+        onUsageFinal: (usage) => {
           void session
             .appendUsage({
               ...usage,
@@ -3066,10 +3259,10 @@ export class AgentRuntime {
     purpose = "main",
   ): ProviderConfig {
     const paced: ProviderConfig = { ...provider, pace: this.sessionPace };
-    // 血缘亲和：fork 继承来源键、子 Agent 用父会话键（仅内容寻址的官方 OpenAI
-    // 端点）。切会话窗口里 currentSession 已指向新会话，用 id 比对避免把 A 的键
-    // 盖到 B 的请求上。已知局限：fork 只复制 messages 不复制 tool_digest，父会话
-    // 被冷 resume 剪枝过时 fork 首次重放会 miss 一次；内容寻址路由下无害。
+    // 血缘亲和：只有 fork 继承来源键（它复制了父历史）。spawn 子 Agent 的
+    // system[0] 与父不同、历史也不复制，共享键命中不了还挤占父分片，因此各用各的。
+    // 仅内容寻址的官方 OpenAI 端点启用；切会话窗口里 currentSession 已指向新会话，
+    // 用 id 比对避免把 A 的键盖到 B 的请求上。
     const lineage =
       supportsLineageAffinity(provider) && this.currentSession?.id === sessionId
         ? this.currentSession.affinityRootId
@@ -3431,6 +3624,7 @@ export class AgentRuntime {
       }
       if (this.workflow.state?.completed) this.workflow.reset();
       this.mutationsSincePlanCheck = 0;
+      this.planNudgeAt = 0;
       // 插件 hook：context_inject（往历史尾部追加上下文）。
       // 只走 context_note，不进系统提示 —— 否则请求前缀一变，prompt cache 整段作废。
       const injected = await runHook(
@@ -3556,6 +3750,8 @@ export class AgentRuntime {
       this.finishLearningTurn(session, status);
       // 回合结束 = 前缀刚写入缓存：安排保活（5m TTL 空档）与空闲压缩（1h TTL 长空档）
       this.scheduleCacheKeepalive(session);
+      // 已读区间随回合落盘：重启后仍能短路「已读过且未变更」的整段重读
+      this.persistReadCoverage(session);
       this.scheduleIdleCompaction(session);
       // 标题生成放在回合结束后；后台子 Agent 还在跑时先不抢 provider 并发，
       // 等它们结束后再补。
@@ -3567,6 +3763,48 @@ export class AgentRuntime {
         else this.spawnTitleGeneration(session, titleSource);
       }
     }
+  }
+
+  /**
+   * 何时下发服务端 context editing。
+   *
+   * 默认关闭：服务端只支持 keep「最近 3 次」，每出现新 tool_use 清理边界就前移，
+   * 边界之后的 messages 每轮重写；本地压缩（80%/85%）已经兜住溢出。
+   * 实验开关打开后，只对官方 Anthropic 端点、越过窗口 75% 武装，且粘滞到
+   * 压缩/新会话才解除 —— 避免阈值附近「这轮开、下轮关」的抖动。
+   */
+  private contextEditingFor(provider: ProviderConfig): ContextEditing | undefined {
+    if (this.experimental?.contextEditing !== true) return undefined;
+    if ((provider.protocol ?? "openai-chat-completions") !== "anthropic-messages") return undefined;
+    if (!isOfficialAnthropicEndpoint(provider)) return undefined;
+    const window = provider.contextWindow;
+    // 服务端对 trigger 有下限（50k），小窗口模型不适用
+    if (!window || window < 100_000) return undefined;
+    if (!this.contextEditingArmed) {
+      if (this.getContextUsage().usedTokens < window * CONTEXT_EDITING_TRIGGER_RATIO) {
+        return undefined;
+      }
+      this.contextEditingArmed = true;
+    }
+    return {
+      triggerTokens: Math.floor(window * CONTEXT_EDITING_TRIGGER_RATIO),
+      keepToolUses: CONTEXT_EDITING_KEEP_TOOL_USES,
+      clearAtLeastTokens: CONTEXT_EDITING_CLEAR_AT_LEAST_TOKENS,
+    };
+  }
+
+  /** 恢复落盘的已读区间（重启/换窗口后仍能命中「已读过且未变更」的短路）。 */
+  private async restoreReadCoverage(session: SessionStore): Promise<void> {
+    const snapshot = await session.loadReadCoverage<ReadCoverageSnapshot>();
+    if (!snapshot?.length) return;
+    await this.loopGuard.restoreCoverage(snapshot);
+  }
+
+  /** 回合结束落盘已读区间（best-effort：失败只影响下次重启的效率）。 */
+  private persistReadCoverage(session: SessionStore): void {
+    const snapshot = this.loopGuard.exportCoverage();
+    if (!snapshot.length) return;
+    void session.saveReadCoverage(snapshot).catch(() => undefined);
   }
 
   /**
@@ -3609,6 +3847,12 @@ export class AgentRuntime {
     // 首次请求没有「上次触缓存」的时间点；保活成功的 ping 会刷新 meta.at，
     // 所以被保热的缓存不会在这里误判为已过期。
     if (!meta || Date.now() - meta.at <= TTL_MS[plan.ttl]) return;
+    // 前缀确定要按全价整段重写了：延后的工具删除/改写也搭这一班车。
+    // 不这么做的话，被下线的工具 schema 会一直留在请求里计费到下次压缩。
+    const pending = this.toolCatalog?.delta;
+    if (pending && (pending.removed.length || pending.rewritten.length)) {
+      this.rebuildToolCatalog("cold_resume");
+    }
     const projected = projectForMainPath(session.effectiveMessages);
     const shrunk = await this.shrinkWithSpill(session, projected);
     if (!shrunk.changed) return;
@@ -4051,8 +4295,11 @@ export class AgentRuntime {
     await this.refreshInstructions(session);
     await this.ensurePlanContext(session);
     await this.ensureModeContext(session);
+    await this.ensureSpeechStyleContext(session);
     // 缓存确定已过期（空闲 > TTL）时先做免费剪枝，把冷重写体积直接压小
     await this.maybeShrinkColdResume(session, provider);
+    // 回合边界：上一回合下线的工具不能继续被广告
+    this.rebuildToolCatalogAtTurnBoundary();
     // 每回合重置循环检测：跨回合的相同调用多是用户再次要求，不算循环
     this.resetLoopState(session.id);
     // 薄循环/厚宿主：轮次迭代在 agent-loop.ts，这里把 runtime 能力按接口交出去
@@ -4081,27 +4328,39 @@ export class AgentRuntime {
   }
 
   /**
-   * 请求前置记录：工具 + system 的前缀指纹、是否与上一次相同、距上次请求的空闲。
+   * 请求前置记录：工具 + system 的分段前缀指纹、是否与上一次相同、距上次请求的空闲。
    * 只记主循环请求；标题/压缩等辅助请求不走这里，不会污染诊断。
+   *
+   * 分段而不是整段拼接：掉缓存时要说得出是「工具块换了」还是「第几条 system 换了」，
+   * 否则 MCP 上线、AGENTS.md 重载、语色切换在日志里长得一模一样。
    */
   private noteRequestStart(options: AgentStreamOptions): void {
-    const systemText = options.messages
-      .filter((message) => message.role === "system" && message.content)
-      .map((message) => message.content)
-      .join("\n");
-    const systemHash = createHash("sha1").update(systemText).digest("hex").slice(0, 16);
-    const key = `${this.ensureToolCatalog().fingerprint}|${systemHash}`;
+    const systemTexts: string[] = [];
+    for (const message of options.messages) {
+      if (message.role !== "system" || !message.content) continue;
+      systemTexts.push(message.content);
+    }
+    const hash = (text: string) => createHash("sha1").update(text).digest("hex").slice(0, 16);
+    const toolsFingerprint = this.ensureToolCatalog().fingerprint;
+    const snapshot: PrefixSnapshot = {
+      tools: toolsFingerprint,
+      system: systemTexts.map(hash),
+    };
+    // 整段拼接的 key 保留：samePrefix 的判定口径必须与历史一致
+    const key = `${toolsFingerprint}|${hash(systemTexts.join("\n"))}`;
     const providerId = options.provider.id;
     const previous = this.providerRequestMeta.get(providerId);
     const now = Date.now();
+    const diff = diffPrefix(previous?.snapshot, snapshot);
     this.currentRequest = {
       providerId,
       key,
       samePrefix: previous?.key === key,
       hadPrevious: previous !== undefined,
       idleMs: previous ? now - previous.at : 0,
+      changedSegments: previous && previous.key !== key ? prefixChangeSegments(diff) : [],
     };
-    this.providerRequestMeta.set(providerId, { key, at: now });
+    this.providerRequestMeta.set(providerId, { key, at: now, snapshot });
   }
 
   /**
@@ -4109,11 +4368,17 @@ export class AgentRuntime {
    * 经 AgentLoopHost 委托给 AgentRuntime；治理 hooks（Step 4）后续在此注册。
    */
   private createLoopHost(session: SessionStore, provider: ProviderConfig): AgentLoopHost {
-    // 增量传输（实验 incrementalResponses，codex 式 previous_response_id）：
+    // 增量传输（codex 式 previous_response_id）：
     // 链签名锁定 provider/model/工具集/系统提示；压缩、裁剪、纪要都会改写前缀，
     // 消息引用快照校验不过就自动全量重发（store:true 重建链首）。
+    //
+    // 默认打开，但只在官方 OpenAI 端点：第三方「Responses 兼容」端点认不认
+    // previous_response_id 无法离线证伪，猜错就是每个回合多一趟 400。
+    // 显式设置 experimental.incrementalResponses 可以覆写这个默认（任意端点强制开/关）。
+    const incrementalDefault = isOfficialOpenAIEndpoint(provider);
     const incrementalOn =
-      Boolean(this.experimental?.incrementalResponses) && provider.protocol === "openai-responses";
+      provider.protocol === "openai-responses" &&
+      (this.experimental?.incrementalResponses ?? incrementalDefault);
     const incrementalSig = incrementalOn
       ? [
           provider.id,
@@ -4128,6 +4393,8 @@ export class AgentRuntime {
     let turnProvider = provider;
     /** 已尝试过的 provider id：切链去重，防止 A→B→A 反复跳 */
     const triedProviders = new Set<string>([provider.id]);
+    /** 故障转移墙钟起点：本回合第一次请求就是这个 host 创建的时刻 */
+    const failoverStartedAt = Date.now();
 
     return {
       initialMessages: () => {
@@ -4165,6 +4432,8 @@ export class AgentRuntime {
         if (!this.providerFallbackEnabled) return null;
         const reason = failoverReason(error);
         if (!reason) return null;
+        // 墙钟预算：超过就认输，让循环把错误抛给用户，而不是继续换 provider 磨时间
+        if (Date.now() - failoverStartedAt > FAILOVER_WALL_CLOCK_MS) return null;
         const chain = planFallbacks(
           this.providers,
           turnProvider.id,
@@ -4245,6 +4514,8 @@ export class AgentRuntime {
       onRoundStart: async () => {
         await this.startPartialRound(session);
         this.earlyToolRuns.clear();
+        this.thinkingStartedAt = null;
+        this.thinkingMs = null;
         this.fireHook(
           "assistant_message_start",
           {
@@ -4259,9 +4530,21 @@ export class AgentRuntime {
       },
       onDelta: (delta) => {
         this.appendPartialDelta("content", delta);
-        this.emit({ type: "assistant_delta", sessionId: session.id, delta });
+        // 首个正文增量 = 思考结束：带上时长，思考块右侧立即显示
+        let thinkingMs: number | null = null;
+        if (this.thinkingStartedAt !== null && this.thinkingMs === null) {
+          this.thinkingMs = Math.max(0, Date.now() - this.thinkingStartedAt);
+          thinkingMs = this.thinkingMs;
+        }
+        this.emit({
+          type: "assistant_delta",
+          sessionId: session.id,
+          delta,
+          ...(thinkingMs !== null ? { thinkingMs } : {}),
+        });
       },
       onThinking: (delta) => {
+        if (this.thinkingStartedAt === null) this.thinkingStartedAt = Date.now();
         this.appendPartialDelta("reasoning", delta);
         this.emit({ type: "thinking_delta", sessionId: session.id, delta });
       },
@@ -4334,10 +4617,22 @@ export class AgentRuntime {
             tools: requestOptions.tools.length,
           },
         });
+        let lastUsage: TokenUsage | undefined;
         try {
           const result = await streamChatCompletion({
             ...requestOptions,
-            onUsage: (usage) => this.emitUsageSample(session, roundId, usage),
+            // 主循环每次只试 2 次：fetchWithRetry 已经带退避，3 次尝试 + 30s 上限
+            // 意味着一个挂死的 provider 要 ~90s 才轮到 fallback。少一次尝试换更快的切换。
+            fetchAttempts: requestOptions.fetchAttempts ?? 2,
+            // 服务端清理旧工具结果：不改本地历史，被清掉的部分也不计输入
+            ...(() => {
+              const contextEditing = this.contextEditingFor(requestOptions.provider);
+              return contextEditing ? { contextEditing } : {};
+            })(),
+            onUsage: (usage) => {
+              lastUsage = usage;
+              this.emitUsageSample(session, roundId, usage);
+            },
           });
           this.traceRecorder.endSpan(llmSpan, {
             attributes: {
@@ -4358,6 +4653,45 @@ export class AgentRuntime {
           });
           return result;
         } catch (error) {
+          // 流已开始后中止/断流：输入与缓存可能已经计费，把最后观察到的累计快照
+          // 落一次账；成功路径仍由 agent-loop 的 recordUsage 负责，避免双计。
+          if (lastUsage) {
+            this.turnUsageTotals.input += lastUsage.inputTokens ?? 0;
+            this.turnUsageTotals.output += lastUsage.outputTokens ?? 0;
+            this.turnUsageTotals.cacheRead += lastUsage.cacheReadTokens ?? 0;
+            this.turnUsageTotals.cacheWrite += lastUsage.cacheWriteTokens ?? 0;
+            await session
+              .appendUsage({
+                ...lastUsage,
+                source: "chat",
+                ...(this.currentTurnId ? { turnId: this.currentTurnId } : {}),
+                providerId: requestOptions.provider.id,
+                model: requestOptions.provider.model,
+              })
+              .catch(() => undefined);
+            this.emit({
+              type: "usage",
+              sessionId: session.id,
+              roundId,
+              final: true,
+              source: "chat",
+              model: requestOptions.provider.model,
+              ...(lastUsage.inputTokens !== undefined
+                ? { inputTokens: lastUsage.inputTokens }
+                : {}),
+              ...(lastUsage.outputTokens !== undefined
+                ? { outputTokens: lastUsage.outputTokens }
+                : {}),
+              ...(lastUsage.cacheReadTokens !== undefined
+                ? { cacheReadTokens: lastUsage.cacheReadTokens }
+                : {}),
+              ...(lastUsage.cacheWriteTokens !== undefined
+                ? { cacheWriteTokens: lastUsage.cacheWriteTokens }
+                : {}),
+            });
+            // 已提交的部分用量不能再被回合收尾的 retractPendingUsage 撤回
+            this.pendingUsageRoundId = null;
+          }
           this.traceRecorder.endSpan(llmSpan, {
             status: isAbortError(error) ? "aborted" : "error",
             error,
@@ -4366,6 +4700,14 @@ export class AgentRuntime {
         }
       },
       persistAssistantMessage: async (message) => {
+        // 思考时长：正文轮在首个正文增量时已结算；只有工具调用的轮次在这里补算
+        if (message.role === "assistant" && message.reasoning && this.thinkingStartedAt !== null) {
+          if (this.thinkingMs === null) {
+            this.thinkingMs = Math.max(0, Date.now() - this.thinkingStartedAt);
+          }
+          message.thinkingMs = this.thinkingMs;
+          this.emit({ type: "thinking_complete", sessionId: session.id, thinkingMs: this.thinkingMs });
+        }
         await session.appendMessage(message);
         await session.flush();
         await this.finishPartialRound(session);
@@ -4435,6 +4777,9 @@ export class AgentRuntime {
               : {}),
             inputTokens: usage.inputTokens,
             prefixChanged: request.hadPrevious && !request.samePrefix,
+            ...(request.changedSegments.length
+              ? { changedSegments: request.changedSegments }
+              : {}),
             hadSamePrefixBefore: request.samePrefix,
             idleMs: request.idleMs,
           });
@@ -4461,6 +4806,7 @@ export class AgentRuntime {
           sessionId: session.id,
           roundId: this.pendingUsageRoundId ?? randomUUID(),
           final: true,
+          source: "chat",
           // 前端 cache-bust 检测按模型分基线：换模型后的读数跌落不算失配
           model: turnProvider.model,
           inputTokens: usage.inputTokens,
@@ -4488,6 +4834,7 @@ export class AgentRuntime {
           sessionId: session.id,
           text: result.message.content ?? "",
           ...(result.message.reasoning ? { reasoning: result.message.reasoning } : {}),
+          ...(this.thinkingMs !== null ? { thinkingMs: this.thinkingMs } : {}),
         });
       },
       onError: (message) => this.emit({ type: "error", sessionId: session.id, message }),
@@ -4504,6 +4851,14 @@ export class AgentRuntime {
       },
       earlyRun: (callId) => this.earlyToolRuns.get(callId),
       isParallelSafe: (toolName) => isToolParallelSafe(toolName),
+      /**
+       * 回合 token 预算：按窗口的 3 倍给（输入每轮重发，长回合本来就会在窗口里
+       * 反复计费）。窗口未知时按 200k 兜底，仍远高于任何真实任务；
+       * 命中只是「别再跑了」，不是正常工作限制。
+       */
+      turnBudget: () => ({
+        maxTokens: Math.max(200_000, (turnProvider.contextWindow ?? 200_000) * 3),
+      }),
       pushUserMessage: (messages, content) => this.pushUserMessage(session, messages, content),
       onToolBlocked: (call, message) => {
         // 门禁拦截也要有完整 UI 事件（与插件 block 的形态一致）
@@ -4607,16 +4962,28 @@ export class AgentRuntime {
       messages,
     ) => {
       const injections: ChatMessage[] = [];
-      if (this.enableTaskTool && this.workflow.active && this.governanceApplies()) {
-        const frontier = this.workflow.frontier();
-        if (frontier) injections.push({ role: "user", content: `[workflow]\n${frontier}` });
-        if (this.mutationsSincePlanCheck >= 8) {
+      // 计划新鲜度提醒：所有会话生效（不只在治理模式）。模型连续做文件变更却不更新清单时，
+      // 用户看到的 todolist 会卡在某一步；轮间提醒它把完成/开始的步骤同步过去。
+      if (this.enableTaskTool) {
+        const plan = session.currentPlan;
+        const hasOpenSteps = Boolean(
+          plan?.steps.some((step) => step.status !== "completed" && step.status !== "cancelled"),
+        );
+        const due =
+          this.mutationsSincePlanCheck >= PLAN_NUDGE_STEP &&
+          this.mutationsSincePlanCheck - this.planNudgeAt >= PLAN_NUDGE_STEP;
+        if (hasOpenSteps && due) {
+          this.planNudgeAt = this.mutationsSincePlanCheck;
           injections.push({
             role: "user",
             content:
-              "[workflow] You have made several file changes without updating the plan checklist. Call update_plan so the user can see current progress.",
+              "[plan] You have made several file changes since the checklist was last updated. Call update_plan now: mark finished steps completed, mark the step you are working on in_progress, and keep titles current. Do not batch several finished steps into a later update.",
           });
         }
+      }
+      if (this.enableTaskTool && this.workflow.active && this.governanceApplies()) {
+        const frontier = this.workflow.frontier();
+        if (frontier) injections.push({ role: "user", content: `[workflow]\n${frontier}` });
       }
       // 插话排在 workflow 注入之后，保证用户的最后一句在上下文末尾
       const prepared = injections.length ? [...messages, ...injections] : messages;
@@ -4637,11 +5004,13 @@ export class AgentRuntime {
       const tool = call.function.name;
       if (tool === "update_plan") {
         this.mutationsSincePlanCheck = 0;
+        this.planNudgeAt = 0;
         return;
       }
+      // 计划新鲜度计数对每个会话都跑（治理模式之外也要提醒模型同步 todolist）
+      if (PLAN_MUTATION_TOOLS.has(tool)) this.mutationsSincePlanCheck += 1;
       if (!this.workflow.active) return;
       if (tool === "write_file" || tool === "edit_file" || tool === "multi_edit") {
-        this.mutationsSincePlanCheck += 1;
         let input: Record<string, unknown> = {};
         try {
           input = JSON.parse(call.function.arguments || "{}") as Record<string, unknown>;
@@ -4924,7 +5293,7 @@ export class AgentRuntime {
     });
     if (result.usage) {
       const sideProvider = this.activeProviderOrNull();
-      this.emitUsageSample(session, `tool:${call.id}`, result.usage);
+      this.emitUsageSample(session, `tool:${call.id}`, result.usage, "web_search");
       await session.appendUsage({
         ...result.usage,
         source: "web_search",
@@ -4994,6 +5363,7 @@ export class AgentRuntime {
       output,
       truncated: result.truncated ?? output.length > 20000,
       ...(result.spilled ? { spilled: result.spilled } : {}),
+      ...(result.images?.length ? { images: result.images } : {}),
     });
     this.emit({ type: "tool_finished", sessionId: session.id, callId: call.id, ok: result.ok });
     return {
@@ -5166,22 +5536,35 @@ export class AgentRuntime {
     providers: ProviderConfig[];
     providerId: string;
     observations: SubagentObservations;
+    /** fork 复用父 system/instructions：只有复制了父历史时才置 true，否则前缀本来就不匹配 */
+    inheritPrefix?: boolean;
   }): AgentRuntime {
     // 角色装配走注册表：提示词 / 工具白名单 / AGENTS.md 注入随角色定义；
     // 架构图角色节点可以覆盖提示词与工具白名单（空提示词 = 回落内置）。
     const definition = definitionFor(params.agentType);
     const override = this.workflow.roleOverride(params.agentType);
     const overridePrompt = override?.systemPrompt;
-    const effectivePrompt = overridePrompt?.trim() ? overridePrompt : definition.systemPrompt;
+    const inheritPrefix = params.inheritPrefix === true;
+    // fork 复用父 system 才能命中父前缀缓存；其余角色照旧走角色提示词。
+    const effectivePrompt = inheritPrefix
+      ? this.effectiveSystemPrompt
+      : overridePrompt?.trim()
+        ? overridePrompt
+        : definition.systemPrompt;
     const roleTools = override?.tools
       ? new Set(override.tools.filter((tool) => tool !== "task"))
       : definition.tools;
+    // writeDenied 角色（verifier / fresh-verifier）连架构图覆盖也不能放开写类工具：
+    // 这是角色不变量，不是可配置项。
+    const gatedRoleTools = roleTools
+      ? new Set([...roleTools].filter((tool) => !roleDeniesTool(definition, tool)))
+      : roleTools;
     // 档位白名单也约束子 Agent：极简档的 general 同样只有 read_file / run_command
     const profileTools = this.activeProfile.tools;
     const effectiveTools = !profileTools
-      ? roleTools
+      ? gatedRoleTools
       : new Set(
-          [...(roleTools ?? profileTools)].filter(
+          [...(gatedRoleTools ?? profileTools)].filter(
             (tool) => tool === "task" || tool === "admit" || profileTools.has(tool),
           ),
         );
@@ -5213,7 +5596,11 @@ export class AgentRuntime {
       systemPrompt: effectivePrompt,
       instructionSettings: { ...this.instructionSettings },
       ...(effectiveTools ? { allowedTools: effectiveTools } : {}),
-      ...(definition.injectInstructions === false ? { injectInstructions: false } : {}),
+      // 验证类角色：能跑命令，但 run_code 的写桥一律拒绝
+      ...(definition.writeDenied ? { denyHostWrites: true } : {}),
+      ...((inheritPrefix ? this.injectInstructions : definition.injectInstructions !== false)
+        ? {}
+        : { injectInstructions: false }),
       onFileChange: async (change) => {
         // 宿主观测：子 Agent 的文件改动即 ground truth（不信任自述）
         params.observations.filesChanged.add(change.path);
@@ -5306,9 +5693,19 @@ export class AgentRuntime {
     const startedAtMs = Date.now();
     const approvalMode = this.turnApprovalMode ?? this.approvalMode;
     const maxSubagents = this.activeProfile.maxSubagents;
-    if (this.liveSubagents.size + this.startingSubagents >= maxSubagents) {
+    // 后台子 Agent 活过回合边界：上一回合起的后台任务不能占掉这一回合的准入名额，
+    // 否则用户看到的是「并发上限」却数不出是哪一个在挡路。前台/后台分开计数。
+    const liveForeground = [...this.liveSubagents.values()].filter((item) => !item.background).length;
+    const liveBackground = this.liveSubagents.size - liveForeground;
+    if (background) {
+      if (liveBackground + this.startingSubagents >= MAX_BACKGROUND_SUBAGENTS) {
+        throw new Error(
+          `Background subagent limit reached: at most ${MAX_BACKGROUND_SUBAGENTS} background agents may run at once. Wait for one to finish, or run this one in the foreground.`,
+        );
+      }
+    } else if (liveForeground + this.startingSubagents >= maxSubagents) {
       throw new Error(
-        `Subagent concurrency limit reached: at most ${maxSubagents} agents may run at once (${this.activeProfile.name}).`,
+        `Subagent concurrency limit reached: at most ${maxSubagents} foreground agents may run at once (${this.activeProfile.name}).`,
       );
     }
     this.startingSubagents += 1;
@@ -5332,12 +5729,18 @@ export class AgentRuntime {
         traceId: session.traceId,
         ...(mode === "fork" ? { forkedFrom: session.id } : {}),
       });
+      let inheritPrefix = false;
       if (mode === "fork") {
         // fork 的价值是复用父前缀缓存：历史超过窗口 60% 就退回 spawn，避免一次超长请求
         const history = session.effectiveMessages;
         const window = this.activeProviderOrNull()?.contextWindow ?? 128_000;
         if (estimateMessagesTokens(history) <= window * 0.6) {
           for (const message of history) await childStore.appendMessage(message);
+          if (this.experimental?.forkPrefixReuse !== false) {
+            // 尾部契约：不动前缀，只约束「不能问用户」；语色沿用父对话
+            await childStore.appendContextNote(FORK_CONTRACT_NOTE, "subagent");
+            inheritPrefix = true;
+          }
           await childStore.flush();
         }
       }
@@ -5351,6 +5754,7 @@ export class AgentRuntime {
         providers,
         providerId,
         observations,
+        inheritPrefix,
       });
       await child.switchSession(filePath);
       await child.setApprovalMode(definitionFor(agentType).readOnly ? "read-only" : approvalMode);
@@ -5677,6 +6081,38 @@ export class AgentRuntime {
     };
   }
 
+  /** task 结果回带本回合剩余派发数：模型能自己收手，而不是撞上限才发现。 */
+  private subagentStartsLeftNote(): string {
+    const max = this.activeProfile.maxSubagents;
+    const left = Math.max(0, max - this.subagentsStartedThisTurn);
+    const exhausted =
+      left === 0 ? " Further task calls this turn will be rejected — do the remaining work yourself." : "";
+    return `Subagent starts left this turn: ${left}/${max}.${exhausted}`;
+  }
+
+  /** 本回合的派发准入：spawn / resume 共用，超限时返回模型可读的拒绝结果。 */
+  private subagentAdmissionError(): SubagentTaskResult | null {
+    if (this.subagentBudget <= 0) {
+      return {
+        output:
+          "Subagent budget for this task is exhausted (8 agents including nested ones). Handle the remaining work yourself.",
+        ok: false,
+        status: "failed",
+        error: "subagent budget exhausted",
+      };
+    }
+    if (this.subagentsStartedThisTurn >= this.activeProfile.maxSubagents) {
+      const limit = this.activeProfile.maxSubagents;
+      return {
+        output: `Subagent limit reached: at most ${limit} subagents per turn in ${this.activeProfile.name}. Do not retry this turn; handle the remaining work in the main conversation, or group related items into fewer tasks.`,
+        ok: false,
+        status: "failed",
+        error: "subagent limit reached",
+      };
+    }
+    return null;
+  }
+
   private async runSubagentTask(
     session: SessionStore,
     call: ToolCall,
@@ -5705,21 +6141,31 @@ export class AgentRuntime {
           error: "missing resume message",
         };
       }
+      // 模型发起的续聊同样是一次派发：与 spawn 共用本回合准入，防止绕过上限。
+      const admission = this.subagentAdmissionError();
+      if (admission) return admission;
+      this.subagentsStartedThisTurn += 1;
+      this.subagentBudget -= 1;
       try {
         const resumed = await this.startSubagentResume(agentId, message, {
           wait: true,
           background: false,
           ...(this.turnAbort?.signal ? { parentSignal: this.turnAbort.signal } : {}),
         });
-        return (
-          resumed ?? {
+        if (!resumed) {
+          this.subagentBudget += 1;
+          this.subagentsStartedThisTurn = Math.max(0, this.subagentsStartedThisTurn - 1);
+          return {
             output: "Subagent resume did not start.",
             ok: false,
             status: "failed" as const,
             error: "resume did not start",
-          }
-        );
+          };
+        }
+        return { ...resumed, output: `${resumed.output}\n\n${this.subagentStartsLeftNote()}` };
       } catch (error) {
+        this.subagentBudget += 1;
+        this.subagentsStartedThisTurn = Math.max(0, this.subagentsStartedThisTurn - 1);
         return {
           output: `Subagent resume failed: ${error instanceof Error ? error.message : String(error)}`,
           ok: false,
@@ -5744,24 +6190,8 @@ export class AgentRuntime {
         error: "missing task description",
       };
     }
-    if (this.subagentBudget <= 0) {
-      return {
-        output:
-          "Subagent budget for this task is exhausted (8 agents including nested ones). Handle the remaining work yourself.",
-        ok: false,
-        status: "failed",
-        error: "subagent budget exhausted",
-      };
-    }
-    if (this.subagentsStartedThisTurn >= this.activeProfile.maxSubagents) {
-      const limit = this.activeProfile.maxSubagents;
-      return {
-        output: `Subagent limit reached: at most ${limit} subagents per turn in ${this.activeProfile.name}. Handle the remaining work in the main conversation, or group related items into fewer tasks.`,
-        ok: false,
-        status: "failed",
-        error: "subagent limit reached",
-      };
-    }
+    const admission = this.subagentAdmissionError();
+    if (admission) return admission;
     // 先同步占位再 await：并行的多个 task 调用也不能突破上限
     this.subagentsStartedThisTurn += 1;
     this.subagentBudget -= 1;
@@ -5771,15 +6201,17 @@ export class AgentRuntime {
       if (started.background) {
         void started.completion.catch(() => undefined);
         return {
-          output: `Subagent "${started.description}" started in background. Continue with other work; its completion will be reported separately.`,
+          output: `Subagent "${started.description}" started in background. Continue with other work; its completion will be reported separately. ${this.subagentStartsLeftNote()}`,
           ok: true,
           status: "running",
         };
       }
-      return await started.completion;
+      const result = await started.completion;
+      return { ...result, output: `${result.output}\n\n${this.subagentStartsLeftNote()}` };
     } catch (error) {
-      // 没真正启动：把配额还回去
+      // 没真正启动：把本回合准入与总预算都还回去
       this.subagentBudget += 1;
+      this.subagentsStartedThisTurn = Math.max(0, this.subagentsStartedThisTurn - 1);
       return {
         output: `Subagent failed to start: ${
           error instanceof Error ? error.message : String(error)
@@ -6245,10 +6677,16 @@ export class AgentRuntime {
       // 模型压缩后仍能看到刚读过的文件内容与最新报错，减少重复劳动（参考 metis/opencode）。
       // recentKeptMessages 只返回真实落盘条目且按不可拆单元切段，keepRecentMessages
       // 计数与 effectiveMessages 的回放口径严格一致。
-      // 摘要连续失败到上限就不再花请求，直接零模型兜底（熔断）。
-      if (this.localCompactionFailures >= COMPACTION_FAILURE_LIMIT && allowEmergency) {
+      // 摘要连续失败到上限、或还在失败冷却期内：不再花请求，直接零模型兜底。
+      if (
+        allowEmergency &&
+        (this.localCompactionFailures >= COMPACTION_FAILURE_LIMIT ||
+          Date.now() < this.compactionCooldownUntil)
+      ) {
         console.error(
-          `[meowcode] local compaction circuit-broken after ${this.localCompactionFailures} failures; dropping oldest history instead`,
+          `[meowcode] local compaction circuit-broken (failures=${this.localCompactionFailures}, cooldown=${
+            this.compactionCooldownUntil > Date.now()
+          }); dropping oldest history instead`,
         );
         return await this.emergencyCompaction(session, provider, compactionId, turnId, messages);
       }
@@ -6292,6 +6730,7 @@ export class AgentRuntime {
         throw new Error("Context compaction produced an empty summary.");
       }
       this.localCompactionFailures = 0;
+      this.compactionFailureStreak = 0;
       return await this.commitCompaction(
         session,
         provider,
@@ -6309,6 +6748,11 @@ export class AgentRuntime {
         throw error;
       }
       this.localCompactionFailures += 1;
+      this.compactionFailureStreak += 1;
+      if (this.compactionFailureStreak >= 2) {
+        this.compactionCooldownUntil = Date.now() + COMPACTION_COOLDOWN_MS;
+        this.compactionFailureStreak = 0;
+      }
       console.error(
         `[meowcode] compaction failed (${this.localCompactionFailures}/${COMPACTION_FAILURE_LIMIT}): ${message}; dropping oldest history instead of failing the turn`,
       );
@@ -6391,6 +6835,33 @@ export class AgentRuntime {
   }
 
   /** 从消息里的工具调用提取读写过的文件（去重、按出现顺序），只用于压缩后的路径提示。 */
+  /** 最近执行过的命令（去重保序，最多 12 条，整段截 1200 字符）：压缩后别重复跑。 */
+  private recentCommands(messages: ChatMessage[], max = 12): string {
+    const seen = new Set<string>();
+    const commands: string[] = [];
+    for (let index = messages.length - 1; index >= 0 && commands.length < max; index -= 1) {
+      const message = messages[index];
+      if (message.role !== "assistant" || !message.tool_calls?.length) continue;
+      for (const call of message.tool_calls) {
+        if (call.function?.name !== "run_command") continue;
+        let parsed: unknown;
+        try {
+          parsed = JSON.parse(call.function.arguments);
+        } catch {
+          continue;
+        }
+        const command = (parsed as { command?: unknown })?.command;
+        if (typeof command !== "string") continue;
+        const trimmed = command.trim();
+        if (!trimmed || seen.has(trimmed)) continue;
+        seen.add(trimmed);
+        commands.unshift(trimmed);
+      }
+    }
+    const list = commands.join("\n");
+    return list.length > 1_200 ? `${list.slice(0, 1_200)}\n...` : list;
+  }
+
   private recentlyTouchedPaths(
     workspace: string,
     messages: ChatMessage[],
@@ -6473,10 +6944,29 @@ export class AgentRuntime {
     // 避免压缩后从零开始重新探索（参考 ZCode 的 post-compact read-state reminder）。
     const touched = this.recentlyTouchedPaths(session.cwd, messages);
     if (touched.length) {
-      let list = touched.join("\n");
+      // 能查到净改动的补上 +/-：只给路径时模型判断不出「改没改、改了多少」，
+      // 压缩后常见动作就是把文件再读一遍。数字来自落盘的 turn_file_change，
+      // 纯本地拼装、零模型成本 —— 比把摘要写长便宜得多。
+      const diffs = new Map<string, { added: number; removed: number }>();
+      for (const group of session.turnFileChangeGroups.slice(-3)) {
+        for (const file of group.files) {
+          const key = this.qualityPathKey(session.cwd, file.path);
+          const previous = diffs.get(key) ?? { added: 0, removed: 0 };
+          diffs.set(key, {
+            added: previous.added + file.added,
+            removed: previous.removed + file.removed,
+          });
+        }
+      }
+      let list = touched
+        .map((item) => {
+          const diff = diffs.get(this.qualityPathKey(session.cwd, item));
+          return diff ? `${item} (+${diff.added}/-${diff.removed})` : item;
+        })
+        .join("\n");
       if (list.length > 1_200) list = `${list.slice(0, 1_200)}\n...`;
       await session.appendContextNote(
-        `Runtime context: files already read or changed before compaction (paths only; re-read if you need contents):\n${list}`,
+        `Runtime context: files already read or changed before compaction (paths and net changes; re-read if you need contents):\n${list}`,
       );
       // 基线：这些文件已经「交代过」了，压缩后模型再读一遍说明摘要没兜住
       this.compactionQuality = {
@@ -6486,9 +6976,32 @@ export class AgentRuntime {
         turnsLeft: COMPACTION_QUALITY_WINDOW_TURNS,
       };
     }
+    // 命令账本：路径之外再补一份「跑过什么」，压缩后模型容易把 tsc / test 再跑一遍。
+    const commands = this.recentCommands(messages);
+    if (commands) {
+      await session.appendContextNote(
+        `Runtime context: commands already run before compaction (re-run only if you need fresh output):\n${commands}`,
+      );
+    }
     // 压缩前的真实用量已不代表当前上下文，回退到估算，下一次响应再刷新
     this.usageAnchor = null;
+    // 压缩改写了前缀：服务端清理重新从零武装，避免压完立刻又被清
+    this.contextEditingArmed = false;
     await session.appendCompactionEnd({ compactionId, status: "completed" });
+    // 压完仍 ≥80% 说明这次压缩没解决问题：连续 2 次进冷却，别每轮再烧一遍。
+    const window = provider.contextWindow;
+    if (window && window > 0) {
+      const ratio = this.getContextUsage().usedTokens / window;
+      if (ratio >= COMPACTION_WARMUP_RATIO) {
+        this.ineffectiveCompactions += 1;
+        if (this.ineffectiveCompactions >= 2) {
+          this.compactionCooldownUntil = Date.now() + COMPACTION_COOLDOWN_MS;
+          this.ineffectiveCompactions = 0;
+        }
+      } else {
+        this.ineffectiveCompactions = 0;
+      }
+    }
     await session.flush().catch(() => undefined);
     // 压缩已经改写了历史前缀，这是应用延后工具变动的最便宜时机。
     this.rebuildToolCatalog("compaction");
@@ -6537,7 +7050,11 @@ export class AgentRuntime {
     ratio: number = COMPACTION_WARMUP_RATIO,
   ): void {
     if (!provider.contextWindow || this.warmupCompaction || this.compactingSession) return;
-    if (this.warmupFailures >= 2) return;
+    if (this.warmupFailures >= 2) {
+      // 冷却期内不再预热；冷却结束放行一次探测，失败会重新进冷却。
+      if (Date.now() < this.compactionCooldownUntil) return;
+      this.warmupFailures = 1;
+    }
     const usage = this.getContextUsage();
     if (!usage.contextWindow || usage.source !== "usage") return;
     // 软阈值带绝对预留；95% 总量硬闸单独按窗口比值判，不随预留口径移动
@@ -6583,7 +7100,7 @@ export class AgentRuntime {
           summaryMessages,
           reusePrefix: true,
           systemMessages: systems,
-          neutralizePersona: this.speechPersonaActive,
+          neutralizePersona: this.speechPersonaActive || this.hasStyleNote(session),
           tools: this.activeTools,
           signal: controller.signal,
           onUsage: (usage2) => {
@@ -6608,11 +7125,15 @@ export class AgentRuntime {
         warmup.summary = summary;
         warmup.state = "ready";
         this.warmupFailures = 0;
+        this.compactionCooldownUntil = 0;
         this.emit({ type: "compaction_warmup", sessionId: session.id, phase: "completed" });
       } catch (error) {
         if (controller.signal.aborted || isAbortError(error)) return;
         warmup.state = "failed";
         this.warmupFailures += 1;
+        if (this.warmupFailures >= 2) {
+          this.compactionCooldownUntil = Date.now() + COMPACTION_COOLDOWN_MS;
+        }
         this.emit({
           type: "compaction_warmup",
           sessionId: session.id,
@@ -6754,7 +7275,7 @@ export class AgentRuntime {
     // 否则冷 resume 判定会把 ping 保热的缓存误判为已过期。
     const meta = this.providerRequestMeta.get(provider.id);
     if (meta && this.currentSession === session) {
-      this.providerRequestMeta.set(provider.id, { key: meta.key, at: Date.now() });
+      this.providerRequestMeta.set(provider.id, { ...meta, at: Date.now() });
     }
     if (this.keepalivePingsLeft > 0 && this.currentSession === session && !this.turnAbort) {
       this.keepaliveTimer = setTimeout(
@@ -6909,6 +7430,13 @@ export class AgentRuntime {
     };
     const reject = (output: string): { ok: false; output: string } => ({ ok: false, output });
 
+    // 验证角色（verifier / fresh-verifier）的写后门：run_code 的 meow.write/edit/multiEdit
+    // 走的就是这里。不拦的话，full 模式下它们能先把测试改绿再报 PASS。
+    if (this.denyHostWrites && tool !== "run_command") {
+      return reject(
+        `Tool ${tool} blocked: this agent role may run checks but must not modify files. Report the failure instead of fixing it.`,
+      );
+    }
     if (!this.toolAllowed(tool)) {
       return reject(`Tool ${tool} is not available for this agent profile.`);
     }
@@ -7878,7 +8406,7 @@ export class AgentRuntime {
     // 重启后会话累计仍能对上，同时 lastChatUsage 不会把它当上下文锚点。
     if (result.usage) {
       const sideProvider = this.activeProviderOrNull();
-      this.emitUsageSample(session, `tool:${call.id}`, result.usage);
+      this.emitUsageSample(session, `tool:${call.id}`, result.usage, "web_search");
       await session.appendUsage({
         ...result.usage,
         source: "web_search",
@@ -8001,6 +8529,7 @@ export class AgentRuntime {
       callId: call.id,
       output: toolOutput,
       truncated,
+      ...(result.images?.length ? { images: result.images } : {}),
     });
     this.emit({ type: "tool_finished", sessionId: session.id, callId: call.id, ok: result.ok });
   }
@@ -8229,7 +8758,6 @@ export class AgentRuntime {
     sessionId: string;
     prompt: string;
     instructions: string | null;
-    style: string | null;
     messages: ChatMessage[];
   } | null = null;
 
@@ -8241,15 +8769,13 @@ export class AgentRuntime {
   private systemMessages(): ChatMessage[] {
     const prompt = this.effectiveSystemPrompt;
     const instructions = this.instructions ?? null;
-    const style = this.speechPersonaActive ? speechStylePrompt(this.speechStyle) : null;
     const sessionId = this.currentSession?.id ?? "";
     const cached = this.systemMessagesCache;
     if (
       cached &&
       cached.sessionId === sessionId &&
       cached.prompt === prompt &&
-      cached.instructions === instructions &&
-      cached.style === style
+      cached.instructions === instructions
     ) {
       return cached.messages;
     }
@@ -8258,8 +8784,7 @@ export class AgentRuntime {
       ? { role: "system", content: instructions }
       : null;
     const messages: ChatMessage[] = instructionsMessage ? [system, instructionsMessage] : [system];
-    if (style) messages.push({ role: "system", content: style });
-    this.systemMessagesCache = sessionId ? { sessionId, prompt, instructions, style, messages } : null;
+    this.systemMessagesCache = sessionId ? { sessionId, prompt, instructions, messages } : null;
     return messages;
   }
 
@@ -8290,10 +8815,45 @@ export class AgentRuntime {
     await session.appendContextNote(`${prefix} (supersedes earlier mode notes):\n${prompt}`);
   }
 
-  /** AGENTS.md 会话级快照：每个会话只读一次；中途修改不生效，重开会话重新加载（避免换掉 system[1] 字节整段重算）。 */
+  /**
+   * 语色改成 in-history 注记：以前它是第 3 条 system，运行中切换会改变 system 条数，
+   * 让 tools 之后整段前缀失效（OpenAI 上更是整段 instructions 变）。注记只追加，
+   * 切换代价是一条尾部写入，前缀保持字节不变。
+   */
+  private async ensureSpeechStyleContext(session: SessionStore): Promise<void> {
+    const wanted = this.speechPersonaActive ? this.speechStyle : "normal";
+    if (lastSpeechStyleFrom(session.effectiveMessages) === wanted) return;
+    const body =
+      speechStylePrompt(this.speechStyle) ??
+      "Use plain, neutral wording. No persona, no verbal tics, no role-play.";
+    await session.appendContextNote(
+      `${SPEECH_STYLE_PREFIX} ${wanted} (supersedes earlier style notes; it outranks reply-format preferences):\n${body}`,
+      "style",
+    );
+  }
+
+  /** 历史里仍有生效中的语色注记：压缩摘要需要中和口癖，但子 Agent 的正常输出不受影响。 */
+  private hasStyleNote(session: SessionStore): boolean {
+    return lastSpeechStyleFrom(session.effectiveMessages) !== "normal";
+  }
+
+  /**
+   * AGENTS.md / 规则快照：换会话或源文件变了才重读。
+   *
+   * 原来一个会话只读一次，会话内改 AGENTS.md 永远不生效——为了保前缀缓存，
+   * 代价是「我明明改了规则它不听」。现在每回合一次 stat（mtime + size），
+   * 变了才重载：重载本来就要换 system[1] 的字节，缓存该断就断；
+   * 一次 stat 远比一个不受规则约束的回合便宜。
+   */
   private async refreshInstructions(session: SessionStore): Promise<void> {
-    if (this.instructionsSessionId === session.id) return;
+    const signature = this.injectInstructions
+      ? await instructionSourceSignature(session.cwd)
+      : "";
+    if (this.instructionsSessionId === session.id && this.instructionsSignature === signature) {
+      return;
+    }
     this.instructionsSessionId = session.id;
+    this.instructionsSignature = signature;
     const detail = this.injectInstructions
       ? await loadWorkspaceInstructionsDetail(
           session.cwd,
@@ -8322,6 +8882,7 @@ export class AgentRuntime {
   /** 规则文件增删改后调用：下一轮重新读取 instructions，但不影响当前正在流式的一轮。 */
   invalidateInstructions(): void {
     this.instructionsSessionId = null;
+    this.instructionsSignature = "";
     this.instructions = undefined;
     this.instructionSkills = { tokens: 0, count: 0 };
     this.systemMessagesCache = null;
@@ -8353,6 +8914,32 @@ export class AgentRuntime {
     } catch {
       return false;
     }
+  }
+
+  /**
+   * 单条新 prompt 本身是否已经放不进当前模型窗口。
+   * 历史可以交给压缩处理，但当前 user 回合不能被压缩，必须在入口就明确拒绝。
+   */
+  promptTooLarge(
+    text: string,
+    images?: ToolImage[],
+    documents?: ToolDocument[],
+  ): PromptTooLargeError | null {
+    const provider = this.activeProviderOrNull();
+    const window = provider?.contextWindow;
+    if (!provider || !window || window <= 0) return null;
+    const message: ChatMessage = {
+      role: "user",
+      content: text,
+      ...(images?.length ? { images } : {}),
+      ...(documents?.length ? { documents } : {}),
+    };
+    const inputTokens = estimateMessageTokens(message);
+    const outputTokens = clampOutputTokens(provider, inputTokens);
+    if (inputTokens + outputTokens + CONTEXT_SAFETY_TOKENS > window) {
+      return new PromptTooLargeError(inputTokens, outputTokens, window);
+    }
+    return null;
   }
 
   /**

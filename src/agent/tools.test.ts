@@ -243,14 +243,52 @@ describe("tools", () => {
     expect(result.output.endsWith("IMPORTANT-END")).toBe(true);
   });
 
-  it("persists the full command output for follow-up reads", async () => {
+  it("persists the captured command output for follow-up reads", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "meowcode-tools-"));
     const result = await executeTool("run_command", { command: "'x' * 20000" }, root);
     expect(result.ok).toBe(true);
-    expect(result.output).toContain("full output saved to .meowcode/tool-output/");
+    expect(result.output).toContain("the log is saved to .meowcode/tool-output/");
     expect(result.spilled).toContain(".meowcode/tool-output/run_command-");
     const full = await readFile(path.join(root, result.spilled!), "utf8");
     expect(full.length).toBeGreaterThanOrEqual(20_000);
+  });
+
+  it("reports a native command's exit code, not PowerShell's own", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "meowcode-tools-"));
+    // PowerShell 自己永远退 0；不把 $LASTEXITCODE 变成进程退出码的话，
+    // 失败的 git/npm/test 会被当成成功（模型据此宣布"构建通过"）
+    const green = await executeTool("run_command", { command: "cmd /c exit 0" }, root);
+    expect(green.ok).toBe(true);
+    const red = await executeTool("run_command", { command: "cmd /c exit 7" }, root);
+    expect(red.ok).toBe(false);
+  });
+
+  it("hints at the PowerShell equivalent when a bash-style command is used", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "meowcode-tools-"));
+    const result = await executeTool("run_command", { command: "export FOO=bar" }, root);
+    expect(result.output).toContain("[hint]");
+    expect(result.output).toMatch(/PowerShell doesn't have that command|env vars/);
+  });
+
+  it("strips ANSI escapes out of command output", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "meowcode-tools-"));
+    const result = await executeTool(
+      "run_command",
+      { command: "$e=[char]27; Write-Output ($e + '[31mred' + $e + '[0m done')" },
+      root,
+    );
+    expect(result.output).toContain("red done");
+    // 控制序列对模型是纯噪音，必须在采集层清掉
+    expect(result.output).not.toContain("\u001b");
+  });
+
+  it("does not wait for stdin when a command prompts for input", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "meowcode-tools-"));
+    const started = Date.now();
+    const result = await executeTool("run_command", { command: "Read-Host 'name'" }, root);
+    // 以前 stdin 从不关闭，这里会挂满 120s 才被杀
+    expect(Date.now() - started).toBeLessThan(20_000);
+    expect(result.output).not.toContain("timed out");
   });
 
   it("defaults file reads to 400 lines and reports the next offset", async () => {
@@ -1177,6 +1215,30 @@ describe("dynamic tool definitions", () => {
     } finally {
       for (const name of names) unregisterDynamicTool(name);
       listDynamicToolDefinitions(); // 触发重算，清空 deferred 集
+    }
+  });
+
+  it("插件创作入口始终可见，不会被大量 MCP 工具挤出预算", () => {
+    const bulk: string[] = [];
+    const essentials = ["plugin_authoring_guide", "create_plugin", "create_skill"];
+    try {
+      for (let index = 0; index < 200; index += 1) {
+        const name = `mcp__bulk__tool_${String(index).padStart(2, "0")}`;
+        bulk.push(name);
+        registerDynamicTool(name, stub(name, `bulk test tool number ${index}`));
+      }
+      for (const name of essentials) registerDynamicTool(name, stub(name, name));
+
+      const visibleNames = listDynamicToolDefinitions().map(
+        (definition) => definition.function.name,
+      );
+      for (const name of essentials) {
+        expect(visibleNames).toContain(name);
+        expect(deferredDynamicToolNames()).not.toContain(name);
+      }
+    } finally {
+      for (const name of [...bulk, ...essentials]) unregisterDynamicTool(name);
+      listDynamicToolDefinitions();
     }
   });
 });

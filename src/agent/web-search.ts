@@ -396,15 +396,19 @@ function parseOpenAISearch(
 function anthropicUsage(payload: Record<string, unknown>): WebSearchUsage | undefined {
   const usage = asRecord(payload.usage);
   if (!usage) return undefined;
+  const input = number(usage.input_tokens);
+  const cacheRead = number(usage.cache_read_input_tokens);
+  const cacheWrite = number(usage.cache_creation_input_tokens);
+  // Anthropic 的 input_tokens 不含缓存部分：总输入与主协议口径保持一致
+  const totalInput =
+    input !== undefined || cacheRead !== undefined || cacheWrite !== undefined
+      ? (input ?? 0) + (cacheRead ?? 0) + (cacheWrite ?? 0)
+      : undefined;
   const mapped: WebSearchUsage = {
-    ...(number(usage.input_tokens) !== undefined ? { inputTokens: number(usage.input_tokens) } : {}),
+    ...(totalInput !== undefined ? { inputTokens: totalInput } : {}),
     ...(number(usage.output_tokens) !== undefined ? { outputTokens: number(usage.output_tokens) } : {}),
-    ...(number(usage.cache_read_input_tokens) !== undefined
-      ? { cacheReadTokens: number(usage.cache_read_input_tokens) }
-      : {}),
-    ...(number(usage.cache_creation_input_tokens) !== undefined
-      ? { cacheWriteTokens: number(usage.cache_creation_input_tokens) }
-      : {}),
+    ...(cacheRead !== undefined ? { cacheReadTokens: cacheRead } : {}),
+    ...(cacheWrite !== undefined ? { cacheWriteTokens: cacheWrite } : {}),
   };
   return Object.keys(mapped).length ? mapped : undefined;
 }

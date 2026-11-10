@@ -15,21 +15,26 @@ const STATUS_KEYS: Record<string, string> = {
 type OpenPanel = "steps" | "files" | null;
 
 /**
- * 输入框上方的悬浮进度胶囊：
+ * 输入框上方的悬浮信息胶囊：
  * - 左侧是计划步骤进度（spinner / check + 步骤 X / Y）
  * - 右侧是本对话已修改文件数与 +A/-D
  * - hover 任一段向上展开对应浮层（步骤列表 / 文件列表）
  *
  * 数据：plan 来自 App 的 plan_updated；changes 来自 GET /session/changes?summary=1。
+ * 何时收起由设置里的「输入框上方信息胶囊」偏好决定：提交后（默认，跟随未提交状态）
+ * 或对话结束后（回合结束就收起，下一轮有新的步骤/改动才重新出现）。
  */
 export function SessionProgressPill({
   plan,
   changes,
   streaming,
+  dismissed = false,
 }: {
   plan?: PlanState | null;
   changes?: SessionChangeSummary[];
   streaming: boolean;
+  /** 设置里选了「对话结束后消失」且已达到收起条件：整颗胶囊直接不渲染 */
+  dismissed?: boolean;
 }) {
   const { t } = useTranslation("shell");
   const steps = plan?.steps ?? [];
@@ -41,12 +46,25 @@ export function SessionProgressPill({
   const running = !allDone && (streaming || active);
   const added = fileChanges.reduce((sum, change) => sum + change.added, 0);
   const removed = fileChanges.reduce((sum, change) => sum + change.removed, 0);
-  const showSteps = total > 0;
   const showFiles = fileChanges.length > 0;
   const [open, setOpen] = useState<OpenPanel>(null);
   const closeTimer = useRef<number | null>(null);
   const anchorRef = useRef<HTMLDivElement>(null);
   const cardId = useId();
+
+  /**
+   * 全部完成的计划在回合结束后收起：记录收起那一刻的步骤签名，
+   * 计划内容不变就一直不显示（下一轮真正更新计划才重新出现）。
+   */
+  const stepsSignature = JSON.stringify(steps.map((step) => [step.title, step.status]));
+  const [dismissedDoneSignature, setDismissedDoneSignature] = useState<string | null>(null);
+  useEffect(() => {
+    // 回合进行中不收起，等结束那一刻拍快照
+    if (streaming) return;
+    setDismissedDoneSignature(allDone ? stepsSignature : null);
+  }, [streaming, allDone, stepsSignature]);
+  const stepsDismissed = allDone && dismissedDoneSignature === stepsSignature;
+  const showSteps = total > 0 && !stepsDismissed;
 
   const cancelClose = useCallback(() => {
     if (closeTimer.current !== null) {
@@ -78,6 +96,7 @@ export function SessionProgressPill({
     };
   }, [open]);
 
+  if (dismissed) return null;
   if (!showSteps && !showFiles) return null;
 
   const openPanel = (panel: Exclude<OpenPanel, null>) => {

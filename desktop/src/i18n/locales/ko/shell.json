@@ -3,6 +3,7 @@
     "home": "홈",
     "architecture": "Agent 아키텍처",
     "git": "Git 관리",
+    "mail": "메일",
     "plugins": "마켓플레이스",
     "automation": "자동화",
     "settings": "설정"
@@ -241,5 +242,10 @@
     "body": "부탁이야, 작은 별 하나만 눌러 줘~",
     "dismiss": "안 할래",
     "accept": "좋아"
+  },
+  "announcement": {
+    "label": "공지",
+    "close": "닫기",
+    "viewSite": "웹사이트 보기"
   }
 }

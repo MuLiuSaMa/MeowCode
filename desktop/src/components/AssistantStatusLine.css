@@ -8,6 +8,10 @@
   font-size: var(--fs-sm);
   line-height: var(--lh-normal);
   color: var(--fg-subtle);
+  /* 消息流最末一项：流式输出时容器高度会被挤，这一行不能被压缩（否则文字被裁、又弹回） */
+  flex: none;
+  /* 固定住整行高度：圆形 Logo 14px + 上下各 1px 内边距 */
+  min-height: calc(1em * var(--lh-normal) + 2px);
 }
 .mc-statusline__logo {
   width: 14px;

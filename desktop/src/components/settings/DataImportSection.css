@@ -162,17 +162,7 @@
   background: var(--surface-hover);
 }
 
-.mc-dataimport__group input[type="checkbox"] {
-  accent-color: var(--accent, var(--fg));
-  width: 14px;
-  height: 14px;
-}
-
-.mc-dataimport__group input[type="checkbox"]:disabled {
-  cursor: default;
-}
-
-.mc-dataimport__group input[type="checkbox"]:disabled + .mc-dataimport__groupname {
+.mc-dataimport__group[data-disabled="true"] .mc-dataimport__groupname {
   color: var(--fg-subtlest);
 }
 

@@ -58,6 +58,8 @@
   flex: 1;
   min-height: 0;
   overflow-y: auto;
+  /* 滚动条出现时不挤压内容：始终预留槽位（同添加模型弹窗） */
+  scrollbar-gutter: stable;
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -584,6 +586,8 @@
   flex: 1;
   min-height: 0;
   overflow: auto;
+  /* 滚动条出现时不挤压内容：始终预留槽位（同添加模型弹窗） */
+  scrollbar-gutter: stable;
 }
 .mc-git__history {
   display: flex;
@@ -690,6 +694,8 @@
   white-space: pre-wrap;
   max-height: 140px;
   overflow: auto;
+  /* 滚动条出现时不挤压内容：始终预留槽位（同添加模型弹窗） */
+  scrollbar-gutter: stable;
 }
 .mc-git__detailfiles {
   display: flex;
@@ -841,7 +847,6 @@
 .mc-gitdlg__check {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
   color: var(--fg-subtle);
   font-size: var(--fs-sm);
 }

@@ -276,7 +276,7 @@ describe("Anthropic prompt caching", () => {
     ]);
   });
 
-  it("retries without cache_control when a gateway rejects the field", async () => {
+  it("degrades to two breakpoints first when a gateway rejects the field", async () => {
     const bodies: Array<Record<string, unknown>> = [];
     vi.stubGlobal(
       "fetch",
@@ -306,7 +306,7 @@ describe("Anthropic prompt caching", () => {
       model: "m",
       system: [
         { type: "text", text: "stable", cache_control: { type: "ephemeral" } },
-        { type: "text", text: "volatile" },
+        { type: "text", text: "volatile", cache_control: { type: "ephemeral" } },
       ],
       messages: [
         {
@@ -327,11 +327,149 @@ describe("Anthropic prompt caching", () => {
 
     expect(result.message.content).toBe("ok");
     expect(bodies).toHaveLength(2);
+    // 第一次是满额断点，第二次降到「system 首块 + 尾条」：不是一刀切全关
     expect((bodies[0].system as Array<Record<string, unknown>>)[0]).toHaveProperty("cache_control");
-    expect((bodies[1].system as Array<Record<string, unknown>>)[0]).not.toHaveProperty("cache_control");
+    expect((bodies[1].system as Array<Record<string, unknown>>)[0]).toHaveProperty("cache_control");
+    expect((bodies[1].system as Array<Record<string, unknown>>)[1]).not.toHaveProperty("cache_control");
     expect((bodies[1].tools as Array<Record<string, unknown>>)[0]).not.toHaveProperty("cache_control");
     const retryMessage = (bodies[1].messages as Array<{ content: Array<Record<string, unknown>> }>)[0];
-    expect(retryMessage.content[0]).not.toHaveProperty("cache_control");
+    expect(retryMessage.content[0]).toHaveProperty("cache_control");
+  });
+
+  it("turns cache_control off entirely only when the 2-breakpoint form is rejected too", async () => {
+    const bodies: Array<Record<string, unknown>> = [];
+    // 只拒前两次（满额 + 降级档），之后的请求一律放行：第二次 call 用来验证「已记住全关」
+    let rejections = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: unknown, init?: { body?: string }) => {
+        const body = JSON.parse(String(init?.body));
+        bodies.push(body);
+        if (rejections < 2) {
+          rejections += 1;
+          return new Response("unknown field: cache_control", { status: 400 });
+        }
+        return sseResponse([
+          {
+            type: "content_block_delta",
+            index: 0,
+            delta: { type: "text_delta", text: "ok" },
+          },
+          {
+            type: "message_delta",
+            delta: { stop_reason: "end_turn" },
+            usage: { output_tokens: 1 },
+          },
+        ]);
+      }),
+    );
+
+    const call = () =>
+      streamAnthropicMessages({
+        url: "https://strict.example/v1/messages",
+        model: "m",
+        system: [{ type: "text", text: "stable", cache_control: { type: "ephemeral" } }],
+        messages: [
+          { role: "user", content: [{ type: "text", text: "hi", cache_control: { type: "ephemeral" } }] },
+        ],
+        tools: [],
+        onDelta: () => undefined,
+      });
+
+    await call();
+    expect(bodies).toHaveLength(3);
+    expect((bodies[2].system as Array<Record<string, unknown>>)[0]).not.toHaveProperty("cache_control");
+    const lastMessage = (bodies[2].messages as Array<{ content: Array<Record<string, unknown>> }>)[0];
+    expect(lastMessage.content[0]).not.toHaveProperty("cache_control");
+
+    // 全关会被记住：下一次请求直接以「不发字段」起步，不再试错
+    bodies.length = 0;
+    await call();
+    expect(bodies).toHaveLength(1);
+    expect((bodies[0].system as Array<Record<string, unknown>>)[0]).not.toHaveProperty("cache_control");
+  });
+});
+
+describe("server-side context editing", () => {
+  it("declares clear_tool_uses when asked", async () => {
+    const bodies: Array<Record<string, unknown>> = [];
+    const headers: Array<Record<string, string>> = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: unknown, init?: { body?: string; headers?: Record<string, string> }) => {
+        bodies.push(JSON.parse(String(init?.body)));
+        headers.push(init?.headers ?? {});
+        return sseResponse([
+          { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "ok" } },
+          { type: "message_delta", delta: { stop_reason: "end_turn" }, usage: { output_tokens: 1 } },
+        ]);
+      }),
+    );
+
+    await streamAnthropicMessages({
+      url: "https://api.anthropic.com/v1/messages",
+      providerId: "native-ce",
+      model: "claude-sonnet-4-5",
+      system: [{ type: "text", text: "stable" }],
+      messages: [{ role: "user", content: [{ type: "text", text: "hi" }] }],
+      tools: [],
+      contextEditing: { triggerTokens: 120_000, keepToolUses: 3, clearAtLeastTokens: 20_000 },
+      onDelta: () => undefined,
+    });
+
+    // 不声明 beta 服务端不认这个字段
+    expect(headers[0]["anthropic-beta"]).toBe("context-management-2025-06-27");
+    expect(bodies[0].context_management).toEqual({
+      edits: [
+        {
+          type: "clear_tool_uses_20250919",
+          trigger: { type: "input_tokens", value: 120_000 },
+          keep: { type: "tool_uses", value: 3 },
+          clear_at_least: { type: "input_tokens", value: 20_000 },
+        },
+      ],
+    });
+  });
+
+  it("drops the field and remembers when the endpoint does not support it", async () => {
+    const bodies: Array<Record<string, unknown>> = [];
+    let rejections = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: unknown, init?: { body?: string }) => {
+        bodies.push(JSON.parse(String(init?.body)));
+        if (rejections < 1) {
+          rejections += 1;
+          return new Response("context_management is not supported", { status: 400 });
+        }
+        return sseResponse([
+          { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "ok" } },
+          { type: "message_delta", delta: { stop_reason: "end_turn" }, usage: { output_tokens: 1 } },
+        ]);
+      }),
+    );
+
+    const call = () =>
+      streamAnthropicMessages({
+        url: "https://api.anthropic.com/v1/messages",
+        providerId: "native-ce-degrade",
+        model: "claude-sonnet-4-5",
+        system: [{ type: "text", text: "stable" }],
+        messages: [{ role: "user", content: [{ type: "text", text: "hi" }] }],
+        tools: [],
+        contextEditing: { triggerTokens: 120_000, keepToolUses: 3 },
+        onDelta: () => undefined,
+      });
+
+    await call();
+    expect(bodies[0]).toHaveProperty("context_management");
+    expect(bodies[1]).not.toHaveProperty("context_management");
+
+    // 记住降级：下一次请求不再带上该字段，也不会再吃一趟 400
+    bodies.length = 0;
+    await call();
+    expect(bodies).toHaveLength(1);
+    expect(bodies[0]).not.toHaveProperty("context_management");
   });
 });
 

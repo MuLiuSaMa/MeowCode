@@ -1186,6 +1186,12 @@ describe("prompt attachments (PDF)", () => {
     expect(await response.json()).toMatchObject({ error: { code: "pdf_disabled" } });
   });
 
+  it("rejects oversized prompt text before starting a turn", async () => {
+    const response = await post({ message: "x".repeat(1_000_001) });
+    expect(response.status).toBe(413);
+    expect(await response.json()).toMatchObject({ error: { code: "prompt_too_large" } });
+  });
+
   it("rejects unsupported document types", async () => {
     const response = await post({
       message: "hi",

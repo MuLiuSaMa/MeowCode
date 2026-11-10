@@ -206,7 +206,12 @@ export function timelineFromHistory(
         key: nextKey("assistant"),
         role: "assistant",
         content,
-        ...(reasoning ? { thinking: reasoning } : {}),
+        ...(reasoning
+          ? {
+              thinking: reasoning,
+              ...(typeof message.thinkingMs === "number" ? { thinkingMs: message.thinkingMs } : {}),
+            }
+          : {}),
         messageIndex: index,
       });
     }

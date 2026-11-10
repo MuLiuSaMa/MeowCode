@@ -1,7 +1,7 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
-import { LuArrowRight, LuArrowUp, LuCheck, LuChevronDown, LuChevronLeft, LuChevronRight, LuCircleAlert, LuEye, LuFileText, LuFolder, LuGitBranch, LuGitFork, LuListChecks, LuLoaderCircle, LuPaperclip, LuPlus, LuPuzzle, LuRotateCw, LuSearch, LuShield, LuShieldCheck, LuSparkles, LuSquare, LuTarget, LuWandSparkles, LuX } from "react-icons/lu";
+import { LuArrowDown, LuArrowRight, LuArrowUp, LuCheck, LuChevronDown, LuChevronLeft, LuChevronRight, LuCircleAlert, LuEye, LuFileText, LuFolder, LuGitBranch, LuGitFork, LuListChecks, LuLoaderCircle, LuPaperclip, LuPlus, LuPuzzle, LuRotateCw, LuSearch, LuShield, LuShieldCheck, LuSparkles, LuSquare, LuTarget, LuWandSparkles, LuX } from "react-icons/lu";
 import { effortLabel, isEffortValid } from "../effort";
 import {
   api,
@@ -24,8 +24,10 @@ import {
 } from "../api";
 import { agentProfileDisplay } from "../agentProfiles";
 import { Toggle } from "./ui/Toggle";
+import { PluginSlot } from "../plugins/PluginSlot";
 import { BranchMenu } from "./BranchMenu";
 import { invalidateMarketplaceCatalog, loadMarketplaceCatalog } from "../data/marketplaceCatalog";
+import { invalidatePluginIconMap } from "../data/pluginIcons";
 import {
   buildMentionItems,
   detectMention,
@@ -409,6 +411,9 @@ export function Composer({
   onRemoveProject,
   plan,
   changes,
+  pillDismissed,
+  showJumpBottom = false,
+  onJumpBottom,
 }: {
   value: string;
   onChange: (value: string) => void;
@@ -524,6 +529,11 @@ export function Composer({
   plan?: PlanState | null;
   /** 当前会话已修改文件（GET /session/changes?summary=1）：与计划一起显示在悬浮胶囊里 */
   changes?: SessionChangeSummary[];
+  /** 信息胶囊直接收起（设置里选了「对话结束后消失」且回合已结束） */
+  pillDismissed?: boolean;
+  /** 消息流已滚离底部：显示「返回底部」按钮（与信息胶囊是否显示无关） */
+  showJumpBottom?: boolean;
+  onJumpBottom?: () => void;
 }) {
   const projectDisplayCwd = projectCwd ?? workspace;
   const { t } = useTranslation("composer");
@@ -1028,6 +1038,7 @@ export function Composer({
       try {
         await installMarketplaceItem(choice.id, "skill");
         invalidateMarketplaceCatalog();
+        invalidatePluginIconMap();
         setMarketEntries((entries) =>
           entries.map((entry) =>
             entry.type === "skill" && entry.id === choice.id
@@ -1060,6 +1071,7 @@ export function Composer({
       try {
         await installMarketplaceItem(choice.id, "plugin");
         invalidateMarketplaceCatalog();
+        invalidatePluginIconMap();
         setMarketEntries((entries) =>
           entries.map((entry) =>
             entry.type === "plugin" && entry.id === choice.id
@@ -1494,7 +1506,26 @@ export function Composer({
   return (
     <div className="mc-composerwrap">
       <div className="mc-composerstack">
-        <SessionProgressPill plan={plan} changes={changes} streaming={streaming} />
+        {/* 输入框上方悬浮行：进度胶囊 + 返回底部按钮（胶囊隐藏时按钮仍单独显示） */}
+        <div className="mc-composerstack__floating">
+          <SessionProgressPill
+            plan={plan}
+            changes={changes}
+            streaming={streaming}
+            dismissed={pillDismissed}
+          />
+          {showJumpBottom ? (
+            <button
+              type="button"
+              className="mc-scrollbottom"
+              aria-label={t("jumpToBottom")}
+              title={t("jumpToBottom")}
+              onClick={() => onJumpBottom?.()}
+            >
+              <LuArrowDown size={14} />
+            </button>
+          ) : null}
+        </div>
 
         {/* 工作区缺失（未选择 / 目录已删）：同一位置回退成「选择工作区」，点击打开目录选择器 */}
         {!workspace || workspaceAvailable === false ? (
@@ -1903,6 +1934,8 @@ export function Composer({
             </div>
           ) : null}
 
+          <PluginSlot name="composer.banner" props={{ text: value }} />
+
           <div className="mc-composer__textwrap">
           <textarea
             ref={textareaRef}
@@ -2029,6 +2062,15 @@ export function Composer({
 
           <div className="mc-composer__bar">
             <div className="mc-composer__left">
+              <PluginSlot
+                name="composer.actions"
+                props={{
+                  text: value,
+                  setText: onChange,
+                  submit: () => onSend(takeImages(), value),
+                  disabled: sendDisabled || compacting,
+                }}
+              />
               <input
                 ref={fileInputRef}
                 type="file"

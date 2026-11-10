@@ -258,3 +258,125 @@ img {
   margin: 18px 0;
 }
 .mc-markdown img { border-radius: var(--radius-md); }
+
+/* ---- Apple 连续曲率圆角 ----
+   Chromium 支持 corner-shape 时（Electron 44 / Chromium 152+），所有圆角矩形
+   统一用 superellipse（squircle）过渡，更接近 macOS/iOS 的连续曲率；
+   纯圆形元素（头像/圆点/旋钮/加载环等 50% 圆）显式保持正圆。 */
+*,
+*::before,
+*::after {
+  corner-shape: squircle;
+}
+:where(
+  .mc-spinner,
+  .mc-sendbtn,
+  .mc-toggle__knob,
+  .mc-mail__avatar,
+  .mc-mail__accounterror,
+  .mc-mail__dot,
+  .mc-mail__unreaddot,
+  .mc-mail__steps li span,
+  .mc-slider__particle,
+  .mc-slider__thumb,
+  .mc-onboarding__optioncheck,
+  .mc-onboarding__success,
+  .mc-plan__spinner,
+  .mc-tokenlegend__dot,
+  .mc-chartcard__live,
+  .mc-sessionpill__icon,
+  .mc-sessionpill__dot,
+  .mc-customselect__optiondelete,
+  .mc-statusline__dots i,
+  .mc-splash__glow,
+  .mc-ctxpop__dot,
+  .mc-convpanel__runningdot,
+  .mc-rail__updatebtn[data-kind="done"]::before,
+  .island-dot,
+  .island-chip__dot,
+  .mc-skillchip__x,
+  .mc-attach__remove,
+  .mc-planconfirm__send,
+  .mc-ctxmeter,
+  .mc-ctxwarn__dismiss,
+  .mc-mkt__dclose,
+  .mc-subagent__send,
+  .mc-composer__icon,
+  .mc-plancard__marker,
+  .mc-plancard__dot
+) {
+  corner-shape: round;
+}
+
+/* 胶囊保持胶囊：原来 999px / radius-full 的胶囊形元素，在全局 squircle 下
+   仍按正圆角渲染（squircle 会把胶囊端头压平，看起来像圆角矩形）。 */
+:where(
+  .mc-about__check,
+  .mc-approvals__kind,
+  .mc-arch__badge,
+  .mc-attach__remove,
+  .mc-badge,
+  .mc-checkpoint__restore,
+  .mc-composer__access,
+  .mc-composer__branch,
+  .mc-composer__icon,
+  .mc-composer__model,
+  .mc-composer__pickws,
+  .mc-composer__projpill,
+  .mc-composer__wt,
+  .mc-convpanel__groupcount,
+  .mc-ctxmeter,
+  .mc-ctxpop__bar,
+  .mc-ctxpop__compact,
+  .mc-ctxwarn__compact,
+  .mc-ctxwarn__dismiss,
+  .mc-git__branchpill,
+  .mc-harness__fieldactions button,
+  .mc-harness__nodechip,
+  .mc-harness__toolchip,
+  .mc-hooks__badge,
+  .mc-learning__badge,
+  .mc-learning__beta,
+  .mc-levels__add,
+  .mc-levels__chip,
+  .mc-mail__badge,
+  .mc-mail__composefile,
+  .mc-mail__steps li,
+  .mc-mail__tag,
+  .mc-mkt__chip,
+  .mc-mkt__dclose,
+  .mc-mkt__warn,
+  .mc-modebadge,
+  .mc-models__groupcount,
+  .mc-nav__tick,
+  .mc-noticeitem__action,
+  .mc-plan__gate,
+  .mc-plan__laneid,
+  .mc-plancard__dot,
+  .mc-plancard__marker,
+  .mc-planconfirm__progress,
+  .mc-planconfirm__send,
+  .mc-review__badge,
+  .mc-rtp__address,
+  .mc-rtp__address:focus-visible,
+  .mc-settings__navbeta,
+  .mc-sidechat__newbtn,
+  .mc-skillchip__x,
+  .mc-slider__fill,
+  .mc-slider__track,
+  .mc-subagent__bg,
+  .mc-subagent__send,
+  .mc-subagent__status,
+  .mc-subagent__type,
+  .mc-subagents__bg,
+  .mc-subagents__childresult,
+  .mc-subagents__type,
+  .mc-taskrow__type,
+  .mc-toggle,
+  .mc-tokenbar,
+  .mc-updatemodal__bar,
+  .mc-updatemodal__fill,
+  .mc-wstree__filter
+) {
+  corner-shape: round;
+}

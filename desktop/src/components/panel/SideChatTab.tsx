@@ -309,16 +309,29 @@ export function SideChatTab({
           }
           case "assistant_delta": {
             const last = next.at(-1);
+            const thinkingMs = event.thinkingMs;
             if (last?.kind === "message" && last.role === "assistant" && last.streaming) {
-              next[next.length - 1] = { ...last, content: last.content + (event.delta ?? "") };
+              next[next.length - 1] = {
+                ...last,
+                content: last.content + (event.delta ?? ""),
+                ...(thinkingMs !== undefined ? { thinkingMs } : {}),
+              };
             } else {
               next.push({
                 kind: "message",
                 key: nextSideKey("assistant"),
                 role: "assistant",
                 content: event.delta ?? "",
+                ...(thinkingMs !== undefined ? { thinkingMs } : {}),
                 streaming: true,
               });
+            }
+            break;
+          }
+          case "thinking_complete": {
+            const last = next.at(-1);
+            if (last?.kind === "message" && last.role === "assistant") {
+              next[next.length - 1] = { ...last, thinkingMs: event.thinkingMs };
             }
             break;
           }
@@ -329,6 +342,7 @@ export function SideChatTab({
                 ...last,
                 content: event.text ?? last.content,
                 thinking: event.reasoning ?? last.thinking,
+                ...(event.thinkingMs !== undefined ? { thinkingMs: event.thinkingMs } : {}),
                 streaming: false,
               };
             } else {
@@ -338,6 +352,7 @@ export function SideChatTab({
                 role: "assistant",
                 content: event.text ?? "",
                 thinking: event.reasoning,
+                ...(event.thinkingMs !== undefined ? { thinkingMs: event.thinkingMs } : {}),
               });
             }
             break;

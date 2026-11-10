@@ -1,9 +1,7 @@
 /* 悬浮进度胶囊：绝对定位在输入框上方，不占文档流 */
+/* 外层悬浮行（Composer）负责居中定位；这里只做卡片定位锚点 */
 .mc-sessionpill-anchor {
-  position: absolute;
-  left: 50%;
-  bottom: calc(100% + 12px);
-  transform: translateX(-50%);
+  position: relative;
   z-index: 25;
 }
 

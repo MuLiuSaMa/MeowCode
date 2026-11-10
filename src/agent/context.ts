@@ -1,11 +1,12 @@
 import { resolveOutputBudget } from "./output-budget.js";
-import type { ChatMessage, ProviderConfig, ToolCall } from "./types.js";
+import type { ChatMessage, ProviderConfig, ToolCall, ToolDocument } from "./types.js";
 
 /**
  * 粗略的 token 估算：CJK（中日韩）字符按 1 字 ≈ 1 token，其余按 4 字符 ≈ 1 token。
  * 目的是给上下文窗口做裁剪，不是精确计费；宁可高估（多裁）不可低估（溢出）。
  */
-const CJK_CHAR_PATTERN = /[\u3000-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\uff00-\uffef]/g;
+const CJK_CHAR_PATTERN =
+  /[\u1100-\u11ff\u3000-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uac00-\ud7af\uf900-\ufaff\uff00-\uffef]/g;
 
 export function estimateTokens(text: string): number {
   if (!text) return 0;
@@ -16,10 +17,39 @@ export function estimateTokens(text: string): number {
 /** 单张图片的 token 估算：按主流 1280–1568px 截图口径取 1500，宁可高估。 */
 const IMAGE_TOKEN_ESTIMATE = 1_500;
 /**
- * 单个文档块的粗估：Anthropic 按页计 1.5–3k token，页数不可知，
- * 这里按 4k 保守计入 —— 不计的话，一份扫描件会让上下文估算严重偏低。
+ * 单个文档块的粗估。Anthropic 按页计 1.5–3k token：
+ * 有页数时按页数取上限；没有页数时用体积回退，宁可高估也不能让扫描件把窗口估算拉穿。
  */
 const DOCUMENT_TOKEN_ESTIMATE = 4_000;
+const DOCUMENT_TOKENS_PER_PAGE = 3_000;
+/** 无页数回退：每 1MB base64 按 100k token 计（约 25 字符/token，明显高于常规文本）。 */
+const DOCUMENT_FALLBACK_TOKENS_PER_BASE64_MB = 100_000;
+
+export function estimateDocumentTokens(document: Pick<ToolDocument, "data" | "pages">): number {
+  if (document.pages && document.pages > 0) {
+    return Math.max(DOCUMENT_TOKEN_ESTIMATE, Math.ceil(document.pages) * DOCUMENT_TOKENS_PER_PAGE);
+  }
+  return Math.max(
+    DOCUMENT_TOKEN_ESTIMATE,
+    Math.ceil(
+      (document.data.length / 1_000_000) * DOCUMENT_FALLBACK_TOKENS_PER_BASE64_MB,
+    ),
+  );
+}
+
+/** 当前 user 回合本身已经无法放进模型窗口：压缩旧历史也救不了，必须在发请求前明确拒绝。 */
+export class PromptTooLargeError extends Error {
+  constructor(
+    readonly inputTokens: number,
+    readonly outputTokens: number,
+    readonly contextWindow: number,
+  ) {
+    super(
+      `当前消息/附件约 ${inputTokens.toLocaleString()} tokens，超过模型窗口 ${contextWindow.toLocaleString()}（已预留输出 ${outputTokens.toLocaleString()}）。请拆分 PDF、减少附件，或改用文件工具分页读取。`,
+    );
+    this.name = "PromptTooLargeError";
+  }
+}
 
 export function estimateMessageTokens(message: ChatMessage): number {
   let total = estimateTokens(typeof message.content === "string" ? message.content : "");
@@ -42,9 +72,11 @@ export function estimateMessageTokens(message: ChatMessage): number {
   // 图片随消息一起回传，按张数计——不按 base64 长度算，否则会高估一个数量级
   const images = "images" in message ? message.images : undefined;
   if (images?.length) total += images.length * IMAGE_TOKEN_ESTIMATE;
-  // 文档（PDF）同理按份数计：不按 base64 长度算
+  // 文档（PDF）按页数估算；页数不可知时才退回保守体积估算
   const documents = "documents" in message ? message.documents : undefined;
-  if (documents?.length) total += documents.length * DOCUMENT_TOKEN_ESTIMATE;
+  if (documents?.length) {
+    for (const document of documents) total += estimateDocumentTokens(document);
+  }
   // thinking 块会随请求回传，必须计入上下文；reasoning 只是本地存档，不计
   const thinking = "anthropic_thinking" in message ? message.anthropic_thinking : undefined;
   if (thinking?.length) {
@@ -98,7 +130,12 @@ export function breakdownMessages(messages: ChatMessage[], topTools = 8): Messag
     const total = estimateMessageTokens(message);
     const mediaTokens =
       ("images" in message ? (message.images?.length ?? 0) * IMAGE_TOKEN_ESTIMATE : 0) +
-      ("documents" in message ? (message.documents?.length ?? 0) * DOCUMENT_TOKEN_ESTIMATE : 0);
+      ("documents" in message
+        ? (message.documents ?? []).reduce(
+            (sum, document) => sum + estimateDocumentTokens(document),
+            0,
+          )
+        : 0);
     media += mediaTokens;
     const rest = Math.max(0, total - mediaTokens);
 
@@ -557,6 +594,11 @@ export function trimMessages(
   let total = estimateMessagesTokens(current);
   // 超预算时才做轻量压缩：旧工具输出抽头尾，保住时间线与「读过什么」，
   // 尽量不靠整单元丢弃（丢单元会连用户/助手的正文一起消失）。
+  //
+  // 先收缩、再按需丢弃（而不是「反正要丢就跳过收缩」）：两种做法都会让前缀
+  // 从改动点起失效、缓存代价一样，而收缩把总量压小之后能多留下几个单元 ——
+  // 信息量严格更好。真正该避免的是「在预算边缘反复小改」，那由压缩阈值管，
+  // 不是这里。
   if (total > budget) {
     const shrunk = shrinkToolOutputs(current);
     if (shrunk.changed) {

@@ -291,7 +291,6 @@
         },
       ];
 
-      window.meow = {
         async request(path) {
           if (path === "/session") return reply(SESSION);
           if (path === "/session/messages") {
@@ -381,6 +380,7 @@
           };
         },
         async saveSettings(s) { return s; },
+        async saveProviders(p) { return p; },
         async savePreferences(p) { return p; },
         async saveProviderPrefs(p) { return p; },
         /** 预览里没有真实文件系统：假装拖入的文件都位于工作区根目录 */
@@ -447,12 +447,22 @@
           selectListeners.add(fn);
           return () => { selectListeners.delete(fn); };
         },
+        // 后台任务页签：预览里没有真实终端，只登记监听
+        onEnsureJobTab(fn) {
+          ensureListeners.add(fn);
+          return () => { ensureListeners.delete(fn); };
+        },
+        // 本地数据位置：预览里给一个假路径，迁移相关操作都空实现
+        getDataLocation: async () => ({ path: "C:\\Users\\preview\\AppData\\Roaming\\MeowCode" }),
+        pickDataDirectory: async () => null,
+        changeDataLocation: async () => ({ ok: false }),
 
         // ---- 终端（预览里只做空实现）----
         termCreate: async () => ({ id: "term-preview", shell: "pwsh.exe" }),
         termWrite: async () => {},
         termResize: async () => {},
         termKill: async () => {},
+        termList: async () => [],
         onTermData: () => () => {},
         onTermExit: () => () => {},
 
@@ -694,6 +704,7 @@
           };
           const index = map[forcedSection];
           if (navs.length && index !== undefined) navs[index].click();
+
           // ?picker=1 时顺带打开「添加模型服务商」选择器（预览专用）
           if (params.get("picker") === "1") {
             setTimeout(() => {

@@ -3,6 +3,7 @@
     "home": "Início",
     "architecture": "Arquitetura do agente",
     "git": "Git",
+    "mail": "E-mail",
     "plugins": "Loja de plugins",
     "automation": "Automação",
     "settings": "Configurações"
@@ -241,5 +242,10 @@
     "body": "Por favorzinho, me dá uma estrelinha~",
     "dismiss": "Não, obrigado",
     "accept": "Claro!"
+  },
+  "announcement": {
+    "label": "Anúncio",
+    "close": "Fechar",
+    "viewSite": "Ver site"
   }
 }

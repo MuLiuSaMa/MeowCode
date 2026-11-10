@@ -195,6 +195,37 @@ describe("GET /hooks/config", () => {
   });
 });
 
+describe("POST /config/hooks", () => {
+  it("热更新运行方式与工作区范围，不重启 server 且 GET /hooks/config 立即反映", async () => {
+    const set = await get("/config/hooks", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ runMode: "ask", includeWorkspace: true }),
+    });
+    expect(set.status).toBe(200);
+    const conf = await get("/hooks/config");
+    const body = (await conf.json()) as { runMode: string; scope: { workspace: boolean } };
+    expect(body.runMode).toBe("ask");
+    expect(body.scope.workspace).toBe(true);
+
+    const bad = await get("/config/hooks", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ runMode: "maybe" }),
+    });
+    expect(bad.status).toBe(400);
+
+    // 还原给后续用例
+    await get("/config/hooks", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ runMode: "auto", includeWorkspace: false }),
+    });
+    delete process.env.MEOWCODE_HOOKS_RUN_MODE;
+    delete process.env.MEOWCODE_CC_HOOKS_SCOPE;
+  });
+});
+
 describe("POST /plugins/mcp-credentials", () => {
   it("写入允许的 MCP 凭据 env 并重载插件", async () => {
     delete process.env.MEOWCODE_GITHUB_TOKEN;
@@ -243,6 +274,100 @@ describe("POST /plugins/mcp-credentials", () => {
     expect(await response.json()).toMatchObject({
       error: { code: "invalid_request" },
     });
+  });
+});
+
+describe("POST /plugins/disabled", () => {
+  it("运行中热更新禁用列表：不重启 server，插件工具与命令立即增删", async () => {
+    // 启用此前被禁用的 off 插件
+    const enabled = await get("/plugins/disabled", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ disabled: [] }),
+    });
+    expect(enabled.status).toBe(200);
+    const enabledBody = (await enabled.json()) as {
+      plugins: Array<{ id: string; enabled: boolean }>;
+      commands: Array<{ name: string }>;
+    };
+    expect(enabledBody.plugins.find((p) => p.id === "off")?.enabled).toBe(true);
+    expect(enabledBody.commands.some((c) => c.name === "offcmd")).toBe(true);
+    // 同一个 server 实例继续响应（设置类热更新不走进程重启）
+    expect(server.address()).not.toBeNull();
+
+    // 再禁用：同一个 server 上立即回退
+    const disabled = await get("/plugins/disabled", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ disabled: ["off"] }),
+    });
+    expect(disabled.status).toBe(200);
+    const disabledBody = (await disabled.json()) as {
+      plugins: Array<{ id: string; enabled: boolean }>;
+      commands: Array<{ name: string }>;
+    };
+    expect(disabledBody.plugins.find((p) => p.id === "off")?.enabled).toBe(false);
+    expect(disabledBody.plugins.find((p) => p.id === "hello")?.enabled).toBe(true);
+    expect(disabledBody.commands.some((c) => c.name === "offcmd")).toBe(false);
+  });
+
+  it("disabled 不是数组时拒绝", async () => {
+    const response = await get("/plugins/disabled", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ disabled: "off" }),
+    });
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({ error: { code: "invalid_request" } });
+  });
+});
+
+describe("PUT /config/providers", () => {
+  it("运行中热替换服务商列表：不重启 server，新列表立即对新会话生效", async () => {
+    const response = await get("/config/providers", {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        providers: [
+          { id: "p2", name: "provider2", baseUrl: "http://127.0.0.1:1", model: "m2", apiKey: "k2" },
+        ],
+        providerId: "p2",
+      }),
+    });
+    expect(response.status).toBe(200);
+    const listed = await get("/config/providers");
+    expect(listed.status).toBe(200);
+    const body = (await listed.json()) as {
+      providers: Array<{ id: string; model: string }>;
+      activeProviderId: string;
+    };
+    expect(body.providers.map((provider) => provider.id)).toEqual(["p2"]);
+    expect(body.providers[0]?.model).toBe("m2");
+    expect(body.activeProviderId).toBe("p2");
+    // 同一个 server 实例继续响应（没有走进程重启）
+    expect(server.address()).not.toBeNull();
+
+    // 还原给后续用例
+    await get("/config/providers", {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        providers: [
+          { id: "p1", name: "provider", baseUrl: "http://127.0.0.1:1", model: "m", apiKey: "secret" },
+        ],
+        providerId: "p1",
+      }),
+    });
+  });
+
+  it("providers 不是数组时拒绝", async () => {
+    const response = await get("/config/providers", {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ providers: "p1" }),
+    });
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({ error: { code: "invalid_request" } });
   });
 });
 

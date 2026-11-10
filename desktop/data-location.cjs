@@ -9,6 +9,7 @@ const { writeJsonAtomic } = require("./persist.cjs");
 const DATA_ENTRIES = [
   "agent",
   "fonts",
+  "mail",
   "oauth-apps.json",
   "model-profiles.json",
   "open-with-cache.json",

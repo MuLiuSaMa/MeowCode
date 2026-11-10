@@ -16,6 +16,8 @@
   flex-direction: column;
   max-height: 88vh;
   overflow: auto;
+  /* 有无滚动条都预留槽位：否则滚动条一出现内容宽度少 12px，弹窗里的表单被横向挤压 */
+  scrollbar-gutter: stable;
   background: var(--bg-elevated);
   color: var(--fg);
   border: 1px solid var(--border);
@@ -70,20 +72,11 @@
 .mc-dialog__remember {
   display: flex;
   align-items: center;
-  gap: 8px;
   margin-top: 18px;
   font-size: var(--fs-caption);
   color: var(--fg-subtle);
   cursor: pointer;
   user-select: none;
-}
-
-.mc-dialog__remember input {
-  width: 15px;
-  height: 15px;
-  margin: 0;
-  accent-color: var(--brand);
-  cursor: pointer;
 }
 
 /* 简单输入（重命名等） */

@@ -11,6 +11,7 @@ import {
   type ImportSource,
 } from "../../api";
 import { Button } from "../ui/Button";
+import { Checkbox } from "../ui/Checkbox";
 import { Section } from "../ui/Section";
 import codexLogo from "../../assets/brand-icons/import-codex.png";
 import dshLogo from "../../assets/brand-icons/import-dsh.png";
@@ -250,20 +251,23 @@ export function DataImportSection({
                       const count = entry?.count ?? 0;
                       const checked = selected[appId]?.includes(groupId) ?? false;
                       return (
-                        <label className="mc-dataimport__group" key={groupId}>
-                          <input
-                            type="checkbox"
-                            checked={checked}
-                            disabled={count === 0}
-                            onChange={() => toggleGroup(appId, groupId)}
-                          />
-                          <span className="mc-dataimport__groupname">
-                            {t(`dataImport.groups.${groupId}`)}
-                          </span>
-                          <span className="mc-dataimport__groupcount">
-                            {count > 0 ? count : t("dataImport.groupEmpty")}
-                          </span>
-                        </label>
+                        <Checkbox
+                          key={groupId}
+                          className="mc-dataimport__group"
+                          checked={checked}
+                          disabled={count === 0}
+                          onChange={() => toggleGroup(appId, groupId)}
+                          label={
+                            <>
+                              <span className="mc-dataimport__groupname">
+                                {t(`dataImport.groups.${groupId}`)}
+                              </span>
+                              <span className="mc-dataimport__groupcount">
+                                {count > 0 ? count : t("dataImport.groupEmpty")}
+                              </span>
+                            </>
+                          }
+                        />
                       );
                     })}
                   </div>

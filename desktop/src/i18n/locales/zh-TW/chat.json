@@ -39,7 +39,8 @@
   },
   "assistant": {
     "thinking": "思考過程",
-    "thinkingInProgress": "思考中…"
+    "thinkingInProgress": "思考中…",
+    "thinkingDone": "已思考"
   },
   "status": {
     "idle": "吃白飯中",
@@ -291,7 +292,10 @@
       "added": "新增",
       "updated": "更新",
       "deleted": "已刪除"
-    }
+    },
+    "groupRan": "執行工具 {{n}} 次",
+    "groupFailed": "，其中 {{n}} 次失敗",
+    "groupThinking": "思考 {{n}} 次"
   },
   "role": {
     "general": "通用",
@@ -332,6 +336,10 @@
     "gitFailed": "讀取變更失敗",
     "agents": "智能體",
     "noAgents": "暫無子智能體",
+    "terminals": "終端",
+    "noTerminals": "暫無執行中的終端",
+    "stopTerminal": "停止終端",
+    "terminalRunning": "執行中",
     "open": "展開工作區概覽",
     "close": "收起工作區概覽",
     "commitOrPush": "提交或推送",

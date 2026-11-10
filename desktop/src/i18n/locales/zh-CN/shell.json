@@ -3,6 +3,7 @@
     "home": "主页",
     "architecture": "Agent 架构",
     "git": "Git 管理",
+    "mail": "邮箱",
     "plugins": "插件市场",
     "automation": "自动化",
     "settings": "设置"
@@ -241,5 +242,10 @@
     "body": "球球惹，给我点个小星星叭~",
     "dismiss": "补药",
     "accept": "好哒"
+  },
+  "announcement": {
+    "label": "公告",
+    "close": "关闭",
+    "viewSite": "查看网站"
   }
 }

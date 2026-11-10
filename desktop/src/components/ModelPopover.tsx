@@ -140,10 +140,6 @@ export function ModelPopover({
     <div className="mc-popover" style={fixedStyle} ref={ref} role="dialog" aria-label={t("modelPopover.aria")}>
       {showList ? (
         <>
-          <div className="mc-popover__head">
-            <span className="mc-popover__title">{t("modelPopover.selectModel")}</span>
-            <span className="mc-popover__count">{providers.length}</span>
-          </div>
           <div className="mc-popover__list">
             {groups.map((group) => (
               <div className="mc-popover__group" key={group.key}>

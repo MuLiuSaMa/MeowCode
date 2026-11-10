@@ -39,7 +39,8 @@
   },
   "assistant": {
     "thinking": "사고 과정",
-    "thinkingInProgress": "생각 중…"
+    "thinkingInProgress": "생각 중…",
+    "thinkingDone": "사고 완료"
   },
   "status": {
     "idle": "공짜 밥 먹는 중",
@@ -291,7 +292,10 @@
       "added": "추가됨",
       "updated": "업데이트됨",
       "deleted": "삭제됨"
-    }
+    },
+    "groupRan": "도구 {{n}}회 실행",
+    "groupFailed": ", {{n}}회 실패",
+    "groupThinking": "사고 {{n}}회"
   },
   "role": {
     "general": "일반",
@@ -332,6 +336,10 @@
     "gitFailed": "변경 사항을 읽지 못했습니다",
     "agents": "에이전트",
     "noAgents": "아직 하위 에이전트가 없습니다",
+    "terminals": "터미널",
+    "noTerminals": "실행 중인 터미널이 없습니다",
+    "stopTerminal": "터미널 중지",
+    "terminalRunning": "실행 중",
     "open": "워크스페이스 개요 열기",
     "close": "워크스페이스 개요 닫기",
     "commitOrPush": "커밋 또는 푸시",

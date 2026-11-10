@@ -14,9 +14,24 @@ import type {
   PluginHandler,
   PluginHookName,
   PluginLogger,
+  PluginManifest,
+  PluginPermission,
+  PluginRpcHandler,
   PluginSource,
   PluginTool,
+  PluginUiDescriptor,
 } from "./types.js";
+import { PluginPermissionError } from "./types.js";
+
+/** 无 plugin.json 的旧插件：合成一份权限全开的清单，注册行为保持不变。 */
+export function legacyManifest(id: string): PluginManifest {
+  return {
+    id,
+    version: "0.0.0",
+    apiVersion: 2,
+    permissions: ["tools", "hooks", "commands", "storage", "rpc", "ui", "prompt"],
+  };
+}
 
 /**
  * 运行时唯一插件查询入口：持有已加载插件记录、hook handler 分桶、命令索引。
@@ -24,14 +39,40 @@ import type {
  * （哪个插件注册了哪些名字），reload 时按归属精确摘除。
  */
 export class PluginRegistry {
-  private readonly plugins = new Map<string, { source: PluginSource; path: string }>();
+  private readonly plugins = new Map<
+    string,
+    { source: PluginSource; path: string; manifest?: PluginManifest; ui?: PluginUiDescriptor }
+  >();
   private readonly hooks = new Map<PluginHookName, Array<{ pluginId: string; handler: (event: never) => unknown }>>();
   private readonly commands = new Map<string, { pluginId: string; cmd: PluginCommand }>();
   private readonly toolOwners = new Map<string, string>(); // toolName -> pluginId（仅记录经 registry 注册的）
+  private readonly rpcHandlers = new Map<string, { pluginId: string; handler: PluginRpcHandler }>();
 
   /** 由 loader 在注册前登记；同一 id 重复加载前应先 rollback */
-  addPlugin(id: string, source: PluginSource, path: string): void {
-    this.plugins.set(id, { source, path });
+  addPlugin(
+    id: string,
+    source: PluginSource,
+    path: string,
+    manifest?: PluginManifest,
+    ui?: PluginUiDescriptor,
+  ): void {
+    this.plugins.set(id, { source, path, ...(manifest ? { manifest } : {}), ...(ui ? { ui } : {}) });
+  }
+
+  /** 该插件是否声明了某项能力；无 manifest 的旧插件视为全开。 */
+  permits(pluginId: string, permission: PluginPermission): boolean {
+    const manifest = this.plugins.get(pluginId)?.manifest;
+    return !manifest || manifest.permissions.includes(permission);
+  }
+
+  private requirePermission(pluginId: string, permission: PluginPermission): void {
+    if (!this.permits(pluginId, permission)) {
+      throw new PluginPermissionError(pluginId, permission);
+    }
+  }
+
+  manifestOf(pluginId: string): PluginManifest | undefined {
+    return this.plugins.get(pluginId)?.manifest;
   }
 
   /** 工厂执行失败时回滚该插件的部分注册，避免半残插件留在运行时 */
@@ -49,11 +90,17 @@ export class PluginRegistry {
     for (const [name, entry] of this.commands) {
       if (entry.pluginId === id) this.commands.delete(name);
     }
+    for (const [key, entry] of this.rpcHandlers) {
+      if (entry.pluginId === id) this.rpcHandlers.delete(key);
+    }
   }
 
   // ---- 工具 ----
 
   addTool(pluginId: string, tool: PluginTool): { ok: boolean; error?: string } {
+    if (!this.permits(pluginId, "tools")) {
+      return { ok: false, error: 'plugin did not declare the "tools" permission' };
+    }
     const definition: ToolDefinition = {
       type: "function",
       function: {
@@ -91,6 +138,7 @@ export class PluginRegistry {
   // ---- hooks ----
 
   addHook<N extends PluginHookName>(pluginId: string, event: N, handler: PluginHandler<N>): void {
+    this.requirePermission(pluginId, "hooks");
     let list = this.hooks.get(event);
     if (!list) {
       list = [];
@@ -122,6 +170,7 @@ export class PluginRegistry {
   // ---- 命令 ----
 
   addCommand(pluginId: string, cmd: PluginCommand): boolean {
+    this.requirePermission(pluginId, "commands");
     if (this.commands.has(cmd.name)) return false;
     this.commands.set(cmd.name, { pluginId, cmd });
     return true;
@@ -139,6 +188,27 @@ export class PluginRegistry {
     }));
   }
 
+  // ---- RPC（插件 UI 调 host）----
+
+  addRpc(pluginId: string, method: string, handler: PluginRpcHandler): void {
+    this.requirePermission(pluginId, "rpc");
+    const key = `${pluginId}\u0000${method}`;
+    if (this.rpcHandlers.has(key)) {
+      throw new Error(`RPC method "${method}" is already registered by this plugin`);
+    }
+    this.rpcHandlers.set(key, { pluginId, handler });
+  }
+
+  getRpc(pluginId: string, method: string): { pluginId: string; handler: PluginRpcHandler } | undefined {
+    return this.rpcHandlers.get(`${pluginId}\u0000${method}`);
+  }
+
+  rpcMethodsOf(pluginId: string): string[] {
+    return [...this.rpcHandlers.entries()]
+      .filter(([, entry]) => entry.pluginId === pluginId)
+      .map(([key]) => key.slice(pluginId.length + 1));
+  }
+
   // ---- 描述（UI 数据源）----
 
   listDescriptors(): PluginDescriptor[] {
@@ -153,6 +223,8 @@ export class PluginRegistry {
         path: meta.path,
         source: meta.source,
         enabled: true,
+        ...(meta.manifest ? { version: meta.manifest.version, manifest: meta.manifest } : {}),
+        ...(meta.ui ? { ui: meta.ui } : {}),
         ...(toolNames.length > 0 ? { toolNames } : {}),
         ...(commandNames.length > 0 ? { commandNames } : {}),
         ...(hookEvents.length > 0 ? { hookEvents } : {}),
@@ -168,6 +240,7 @@ export class PluginRegistry {
     this.toolOwners.clear();
     this.hooks.clear();
     this.commands.clear();
+    this.rpcHandlers.clear();
     this.plugins.clear();
   }
 
@@ -181,6 +254,7 @@ export class PluginRegistry {
     host?: ExtensionHost,
   ): PluginAPI {
     const logger = this.loggerOf(pluginId);
+    const manifest = this.plugins.get(pluginId)?.manifest ?? legacyManifest(pluginId);
     return {
       registerTool: (tool: PluginTool): void => {
         const result = this.addTool(pluginId, tool);
@@ -194,9 +268,14 @@ export class PluginRegistry {
           logger.warn(`registerCommand("${cmd.name}") rejected: name already taken`);
         }
       },
+      registerRpc: (method: string, handler: PluginRpcHandler): void => {
+        this.addRpc(pluginId, method, handler);
+      },
       storage: createPluginStorage(pluginId, homeDir),
       logger,
       workspace,
+      manifest,
+      permissions: new Set(manifest.permissions),
       ...(host ? { host } : {}),
     };
   }

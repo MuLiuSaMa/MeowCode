@@ -213,3 +213,31 @@ export async function loadWorkspaceInstructions(
 ): Promise<string | undefined> {
   return (await loadWorkspaceInstructionsDetail(workspace, homeDir)).text;
 }
+
+/**
+ * 指令源指纹：AGENTS.md / CLAUDE.md / .meowcode 下的规则文件与技能目录的
+ * (mtime, size) 拼接。runtime 每回合比一次，变了才重读 —— 会话内改规则立即生效，
+ * 没改则前缀字节不动，缓存不受影响。
+ *
+ * 读失败一律视为「不存在」：指纹只用来判脏，不能因为它阻断回合。
+ */
+export async function instructionSourceSignature(workspace: string): Promise<string> {
+  const targets = [
+    "AGENTS.md",
+    "CLAUDE.md",
+    "CLAUDE.local.md",
+    path.join(".meowcode", "AGENTS.md"),
+    path.join(".meowcode", "rules"),
+    path.join(".meowcode", "skills"),
+  ];
+  const parts: string[] = [];
+  for (const relative of targets) {
+    try {
+      const info = await fs.stat(path.join(workspace, relative));
+      parts.push(`${relative}:${info.mtimeMs}:${info.size}`);
+    } catch {
+      parts.push(`${relative}:-`);
+    }
+  }
+  return parts.join("|");
+}

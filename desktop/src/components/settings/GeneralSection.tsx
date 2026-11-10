@@ -11,6 +11,8 @@ import {
   setProviderFallback,
   type CloseAction,
   type LanguagePreference,
+  type ProgressPillDismiss,
+  type ProviderSettings,
   type SpeechStyle,
 } from "../../api";
 import { UI_LANGUAGES } from "../../i18n/languages";
@@ -20,6 +22,7 @@ import { ProxyRows } from "./ProxyRows";
 /** 表里只存 key 与值：标签在组件里查表，切语言才会跟着刷新。 */
 const CLOSE_ACTIONS: CloseAction[] = ["ask", "tray", "quit"];
 const SPEECH_STYLES: SpeechStyle[] = ["normal", "tafei", "dazui"];
+const PILL_DISMISS_MODES: ProgressPillDismiss[] = ["commit", "turn-end"];
 
 export function GeneralSection({
   closeAction,
@@ -28,12 +31,19 @@ export function GeneralSection({
   onLanguage,
   speechStyle,
   onSpeechStyleChange,
+  progressPillDismiss,
+  onProgressPillDismissChange,
   silentUpdate,
   onSilentUpdateChange,
   notifications,
   onNotificationsChange,
+  announcements,
+  onAnnouncementsChange,
   nextPromptSuggestions,
   onNextPromptSuggestionsChange,
+  providers,
+  mailAiProviderId,
+  onChangeMailAiProvider,
   onToast,
 }: {
   closeAction: CloseAction;
@@ -43,15 +53,25 @@ export function GeneralSection({
   /** 用户可见回复的语色：普通 / 永雏塔菲 */
   speechStyle: SpeechStyle;
   onSpeechStyleChange: (value: SpeechStyle) => void;
+  /** 输入框上方信息胶囊的收起时机：提交后 / 对话结束后 */
+  progressPillDismiss: ProgressPillDismiss;
+  onProgressPillDismissChange: (value: ProgressPillDismiss) => void;
   /** 检查到新版本时是否后台静默下载（默认开） */
   silentUpdate: boolean;
   onSilentUpdateChange: (value: boolean) => void;
   /** 回合结束 / 需要审批 / 被中断时是否弹系统通知（默认开） */
   notifications: boolean;
   onNotificationsChange: (value: boolean) => void;
+  /** 标题栏公告条：是否显示官方公告（默认开） */
+  announcements: boolean;
+  onAnnouncementsChange: (value: boolean) => void;
   /** 输入建议：回合结束后预测下一句（默认关，开启前确认额外 token） */
   nextPromptSuggestions: boolean;
   onNextPromptSuggestionsChange: (value: boolean) => void;
+  /** 已配置模型：邮件「AI 写」可单独指定其中一个 */
+  providers: ProviderSettings[];
+  mailAiProviderId: string;
+  onChangeMailAiProvider: (providerId: string) => void;
   onToast: (text: string) => void;
 }) {
   const { t } = useTranslation("settings");
@@ -102,10 +122,15 @@ export function GeneralSection({
     () => SPEECH_STYLES.map((value) => ({ value, label: t(`speech.options.${value}`) })),
     [t],
   );
+  /** 「提交后消失 / 对话结束后消失」：只影响渲染层何时收起信息胶囊 */
+  const pillDismissOptions = useMemo<CustomSelectOption<ProgressPillDismiss>[]>(
+    () => PILL_DISMISS_MODES.map((value) => ({ value, label: t(`progressPill.options.${value}`) })),
+    [t],
+  );
 
   return (
     <div className="mc-settings__inner">
-      <Section title={t("language.section")} description={t("language.description")}>
+      <Section title={t("general.section")} description={t("general.desc")}>
         <FieldRow label={t("language.title")}>
           <CustomSelect
             value={language}
@@ -114,19 +139,7 @@ export function GeneralSection({
             ariaLabel={t("language.title")}
           />
         </FieldRow>
-      </Section>
-
-      {/* 其余运行期偏好收进一张卡：一条条列出来比拆成四张卡更好扫 */}
-      <Section title={t("general.section")} description={t("general.desc")}>
-        <FieldRow label={t("speech.field")} hint={t("speech.desc")}>
-          <CustomSelect
-            value={speechStyle}
-            options={speechOptions}
-            onChange={onSpeechStyleChange}
-            ariaLabel={t("speech.section")}
-          />
-        </FieldRow>
-        <FieldRow label={t("close.field")} hint={t(`close.desc.${closeAction}`)}>
+        <FieldRow label={t("close.field")} hint={t("close.desc")}>
           <SegmentedControl
             value={closeAction}
             options={closeOptions}
@@ -134,17 +147,71 @@ export function GeneralSection({
             ariaLabel={t("close.section")}
           />
         </FieldRow>
-        <FieldRow label={t("update.field")} hint={t(silentUpdate ? "update.desc.on" : "update.desc.off")}>
+        <FieldRow label={t("update.field")} hint={t("update.desc")}>
           <Toggle checked={silentUpdate} onChange={onSilentUpdateChange} label={t("update.field")} />
         </FieldRow>
         <FieldRow
           label={t("general.notify.field")}
-          hint={t(notifications ? "general.notify.desc.on" : "general.notify.desc.off")}
+          hint={t("general.notify.desc")}
         >
           <Toggle
             checked={notifications}
             onChange={onNotificationsChange}
             label={t("general.notify.field")}
+          />
+        </FieldRow>
+        <FieldRow
+          label={t("general.announcement.field")}
+          hint={t("general.announcement.desc")}
+        >
+          <Toggle
+            checked={announcements}
+            onChange={onAnnouncementsChange}
+            label={t("general.announcement.field")}
+          />
+        </FieldRow>
+        <ProxyRows onToast={onToast} />
+        <FieldRow
+          label={t("progressPill.field")}
+          hint={t("progressPill.desc")}
+        >
+          <CustomSelect
+            value={progressPillDismiss}
+            options={pillDismissOptions}
+            onChange={onProgressPillDismissChange}
+            ariaLabel={t("progressPill.field")}
+          />
+        </FieldRow>
+      </Section>
+
+      <Section title={t("general.other.section")}>
+        <FieldRow label={t("general.mailAi.field")}>
+          <CustomSelect
+            value={
+              mailAiProviderId &&
+              providers.some((item) => item.id === mailAiProviderId && item.enabled !== false)
+                ? mailAiProviderId
+                : ""
+            }
+            options={[
+              { value: "", label: t("general.mailAi.follow") },
+              ...providers
+                .filter((item) => item.enabled !== false)
+                .map((item) => ({
+                  value: item.id,
+                  label: `${item.displayName || item.model} · ${item.name}`,
+                })),
+            ]}
+            onChange={onChangeMailAiProvider}
+            ariaLabel={t("general.mailAi.field")}
+          />
+        </FieldRow>
+        <FieldRow label={t("speech.field")} hint={t("speech.desc")}>
+          <CustomSelect
+            value={speechStyle}
+            options={speechOptions}
+            onChange={onSpeechStyleChange}
+            ariaLabel={t("speech.section")}
           />
         </FieldRow>
         <FieldRow
@@ -174,7 +241,6 @@ export function GeneralSection({
             label={t("general.providerFallback.field")}
           />
         </FieldRow>
-        <ProxyRows onToast={onToast} />
       </Section>
 
       <DataLocationSection onToast={onToast} />

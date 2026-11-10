@@ -338,20 +338,16 @@ async function removeIndexEntry(dir: string, name: string): Promise<boolean> {
 const MAX_MEMORY_SECTION_CHARS_PER_SCOPE = 2_000;
 
 /**
- * 使用准则（ZCode 同款分类学）。关键不只是"怎么存"，更是"什么时候存"：
- * 每类触发条件都要给模型可辨认的信号，feedback 还要显式提醒"安静的确认"——
+ * 使用准则（ZCode 同款分类学）。每类触发条件都要给模型可辨认的信号：
  * 纠错容易被注意到，被默认接受的不寻常做法同样值得记。
+ * 这一段每会话都注入，token 一律按「值不值一行」裁。
  */
 const MEMORY_GUIDE = [
-  "Long-term memories persist across sessions. Only this index is loaded here — read an entry in full with memory_read(scope, name).",
+  "Long-term memories persist across sessions. Only this index is loaded — read one in full with memory_read(scope, name).",
   'Scopes: "user" = cross-project, "project" = this workspace.',
-  "Save proactively with memory_write the moment you learn something reusable — do not ask first. What to save:",
-  "- user: who the user is — role, expertise, preferences, workflows.",
-  '- feedback: corrections ("don\'t do X") and quiet confirmations (an unusual approach accepted without pushback); include why.',
-  "- project: decisions, goals and constraints not derivable from the code or git history; convert relative dates to absolute.",
-  "- reference: external resources (URLs, dashboards, tickets) and their purpose.",
-  "One fact per file; check the index first and update an existing entry instead of duplicating; delete wrong or outdated entries with memory_delete.",
-  "Never store secrets, what the repo already records, or details that only matter to the current conversation.",
+  "Save with memory_write the moment you learn something reusable; do not ask first. Save: who the user is; corrections and quiet confirmations (with why); project decisions and constraints not derivable from code or git; external references and their purpose.",
+  "One fact per entry; update an existing entry instead of duplicating; delete wrong ones with memory_delete. Convert relative dates to absolute.",
+  "Never store secrets, what the repo already records, or details that only matter right now.",
 ].join(" ");
 
 /**

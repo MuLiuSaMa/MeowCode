@@ -27,7 +27,21 @@
   font-size: var(--fs-base);
 }
 
-/* ---- 思考过程：可折叠灰字块 ---- */
+/* ---- 思考过程（主聊天）：外观与工具行一致（复用 mc-toolrow），这里只保留正文排版 ---- */
+/* 思考正文：比工具结果的展开体更紧凑，上下留白收一收 */
+.mc-thinking__bodywrap {
+  padding-top: 0;
+  padding-bottom: 4px;
+}
+.mc-thinking__text {
+  font-size: var(--fs-sm);
+  line-height: 1.6;
+  color: var(--fg-subtlest);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* ---- 旧式折叠块（悬浮岛 IslandThinking 复用这套结构） ---- */
 .mc-thinking {
   margin-bottom: 10px;
   border-left: 2px solid var(--border);

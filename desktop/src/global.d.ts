@@ -1,4 +1,32 @@
 import type {
+  MailAccountSavePayload,
+  MailAccountSaveResult,
+  MailAccountTestPayload,
+  MailAccountTestResult,
+  MailAccountsResult,
+  MailAttachmentDownloadPayload,
+  MailAttachmentDownloadResult,
+  MailCounts,
+  MailDeletePayload,
+  MailDeleteResult,
+  MailDraft,
+  MailDraftSaveResult,
+  MailDraftsListResult,
+  MailEvent,
+  MailListPayload,
+  MailListResult,
+  MailMessagePayload,
+  MailMessageResult,
+  MailOutboxListResult,
+  MailOutboxResult,
+  MailPickAttachmentsResult,
+  MailSeenPayload,
+  MailSendPayload,
+  MailSendResult,
+  MailSyncPayload,
+  MailSyncResult,
+} from "./mail/types";
+import type {
   AppInfo,
   CommunitySubmitPayload,
   GithubAuthStatus,
@@ -25,6 +53,16 @@ type UiStatePatch = Omit<Partial<UiState>, "drafts"> & {
   drafts?: Record<string, { text: string; updatedAt: string } | null>;
 };
 
+/** 公告（主进程拉取 notice_meowcode.json → 标题栏上方的公告条） */
+type AnnouncementPayload = {
+  id: string;
+  title: string;
+  content: string;
+  date: string;
+  url: string;
+  version: number;
+};
+
 /** 主进程从 ZCode 内置配置同步来的模型规则（精简后的 modelRules）。 */
 type ModelProfilesPayload = {
   revision: number | null;
@@ -46,15 +84,22 @@ declare global {
     assetUrl?(file: string): string | null;
       /** 插件自带面板的 URL（带 query token）；server 未就绪或非桌面环境返回 null（可重试） */
       pluginUiUrl?(pluginId: string, entry?: string): Promise<string | null>;
+      /** 插件槽位脚本（ui/client.js）的 URL；与面板共用 `/plugin-ui` 资源通道 */
+      pluginClientUrl?(pluginId: string, entry?: string): Promise<string | null>;
       /** 窗口启用了系统亚克力背板：body/root 要画成透明才能露出毛玻璃 */
       readonly acrylic: boolean;
       /** 拖入/选中的本地文件 → 绝对路径（非 Electron 环境返回 null） */
       getFilePath(file: File): string | null;
       getSettings(): Promise<Settings>;
       saveSettings(settings: Settings): Promise<Settings>;
-      /** 插件启停（写 settings.plugins 后重启 agent server 生效） */
+      /** 服务商列表增删改：只写盘 + 热更新 server（不重启，不中断运行中的对话） */
+      saveProviders(payload: {
+        providers: NonNullable<Settings["providers"]>;
+        providerId?: string;
+      }): Promise<Settings>;
+      /** 插件启停（写 settings.plugins 后热更新 server，不中断运行中的对话） */
       setPluginsState(payload: { disabled: string[] }): Promise<Settings>;
-      /** Claude Code hooks：启停/运行方式/工作区范围（重启 agent server 生效） */
+      /** Claude Code hooks：启停/运行方式/工作区范围（热更新，不重启 agent server） */
       saveHooksSettings(payload: {
         enabled: boolean;
         runMode: "auto" | "ask";
@@ -159,10 +204,19 @@ declare global {
 
       /** 自绘标题栏的窗口操作 */
       minimizeWindow(): Promise<void>;
+      /** 开始/结束窗口移动（拖动标题栏公告等自定义可拖区域时调用） */
+      startWindowDrag(): Promise<boolean>;
+      endWindowDrag(): Promise<boolean>;
       toggleMaximizeWindow(): Promise<boolean>;
       closeWindow(): Promise<void>;
       getWindowState(): Promise<{ isMaximized: boolean }>;
       onWindowStateChange(listener: (state: { isMaximized: boolean }) => void): () => void;
+
+      /** 公告：当前公告（没有则为 null）与更新广播 */
+      getAnnouncement(): Promise<AnnouncementPayload | null>;
+      /** 关闭公告：主进程按 id 落盘，重启后仍保持关闭 */
+      dismissAnnouncement(id: string): Promise<null>;
+      onAnnouncement(listener: (payload: AnnouncementPayload | null) => void): () => void;
 
       /** 轻量偏好：主题 / 关闭方式（只写盘，不重启 agent server；读取走 getSettings） */
       savePreferences(prefs: Partial<Preferences>): Promise<Preferences>;
@@ -301,10 +355,7 @@ declare global {
         exited: boolean;
         code: number | null;
       } | null>;
-      termRead(
-        id: string,
-        offset?: number,
-      ): Promise<{
+      termRead(id: string, offset?: number): Promise<{
         id: string;
         data: string;
         offset: number;
@@ -313,10 +364,48 @@ declare global {
         exited: boolean;
         code: number | null;
       } | null>;
+      /** 主进程里还活着的 PTY（含 agent 后台任务），用于窗口重载后补列表 */
+      termList(): Promise<
+        Array<{
+          id: string;
+          shell: string;
+          cwd: string;
+          command: string | null;
+          startedAt: string;
+          exited: boolean;
+          code: number | null;
+        }>
+      >;
       /** agent 启动后台任务：主进程请求打开/聚焦对应的终端页签 */
       onEnsureJobTab(listener: (payload: { id: string; command: string }) => void): () => void;
       onTermData(listener: (payload: { id: string; data: string }) => void): () => void;
       onTermExit(listener: (payload: { id: string; code: number }) => void): () => void;
+
+      // ---- 邮箱聚合 ----
+      mailAccountsList(): Promise<MailAccountsResult>;
+      mailAccountSave(payload: MailAccountSavePayload): Promise<MailAccountSaveResult>;
+      mailAccountRemove(accountId: string): Promise<{ ok: boolean }>;
+      mailAccountTest(payload: MailAccountTestPayload): Promise<MailAccountTestResult>;
+      mailSync(payload: MailSyncPayload): Promise<MailSyncResult>;
+      mailCounts(accountId: string): Promise<MailCounts>;
+      mailList(payload: MailListPayload): Promise<MailListResult>;
+      mailMessage(payload: MailMessagePayload): Promise<MailMessageResult>;
+      mailSetSeen(payload: MailSeenPayload): Promise<{ ok: boolean; code?: string; detail?: string }>;
+      mailDelete(payload: MailDeletePayload): Promise<MailDeleteResult>;
+      mailDownloadAttachment(
+        payload: MailAttachmentDownloadPayload,
+      ): Promise<MailAttachmentDownloadResult>;
+      mailPickAttachments(): Promise<MailPickAttachmentsResult>;
+      mailDraftsList(accountId: string): Promise<MailDraftsListResult>;
+      mailDraftSave(payload: {
+        draft: Partial<MailDraft> & { accountId: string };
+      }): Promise<MailDraftSaveResult>;
+      mailDraftDelete(id: string): Promise<{ ok: boolean }>;
+      mailSend(payload: MailSendPayload): Promise<MailSendResult>;
+      mailOutboxList(accountId: string): Promise<MailOutboxListResult>;
+      mailOutboxRetry(id: string): Promise<MailOutboxResult>;
+      mailOutboxDelete(id: string): Promise<MailOutboxResult>;
+      onMailEvent(listener: (event: MailEvent) => void): () => void;
     };
   }
 }

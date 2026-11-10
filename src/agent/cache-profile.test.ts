@@ -1,13 +1,17 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import {
   BREAKPOINT_CAP,
   cacheControlFor,
   hasBreakpoint,
+  noteGatewayMinimalCache,
+  resetGatewayCacheDegradation,
   resolveCachePlan,
   sessionAffinityKey,
   supportsLineageAffinity,
 } from "./cache-profile.js";
 import type { ProviderConfig } from "./types.js";
+
+beforeEach(() => resetGatewayCacheDegradation());
 
 function provider(patch: Partial<ProviderConfig>): ProviderConfig {
   return {
@@ -51,12 +55,28 @@ describe("resolveCachePlan", () => {
     expect(hasBreakpoint(plan, "tail")).toBe(true);
   });
 
-  it("falls back to system+tail on an unknown Anthropic-compatible gateway", () => {
+  it("asks for the full four breakpoints on an unknown Anthropic-compatible gateway", () => {
+    // 网关默认按官方形态要满额：4 断点是 Anthropic 自己的合法形态，多数网关原样转发。
+    // 真被拒由协议层分级降级记住可用档位（见下面的 ceiling 用例）。
     const plan = resolveCachePlan(
       provider({ baseUrl: "https://api.some-gateway.dev/v1", model: "glm-4.6" }),
     );
     expect(plan.profile).toBe("anthropic-gateway");
+    expect(plan.breakpoints).toEqual(["tools", "system1", "anchor", "tail"]);
+  });
+
+  it("switches to the minimal breakpoint table after a gateway rejects them", () => {
+    const gateway = provider({ id: "gw-1", baseUrl: "https://api.some-gateway.dev/v1", model: "glm-4.6" });
+    noteGatewayMinimalCache(gateway.id);
+    const plan = resolveCachePlan(gateway);
+    // 降级不是「截断满额列表」：必须保住稳定前缀与对话尾部
     expect(plan.breakpoints).toEqual(["system0", "tail"]);
+    expect(hasBreakpoint(plan, "tail")).toBe(true);
+    // 只影响被记过的 provider，别的网关照旧满额
+    expect(
+      resolveCachePlan(provider({ id: "gw-2", baseUrl: "https://other.example/v1", model: "glm-4.6" }))
+        .breakpoints,
+    ).toHaveLength(4);
   });
 
   it("never returns more breakpoints than the Anthropic cap", () => {

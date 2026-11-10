@@ -28,6 +28,11 @@ export type CacheObservation = {
   inputTokens?: number;
   /** 本请求相对上一次请求，工具 + system 指纹是否变化 */
   prefixChanged: boolean;
+  /**
+   * 变化落在哪几段（`tools` / `system[1]` / `system_count`）。
+   * 缺省表示只知道「变了」不知道「谁变了」—— 老调用点与低粒度诊断仍可用。
+   */
+  changedSegments?: readonly string[];
   /** 本 provider 之前是否发过相同前缀的请求（缓存已有机会写入） */
   hadSamePrefixBefore: boolean;
   /** 距该 provider 上一次请求的空闲时长 */
@@ -35,7 +40,11 @@ export type CacheObservation = {
 };
 
 export function classifyCache(input: CacheObservation): { state: CacheState; reason?: string } {
-  if (input.prefixChanged) return { state: "cold", reason: "prefix_changed" };
+  if (input.prefixChanged) {
+    // 有分段归因就带在 reason 里（UI 的 rebuilds 计数按 reason 分桶，天然按段统计）
+    const where = input.changedSegments?.length ? `:${input.changedSegments.join("+")}` : "";
+    return { state: "cold", reason: `prefix_changed${where}` };
+  }
   if (typeof input.cacheReadTokens === "number" && input.cacheReadTokens > 0) {
     return { state: "warm" };
   }
@@ -56,4 +65,56 @@ export function classifyCache(input: CacheObservation): { state: CacheState; rea
     return { state: "unsupported", reason: "stable_prefix_no_cached_tokens" };
   }
   return { state: "evicted", reason: "cache_miss" };
+}
+
+/**
+ * 前缀分段快照：工具块一个指纹 + 每条 system 消息一个指纹（下标顺序即 system[i]）。
+ */
+export type PrefixSnapshot = {
+  tools: string;
+  system: readonly string[];
+};
+
+export type PrefixDiff = {
+  changed: boolean;
+  tools: boolean;
+  /** 内容变化的 system 下标（只在两次条数一致时逐条比对） */
+  system: readonly number[];
+  /** system 条数变了：下标对齐不可信，只能整体归因 */
+  countChanged: boolean;
+};
+
+/**
+ * 比较两次请求的前缀分段指纹。
+ *
+ * 把 tools 与 system 拼成一个 sha1 只能回答「变了」，回答不了「谁变了」——
+ * 一次 MCP 工具上线、一次 AGENTS.md 重载、一次语色切换在诊断上长得一模一样，
+ * 掉缓存后无从归因。分段比较把三者拆开（对照 cc-haha 的
+ * promptCacheBreakDetection：system / 每个工具 / betas 各自哈希）。
+ */
+export function diffPrefix(
+  previous: PrefixSnapshot | undefined,
+  next: PrefixSnapshot,
+): PrefixDiff {
+  if (!previous) return { changed: false, tools: false, system: [], countChanged: false };
+  const tools = previous.tools !== next.tools;
+  const countChanged = previous.system.length !== next.system.length;
+  const system: number[] = [];
+  const shared = Math.min(previous.system.length, next.system.length);
+  for (let index = 0; index < shared; index += 1) {
+    if (previous.system[index] !== next.system[index]) system.push(index);
+  }
+  return { changed: tools || countChanged || system.length > 0, tools, system, countChanged };
+}
+
+/**
+ * 差异 → 可读段名。段名进 `cacheReason`，UI 的 rebuilds 计数按 reason 分桶，
+ * 于是「到底是谁在炸前缀」可以直接按段统计出来。
+ */
+export function prefixChangeSegments(diff: PrefixDiff): string[] {
+  const segments: string[] = [];
+  if (diff.tools) segments.push("tools");
+  if (diff.countChanged) segments.push("system_count");
+  for (const index of diff.system) segments.push(`system[${index}]`);
+  return segments;
 }

@@ -48,10 +48,45 @@ const PROFILE_BREAKPOINTS: Record<CacheProfileId, CacheBreakpoint[]> = {
   "anthropic-native": ["tools", "system1", "anchor", "tail"],
   // Qwen 不认 tools 断点：只留稳定前缀（system）与尾条
   qwen: ["system0", "tail"],
-  // 其余兼容网关：保守只打 system[0] 与尾条
-  "anthropic-gateway": ["system0", "tail"],
+  // 兼容网关：按官方形态先要满 4 个（one-api / new-api / claude-code-router 这类
+  // 基本都是原样转发 Anthropic 请求体，4 断点就是 Anthropic 自己的合法形态）。
+  // 真被拒了不在这里猜——由协议层的 400 分级降级记住可用档位，见 gatewayCacheCeiling。
+  "anthropic-gateway": ["tools", "system1", "anchor", "tail"],
   none: [],
 };
+
+/**
+ * 网关降级档：system 首块 + 尾条。
+ *
+ * 注意不是「把满额列表截断」—— 截断会先丢掉 anchor 与 tail，留下 tools+system1，
+ * 那等于只缓存了稳定前缀、把整段对话排除在缓存外，比不降级还差。降级必须换一张
+ * 断点表：保住「稳定前缀」和「对话尾部」这两段唯一真正能反复命中的位置。
+ */
+const GATEWAY_MINIMAL_BREAKPOINTS: CacheBreakpoint[] = ["system0", "tail"];
+
+/**
+ * 网关降级记忆（providerId）：被 400 拒过断点之后改走降级档并永久记住。
+ *
+ * 默认按 4 个断点试探（大多数 one-api / new-api / claude-code-router 都原样转发
+ * Anthropic 请求体）；明确因为缓存字段报 400/422 就降到 2 个并记住，之后不再试错。
+ * 只有降级档仍被拒才彻底关闭 cache_control —— 目标是「少缓存一点」而不是「不缓存」。
+ */
+const gatewayMinimalProviders = new Set<string>();
+
+/** 该 provider 是否已降级到 2 断点档。 */
+export function gatewayUsesMinimalCache(providerId: string): boolean {
+  return gatewayMinimalProviders.has(providerId);
+}
+
+/** 记一次降级（4 → 2）。只降不升：同一网关没必要反复试错。 */
+export function noteGatewayMinimalCache(providerId: string): void {
+  gatewayMinimalProviders.add(providerId);
+}
+
+/** 测试用：清空降级记忆（模块级状态不能跨用例泄漏）。 */
+export function resetGatewayCacheDegradation(): void {
+  gatewayMinimalProviders.clear();
+}
 
 function hostnameOf(url: string): string {
   try {
@@ -123,7 +158,18 @@ export function resolveCachePlan(provider: ProviderConfig): CachePlan {
     } else {
       profile = "anthropic-gateway";
     }
-    return finalize(profile, protocol, resolveCacheTtl(provider, profile, host), undefined);
+    // 网关被拒过就换降级断点表：只影响断点位置，不影响 TTL 判定
+    const override =
+      profile === "anthropic-gateway" && gatewayMinimalProviders.has(provider.id)
+        ? GATEWAY_MINIMAL_BREAKPOINTS
+        : undefined;
+    return finalize(
+      profile,
+      protocol,
+      resolveCacheTtl(provider, profile, host),
+      undefined,
+      override,
+    );
   }
 
   if (protocol === "openai-responses") {
@@ -142,9 +188,11 @@ function finalize(
   profile: CacheProfileId,
   protocol: ApiFormat,
   ttl: "5m" | "1h",
-  retention: "24h" | undefined,
+  retention?: "24h",
+  /** 降级档的断点表（仅网关被拒后使用）；缺省按画像满额 */
+  breakpointsOverride?: CacheBreakpoint[],
 ): CachePlan {
-  const wanted = PROFILE_BREAKPOINTS[profile];
+  const wanted = breakpointsOverride ?? PROFILE_BREAKPOINTS[profile];
   const breakpoints = wanted.slice(0, BREAKPOINT_CAP);
   return {
     profile,
@@ -185,6 +233,20 @@ export function supportsLineageAffinity(provider: ProviderConfig): boolean {
   const protocol = provider.protocol ?? "openai-chat-completions";
   if (protocol !== "openai-responses" && protocol !== "openai-chat-completions") return false;
   return hostnameOf(provider.baseUrl) === "api.openai.com";
+}
+
+/**
+ * 是否官方 OpenAI 端点。用于「只在能证伪的端点上开默认行为」这类判断：
+ * previous_response_id 增量链、prompt_cache_key 之类字段，第三方兼容端点认不认
+ * 无法离线确认，只能在官方端点上默认打开。
+ */
+export function isOfficialOpenAIEndpoint(provider: ProviderConfig): boolean {
+  return hostnameOf(provider.baseUrl) === "api.openai.com";
+}
+
+/** 是否官方 Anthropic 端点（context_management 这类新字段只在这里默认下发）。 */
+export function isOfficialAnthropicEndpoint(provider: ProviderConfig): boolean {
+  return hostnameOf(provider.baseUrl) === "api.anthropic.com";
 }
 
 /**

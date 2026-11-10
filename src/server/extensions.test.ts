@@ -2,6 +2,8 @@ import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { loadPlugins } from "../plugins/loader.js";
+import { PluginRegistry } from "../plugins/registry.js";
 import { createExtensionHost } from "./extensions.js";
 
 const tempDirs: string[] = [];
@@ -126,15 +128,72 @@ describe("createPlugin", () => {
     });
 
     expect(result).toMatchObject({ ok: true, id: "word-count", toolNames: ["word_count"] });
-    const file = path.join(home, ".meowcode", "plugins", "word-count.ts");
-    const raw = await fs.readFile(file, "utf8");
+    const dir = path.join(home, ".meowcode", "plugins", "word-count");
+    const raw = await fs.readFile(path.join(dir, "index.ts"), "utf8");
     expect(raw).toContain("// @meowcode name: 字数统计");
     expect(raw).toContain("// @meowcode description: 统计文本字数");
     expect(raw).toContain("export default");
+    const manifest = JSON.parse(await fs.readFile(path.join(dir, "plugin.json"), "utf8")) as {
+      apiVersion: number;
+      main: string;
+      permissions: string[];
+    };
+    expect(manifest).toMatchObject({
+      id: "word-count",
+      apiVersion: 2,
+      main: "index.ts",
+      permissions: ["tools", "hooks", "commands", "storage"],
+    });
     expect(onPluginsChanged).toHaveBeenCalledWith("word-count");
     expect(
       await exists(path.join(home, ".meowcode", ".marketplace", "manual-plugin-word-count.json")),
     ).toBe(true);
+    expect(
+      await exists(path.join(home, ".meowcode", ".marketplace", "ai-plugin-word-count.json")),
+    ).toBe(true);
+  });
+
+  it("带 client 写 ui/client.js 与 manifest，自动补 ui 权限", async () => {
+    const home = await makeHome();
+    const { host, onPluginsChanged } = hostFor(home);
+    onPluginsChanged.mockResolvedValueOnce({ toolNames: ["word_count"] });
+    const client = `return { apply(ctx) {
+      return ctx.slots.register("session.header.actions", { id: "hello", order: 1 }, () => null);
+    } };`;
+
+    const result = await host.createPlugin({
+      id: "ui-plugin",
+      name: "界面插件",
+      description: "带标题栏按钮",
+      code: PLUGIN_CODE,
+      client,
+      permissions: ["tools"],
+    });
+
+    expect(result).toMatchObject({ ok: true, client: true });
+    const dir = path.join(home, ".meowcode", "plugins", "ui-plugin");
+    const manifest = JSON.parse(await fs.readFile(path.join(dir, "plugin.json"), "utf8")) as {
+      client?: string;
+      permissions: string[];
+    };
+    expect(manifest.client).toBe("ui/client.js");
+    expect(manifest.permissions).toEqual(["tools", "ui", "rpc", "storage", "prompt"]);
+    expect(await fs.readFile(path.join(dir, "ui", "client.js"), "utf8")).toContain("slots.register");
+  });
+
+  it("client 语法错误在落盘前拒绝", async () => {
+    const home = await makeHome();
+    const { host, onPluginsChanged } = hostFor(home);
+    const result = await host.createPlugin({
+      id: "bad-client",
+      name: "坏界面",
+      description: "语法错误",
+      code: PLUGIN_CODE,
+      client: "return { apply(ctx) { this is not javascript",
+    });
+    expect(result).toMatchObject({ ok: false, stage: "validate" });
+    expect(onPluginsChanged).not.toHaveBeenCalled();
+    expect(await exists(path.join(home, ".meowcode", "plugins", "bad-client"))).toBe(false);
   });
 
   it("校验：缺 export default / 内置 id / 非法 id", async () => {
@@ -165,6 +224,60 @@ describe("createPlugin", () => {
 
     expect(result).toMatchObject({ ok: false, stage: "reload" });
     expect(onPluginsChanged).toHaveBeenCalledTimes(2);
-    expect(await exists(path.join(home, ".meowcode", "plugins", "broken.ts"))).toBe(false);
+    expect(await exists(path.join(home, ".meowcode", "plugins", "broken"))).toBe(false);
+  });
+
+  it("创建后 loadPlugins 直接识别 client 与 aiAuthored", async () => {
+    const home = await makeHome();
+    const { host } = hostFor(home);
+    await host.createPlugin({
+      id: "ai-ui",
+      name: "AI 界面插件",
+      description: "创建后即可用",
+      code: PLUGIN_CODE,
+      client: `return { apply(ctx) {
+        return ctx.slots.register("session.header.actions", { id: "hello" }, () => null);
+      } };`,
+    });
+
+    const registry = new PluginRegistry();
+    const { descriptors, errors } = await loadPlugins({
+      workspace: await makeHome(),
+      homeDir: home,
+      registry,
+    });
+    const descriptor = descriptors.find((item) => item.id === "ai-ui");
+    expect(errors).toEqual([]);
+    expect(descriptor?.aiAuthored).toBe(true);
+    expect(descriptor?.ui?.client?.entry).toBe("client.js");
+    expect(descriptor?.manifest?.permissions).toContain("ui");
+    registry.unregisterAll();
+  });
+
+  it("覆盖旧的 AI 单文件插件时迁移成目录包并移除旧文件", async () => {
+    const home = await makeHome();
+    const { host, onPluginsChanged } = hostFor(home);
+    onPluginsChanged.mockResolvedValueOnce({ toolNames: ["word_count"] });
+    const pluginsDir = path.join(home, ".meowcode", "plugins");
+    const legacy = path.join(pluginsDir, "legacy-ai.ts");
+    await fs.mkdir(pluginsDir, { recursive: true });
+    await fs.writeFile(legacy, "export default () => {};\n", "utf8");
+    await fs.mkdir(path.join(home, ".meowcode", ".marketplace"), { recursive: true });
+    await fs.writeFile(
+      path.join(home, ".meowcode", ".marketplace", "manual-plugin-legacy-ai.json"),
+      JSON.stringify({ id: "legacy-ai", type: "plugin", target: "plugins/legacy-ai.ts" }),
+      "utf8",
+    );
+
+    const result = await host.createPlugin({
+      id: "legacy-ai",
+      name: "迁移插件",
+      description: "从单文件迁移",
+      code: PLUGIN_CODE,
+    });
+
+    expect(result).toMatchObject({ ok: true });
+    expect(await exists(legacy)).toBe(false);
+    expect(await exists(path.join(pluginsDir, "legacy-ai", "plugin.json"))).toBe(true);
   });
 });

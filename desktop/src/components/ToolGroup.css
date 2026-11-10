@@ -1,0 +1,88 @@
+/* 思考/工具行分组：一枚描边胶囊作头，明细缩进在左侧竖线下 */
+.mc-toolgroup {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  min-width: 0;
+  max-width: 100%;
+}
+
+/* 组头无卡片包裹；箭头单独装在一枚描边小卡片里，
+   卡片左缘与工具行状态图标对齐，文案与工具行标题文字对齐（24px） */
+.mc-toolgroup__head {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: none;
+  color: var(--fg-subtle);
+  font-family: var(--font-sans);
+  font-size: var(--fs-caption);
+  cursor: pointer;
+  transition: color var(--dur) var(--ease);
+}
+.mc-toolgroup__head:hover {
+  color: var(--fg);
+}
+
+.mc-toolgroup__chevcard {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  flex: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xs);
+  corner-shape: superellipse(1.5);
+  background: var(--surface);
+  color: var(--fg-subtle);
+  transition:
+    background-color var(--dur) var(--ease),
+    border-color var(--dur) var(--ease),
+    color var(--dur) var(--ease);
+}
+.mc-toolgroup__head:hover .mc-toolgroup__chevcard {
+  border-color: var(--border-hover, var(--border));
+  color: var(--fg);
+}
+.mc-toolgroup__chev {
+  flex: none;
+  color: var(--fg-subtlest);
+  transition: transform var(--dur) var(--ease);
+}
+.mc-toolgroup__chev[data-open="true"] {
+  transform: rotate(90deg);
+}
+
+.mc-toolgroup__collapse {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows var(--dur) var(--ease);
+  width: 100%;
+}
+.mc-toolgroup__collapse[data-open="true"] {
+  grid-template-rows: 1fr;
+}
+.mc-toolgroup__inner {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-height: 0;
+  /* 明细缩进 + 左侧竖线，与头部文字形成层级 */
+  margin: 4px 0 0 10px;
+  padding-left: 14px;
+  border-left: 1px solid var(--border);
+}
+.mc-toolgroup__inner > * + * {
+  margin-top: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mc-toolgroup__collapse {
+    transition: none;
+  }
+}

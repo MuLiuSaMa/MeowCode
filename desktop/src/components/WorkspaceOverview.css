@@ -1,5 +1,6 @@
 .mc-workspaceov {
-  position: relative;
+  /* 卡片改锚到标题栏右缘：胶囊挪到搜索左侧后，弹层仍贴主内容区右侧 */
+  position: static;
   display: flex;
   align-items: center;
 }
@@ -68,11 +69,11 @@
   color: var(--diff-del);
 }
 
-/* 展开卡片：从胶囊向下浮出，右侧贴边 */
+/* 展开卡片：从标题栏下方浮出，右缘贴主内容区右侧（与标题栏 20px 内边距对齐） */
 .mc-workspaceov__card {
   position: absolute;
   top: calc(100% + 6px);
-  right: 0;
+  right: 20px;
   z-index: 25;
   width: min(300px, calc(100vw - 48px));
   max-height: min(70vh, 640px);
@@ -292,4 +293,50 @@
   padding: 6px;
   color: var(--fg-subtlest);
   font-size: var(--fs-sm);
+}
+
+/* ---- 运行中的终端：一行 = 打开按钮 + 停止按钮 ---- */
+.mc-workspaceov__termrow {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+/* 打开按钮吃掉剩余宽度，长命令靠 ellipsis 收尾 */
+.mc-workspaceov__termopen {
+  flex: 1;
+  min-width: 0;
+  padding-right: 2px;
+}
+
+.mc-workspaceov__termopen .mc-workspaceov__agenttext {
+  gap: 1px;
+}
+
+.mc-workspaceov__termstop {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--fg-subtlest);
+  cursor: pointer;
+  transition:
+    background-color var(--dur) var(--ease),
+    color var(--dur) var(--ease);
+}
+
+.mc-workspaceov__termstop:hover {
+  background: var(--danger-surface);
+  color: var(--danger);
+}
+
+.mc-workspaceov__termstop:focus-visible {
+  outline: 2px solid var(--accent, currentColor);
+  outline-offset: -2px;
 }

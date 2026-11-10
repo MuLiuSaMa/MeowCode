@@ -9,6 +9,41 @@
   margin: 0 auto;
 }
 
+/* 输入框上方的悬浮行：进度胶囊居中，返回底部按钮跟在右侧 */
+.mc-composerstack__floating {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 12px);
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  z-index: 25;
+}
+.mc-scrollbottom {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  flex: none;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  corner-shape: superellipse(1.5);
+  background: var(--bg-elevated);
+  box-shadow: var(--shadow-md);
+  color: var(--fg-subtle);
+  cursor: pointer;
+  transition:
+    background-color var(--dur) var(--ease),
+    color var(--dur) var(--ease);
+}
+.mc-scrollbottom:hover {
+  background: var(--surface-hover);
+  color: var(--fg);
+}
+
 .mc-queuedlist {
   display: flex;
   flex-direction: column;

@@ -4,6 +4,8 @@
   justify-content: space-between;
   gap: 12px;
   height: 48px;
+  /* 保留相对定位：插件槽里可能有绝对定位的内容 */
+  position: relative;
   flex-shrink: 0;
   /* 与左侧导航栏的按钮左缘对齐（rail 64px 宽 - 42px 按钮 = 两侧各 11px） */
   padding-left: 11px;
@@ -27,6 +29,17 @@
   display: block;
 }
 
+/* 插件贡献的标题栏动作：靠右、可点击（不参与窗口拖拽） */
+.mc-titlebar__plugins {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  margin-right: 10px;
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+
 /* 窗口按钮：1:1 圆角矩形，撑满标题栏高度并贴死右上角（Windows 原生那样的可点区域） */
 .mc-titlebar__controls {
   display: flex;
@@ -39,6 +52,7 @@
 }
 
 .mc-winbtn {
+  position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -51,6 +65,13 @@
   color: var(--fg-subtle);
   cursor: pointer;
   transition: background-color var(--dur) var(--ease), color var(--dur) var(--ease);
+}
+/* 圆角只影响外观，会把四角从命中区裁掉：窗口贴边时最右上角点不到关闭。
+   铺一层无圆角的透明伪元素，保住圆角视觉，同时把四角补回可点击区域。 */
+.mc-winbtn::after {
+  content: "";
+  position: absolute;
+  inset: 0;
 }
 .mc-winbtn:hover {
   background: var(--surface-hover);

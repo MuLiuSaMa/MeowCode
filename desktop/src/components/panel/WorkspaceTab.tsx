@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import {
   LuChevronRight,
@@ -50,11 +50,18 @@ const MAX_ENTRIES_PER_DIR = 1_000;
 const MAX_FILTER_RESULTS = 300;
 
 /** 文件列表（右侧子栏）宽度约束与记忆 */
-const FILE_TREE_MIN = 140;
+const FILE_TREE_MIN = 150;
 const FILE_TREE_MAX = 480;
+/** 预览区最少要留出的宽度：面板不够时列表先让位，但列表自身不低于 FILE_TREE_MIN */
+const PREVIEW_MIN_WIDTH = 200;
 
-function clampTreeWidth(value: number): number {
-  return Math.min(FILE_TREE_MAX, Math.max(FILE_TREE_MIN, value));
+/** 按面板可用宽度收窄列表宽度（列表下限固定，宁可压预览也不把文字变图标） */
+function clampTreeWidth(value: number, available?: number): number {
+  const upper =
+    available && available > 0
+      ? Math.max(FILE_TREE_MIN, Math.min(FILE_TREE_MAX, available - PREVIEW_MIN_WIDTH))
+      : FILE_TREE_MAX;
+  return Math.min(Math.max(FILE_TREE_MIN, value), upper);
 }
 
 function extOf(name: string): string {
@@ -116,6 +123,20 @@ export function WorkspaceTab({
     return 200;
   });
   const treeDragRef = useRef<{ startX: number; startWidth: number } | null>(null);
+  /** 容器实测宽度：窄面板时要保证预览区最小值，列表宽度随之让位 */
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  const [available, setAvailable] = useState(0);
+  useEffect(() => {
+    const node = rootRef.current;
+    if (!node || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver((entries) => {
+      const width = entries[0]?.contentRect.width ?? 0;
+      setAvailable(Math.round(width));
+    });
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, []);
+  const sideWidth = clampTreeWidth(treeWidth, available);
   const startTreeResize = (event: ReactPointerEvent<HTMLDivElement>) => {
     treeDragRef.current = { startX: event.clientX, startWidth: treeWidth };
     try {
@@ -127,7 +148,7 @@ export function WorkspaceTab({
   const moveTreeResize = (event: ReactPointerEvent<HTMLDivElement>) => {
     const drag = treeDragRef.current;
     if (!drag) return;
-    setTreeWidth(clampTreeWidth(drag.startWidth - (event.clientX - drag.startX)));
+    setTreeWidth(clampTreeWidth(drag.startWidth - (event.clientX - drag.startX), available));
   };
   const endTreeResize = (event: ReactPointerEvent<HTMLDivElement>) => {
     if (!treeDragRef.current) return;
@@ -231,14 +252,14 @@ export function WorkspaceTab({
   const renderDir = (dirPath: string, depth: number): ReactNode => {
     if (loading.has(dirPath) && !(dirPath in childrenByDir)) {
       return (
-        <p className="mc-wstree__hint" style={{ paddingLeft: 8 + depth * 12 }}>
+        <p className="mc-wstree__hint" style={{ "--wstree-indent": `${8 + depth * 12}px` } as CSSProperties}>
           {t("workspace.loading")}
         </p>
       );
     }
     if (failedDirs.has(dirPath)) {
       return (
-        <p className="mc-wstree__hint" style={{ paddingLeft: 8 + depth * 12 }}>
+        <p className="mc-wstree__hint" style={{ "--wstree-indent": `${8 + depth * 12}px` } as CSSProperties}>
           {t("workspace.readFailed")}
         </p>
       );
@@ -256,7 +277,7 @@ export function WorkspaceTab({
                 className="mc-wstree__row"
                 data-dir="true"
                 title={entry.path}
-                style={{ paddingLeft: 8 + depth * 12 }}
+                style={{ "--wstree-indent": `${8 + depth * 12}px` } as CSSProperties}
                 onClick={() => toggleDir(entry.path)}
               >
                 <LuChevronRight
@@ -265,7 +286,7 @@ export function WorkspaceTab({
                   data-open={expanded.has(entry.path)}
                 />
                 <LuFolder size={13} className="mc-wstree__icon" data-cat="dir" />
-                <span className="mc-truncate">{entry.name}</span>
+                <span className="mc-wstree__name mc-truncate">{entry.name}</span>
               </button>
               {expanded.has(entry.path) ? renderDir(entry.path, depth + 1) : null}
             </div>
@@ -276,17 +297,17 @@ export function WorkspaceTab({
               className="mc-wstree__row"
               data-active={entry.path === file}
               title={entry.path}
-              style={{ paddingLeft: 8 + depth * 12 }}
+              style={{ "--wstree-indent": `${8 + depth * 12}px` } as CSSProperties}
               onClick={() => onSelect(entry.path)}
             >
               <span className="mc-wstree__chevron" />
               {fileIcon(entry.name)}
-              <span className="mc-truncate">{entry.name}</span>
+              <span className="mc-wstree__name mc-truncate">{entry.name}</span>
             </button>
           ),
         )}
         {entries.length > MAX_ENTRIES_PER_DIR ? (
-          <p className="mc-wstree__hint" style={{ paddingLeft: 8 + depth * 12 }}>
+          <p className="mc-wstree__hint" style={{ "--wstree-indent": `${8 + depth * 12}px` } as CSSProperties}>
             {t("workspace.truncated", {
               total: formatNumber(entries.length),
               shown: formatNumber(MAX_ENTRIES_PER_DIR),
@@ -298,7 +319,7 @@ export function WorkspaceTab({
   };
 
   return (
-    <div className="mc-wstree">
+    <div className="mc-wstree" ref={rootRef}>
       <div className="mc-wstree__main">
         {file ? (
           <FilePreview path={file} workspace={workspace} />
@@ -317,7 +338,7 @@ export function WorkspaceTab({
         onPointerUp={endTreeResize}
       />
 
-      <aside className="mc-wstree__side" style={{ width: treeWidth }}>
+      <aside className="mc-wstree__side" style={{ width: sideWidth }}>
         <label className="mc-wstree__filter">
           <LuSearch size={13} />
           <input

@@ -3,6 +3,7 @@
     "home": "首頁",
     "architecture": "Agent 架構",
     "git": "Git 管理",
+    "mail": "郵箱",
     "plugins": "外掛市集",
     "automation": "自動化",
     "settings": "設定"
@@ -241,5 +242,10 @@
     "body": "球球惹，給我點個小星星叭～",
     "dismiss": "補藥",
     "accept": "好噠"
+  },
+  "announcement": {
+    "label": "公告",
+    "close": "關閉",
+    "viewSite": "查看網站"
   }
 }

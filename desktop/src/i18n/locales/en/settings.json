@@ -15,6 +15,14 @@
       "dazui": "大嘴"
     }
   },
+  "progressPill": {
+    "field": "Composer info pill",
+    "desc": "When the composer status pill hides: after you commit, or when the turn ends.",
+    "options": {
+      "commit": "Hide after commit",
+      "turn-end": "Hide after turn ends"
+    }
+  },
   "nav": {
     "heading": "Settings",
     "ariaLabel": "Settings sections",
@@ -42,19 +50,12 @@
   "island": {
     "section": "AI Floating Island",
     "field": "Enable floating island",
-    "desc": {
-      "on": "The island is on: a capsule at the top center of your screen shows every running session. Hover it to read the conversation, reply, or stop a task.",
-      "off": "Shows a capsule at the top center of your screen with live status for all running sessions; hover to expand it into a mini chat window."
-    }
+    "desc": "A capsule at the top center of your screen shows every running session; hover to expand it into a mini chat window where you can reply or stop a task."
   },
   "close": {
     "section": "Window close behaviour",
     "field": "When closing the window",
-    "desc": {
-      "ask": "Ask every time whether to hide to the tray or quit.",
-      "tray": "Closing the window hides it in the system tray and MeowCode keeps running in the background.",
-      "quit": "Closing the window quits MeowCode right away."
-    },
+    "desc": "What happens when the main window closes: ask every time, hide to the system tray and keep running, or quit.",
     "options": {
       "ask": "Ask every time",
       "tray": "Hide in tray",
@@ -64,10 +65,7 @@
   "update": {
     "section": "Updates",
     "field": "Download updates in the background",
-    "desc": {
-      "on": "When a new version is found at startup it downloads automatically. A restart button then appears in the lower-left corner of the sidebar — click it to install.",
-      "off": "Only check quietly at startup and notify. Downloading and installing stays manual on the About page."
-    }
+    "desc": "New versions download quietly in the background; when ready, a restart button appears in the lower-left corner of the sidebar to install."
   },
   "worktree": {
     "section": "Worktrees",
@@ -269,6 +267,9 @@
     "restartMessage": "Model changes restart the local agent service, which interrupts the running turn. Save anyway?",
     "restartConfirm": "Save anyway",
     "editGroup": "Edit provider",
+    "deleteGroupAria": "Delete provider {{name}}",
+    "deleteGroupTitle": "Delete provider",
+    "deleteGroupMessage": "Delete \"{{name}}\" and all {{count}} models under it? You will need to set it up again before it can be used.",
     "colModel": "Model",
     "colProvider": "Provider",
     "colActions": "Actions",
@@ -402,15 +403,9 @@
       "section": "Import Claude Code hooks",
       "description": "Reads ~/.claude/settings.json and workspace .claude configs. Workspace configs are not executed by default.",
       "master": "Enable hooks",
-      "masterHint": {
-        "on": "Claude Code hook configuration is loaded.",
-        "off": "Disabled: configuration is shown read-only and will not run."
-      },
+      "masterHint": "Load and run Claude Code hook configuration; when disabled it is shown read-only and never runs.",
       "workspace": "Include workspace .claude config",
-      "workspaceHint": {
-        "on": "Hooks in workspace .claude/settings*.json will run.",
-        "off": "Only ~/.claude config runs; workspace config is shown for reference."
-      },
+      "workspaceHint": "Whether hooks in workspace .claude/settings*.json run; when off only the ~/.claude config runs.",
       "workspaceWarning": "Workspace hooks come from files in this repository and may contain malicious commands. Only enable them when you trust this repository.",
       "disabledNote": "Hooks are disabled. Turn on the switch above to run commands."
     },
@@ -548,10 +543,7 @@
     "desc": "Everyday behaviour. Changes apply immediately.",
     "notify": {
       "field": "System notifications",
-      "desc": {
-        "on": "When a turn finishes, needs your approval, or is interrupted — and the window is in the background — show a system notification with the chat title and reply summary.",
-        "off": "No system notifications will be shown."
-      }
+      "desc": "Show a system notification with the chat title and reply summary when a turn finishes, needs approval, or is interrupted while the window is in the background."
     },
     "promptSuggestions": {
       "field": "Next-message suggestions",
@@ -565,6 +557,17 @@
       "field": "Provider failover",
       "desc": "When the primary provider times out, is rate-limited, or returns a server error, this turn automatically switches to another enabled provider (up to 2 hops).",
       "toggleFailed": "Failed to save the provider failover setting"
+    },
+    "mailAi": {
+      "field": "Model other than the chat model",
+      "follow": "Follow chat"
+    },
+    "other": {
+      "section": "General"
+    },
+    "announcement": {
+      "field": "Announcements",
+      "desc": "Show official announcements in the title bar (new releases and model news)."
     }
   },
   "proxy": {

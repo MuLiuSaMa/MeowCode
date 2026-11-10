@@ -1,0 +1,169 @@
+/* 标题栏内联公告：紧跟 Logo 右侧流式排布，一行截断 + 关闭按钮，点击文字看全文 */
+.mc-annbar {
+  /* 曾经是绝对居中；改成 Logo 右侧后不再脱流，宽度不够时自己先被压缩 */
+  display: inline-flex;
+  align-items: center;
+  flex: 0 1 auto;
+  min-width: 0;
+  /* 上限比居中版小：要和 Logo、插件槽、窗口按钮抢同一行 */
+  max-width: min(420px, 38vw);
+  height: 24px;
+  border-radius: var(--radius-xs);
+  color: var(--fg-subtle);
+  font-family: var(--font-sans);
+  /* 公告可点（打开弹窗），不参与窗口拖拽；标题栏其余区域仍是拖拽区 */
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+  transition: background-color var(--dur, 160ms) var(--ease, ease), color var(--dur, 160ms) var(--ease, ease);
+}
+.mc-annbar:hover {
+  background: var(--surface-hover);
+  color: var(--fg);
+}
+
+.mc-annbar__main {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  height: 100%;
+  padding: 0 4px 0 8px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  /* 拖动 = 移动窗口；单击打开公告（用默认箭头，不用手势图标） */
+  cursor: default;
+}
+.mc-annbar__main:focus-visible {
+  outline: 1px solid var(--ring, rgba(255, 255, 255, 0.55));
+  outline-offset: -1px;
+  border-radius: inherit;
+}
+
+.mc-annbar__icon {
+  flex-shrink: 0;
+  color: inherit;
+}
+
+.mc-annbar__text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  line-height: 1;
+}
+
+.mc-annbar__close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  margin-right: 2px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--fg-subtlest);
+  cursor: pointer;
+}
+.mc-annbar__close:hover {
+  background: var(--surface-active, var(--surface-hover));
+  color: var(--fg);
+}
+
+/* 弹窗（面板底色/圆角/内边距由 .mc-dialog__panel 提供） */
+.mc-ann {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: min(460px, calc(100vw - 140px));
+}
+.mc-ann__head {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+.mc-ann__badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--fg-subtle);
+}
+.mc-ann__heading {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  flex: 1;
+}
+.mc-ann__title {
+  margin: 0;
+  font-size: var(--fs-base, 14px);
+  font-weight: var(--fw-medium);
+  color: var(--fg);
+}
+.mc-ann__date {
+  font-size: var(--fs-xs, 11px);
+  color: var(--fg-subtlest);
+}
+.mc-ann__close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  flex-shrink: 0;
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--fg-subtle);
+  cursor: pointer;
+}
+.mc-ann__close:hover {
+  background: var(--surface-hover);
+  color: var(--fg);
+}
+.mc-ann__body {
+  margin: 0;
+  max-height: min(46vh, 360px);
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: var(--fs-sm, 13px);
+  line-height: 1.7;
+  color: var(--fg-subtle);
+}
+.mc-ann__foot {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+}
+.mc-ann__ok {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 30px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: var(--fg);
+  color: var(--bg);
+  font-size: var(--fs-sm, 13px);
+  cursor: pointer;
+}
+.mc-ann__ok:hover {
+  opacity: 0.9;
+}

@@ -300,11 +300,39 @@ describe("summarizeToolOutputs", () => {
     expect(digests.size).toBe(0);
   });
 
-  it("单条输出大到塞不进摘要预算时整体跳过（不发请求）", async () => {
+  it("超大单条输出按 TOOL_DIGEST_ENTRY_CHARS 截断后参与摘要（预算按实际发送量算）", async () => {
+    streamMock.mockResolvedValueOnce({ message: { role: "assistant", content: "c1: many lines" } });
+    const digests = await summarizeToolOutputs({
+      provider, // 未声明 contextWindow → 默认 48k → token 预算 ~19.2k
+      outputs: [{ callId: "c1", tool: "read_file", content: "x".repeat(100_000) }],
+    });
+    // 请求里只有前 6000 字符，按 token 估约 1.5k，预算完全放得下 —— 不该整体跳过。
+    // 旧实现拿未截断的 100k 字符判预算，于是把一条本该被压成两行的输出丢掉了。
+    expect(digests.get("c1")).toBe("many lines");
+    const sent = streamMock.mock.calls.at(-1)?.[0] as { messages: Array<{ content: string }> };
+    expect(sent.messages[1].content.length).toBeLessThan(7_000);
+  });
+
+  it("截断后仍塞不进预算时整体跳过（不发请求）", async () => {
+    const callsBefore = streamMock.mock.calls.length;
+    // 中文 6000 字 ≈ 6000 token，超过最低预算 2000 —— 截断也救不了，只能跳过
+    const digests = await summarizeToolOutputs({
+      provider: { ...provider, contextWindow: 1_000 },
+      outputs: [{ callId: "c1", tool: "read_file", content: "测".repeat(100_000) }],
+    });
+    expect(digests.size).toBe(0);
+    expect(streamMock.mock.calls.length).toBe(callsBefore);
+  });
+
+  it("预算按 token 算：中文正文不会被放大四倍塞进摘要请求", async () => {
+    // 旧实现把 window*0.4 当成字符预算再 ×4：中文 1 字 ≈ 1 token，
+    // 于是 4 倍正文被放进请求 —— 这一层压缩反而制造溢出。
+    const window = 8_000; // token 预算 = 3200
+    const cjk = "测".repeat(4_000); // ≈4000 token，明显超预算
     const callsBefore = streamMock.mock.calls.length;
     const digests = await summarizeToolOutputs({
-      provider, // 未声明 contextWindow → 默认 48k → 字符预算 ~76.8k
-      outputs: [{ callId: "c1", tool: "read_file", content: "x".repeat(100_000) }],
+      provider: { ...provider, contextWindow: window },
+      outputs: [{ callId: "c1", tool: "read_file", content: cjk }],
     });
     expect(digests.size).toBe(0);
     expect(streamMock.mock.calls.length).toBe(callsBefore);

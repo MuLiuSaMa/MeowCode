@@ -15,14 +15,23 @@ export type ExecSpec = {
 };
 
 export type ExecResult = {
+  /** 头部（未超上限时即全部内容） */
   stdout: Buffer;
   stderr: Buffer;
+  /** 超过采集上限时单独保留的尾部（报错/汇总通常在最后几行） */
+  stdoutTail?: Buffer;
+  stderrTail?: Buffer;
+  /** 头尾之间被省略的字节数（分路统计；0 = 完整采集） */
+  stdoutOmittedBytes?: number;
+  stderrOmittedBytes?: number;
   code: number | null;
   timedOut: boolean;
   aborted: boolean;
   capped: boolean;
   spawnError?: string;
   durationMs: number;
+  /** 本次实际生效的超时（超时文案用它，避免硬编码与实际不符） */
+  timeoutMs?: number;
   /** runner 缺失 / 策略不合法 / 非 win32：不执行，也不回退无沙箱 */
   sandboxUnavailable?: { code: string; detail: string };
 };

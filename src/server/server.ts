@@ -7,6 +7,7 @@ import { readFile, readdir, rm, stat, unlink, writeFile, cp } from "node:fs/prom
 import { randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import { AgentRuntime, isApprovalMode, isSessionMode } from "../agent/runtime.js";
 import { listProviderModels, resolveProviderModelsOptions } from "../agent/models-list.js";
+import { composeMail, type MailComposeContext } from "../agent/mail-compose.js";
 import { MAX_POLISH_INPUT_CHARS } from "../agent/prompt-polish.js";
 import { AGENT_ROLE_NAMES, BUILTIN_AGENTS } from "../agent/agent-definition.js";
 import {
@@ -15,6 +16,7 @@ import {
   isAgentProfile,
 } from "../agent/agent-profiles.js";
 import { toolDefinitions } from "../agent/tools.js";
+import { readPdfPageCount } from "../agent/pdf.js";
 import { isSpeechStyle, readSpeechStyleFromEnv } from "../agent/speech-style.js";
 import { createAgentLogger, pruneAgentLogs } from "../agent/logging.js";
 import type { TraceSpan } from "../agent/trace.js";
@@ -118,6 +120,7 @@ import {
   type PluginSystem,
 } from "../plugins/index.js";
 import { builtinDetailFallback } from "../plugins/builtin-meta.js";
+import { createPluginStorage } from "../plugins/storage.js";
 import {
   loadHooksConfig,
   parseHooksScope,
@@ -199,7 +202,7 @@ import type {
   TurnStatus,
 } from "../agent/types.js";
 
-const APP_VERSION = "1.1.0";
+const APP_VERSION = "1.2.0";
 const DEFAULT_SESSIONS_DIR = path.join(os.homedir(), "AppData", "Roaming", "MeowCode", "agent", "sessions");
 
 /** 插件命令 chip 的展示标记：首行是名称/插件/命令，空行后才是实际 `/command` 文本 */
@@ -262,7 +265,10 @@ function readExperimentalFromEnv(): {
       nativeCompaction?: boolean;
     } = {};
     if (parsed.midstreamToolExec) flags.midstreamToolExec = true;
-    if (parsed.incrementalResponses) flags.incrementalResponses = true;
+    // 这个开关默认是开的（官方端点），所以要接受显式 false 才能关掉
+    if (typeof parsed.incrementalResponses === "boolean") {
+      flags.incrementalResponses = parsed.incrementalResponses;
+    }
     if (parsed.nativeCompaction) flags.nativeCompaction = true;
     return Object.keys(flags).length ? flags : null;
   } catch {
@@ -457,6 +463,8 @@ const PROMPT_IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/webp", "im
 const MAX_PROMPT_DOCUMENTS = 2;
 const MAX_PROMPT_DOCUMENT_BASE64 = 28_000_000;
 const PROMPT_DOCUMENT_TYPES = new Set(["application/pdf"]);
+/** 单条 prompt 文本上限：再大应走附件/文件工具，避免 body 上限级的文本原样进模型。 */
+const MAX_PROMPT_TEXT_CHARS = 1_000_000;
 /** 允许运行时热更新的 MCP 凭据 env（desktop OAuth 登录/手动令牌后写入；不接受任意环境变量）。 */
 const MCP_CREDENTIAL_ENV_NAMES = new Set([
   "MEOWCODE_GITHUB_TOKEN",
@@ -480,7 +488,10 @@ type ParsedAttachments = {
  * 也卡一遍，免得前端把上限算错时把请求顶爆。
  * 视频不接受：prompt 里塞视频等于烧掉整个上下文，只能走 read_video 抽帧。
  */
-function parsePromptAttachments(rawImages: unknown, rawDocuments: unknown): ParsedAttachments {
+async function parsePromptAttachments(
+  rawImages: unknown,
+  rawDocuments: unknown,
+): Promise<ParsedAttachments> {
   const images: ToolImage[] = [];
   if (rawImages !== undefined && rawImages !== null) {
     if (!Array.isArray(rawImages)) return { ok: false, error: "images must be an array" };
@@ -520,7 +531,14 @@ function parsePromptAttachments(rawImages: unknown, rawDocuments: unknown): Pars
       if (data.length > MAX_PROMPT_DOCUMENT_BASE64) {
         return { ok: false, error: "document is too large (max 20 MB each)" };
       }
-      documents.push({ mimeType, data, name: name || "document.pdf" });
+      // 页数只用于 token 估算；解析失败时留给上下文层按体积保守回退
+      const pages = await readPdfPageCount(new Uint8Array(Buffer.from(data, "base64")));
+      documents.push({
+        mimeType,
+        data,
+        name: name || "document.pdf",
+        ...(pages ? { pages } : {}),
+      });
     }
   }
   return { ok: true, images, documents };
@@ -537,7 +555,8 @@ export async function startServer(options: { port?: number; token?: string } = {
     throw new Error("MEOWCODE_SERVER_TOKEN is required (or pass startServer({ token })).");
   }
   delete process.env.MEOWCODE_SERVER_TOKEN;
-  const providers = readProvidersFromEnv();
+  // 服务商列表：env 给初值，PUT /config/providers 运行中实时替换（不重启进程）
+  let providers = readProvidersFromEnv();
   // 密钥只留在内存：删掉环境变量后，模型通过 run_command 读 env 也拿不到。
   delete process.env.MEOWCODE_PROVIDERS;
   const sessionsDir = process.env.MEOWCODE_SESSIONS_DIR ?? DEFAULT_SESSIONS_DIR;
@@ -613,6 +632,8 @@ export async function startServer(options: { port?: number; token?: string } = {
   void pluginSystem.mcpReady.then(() => {
     console.log("[mcp] background startup finished");
   });
+  /** 插件 UI 错误环形缓冲：/plugin-ui 脚本加载/渲染失败只记录，不阻断其他插件 */
+  const pluginUiErrors = new Map<string, Array<{ message: string; slot?: string; at: string }>>();
   let commandIndex: CommandIndex = await loadCommandIndex({
     workspace: pluginsWorkspace,
     homeDir,
@@ -634,6 +655,7 @@ export async function startServer(options: { port?: number; token?: string } = {
     });
     // 插件/MCP 变更属于显式边界：应用会话里延后的工具删除/改写。
     runtime.rebuildToolCatalog("plugin_reload");
+    broadcast({ type: "plugins_changed" });
   };
   // AI 自建插件：重载后把该 id 的加载结果（工具名 / 错误）回给宿主，让模型能修错重试
   refreshExtensionPlugins = async (id) => {
@@ -653,6 +675,7 @@ export async function startServer(options: { port?: number; token?: string } = {
       registry: pluginSystem.registry,
     });
     runtime.rebuildToolCatalog("plugin_reload");
+    broadcast({ type: "plugins_changed" });
   };
   mkdirSync(sessionsDir, { recursive: true });
   /** 桌面端注入的内嵌浏览器桥（env）；CLI / 测试环境没有，浏览器工具自动不注册 */
@@ -2739,7 +2762,7 @@ export async function startServer(options: { port?: number; token?: string } = {
           images?: unknown;
           documents?: unknown;
         }>(request);
-        const parsedImages = parsePromptAttachments(body.images, body.documents);
+        const parsedImages = await parsePromptAttachments(body.images, body.documents);
         if (!parsedImages.ok) {
           sendError(response, 400, "invalid_request", parsedImages.error);
           return;
@@ -2814,6 +2837,24 @@ export async function startServer(options: { port?: number; token?: string } = {
             console.error("[plugins] command expansion failed:", error);
           }
         }
+        if (promptText.length > MAX_PROMPT_TEXT_CHARS) {
+          sendError(
+            response,
+            413,
+            "prompt_too_large",
+            `消息过长（${promptText.length.toLocaleString()} 字符，最多 ${MAX_PROMPT_TEXT_CHARS.toLocaleString()}）。请把大段内容放进文件后让模型读取。`,
+          );
+          return;
+        }
+        const tooLarge = target.promptTooLarge(
+          promptText,
+          parsedImages.images,
+          parsedImages.documents,
+        );
+        if (tooLarge) {
+          sendError(response, 413, "prompt_too_large", tooLarge.message);
+          return;
+        }
         void target
           .prompt(
             promptText,
@@ -2823,6 +2864,82 @@ export async function startServer(options: { port?: number; token?: string } = {
           )
           .catch(() => undefined);
         sendJson(response, 202, { accepted: true });
+        return;
+      }
+
+      // 写信页 AI 写：不属于任何会话，直接复用当前激活的模型服务商。
+      if (pathname === "/mail/compose" && request.method === "POST") {
+        type MailComposeBody = {
+          mode?: unknown;
+          instruction?: unknown;
+          to?: unknown;
+          subject?: unknown;
+          original?: unknown;
+          draft?: unknown;
+          from?: unknown;
+          providerId?: unknown;
+        };
+        const body = await readJsonBody<MailComposeBody>(request).catch(
+          () => ({}) as MailComposeBody,
+        );
+        const fromRaw =
+          body.from && typeof body.from === "object" ? (body.from as Record<string, unknown>) : {};
+        const context: MailComposeContext = {
+          mode: body.mode === "reply" || body.mode === "forward" ? body.mode : "new",
+          instruction: typeof body.instruction === "string" ? body.instruction : "",
+          to: typeof body.to === "string" ? body.to : "",
+          subject: typeof body.subject === "string" ? body.subject : "",
+          original: typeof body.original === "string" ? body.original : "",
+          draft: typeof body.draft === "string" ? body.draft : "",
+          from: {
+            name: typeof fromRaw.name === "string" ? fromRaw.name : "",
+            email: typeof fromRaw.email === "string" ? fromRaw.email : "",
+          },
+        };
+        if (
+          !(context.instruction ?? "").trim() &&
+          !(context.subject ?? "").trim() &&
+          !(context.original ?? "").trim() &&
+          !(context.draft ?? "").trim()
+        ) {
+          sendError(response, 400, "empty_context", "请先填写主题、写作要求或正文，再使用 AI 写作。");
+          return;
+        }
+        const requestedProviderId =
+          typeof body.providerId === "string" ? body.providerId.trim() : "";
+        const requestedProvider = requestedProviderId
+          ? runtime.providersConfig.find(
+              (item) => item.id === requestedProviderId && item.enabled !== false,
+            )
+          : undefined;
+        const provider =
+          requestedProvider ??
+          runtime.providersConfig.find((item) => item.id === runtime.activeProviderId) ??
+          runtime.providersConfig[0];
+        if (!provider) {
+          sendError(response, 400, "no_provider", "请先在设置中配置模型服务商。");
+          return;
+        }
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 60_000);
+        try {
+          const text = await composeMail({ provider, context, signal: controller.signal });
+          sendJson(response, 200, { text });
+        } catch (error) {
+          const aborted = controller.signal.aborted;
+          sendError(
+            response,
+            aborted ? 504 : 502,
+            aborted ? "timeout" : "provider_error",
+            aborted
+              ? "AI 写作超时（60 秒），请重试。"
+              : error instanceof Error
+                ? error.message
+                : String(error),
+          );
+        } finally {
+          clearTimeout(timeout);
+        }
         return;
       }
 
@@ -3301,6 +3418,111 @@ export async function startServer(options: { port?: number; token?: string } = {
         return;
       }
 
+      // 插件 UI 调 host：POST /plugins/<id>/rpc，method 必须由该插件 registerRpc 注册
+      const pluginRpcMatch = /^\/plugins\/([^/]+)\/rpc$/.exec(pathname);
+      if (pluginRpcMatch && request.method === "POST") {
+        const pluginId = decodeURIComponent(pluginRpcMatch[1]);
+        const descriptor = pluginSystem.descriptors().find((item) => item.id === pluginId);
+        if (!descriptor || !descriptor.enabled) {
+          sendError(response, 404, "not_found", "plugin not found");
+          return;
+        }
+        if (descriptor.manifest && !descriptor.manifest.permissions.includes("rpc")) {
+          sendError(response, 403, "forbidden", 'plugin did not declare the "rpc" permission');
+          return;
+        }
+        const body = await readJsonBody<{ method?: unknown; args?: unknown; sessionId?: unknown }>(request);
+        const method = typeof body.method === "string" ? body.method : "";
+        if (!method) {
+          sendError(response, 400, "invalid_request", "method is required");
+          return;
+        }
+        const entry = pluginSystem.registry.getRpc(pluginId, method);
+        if (!entry) {
+          sendError(response, 404, "not_found", `rpc method "${method}" is not registered`);
+          return;
+        }
+        try {
+          const result = await entry.handler(body.args, {
+            pluginId,
+            workspace: pluginsWorkspace,
+            ...(typeof body.sessionId === "string" ? { sessionId: body.sessionId } : {}),
+          });
+          sendJson(response, 200, { ok: true, result });
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          console.error(`[plugin:${pluginId}] rpc "${method}" failed:`, message);
+          sendJson(response, 200, { ok: false, error: message });
+        }
+        return;
+      }
+
+      // 插件 UI 的命名空间 KV：GET ?key= / POST {key,value} / DELETE ?key=
+      const pluginStorageMatch = /^\/plugins\/([^/]+)\/storage$/.exec(pathname);
+      if (
+        pluginStorageMatch &&
+        (request.method === "GET" || request.method === "POST" || request.method === "DELETE")
+      ) {
+        const pluginId = decodeURIComponent(pluginStorageMatch[1]);
+        const descriptor = pluginSystem.descriptors().find((item) => item.id === pluginId);
+        if (!descriptor || !descriptor.enabled) {
+          sendError(response, 404, "not_found", "plugin not found");
+          return;
+        }
+        if (descriptor.manifest && !descriptor.manifest.permissions.includes("storage")) {
+          sendError(response, 403, "forbidden", 'plugin did not declare the "storage" permission');
+          return;
+        }
+        const storage = createPluginStorage(pluginId, homeDir);
+        if (request.method === "GET") {
+          const key = url.searchParams.get("key");
+          if (!key) {
+            sendError(response, 400, "invalid_request", "key is required");
+            return;
+          }
+          sendJson(response, 200, { ok: true, value: await storage.get(key) });
+          return;
+        }
+        if (request.method === "DELETE") {
+          const key = url.searchParams.get("key");
+          if (!key) {
+            sendError(response, 400, "invalid_request", "key is required");
+            return;
+          }
+          await storage.delete(key);
+          sendJson(response, 200, { ok: true });
+          return;
+        }
+        const body = await readJsonBody<{ key?: unknown; value?: unknown }>(request);
+        if (typeof body.key !== "string" || !body.key) {
+          sendError(response, 400, "invalid_request", "key is required");
+          return;
+        }
+        await storage.set(body.key, body.value);
+        sendJson(response, 200, { ok: true });
+        return;
+      }
+
+      // 插件 UI 渲染/加载错误：只记录，不阻断（最近 20 条留给设置页排查）
+      const pluginUiErrorMatch = /^\/plugins\/([^/]+)\/ui-error$/.exec(pathname);
+      if (pluginUiErrorMatch && request.method === "POST") {
+        const pluginId = decodeURIComponent(pluginUiErrorMatch[1]);
+        const body = await readJsonBody<{ message?: unknown; slot?: unknown }>(request).catch(() => ({}) as {
+          message?: unknown;
+          slot?: unknown;
+        });
+        const message =
+          typeof body.message === "string" && body.message ? body.message.slice(0, 2000) : "unknown ui error";
+        const slot = typeof body.slot === "string" ? body.slot.slice(0, 200) : undefined;
+        const list = pluginUiErrors.get(pluginId) ?? [];
+        list.push({ message, at: new Date().toISOString(), ...(slot ? { slot } : {}) });
+        if (list.length > 20) list.splice(0, list.length - 20);
+        pluginUiErrors.set(pluginId, list);
+        console.warn(`[plugin:${pluginId}] ui error${slot ? ` in ${slot}` : ""}:`, message);
+        sendJson(response, 200, { ok: true });
+        return;
+      }
+
       // 插件自带的 UI 面板资源：`<pluginDir>/ui/**`。
       // 只能读已加载插件的 ui 目录，路径穿越一律拒绝；iframe 用 query token 访问。
       if (pathname.startsWith("/plugin-ui/")) {
@@ -3345,6 +3567,33 @@ export async function startServer(options: { port?: number; token?: string } = {
         } catch {
           sendError(response, 404, "not_found", "file not found");
         }
+        return;
+      }
+
+      // Claude Code hooks 运行方式 / 工作区范围：只热更新 env（插件每次执行时读 env），
+      // 不重启 server，运行中的回合不受影响
+      if (pathname === "/config/hooks" && request.method === "POST") {
+        const body = await readJsonBody<{ runMode?: unknown; includeWorkspace?: unknown }>(
+          request,
+        ).catch(() => ({}) as { runMode?: unknown; includeWorkspace?: unknown });
+        if (body.runMode !== undefined) {
+          if (body.runMode !== "auto" && body.runMode !== "ask") {
+            sendError(response, 400, "invalid_request", "runMode must be auto or ask");
+            return;
+          }
+          process.env.MEOWCODE_HOOKS_RUN_MODE = body.runMode;
+        }
+        if (body.includeWorkspace !== undefined) {
+          if (typeof body.includeWorkspace !== "boolean") {
+            sendError(response, 400, "invalid_request", "includeWorkspace must be a boolean");
+            return;
+          }
+          process.env.MEOWCODE_CC_HOOKS_SCOPE = JSON.stringify({
+            user: true,
+            workspace: body.includeWorkspace,
+          });
+        }
+        sendJson(response, 200, { ok: true });
         return;
       }
 
@@ -3481,7 +3730,34 @@ export async function startServer(options: { port?: number; token?: string } = {
         return;
       }
 
-      // 开发期便利：重载插件与 MCP（desktop 设置页的启停走重启 server 生效，不依赖此路由）
+      // 插件启停热更新：只改禁用列表并重载，不重启 server（运行中的回合不受影响）
+      if (pathname === "/plugins/disabled" && request.method === "POST") {
+        const body = await readJsonBody<{ disabled?: unknown }>(request).catch(
+          () => ({}) as { disabled?: unknown },
+        );
+        if (!Array.isArray(body.disabled)) {
+          sendError(response, 400, "invalid_request", "disabled must be an array");
+          return;
+        }
+        const disabled = body.disabled.filter(
+          (item): item is string => typeof item === "string" && item.trim().length > 0,
+        );
+        try {
+          pluginSystem.setDisabled(disabled);
+          await reloadAfterMarketChange();
+          sendJson(response, 200, {
+            plugins: pluginSystem.descriptors(),
+            errors: pluginSystem.errors(),
+            mcp: pluginSystem.mcp.statuses(),
+            commands: commandIndex.commands(),
+          });
+        } catch (error) {
+          sendError(response, 500, "reload_failed", error instanceof Error ? error.message : String(error));
+        }
+        return;
+      }
+
+      // 开发期便利：重载插件与 MCP
       if (pathname === "/plugins/reload" && request.method === "POST") {
         try {
           const result = await pluginSystem.reload({ restartMcp: true });
@@ -4078,6 +4354,37 @@ export async function startServer(options: { port?: number; token?: string } = {
         return;
       }
 
+      // 服务商列表增删改（设置页模型表）：运行中热替换，不重启 server、不中断回合。
+      // 桌面端负责落盘与解密；这里只更新进程内配置（凭据随环回请求 + bearer token 传入）。
+      if (pathname === "/config/providers" && request.method === "PUT") {
+        const body = await readJsonBody<{ providers?: unknown; providerId?: unknown }>(request).catch(
+          () => ({}) as { providers?: unknown; providerId?: unknown },
+        );
+        if (!Array.isArray(body.providers)) {
+          sendError(response, 400, "invalid_request", "providers must be an array");
+          return;
+        }
+        const nextProviders = body.providers.filter(
+          (item): item is ProviderConfig =>
+            Boolean(item) &&
+            typeof item === "object" &&
+            typeof (item as { id?: unknown }).id === "string" &&
+            typeof (item as { baseUrl?: unknown }).baseUrl === "string" &&
+            typeof (item as { model?: unknown }).model === "string",
+        );
+        if (nextProviders.length === 0 && body.providers.length > 0) {
+          sendError(response, 400, "invalid_request", "no valid provider entries");
+          return;
+        }
+        providers = nextProviders;
+        const nextActiveId = typeof body.providerId === "string" ? body.providerId : "";
+        runtime.replaceProviders(providers, nextActiveId || undefined);
+        // 后台 runtime 各自保留自己的激活项；列表里找不到时内部会自动回退
+        for (const instance of backgroundRuntimes.values()) instance.replaceProviders(providers);
+        sendJson(response, 200, { ok: true, activeProviderId: runtime.activeProviderId });
+        return;
+      }
+
       // 记忆总开关：GET 查询；PUT 实时切换（新会话 runtime + 存活的
       // 前台/后台/侧边 runtime 全部生效）。settings.json 的落盘由桌面端负责。
       // 旧路径 /config/memory-extraction 保留为别名（当时只关蒸馏，语义是现在的子集）。
@@ -4514,7 +4821,7 @@ export async function startServer(options: { port?: number; token?: string } = {
           images?: unknown;
           documents?: unknown;
         }>(request);
-        const parsedImages = parsePromptAttachments(body.images, body.documents);
+        const parsedImages = await parsePromptAttachments(body.images, body.documents);
         if (!parsedImages.ok) {
           sendError(response, 400, "invalid_request", parsedImages.error);
           return;

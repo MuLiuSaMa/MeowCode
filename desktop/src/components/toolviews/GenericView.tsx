@@ -13,7 +13,11 @@ function ParamValue({ value }: { value: unknown }): ReactNode {
     if (value.length <= 100 && !value.includes("\n")) {
       return <span className="mc-tv__paramvalue">{value}</span>;
     }
-    return <pre className="mc-tv__paramcode">{value}</pre>;
+    return (
+      <pre className="mc-tv__paramcode" data-long={value.length > 20_000 ? "true" : undefined}>
+        {value}
+      </pre>
+    );
   }
   if (typeof value === "number" || typeof value === "boolean") {
     return <span className="mc-tv__paramvalue">{String(value)}</span>;

@@ -14,8 +14,10 @@ function base(overrides: Partial<ChildResult> = {}): ChildResult {
     status: "completed",
     summary: "did the thing",
     findings: [],
+    checked: ["src/a.ts:1"],
     filesChanged: [],
     commands: [],
+    blockMissing: false,
     valid: true,
     ...overrides,
   };
@@ -29,6 +31,7 @@ describe("normalizeChildResult", () => {
     expect(result.status).toBe("completed");
     expect(result.summary).toBe("已实现并验证");
     expect(result.findings).toEqual([]);
+    expect(result.blockMissing).toBe(false);
   });
 
   it("取最后一个 json 块（模型可能在报告里贴了别的代码块）", () => {
@@ -66,17 +69,33 @@ describe("normalizeChildResult", () => {
     expect(result.findings[2]?.message.length).toBeLessThanOrEqual(400);
   });
 
-  it("无 json 块 / json 解析失败 / 非对象：降级 completed + 全文摘要", () => {
-    expect(normalizeChildResult("纯文本报告").status).toBe("completed");
+  it("checked 归一化：去空、去重、截断", () => {
+    const result = normalizeChildResult(
+      `\`\`\`json\n{"status": "completed", "summary": "s", "checked": ["a.ts:1", " a.ts:1 ", "", 42, "b.ts:2"]}\n\`\`\``,
+    );
+    expect(result.checked).toEqual(["a.ts:1", "b.ts:2"]);
+  });
+
+  it("无 json 块 / 解析失败 / 非对象：标记 blockMissing，不假装完成", () => {
+    for (const report of ["纯文本报告", "```json\n{broken\n```", "```json\n[1,2]\n```"]) {
+      const result = normalizeChildResult(report);
+      expect(result.blockMissing).toBe(true);
+    }
     expect(normalizeChildResult("纯文本报告").summary).toBe("纯文本报告");
-    expect(normalizeChildResult("```json\n{broken\n```").summary).toContain("broken");
-    expect(normalizeChildResult("```json\n[1,2]\n```").summary).toContain("[1,2]");
   });
 
   it("未知 status 一律 failed（fail-closed，不乐观猜测）", () => {
     const result = normalizeChildResult(
       `\`\`\`json\n{"status": "banana", "summary": "s"}\n\`\`\``,
     );
+    expect(result.status).toBe("failed");
+  });
+
+  it("verdict=FAIL 与 completed 矛盾时按 failed 处理", () => {
+    const result = normalizeChildResult(
+      `\`\`\`json\n{"status": "completed", "summary": "s", "verdict": "FAIL"}\n\`\`\``,
+    );
+    expect(result.verdict).toBe("FAIL");
     expect(result.status).toBe("failed");
   });
 });
@@ -97,6 +116,14 @@ describe("mergeHostObservations", () => {
 });
 
 describe("validateChildResult fail-closed", () => {
+  it("缺 JSON 块 → invalid（任何契约角色）", () => {
+    for (const role of ["implementer", "reviewer", "juror", "verifier"] as const) {
+      const result = validateChildResult(role, base({ blockMissing: true }));
+      expect(result.valid, role).toBe(false);
+      expect(result.invalidReason).toBe("MISSING_RESULT_BLOCK");
+    }
+  });
+
   it("implementer completed 无文件改动 → invalid", () => {
     const result = validateChildResult("implementer", base());
     expect(result.valid).toBe(false);
@@ -107,14 +134,16 @@ describe("validateChildResult fail-closed", () => {
     expect(validateChildResult("implementer", base({ filesChanged: ["a.ts"] })).valid).toBe(true);
   });
 
-  it("verifier completed 无命令观测 → invalid；有命令 → valid", () => {
-    const invalid = validateChildResult("verifier", base());
-    expect(invalid.invalidReason).toBe("VERIFIER_COMPLETED_WITHOUT_COMMANDS");
-    const valid = validateChildResult(
-      "verifier",
-      base({ commands: [{ argv: "pnpm test", exitCode: 0 }] }),
-    );
-    expect(valid.valid).toBe(true);
+  it("verifier / fresh-verifier completed 无命令观测 → invalid；有命令 → valid", () => {
+    for (const role of ["verifier", "fresh-verifier"] as const) {
+      const invalid = validateChildResult(role, base());
+      expect(invalid.invalidReason, role).toBe("VERIFIER_COMPLETED_WITHOUT_COMMANDS");
+      const valid = validateChildResult(
+        role,
+        base({ commands: [{ argv: "pnpm test", exitCode: 0 }] }),
+      );
+      expect(valid.valid, role).toBe(true);
+    }
   });
 
   it("reviewer failed 无 findings → invalid；completed 带 critical findings 仍 valid（fail 是 G5 判定）", () => {
@@ -128,6 +157,22 @@ describe("validateChildResult fail-closed", () => {
     );
     expect(withFindings.valid).toBe(true);
     expect(withFindings.findings[0]?.severity).toBe("critical");
+  });
+
+  it("评审类角色 completed 但没给 checked → invalid", () => {
+    for (const role of ["reviewer", "scoper", "depth-prober", "sweeper", "goal-checker"] as const) {
+      const result = validateChildResult(role, base({ checked: [] }));
+      expect(result.valid, role).toBe(false);
+      expect(result.invalidReason).toBe("COMPLETED_WITHOUT_CHECKED_EVIDENCE");
+    }
+  });
+
+  it("juror 缺 verdict → invalid；verdict=FAIL → 不能算 completed", () => {
+    expect(validateChildResult("juror", base()).invalidReason).toBe("JUROR_MISSING_VERDICT");
+    const failed = validateChildResult("juror", base({ verdict: "FAIL" }));
+    expect(failed.valid).toBe(false);
+    expect(failed.invalidReason).toBe("JUROR_FAILED_CANNOT_COMPLETE");
+    expect(validateChildResult("juror", base({ verdict: "PASS" })).valid).toBe(true);
   });
 
   it("completed 但 summary 为空 → invalid", () => {
@@ -176,6 +221,28 @@ describe("buildChildResult 流水线", () => {
     });
     expect(result?.valid).toBe(false);
     expect(result?.invalidReason).toBe("IMPLEMENTER_COMPLETED_WITHOUT_FILE_CHANGES");
+  });
+
+  it("reviewer 只交 status 不交证据 → 判无效（旧行为会放行）", () => {
+    const result = buildChildResult({
+      role: "reviewer",
+      report: '```json\n{"status": "completed", "summary": "looks fine"}\n```',
+      turnStatus: "completed",
+      observations: { filesChanged: [], commands: [] },
+    });
+    expect(result?.valid).toBe(false);
+    expect(result?.invalidReason).toBe("COMPLETED_WITHOUT_CHECKED_EVIDENCE");
+  });
+
+  it("reviewer 不交 JSON 块 → 判无效（旧行为默认 valid）", () => {
+    const result = buildChildResult({
+      role: "reviewer",
+      report: "我审了一遍，没问题。",
+      turnStatus: "completed",
+      observations: { filesChanged: [], commands: [] },
+    });
+    expect(result?.valid).toBe(false);
+    expect(result?.invalidReason).toBe("MISSING_RESULT_BLOCK");
   });
 
   it("回合被中止 → blocked；回合失败 → failed（不信任半截报告里的 JSON）", () => {

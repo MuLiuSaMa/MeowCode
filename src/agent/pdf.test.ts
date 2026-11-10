@@ -6,6 +6,7 @@ import {
   MAX_PDF_PAGES,
   isScanned,
   parsePageRange,
+  readPdfPageCount,
   readPdfText,
   renderPdfText,
   type PdfDocumentLike,
@@ -92,6 +93,21 @@ describe("parsePageRange", () => {
     expect(parsePageRange("5-1", 10).ok).toBe(false);
     expect(parsePageRange("1-30", 100).ok).toBe(false);
     expect(parsePageRange("99", 10).ok).toBe(false);
+  });
+});
+
+describe("readPdfPageCount", () => {
+  it("只读页数，不请求正文", async () => {
+    const loader = fakeLoader(["one", "two", "three"]);
+    expect(await readPdfPageCount(new Uint8Array([1, 2, 3]), loader)).toBe(3);
+    expect(loader.calls).toBe(1);
+  });
+
+  it("解析失败时返回 undefined", async () => {
+    const loader = (async () => {
+      throw new Error("broken");
+    }) as PdfLoader;
+    expect(await readPdfPageCount(new Uint8Array([1]), loader)).toBeUndefined();
   });
 });
 

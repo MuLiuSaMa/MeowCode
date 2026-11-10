@@ -166,6 +166,8 @@ export async function streamResponses(options: {
   /** 传工具定义但禁止实际调用（压缩摘要复用主前缀时需要） */
   toolChoice?: "none";
   signal?: AbortSignal;
+  /** 网络层尝试次数；缺省沿用 fetchWithRetry 默认（3）。辅助请求传 1 = 失败不重试。 */
+  fetchAttempts?: number;
   onDelta: (delta: string) => void;
   onThinking?: (delta: string) => void;
   /** 流中实时用量（Responses 只在 response.completed 时给出，等价于尾块） */
@@ -237,12 +239,16 @@ export async function streamResponses(options: {
   });
 
   const doFetch = () =>
-    fetchWithRetry(options.url, {
-      method: "POST",
-      headers,
-      signal: options.signal,
-      body: JSON.stringify(buildBody()),
-    });
+    fetchWithRetry(
+      options.url,
+      {
+        method: "POST",
+        headers,
+        signal: options.signal,
+        body: JSON.stringify(buildBody()),
+      },
+      { attempts: options.fetchAttempts },
+    );
 
   let response = await doFetch();
   if (!response.ok && incrementalActive && (response.status === 400 || response.status === 404)) {

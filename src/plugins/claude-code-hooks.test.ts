@@ -23,6 +23,7 @@ import {
   toClaudeToolInput,
 } from "./builtin/claude-code-hooks/config.js";
 import type { PluginAPI, PluginCommand, PluginHandler } from "./types.js";
+import { PLUGIN_PERMISSIONS } from "./types.js";
 
 // ---------------------------------------------------------------------------
 // 纯函数
@@ -453,13 +454,16 @@ function createFakeApi(workspace: string): FakeApi {
     commands,
     registerTool: () => {},
     registerCommand: (cmd) => commands.push(cmd),
+    registerRpc: () => {},
     on: (<N extends string>(event: N, handler: PluginHandler<never>) => {
       const list = handlers.get(event) ?? [];
       list.push(handler);
       handlers.set(event, list);
     }) as PluginAPI["on"],
-    storage: { get: async () => undefined, set: async () => {} },
+    storage: { get: async () => undefined, set: async () => {}, delete: async () => {} },
     logger: { info: () => {}, warn: () => {}, error: () => {} },
+    manifest: { id: "fake", version: "0.0.0", apiVersion: 2, permissions: [...PLUGIN_PERMISSIONS] },
+    permissions: new Set(PLUGIN_PERMISSIONS),
   } as FakeApi;
 }
 

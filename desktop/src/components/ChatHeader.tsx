@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { LuPanelRight, LuSearch } from "react-icons/lu";
+import { PluginSlot } from "../plugins/PluginSlot";
 import { IconButton } from "./ui/IconButton";
 import "./ChatHeader.css";
 
@@ -12,6 +13,9 @@ export function ChatHeader({
   onToggleInspector,
   onOpenSearch,
   overview,
+  sessionId,
+  running,
+  mode,
 }: {
   /** AI 生成或手动设置的会话标题；还没生成时用回退文案 */
   title?: string | null;
@@ -24,6 +28,10 @@ export function ChatHeader({
   onOpenSearch: () => void;
   /** 右上角工作区概览（胶囊 + 展开卡片） */
   overview?: ReactNode;
+  /** 插件槽位 session.header.actions 的宿主上下文 */
+  sessionId?: string;
+  running?: boolean;
+  mode?: string;
 }) {
   const { t } = useTranslation("chat");
   return (
@@ -45,6 +53,12 @@ export function ChatHeader({
 
         <div className="mc-header__right">
           <div className="mc-header__actions">
+            <PluginSlot
+              name="session.header.actions"
+              props={{ sessionId, running: running ?? false, mode: mode ?? "default" }}
+            />
+            {/* 工作区概览（文件变更/N 个子 Agent）：放在搜索按钮左侧，固定进标题栏这一行 */}
+            {overview ? <div className="mc-header__overview">{overview}</div> : null}
             <IconButton label={t("header.searchSessions")} size="md" onClick={onOpenSearch}>
               <LuSearch size={15} />
             </IconButton>
@@ -57,7 +71,6 @@ export function ChatHeader({
               <LuPanelRight size={15} />
             </IconButton>
           </div>
-          {overview ? <div className="mc-header__overviewrow">{overview}</div> : null}
         </div>
       </div>
     </header>

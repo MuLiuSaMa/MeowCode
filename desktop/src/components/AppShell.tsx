@@ -13,6 +13,7 @@ export function AppShell({
   conversations,
   children,
   inspector,
+  announcements = true,
   listWidth,
   listResizer,
   listColRef,
@@ -21,6 +22,8 @@ export function AppShell({
   conversations: ReactNode;
   children: ReactNode;
   inspector?: ReactNode;
+  /** 标题栏公告条是否显示（设置 → 通用） */
+  announcements?: boolean;
   /** 左栏宽度（px）；不传则用 CSS 里的默认 --list-w */
   listWidth?: number;
   /** 左栏右边缘的拖拽条 */
@@ -30,7 +33,7 @@ export function AppShell({
 }) {
   return (
     <div className="mc-root">
-      <TitleBar />
+      <TitleBar announcements={announcements} />
       <div className="mc-body">
         {rail}
         <div className="mc-columns">

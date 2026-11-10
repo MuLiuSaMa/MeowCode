@@ -3,6 +3,7 @@
     "home": "ホーム",
     "architecture": "Agent アーキテクチャ",
     "git": "Git 管理",
+    "mail": "メール",
     "plugins": "マーケットプレイス",
     "automation": "自動化",
     "settings": "設定"
@@ -241,5 +242,10 @@
     "body": "お願いっ、小さな星をちょっとだけ〜",
     "dismiss": "やめとく",
     "accept": "いいよ"
+  },
+  "announcement": {
+    "label": "お知らせ",
+    "close": "閉じる",
+    "viewSite": "ウェブサイトを見る"
   }
 }

@@ -13,7 +13,9 @@ import { OutputText, PathRow, ToolNote } from "./parts";
 import { panelPath } from "./paths";
 
 function pathOf(item: ToolViewProps["item"]): string {
-  return textArg(asRecord(item.input), "path").trim();
+  const path = textArg(asRecord(item.input), "path").trim();
+  // 工作区根目录（"." / "./"）没有可展示、可打开的路径：PathRow 直接不渲染
+  return path === "." || path === "./" ? "" : path;
 }
 
 function dirOf(path: string): string {

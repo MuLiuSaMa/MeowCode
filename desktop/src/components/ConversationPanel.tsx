@@ -2,7 +2,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   LuArchive,
-  LuCheck,
   LuChevronDown,
   LuEllipsis,
   LuFileDown,
@@ -22,6 +21,7 @@ import { groupSessionsByProject } from "../conversation-groups";
 import { formatDateTime, formatSessionStamp } from "../i18n/format";
 import { baseName } from "../util";
 import { Button } from "./ui/Button";
+import { CheckboxBox } from "./ui/Checkbox";
 import { Dialog } from "./ui/Dialog";
 import "./ConversationPanel.css";
 
@@ -646,14 +646,10 @@ export function ConversationPanel({
                               }}
                             >
                               {selected ? (
-                                <span
+                                <CheckboxBox
                                   className="mc-convpanel__check"
-                                  data-checked={
-                                    selected.has(session.filePath) ? "true" : undefined
-                                  }
-                                >
-                                  {selected.has(session.filePath) ? <LuCheck size={11} /> : null}
-                                </span>
+                                  checked={selected.has(session.filePath)}
+                                />
                               ) : null}
                               {running ? (
                                 <span

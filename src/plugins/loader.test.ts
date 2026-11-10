@@ -364,10 +364,141 @@ describe("内置创作插件", () => {
 
       const descriptor = descriptors.find((item) => item.id === "extension-authoring");
       expect(descriptor?.error).toBeUndefined();
-      expect(descriptor?.toolNames).toEqual(expect.arrayContaining(["create_skill", "create_plugin"]));
+      expect(descriptor?.toolNames).toEqual(
+        expect.arrayContaining(["plugin_authoring_guide", "create_skill", "create_plugin"]),
+      );
       registry.unregisterAll();
     } finally {
       if (saved !== undefined) process.env.MEOWCODE_BUILTIN_PLUGINS_DIR = saved;
     }
+  });
+});
+
+describe("plugin.json manifest", () => {
+  async function writePlugin(
+    home: string,
+    id: string,
+    manifest: unknown,
+    files: Record<string, string> = {},
+  ): Promise<string> {
+    const dir = path.join(home, ".meowcode", "plugins", id);
+    await fs.mkdir(path.join(dir, "ui"), { recursive: true });
+    await fs.writeFile(path.join(dir, "index.ts"), "export default () => {}");
+    await fs.writeFile(path.join(dir, "plugin.json"), JSON.stringify(manifest));
+    for (const [name, content] of Object.entries(files)) {
+      await fs.writeFile(path.join(dir, name), content);
+    }
+    return dir;
+  }
+
+  it("合法 manifest：descriptor 带 version/manifest/ui.client", async () => {
+    const home = await makeTempRoot();
+    await writePlugin(
+      home,
+      "hello",
+      {
+        id: "hello",
+        name: "Hello",
+        version: "1.0.0",
+        apiVersion: 2,
+        permissions: ["storage", "ui"],
+        client: "ui/client.js",
+      },
+      { "ui/client.js": "return { apply() {} }" },
+    );
+    const registry = new PluginRegistry();
+    const { descriptors, errors } = await loadPlugins({
+      workspace: await makeTempRoot(),
+      homeDir: home,
+      registry,
+    });
+
+    const descriptor = descriptors.find((item) => item.id === "hello");
+    expect(errors).toEqual([]);
+    expect(descriptor?.version).toBe("1.0.0");
+    expect(descriptor?.manifest?.permissions).toEqual(["storage", "ui"]);
+    expect(descriptor?.ui?.client).toEqual({ entry: "client.js", permissions: ["storage", "ui"] });
+    registry.unregisterAll();
+  });
+
+  it("client 但未声明 ui 权限 → 加载错误", async () => {
+    const home = await makeTempRoot();
+    await writePlugin(
+      home,
+      "bad-perm",
+      {
+        id: "bad-perm",
+        version: "1.0.0",
+        apiVersion: 2,
+        permissions: ["storage"],
+        client: "ui/client.js",
+      },
+      { "ui/client.js": "return { apply() {} }" },
+    );
+    const registry = new PluginRegistry();
+    const { descriptors } = await loadPlugins({
+      workspace: await makeTempRoot(),
+      homeDir: home,
+      registry,
+    });
+
+    const descriptor = descriptors.find((item) => item.id === "bad-perm");
+    expect(descriptor?.error).toContain('"ui" permission');
+    expect(descriptor?.ui).toBeUndefined();
+    registry.unregisterAll();
+  });
+
+  it("client 路径越界 / 未知权限 / 版本缺失都拒绝", async () => {
+    const home = await makeTempRoot();
+    await writePlugin(home, "outside", {
+      id: "outside",
+      version: "1.0.0",
+      apiVersion: 2,
+      permissions: ["ui"],
+      client: "../../evil.js",
+    });
+    await writePlugin(home, "unknown-perm", {
+      id: "unknown-perm",
+      version: "1.0.0",
+      apiVersion: 2,
+      permissions: ["root"],
+    });
+    await writePlugin(home, "no-version", {
+      id: "no-version",
+      version: "",
+      apiVersion: 2,
+      permissions: [],
+    });
+    const registry = new PluginRegistry();
+    const { descriptors } = await loadPlugins({
+      workspace: await makeTempRoot(),
+      homeDir: home,
+      registry,
+    });
+
+    const byId = new Map(descriptors.map((item) => [item.id, item]));
+    expect(byId.get("outside")?.error).toContain("client must be a .js/.mjs file under ui/");
+    expect(byId.get("unknown-perm")?.error).toContain("unknown permission");
+    expect(byId.get("no-version")?.error).toContain("version");
+    registry.unregisterAll();
+  });
+
+  it("没有 plugin.json 的旧插件不加载 client", async () => {
+    const home = await makeTempRoot();
+    const dir = path.join(home, ".meowcode", "plugins", "legacy");
+    await fs.mkdir(path.join(dir, "ui"), { recursive: true });
+    await fs.writeFile(path.join(dir, "index.ts"), "export default () => {}");
+    await fs.writeFile(path.join(dir, "ui", "client.js"), "return { apply() {} }");
+    const registry = new PluginRegistry();
+    const { descriptors } = await loadPlugins({
+      workspace: await makeTempRoot(),
+      homeDir: home,
+      registry,
+    });
+
+    const descriptor = descriptors.find((item) => item.id === "legacy");
+    expect(descriptor?.manifest).toBeUndefined();
+    expect(descriptor?.ui?.client).toBeUndefined();
+    registry.unregisterAll();
   });
 });

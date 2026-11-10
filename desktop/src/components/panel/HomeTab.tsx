@@ -17,6 +17,7 @@ import {
   LuTimer,
   LuUsers,
 } from "react-icons/lu";
+import { PluginSlot } from "../../plugins/PluginSlot";
 import type { ProviderSettings, SpeedSample, TurnMetrics } from "../../api";
 import type { SideTabOpen } from "../../panel/useSideTabs";
 import { formatNumber } from "../../i18n/format";
@@ -510,6 +511,8 @@ export function HomeTab({
           </div>
         </div>
       </div>
+
+      <PluginSlot name="home.widgets" props={{}} />
     </div>
   );
 }

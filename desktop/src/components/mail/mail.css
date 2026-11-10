@@ -1,0 +1,1148 @@
+/* 邮箱聚合：账户侧栏 / 邮件列表 / 阅读页 / 写信 / 添加向导 */
+
+.mc-mail__page {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.mc-mail__layer {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.mc-mail__layer[data-hidden="true"] {
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.mc-mail__spacer {
+  flex: 1;
+}
+
+.mc-mail__center {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 60px 20px;
+  color: var(--fg-subtle);
+  font-size: var(--fs-caption);
+  text-align: center;
+}
+
+.mc-mail__empty {
+  color: var(--fg-subtlest);
+}
+
+.mc-mail__error {
+  color: var(--danger);
+  font-size: var(--fs-caption);
+  line-height: 1.5;
+  margin: 0;
+}
+
+.mc-mail__hint {
+  color: var(--fg-subtle);
+  font-size: var(--fs-xs);
+  line-height: 1.6;
+  margin: 0;
+}
+
+/* ---- 账户侧栏 ---- */
+
+.mc-mail__nav {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.mc-mail__navhead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 18px 14px 8px 16px;
+}
+
+.mc-mail__navhead .mc-settings__heading {
+  margin: 0;
+}
+
+.mc-mail__addbtn {
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  border: none;
+  background: transparent;
+  color: var(--fg-subtle);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.mc-mail__addbtn:hover {
+  background: var(--surface);
+  color: var(--fg);
+}
+
+.mc-mail__accounts {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 4px 8px 12px;
+  scrollbar-gutter: stable;
+}
+
+.mc-mail__account {
+  margin-bottom: 2px;
+}
+
+.mc-mail__accountcard {
+  position: relative;
+  display: flex;
+  align-items: stretch;
+  width: 100%;
+  border-radius: var(--radius-md);
+}
+
+.mc-mail__accountcard:hover {
+  background: var(--surface);
+}
+
+.mc-mail__accountcard[data-active="true"] {
+  background: var(--surface-hover);
+}
+
+.mc-mail__accountrow {
+  flex: 1;
+  width: 100%;
+  min-width: 0;
+  min-height: 58px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 7px 10px;
+  border: none;
+  background: transparent;
+  border-radius: var(--radius-md);
+  color: var(--fg);
+  text-align: left;
+  cursor: pointer;
+}
+
+.mc-mail__avatar {
+  position: relative;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-semibold);
+  color: var(--fg);
+  background: var(--surface-hover);
+  overflow: hidden;
+}
+
+.mc-mail__avatar--sm {
+  width: 22px;
+  height: 22px;
+  font-size: 10px;
+}
+
+.mc-mail__avatar--all {
+  background: var(--card-hover);
+}
+
+.mc-mail__avatar--image img {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.mc-mail__avatar--0 {
+  background: color-mix(in oklab, #6f8fa8 30%, transparent);
+}
+
+.mc-mail__avatar--1 {
+  background: color-mix(in oklab, #a08b6f 30%, transparent);
+}
+
+.mc-mail__avatar--2 {
+  background: color-mix(in oklab, #7f9a7a 30%, transparent);
+}
+
+.mc-mail__avatar--3 {
+  background: color-mix(in oklab, #9a7f94 30%, transparent);
+}
+
+.mc-mail__avatar--4 {
+  background: color-mix(in oklab, #7d7f9a 30%, transparent);
+}
+
+.mc-mail__avatar--5 {
+  background: color-mix(in oklab, #9a8f7d 30%, transparent);
+}
+
+.mc-mail__accountmeta {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+}
+
+.mc-mail__accountname {
+  font-size: var(--fs-caption);
+  font-weight: var(--fw-medium);
+  color: var(--fg);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mc-mail__accountmail {
+  font-size: var(--fs-xs);
+  color: var(--fg-subtle);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mc-mail__badge {
+  margin-left: auto;
+  min-width: 20px;
+  padding: 1px 7px;
+  border-radius: var(--radius-full);
+  background: var(--surface-hover);
+  color: var(--fg-subtle);
+  font-size: var(--fs-xs);
+  text-align: center;
+  flex: 0 0 auto;
+}
+
+.mc-mail__accountmore {
+  width: 26px;
+  flex: 0 0 auto;
+  border: none;
+  background: transparent;
+  color: var(--fg-subtle);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  opacity: 0;
+  display: grid;
+  place-items: center;
+  align-self: center;
+}
+
+.mc-mail__accountcard:hover .mc-mail__accountmore,
+.mc-mail__accountmore:focus-visible {
+  opacity: 1;
+}
+
+.mc-mail__accountmore:hover {
+  background: var(--surface);
+  color: var(--fg);
+}
+
+.mc-mail__accountmenu {
+  position: absolute;
+  top: calc(100% - 2px);
+  right: 8px;
+  z-index: 20;
+  min-width: 156px;
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+}
+
+.mc-mail__accountmenu button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 9px;
+  border: none;
+  background: transparent;
+  border-radius: var(--radius-xs);
+  color: var(--fg);
+  font-size: var(--fs-caption);
+  text-align: left;
+  cursor: pointer;
+}
+
+.mc-mail__accountmenu button:hover {
+  background: var(--surface-hover);
+}
+
+.mc-mail__accountmenu button[data-danger="true"] {
+  color: var(--danger);
+}
+
+.mc-mail__syncing {
+  flex: 0 0 auto;
+  color: var(--fg-subtle);
+  animation: mc-mail-spin 1s linear infinite;
+}
+
+.mc-mail__accounterror {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--danger);
+  flex: 0 0 auto;
+}
+
+@keyframes mc-mail-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.mc-mail__cats {
+  display: flex;
+  flex-direction: column;
+  padding: 2px 0 8px 22px;
+}
+
+.mc-mail__cat {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 6px 10px;
+  border: none;
+  background: transparent;
+  border-radius: var(--radius-sm);
+  color: var(--fg-subtle);
+  font-size: var(--fs-caption);
+  text-align: left;
+  cursor: pointer;
+}
+
+.mc-mail__cat:hover {
+  background: var(--surface);
+  color: var(--fg);
+}
+
+.mc-mail__cat[data-active="true"] {
+  background: var(--surface-hover);
+  color: var(--fg);
+  font-weight: var(--fw-medium);
+}
+
+.mc-mail__catlabel {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mc-mail__catcount {
+  margin-left: auto;
+  font-size: var(--fs-xs);
+  color: var(--fg-subtle);
+}
+
+.mc-mail__navempty {
+  padding: 10px 12px;
+  margin: 0;
+  font-size: var(--fs-xs);
+  color: var(--fg-subtlest);
+}
+
+.mc-mail__navfoot {
+  padding: 10px 12px 14px;
+  border-top: 1px solid var(--border);
+}
+
+/* ---- 邮件列表 ---- */
+
+.mc-mail__listwrap {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+.mc-mail__listhead {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 15px 20px;
+  border-bottom: 1px solid var(--border);
+}
+
+.mc-mail__listtitle {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  min-width: 0;
+  flex: 1;
+}
+
+.mc-mail__listtitle h2 {
+  margin: 0;
+  font-size: var(--fs-lg);
+  font-weight: var(--fw-semibold);
+  color: var(--fg);
+}
+
+.mc-mail__listcount {
+  font-size: var(--fs-xs);
+  color: var(--fg-subtlest);
+}
+
+.mc-mail__listactions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+}
+
+.mc-mail__rows {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 6px 8px 24px;
+  scrollbar-gutter: stable;
+}
+
+.mc-mail__row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 11px 12px;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+}
+
+.mc-mail__row:hover {
+  background: var(--surface);
+}
+
+.mc-mail__row:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: -2px;
+}
+
+.mc-mail__row[data-kind="outbox"] {
+  cursor: default;
+}
+
+.mc-mail__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  margin-top: 8px;
+  flex: 0 0 auto;
+}
+
+.mc-mail__rowbody {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.mc-mail__rowtop {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.mc-mail__sender {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--fs-caption);
+  color: var(--fg);
+}
+
+.mc-mail__row[data-unread="true"] .mc-mail__sender,
+.mc-mail__row[data-unread="true"] .mc-mail__rowsubject {
+  font-weight: var(--fw-semibold);
+}
+
+.mc-mail__rowtime {
+  flex: 0 0 auto;
+  font-size: var(--fs-xs);
+  color: var(--fg-subtlest);
+}
+
+.mc-mail__rowsubject {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font-size: var(--fs-caption);
+  color: var(--fg);
+}
+
+.mc-mail__rowsubject > span:not(.mc-mail__tag):not(.mc-mail__unreaddot) {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mc-mail__unreaddot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--fg);
+  flex: 0 0 auto;
+}
+
+.mc-mail__rowsnippet {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--fs-xs);
+  color: var(--fg-subtle);
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.mc-mail__rowsnippet > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mc-mail__tag {
+  flex: 0 0 auto;
+  padding: 0 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  font-size: 10px;
+  font-weight: var(--fw-normal);
+  color: var(--fg-subtle);
+  line-height: 16px;
+}
+
+.mc-mail__outboxstate {
+  color: var(--fg-subtle);
+}
+
+.mc-mail__outboxerror {
+  color: var(--danger);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mc-mail__outboxactions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  align-self: center;
+}
+
+.mc-mail__loadmore {
+  display: flex;
+  justify-content: center;
+  padding: 12px 0 4px;
+}
+
+/* ---- 阅读页 ---- */
+
+.mc-mail__reader {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+.mc-mail__readerbar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.mc-mail__readerbody {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+}
+
+.mc-mail__article {
+  max-width: 860px;
+  margin: 0 auto;
+  padding: 24px 32px 48px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  box-sizing: border-box;
+}
+
+.mc-mail__subjectrow {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.mc-mail__avatar--lg {
+  width: 38px;
+  height: 38px;
+  font-size: var(--fs-base);
+  margin-top: 2px;
+}
+
+.mc-mail__subject {
+  margin: 0;
+  font-size: 22px;
+  font-weight: var(--fw-semibold);
+  line-height: 1.35;
+  color: var(--fg);
+  word-break: break-word;
+}
+
+.mc-mail__meta {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 12px 0;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+
+.mc-mail__meta div {
+  display: flex;
+  gap: 10px;
+  font-size: var(--fs-caption);
+}
+
+.mc-mail__meta dt {
+  flex: 0 0 54px;
+  color: var(--fg-subtle);
+}
+
+.mc-mail__meta dd {
+  margin: 0;
+  color: var(--fg);
+  word-break: break-word;
+}
+
+.mc-mail__frame {
+  display: block;
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: #ffffff;
+}
+
+.mc-mail__textbody {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: var(--font-sans);
+  font-size: var(--fs-base);
+  line-height: 1.65;
+  color: var(--fg);
+}
+
+.mc-mail__attachments {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.mc-mail__attachments h2 {
+  margin: 0;
+  font-size: var(--fs-caption);
+  font-weight: var(--fw-medium);
+  color: var(--fg-subtle);
+}
+
+.mc-mail__attachment {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+
+.mc-mail__attachmentname {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--fs-caption);
+  color: var(--fg);
+}
+
+.mc-mail__attachmentsize {
+  margin-left: auto;
+  flex: 0 0 auto;
+  font-size: var(--fs-xs);
+  color: var(--fg-subtle);
+}
+
+/* ---- 写信 ---- */
+
+.mc-mail__compose {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+.mc-mail__composebar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 18px;
+  border-bottom: 1px solid var(--border);
+}
+
+.mc-mail__composebar h2 {
+  margin: 0;
+  font-size: var(--fs-lg);
+  font-weight: var(--fw-semibold);
+  color: var(--fg);
+}
+
+.mc-mail__composebody {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  width: 100%;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 20px 24px 40px;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  scrollbar-gutter: stable;
+}
+
+.mc-mail__composefrom {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: var(--fs-caption);
+  color: var(--fg-subtle);
+}
+
+.mc-mail__composefrom > span {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+.mc-mail__composerow {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.mc-mail__ccbcc {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  align-self: flex-start;
+  padding: 1px 0;
+  border: none;
+  background: transparent;
+  color: var(--fg-subtle);
+  font-size: var(--fs-xs);
+  cursor: pointer;
+}
+
+.mc-mail__ccbcc:hover {
+  color: var(--fg);
+}
+
+.mc-mail__ccbcc svg {
+  transition: transform var(--dur) var(--ease);
+  transform: rotate(-90deg);
+}
+
+.mc-mail__ccbcc[data-open="true"] svg {
+  transform: rotate(0deg);
+}
+
+.mc-mail__textfield {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.mc-mail__textfield > span,
+.mc-mail__texthead > span {
+  font-size: var(--fs-caption);
+  color: var(--fg-subtle);
+}
+
+.mc-mail__texthead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.mc-mail__aibtn {
+  padding: 1px 6px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--fg-subtle);
+  font-size: var(--fs-xs);
+  cursor: pointer;
+}
+
+.mc-mail__aibtn:hover {
+  background: var(--surface);
+  color: var(--fg);
+}
+
+.mc-mail__aibtn[data-active="true"] {
+  background: var(--surface-hover);
+  color: var(--fg);
+}
+
+.mc-mail__aibar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+}
+
+.mc-mail__aiinput {
+  flex: 1;
+  min-width: 0;
+  padding: 3px 4px;
+  border: none;
+  background: transparent;
+  color: var(--fg);
+  font-size: var(--fs-caption);
+  outline: none;
+}
+
+.mc-mail__aiinput::placeholder {
+  color: var(--fg-subtlest);
+}
+
+.mc-mail__aiundo {
+  padding: 2px 4px;
+  border: none;
+  background: transparent;
+  color: var(--fg-subtle);
+  font-size: var(--fs-xs);
+  cursor: pointer;
+}
+
+.mc-mail__aiundo:hover {
+  color: var(--fg);
+}
+
+.mc-mail__composetext {
+  min-height: 320px;
+  resize: vertical;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--input-fill);
+  color: var(--fg);
+  font-family: var(--font-sans);
+  font-size: var(--fs-base);
+  line-height: 1.6;
+  outline: none;
+}
+
+.mc-mail__composetext:focus {
+  border-color: var(--border-hover);
+}
+
+.mc-mail__composeattachments {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.mc-mail__composefile {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 4px 3px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  font-size: var(--fs-xs);
+  color: var(--fg);
+}
+
+/* ---- 添加/编辑邮箱向导 ---- */
+
+.mc-mail__wizard {
+  height: 100%;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+}
+
+.mc-mail__wizardinner {
+  min-height: 100%;
+  max-width: 780px;
+  margin: 0 auto;
+  padding: 34px 32px 44px;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.mc-mail__wizardhead h1 {
+  margin: 0 0 6px;
+  font-size: 22px;
+  font-weight: var(--fw-semibold);
+  color: var(--fg);
+}
+
+.mc-mail__wizardhead p {
+  margin: 0;
+  font-size: var(--fs-caption);
+  color: var(--fg-subtle);
+}
+
+.mc-mail__steps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.mc-mail__steps li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px 4px 4px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-full);
+  font-size: var(--fs-xs);
+  color: var(--fg-subtlest);
+}
+
+.mc-mail__steps li span {
+  width: 18px;
+  height: 18px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  font-size: 10px;
+}
+
+.mc-mail__steps li[data-active="true"] {
+  color: var(--fg);
+  border-color: var(--border);
+  background: var(--surface);
+}
+
+.mc-mail__steps li[data-done="true"] {
+  color: var(--fg-subtle);
+}
+
+.mc-mail__steps li[data-done="true"] span {
+  border-color: transparent;
+  background: var(--surface-hover);
+}
+
+.mc-mail__wizardbody {
+  flex: 1;
+}
+
+.mc-mail__providers {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 10px;
+}
+
+.mc-mail__provider {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  text-align: left;
+  cursor: pointer;
+}
+
+.mc-mail__provider:hover {
+  background: var(--surface-hover);
+}
+
+.mc-mail__provider[data-active="true"] {
+  border-color: var(--border-hover);
+  background: var(--surface-hover);
+}
+
+.mc-mail__providername {
+  font-size: var(--fs-base);
+  font-weight: var(--fw-medium);
+  color: var(--fg);
+}
+
+.mc-mail__providerhint {
+  font-size: var(--fs-xs);
+  line-height: 1.5;
+  color: var(--fg-subtle);
+}
+
+.mc-mail__form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  max-width: 580px;
+}
+
+.mc-mail__togglefield {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 2px 0;
+  font-size: var(--fs-caption);
+  color: var(--fg-subtle);
+}
+
+.mc-mail__verify {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.mc-mail__verifyrow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: var(--fs-caption);
+  color: var(--fg-subtle);
+}
+
+.mc-mail__verifyblock {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  font-size: var(--fs-caption);
+}
+
+.mc-mail__verifyblock[data-ok="true"] strong {
+  color: var(--success);
+  font-weight: var(--fw-medium);
+}
+
+.mc-mail__verifyblock[data-ok="false"] strong {
+  color: var(--danger);
+  font-weight: var(--fw-normal);
+}
+
+.mc-mail__folders {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  font-size: var(--fs-xs);
+  color: var(--fg-subtle);
+}
+
+.mc-mail__folderslabel {
+  width: 100%;
+  color: var(--fg-subtle);
+}
+
+.mc-mail__folder {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.mc-mail__folder em {
+  font-style: normal;
+  color: var(--fg-subtlest);
+}
+
+.mc-mail__wizardfoot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-top: 18px;
+  border-top: 1px solid var(--border);
+}
+
+/* ---- 对话框 ---- */
+
+.mc-mail__dialog {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 340px;
+  max-width: 460px;
+  padding: 20px 22px;
+}
+
+.mc-mail__dialog h2 {
+  margin: 0;
+  font-size: var(--fs-lg);
+  font-weight: var(--fw-semibold);
+  color: var(--fg);
+}
+
+.mc-mail__dialog p {
+  margin: 0;
+  font-size: var(--fs-caption);
+  line-height: 1.6;
+  color: var(--fg-subtle);
+}
+
+.mc-mail__dialogactions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+@media (max-width: 880px) {
+  .mc-mail__composerow {
+    grid-template-columns: 1fr;
+  }
+
+  .mc-mail__article {
+    padding: 20px 20px 40px;
+  }
+}

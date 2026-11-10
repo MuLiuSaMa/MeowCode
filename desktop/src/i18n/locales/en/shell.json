@@ -3,6 +3,7 @@
     "home": "Home",
     "architecture": "Agent architecture",
     "git": "Git",
+    "mail": "Mail",
     "plugins": "Marketplace",
     "automation": "Automations",
     "settings": "Settings"
@@ -241,5 +242,10 @@
     "body": "Pwease give me a little star~",
     "dismiss": "No thanks",
     "accept": "Sure!"
+  },
+  "announcement": {
+    "label": "Announcement",
+    "close": "Close",
+    "viewSite": "Visit website"
   }
 }

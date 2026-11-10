@@ -4,17 +4,27 @@ import { ProviderRequestError } from "./provider-error.js";
 import {
   buildMessageUnits,
   estimateMessagesTokens,
+  estimateTokens,
   estimateToolDefinitionsTokens,
   trimMessages,
 } from "./context.js";
 import type { ChatMessage, ProviderConfig, ToolDefinition, TokenUsage } from "./types.js";
 
-export const COMPACTION_SYSTEM_PROMPT = `Create a compact handoff summary for a coding agent.
-Use the same language as the conversation. Use terse bullet points under these headings:
+/**
+ * 摘要正文规范：SYSTEM_PROMPT（独立摘要请求）与 INSTRUCTION（复用主前缀时
+ * 追加在对话尾部）共用，避免两处各写一遍、改一处忘一处。
+ */
+const COMPACTION_BODY = `Use the same language as the conversation. Use terse bullet points under these headings:
 Goal, Progress, Files, Commands and results, Decisions, Next step.
 Preserve the user's objective, important file paths, commands already run, key results, unresolved errors, decisions, and the next concrete action.
-If an earlier handoff summary is present, update it with new progress instead of rewriting from scratch.
-Do not include API keys, tokens, passwords, or unrelated history.
+If an earlier handoff summary is present, rewrite it from scratch within the budget, carrying forward only still-relevant items; never append delta sections to the old summary.
+Do not restate system/developer instructions, AGENTS.md or repository conventions, environment details, or memory entries: the next agent receives those separately. Summarize only what this conversation added.
+Do not paste full file contents, diffs, or long logs; cite path:line and the command instead.
+Keep each heading to at most 6 bullets and drop details the next agent can cheaply re-derive.
+Do not include API keys, tokens, passwords, or unrelated history.`;
+
+export const COMPACTION_SYSTEM_PROMPT = `Create a compact handoff summary for a coding agent.
+${COMPACTION_BODY}
 Output plain text only; never emit tool-call markup or pretend to call tools.`;
 
 /**
@@ -22,12 +32,8 @@ Output plain text only; never emit tool-call markup or pretend to call tools.`;
  * 此时输入包含最近会被逐字保留的消息，所以明确允许略过它们的细节。
  */
 export const COMPACTION_INSTRUCTION = `Create a compact handoff summary of the conversation above for a coding agent that will continue the work.
-Use the same language as the conversation. Use terse bullet points under these headings:
-Goal, Progress, Files, Commands and results, Decisions, Next step.
-Preserve the user's objective, important file paths, commands already run, key results, unresolved errors, decisions, and the next concrete action.
-If an earlier handoff summary is present, update it with new progress instead of rewriting from scratch.
+${COMPACTION_BODY}
 The most recent messages will remain verbatim after compaction, so you may omit details already covered there.
-Do not include API keys, tokens, passwords, or unrelated history.
 Do not call tools. Do not emit tool-call markup. Output plain text only.`;
 
 /**
@@ -57,8 +63,12 @@ export function compactionSummaryMaxTokens(provider: ProviderConfig): number {
  * 压缩时逐字保留的近期对话 token 预算：摘要只覆盖更早的旧历史。
  * 参考metis（keepRecent 20K）与 opencode（keep 15K）的取值；
  * 实际保留量由 session-store 按不可拆单元从最新往回消耗，小窗口按 20% 自适应收缩。
+ *
+ * 16K → 20K：模型摘要只有 2–4k，压缩后「重新探索」是最大的隐性开销。多留 4k
+ * 原文换取「最近的读文件/报错结果仍然在手」，比把摘要写长更划算（摘要在之后
+ * 每次请求都要重发，原文只在窗口里占一次）。
  */
-export const COMPACTION_KEEP_RECENT_TOKENS = 16_000;
+export const COMPACTION_KEEP_RECENT_TOKENS = 20_000;
 
 /**
  * 误报排除（参考 opencode 的 provider-error 分类器）：
@@ -333,14 +343,17 @@ export async function summarizeToolOutputs(options: {
   const ids = new Set(options.outputs.map((output) => output.callId));
   if (!ids.size) return new Map();
 
-  // 只挑能塞进窗口的一部分：最大的先来，超预算的留在原位等下一档全量摘要
+  // 只挑能塞进窗口的一部分：最大的先来，超预算的留在原位等下一档全量摘要。
+  // 预算必须按 token 口径算：`window * 0.4 * 4` 是「字符 = token × 4」的英文假设，
+  // 中文仓库里 1 字 ≈ 1 token，按字符配预算会把 4 倍的正文塞进摘要请求，
+  // 换来的是一次溢出或一次静默截断 —— 正好毁掉这层要保的东西。
   const window = options.provider.contextWindow ?? 48_000;
-  const charBudget = Math.max(8_000, Math.floor(window * 0.4 * 4));
+  const tokenBudget = Math.max(2_000, Math.floor(window * 0.4));
   const selected: typeof options.outputs = [];
-  let used = 0;
+  let used = estimateTokens(TOOL_DIGEST_SYSTEM_PROMPT);
   for (const output of [...options.outputs].sort((a, b) => b.content.length - a.content.length)) {
-    const block = TOOL_DIGEST_SYSTEM_PROMPT.length + output.content.length;
-    if (used + block > charBudget) continue;
+    const block = estimateTokens(output.content.slice(0, TOOL_DIGEST_ENTRY_CHARS));
+    if (used + block > tokenBudget) continue;
     selected.push(output);
     used += block;
   }

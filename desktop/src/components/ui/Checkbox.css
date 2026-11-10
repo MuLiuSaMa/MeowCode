@@ -1,0 +1,80 @@
+/*
+ * 统一勾选框：视觉与对话列表多选完全同源（14px 方框 / 4px 圆角 / brand 实底 + 白对勾）。
+ * 各业务只换容器布局，不再各写一套 accent-color 原生 checkbox。
+ */
+.mc-checkbox,
+.mc-checkbox__mark {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.mc-checkbox__mark {
+  flex: none;
+}
+
+.mc-checkbox[data-disabled="true"],
+.mc-checkbox__mark[data-disabled="true"] {
+  cursor: default;
+}
+
+.mc-checkbox[data-disabled="true"] .mc-checkbox__box,
+.mc-checkbox__mark[data-disabled="true"] .mc-checkbox__box {
+  opacity: 0.55;
+}
+
+/* 原生 input 只保留可访问性与表单语义，视觉交给方框 */
+.mc-checkbox__input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  border: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.mc-checkbox__box {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--checkbox-fg, var(--brand-fg));
+  transition: background-color var(--dur) var(--ease), border-color var(--dur) var(--ease);
+}
+
+.mc-checkbox__box[data-checked="true"] {
+  border-color: var(--checkbox-accent, var(--brand));
+  background: var(--checkbox-accent, var(--brand));
+}
+
+.mc-checkbox__input:focus-visible + .mc-checkbox__box {
+  outline: 2px solid var(--ring);
+  outline-offset: 1px;
+}
+
+.mc-checkbox[data-danger="true"] .mc-checkbox__box[data-checked="true"],
+.mc-checkbox__mark[data-danger="true"] .mc-checkbox__box[data-checked="true"] {
+  border-color: var(--danger);
+  background: var(--danger);
+  /* 深色下 danger 是浅红，用深勾；浅色下是深红，用白勾——与 brand 的对比色对一致 */
+  color: var(--brand-fg);
+}
+
+.mc-checkbox__label {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  flex: 1;
+  min-width: 0;
+}

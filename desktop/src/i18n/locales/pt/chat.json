@@ -39,7 +39,8 @@
   },
   "assistant": {
     "thinking": "Processo de raciocínio",
-    "thinkingInProgress": "Pensando…"
+    "thinkingInProgress": "Pensando…",
+    "thinkingDone": "Pensado"
   },
   "status": {
     "idle": "Lanchando de graça",
@@ -291,7 +292,10 @@
       "added": "Adicionado",
       "updated": "Atualizado",
       "deleted": "Excluído"
-    }
+    },
+    "groupRan": "{{n}} ferramentas executadas",
+    "groupFailed": ", {{n}} falhas",
+    "groupThinking": "{{n}} raciocínios"
   },
   "role": {
     "general": "Geral",
@@ -332,6 +336,10 @@
     "gitFailed": "Falha ao ler as alterações",
     "agents": "Agentes",
     "noAgents": "Nenhum subagente ainda",
+    "terminals": "Terminais",
+    "noTerminals": "Nenhum terminal em execução",
+    "stopTerminal": "Parar terminal",
+    "terminalRunning": "Em execução",
     "open": "Abrir visão geral do workspace",
     "close": "Fechar visão geral do workspace",
     "commitOrPush": "Comitar ou enviar",

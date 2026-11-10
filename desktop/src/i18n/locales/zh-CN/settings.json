@@ -15,13 +15,21 @@
       "dazui": "大嘴"
     }
   },
+  "progressPill": {
+    "field": "输入框上方信息胶囊",
+    "desc": "输入框上方信息胶囊的收起时机：提交后消失，或对话结束后消失。",
+    "options": {
+      "commit": "提交后消失",
+      "turn-end": "对话结束后消失"
+    }
+  },
   "nav": {
     "heading": "设置",
     "ariaLabel": "设置分区",
     "back": "返回对话"
   },
   "sections": {
-    "general": "通用",
+    "general": "常规",
     "appearance": "外观",
     "shortcuts": "快捷键",
     "island": "AI 悬浮岛",
@@ -42,19 +50,12 @@
   "island": {
     "section": "AI 悬浮岛",
     "field": "启用悬浮岛",
-    "desc": {
-      "on": "悬浮岛已开启：屏幕顶部居中显示所有运行中会话的状态，鼠标放上去可展开查看对话、直接输入或停止任务。",
-      "off": "开启后在屏幕顶部居中显示一枚胶囊，实时显示所有运行中会话的状态；鼠标放上去可展开成对话小窗。"
-    }
+    "desc": "在屏幕顶部居中显示所有运行中会话的状态胶囊；鼠标放上去可展开成对话小窗，直接输入或停止任务。"
   },
   "close": {
     "section": "关闭方式",
     "field": "关闭窗口时",
-    "desc": {
-      "ask": "每次关闭窗口时询问你要缩小到托盘还是直接退出。",
-      "tray": "关闭窗口时隐藏到系统托盘，MeowCode 继续在后台运行。",
-      "quit": "关闭窗口会直接退出 MeowCode。"
-    },
+    "desc": "关闭主窗口时的行为：每次询问、隐藏到系统托盘继续后台运行，或直接退出。",
     "options": {
       "ask": "每次询问",
       "tray": "缩小到托盘",
@@ -64,10 +65,7 @@
   "update": {
     "section": "更新",
     "field": "静默下载更新",
-    "desc": {
-      "on": "启动检查到新版本时在后台自动下载，完成后导航栏左下角会出现重启按钮，点击即可安装。",
-      "off": "只在启动时静默检查新版本并提醒，下载与安装需要在关于页手动进行。"
-    }
+    "desc": "检查到新版本时在后台静默下载，完成后导航栏左下角出现重启按钮，点击即可安装。"
   },
   "worktree": {
     "section": "Worktrees",
@@ -269,6 +267,9 @@
     "restartMessage": "模型改动需要重启本地 agent 服务才能生效，正在进行的回合会被中断。仍要保存吗？",
     "restartConfirm": "仍要保存",
     "editGroup": "编辑该服务商",
+    "deleteGroupAria": "删除服务商 {{name}}",
+    "deleteGroupTitle": "删除服务商",
+    "deleteGroupMessage": "确定删除「{{name}}」及其下 {{count}} 个模型吗？删除后需要重新配置才能使用。",
     "colModel": "模型",
     "colProvider": "服务商",
     "colActions": "操作",
@@ -402,15 +403,9 @@
       "section": "导入 Claude Code Hooks",
       "description": "读取 ~/.claude/settings.json 与工作区 .claude 配置；工作区配置默认不执行。",
       "master": "启用 Hooks",
-      "masterHint": {
-        "on": "已加载 Claude Code hook 配置。",
-        "off": "已停用：配置只读展示，不会执行。"
-      },
+      "masterHint": "加载并执行 Claude Code hook 配置；停用后只读展示，不执行任何脚本。",
       "workspace": "包含工作区 .claude 配置",
-      "workspaceHint": {
-        "on": "工作区 .claude/settings*.json 中的 hooks 会执行。",
-        "off": "只执行 ~/.claude 配置；工作区配置仅展示。"
-      },
+      "workspaceHint": "是否执行工作区 .claude/settings*.json 里的 hooks；关闭时只执行 ~/.claude 配置。",
       "workspaceWarning": "工作区 hooks 来自当前仓库文件，可能被提交恶意命令。只在此仓库可信时开启。",
       "disabledNote": "Hooks 已停用。打开上方开关后，命令才会执行。"
     },
@@ -548,10 +543,7 @@
     "desc": "日常行为偏好，修改后立即生效。",
     "notify": {
       "field": "系统通知",
-      "desc": {
-        "on": "回合结束、需要确认或被中断时，窗口不在前台就弹系统通知（显示会话标题与回复摘要）。",
-        "off": "关闭后不再弹任何系统通知。"
-      }
+      "desc": "回合结束、需要确认或被中断且窗口不在前台时，弹系统通知（显示会话标题与回复摘要）。"
     },
     "promptSuggestions": {
       "field": "输入建议",
@@ -565,6 +557,17 @@
       "field": "供应商故障转移",
       "desc": "主服务商超时、限流或服务端故障时，本回合自动切到其他已启用的服务商，最多切换 2 次。",
       "toggleFailed": "保存供应商故障转移开关失败"
+    },
+    "mailAi": {
+      "field": "除了聊天使用的模型",
+      "follow": "跟随聊天"
+    },
+    "other": {
+      "section": "常规"
+    },
+    "announcement": {
+      "field": "公告",
+      "desc": "在标题栏显示官方公告（新版本与新模型动态）。"
     }
   },
   "proxy": {

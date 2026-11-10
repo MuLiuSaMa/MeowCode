@@ -162,7 +162,7 @@ export function HooksSection({
       >
         <FieldRow
           label={t("hooks.import.master")}
-          hint={t(`hooks.import.masterHint.${config.enabled ? "on" : "off"}`)}
+          hint={t("hooks.import.masterHint")}
         >
           <Toggle
             checked={config.enabled}
@@ -173,7 +173,7 @@ export function HooksSection({
         </FieldRow>
         <FieldRow
           label={t("hooks.import.workspace")}
-          hint={t(`hooks.import.workspaceHint.${config.scope.workspace ? "on" : "off"}`)}
+          hint={t("hooks.import.workspaceHint")}
         >
           <Toggle
             checked={config.scope.workspace}

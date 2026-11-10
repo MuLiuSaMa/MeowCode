@@ -130,6 +130,31 @@ describe("SessionStore", () => {
     expect(loaded.effectiveMessages.map((message) => message.content)).toEqual(expected);
   });
 
+  it("drops thinking from older retained turns at the compaction boundary only", async () => {
+    const { session, filePath } = await makeStore();
+    const thinking = (text: string) => [{ type: "thinking" as const, thinking: text, signature: `s-${text}` }];
+    await session.appendMessage({ role: "user", content: "q1" });
+    // 上一回合：跨轮不再需要回传 thinking → 压缩时剥掉
+    await session.appendMessage({ role: "assistant", content: "a1", anthropic_thinking: thinking("old") });
+    await session.appendMessage({ role: "user", content: "q2" });
+    // 当前回合：可能还在工具循环里，thinking 必须原样带着
+    await session.appendMessage({ role: "assistant", content: "a2", anthropic_thinking: thinking("now") });
+
+    const keep = session.effectiveMessages.length;
+    await session.appendCompactionSummary("summary", keep);
+
+    const retained = session.effectiveMessages.slice(1);
+    expect(retained.map((message) => message.content)).toEqual(["q1", "a1", "q2", "a2"]);
+    expect(retained[1]).not.toHaveProperty("anthropic_thinking");
+    expect(retained[3].anthropic_thinking).toHaveLength(1);
+
+    // 切点随条目落盘：重新加载后仍是同一份重放结果（不是每轮重算）
+    const loaded = await SessionStore.load(filePath);
+    const replayed = loaded.effectiveMessages.slice(1);
+    expect(replayed[1]).not.toHaveProperty("anthropic_thinking");
+    expect(replayed[3].anthropic_thinking).toHaveLength(1);
+  });
+
   it("recentKeptMessages returns empty when everything fits the keep budget", async () => {
     const { session } = await makeStore();
     await session.appendMessage({ role: "user", content: "only message" });

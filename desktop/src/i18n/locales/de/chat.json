@@ -39,7 +39,8 @@
   },
   "assistant": {
     "thinking": "Denkprozess",
-    "thinkingInProgress": "Denkt nach…"
+    "thinkingInProgress": "Denkt nach…",
+    "thinkingDone": "Nachgedacht"
   },
   "status": {
     "idle": "Kostenloses Snacken",
@@ -291,7 +292,10 @@
       "added": "Hinzugefügt",
       "updated": "Aktualisiert",
       "deleted": "Gelöscht"
-    }
+    },
+    "groupRan": "{{n}} Tools ausgeführt",
+    "groupFailed": ", {{n}} fehlgeschlagen",
+    "groupThinking": "{{n}}× nachgedacht"
   },
   "role": {
     "general": "Allgemein",
@@ -332,6 +336,10 @@
     "gitFailed": "Änderungen konnten nicht gelesen werden",
     "agents": "Agenten",
     "noAgents": "Noch keine Subagenten",
+    "terminals": "Terminals",
+    "noTerminals": "Noch keine laufenden Terminals",
+    "stopTerminal": "Terminal stoppen",
+    "terminalRunning": "Läuft",
     "open": "Arbeitsbereichsübersicht öffnen",
     "close": "Arbeitsbereichsübersicht schließen",
     "commitOrPush": "Committen oder pushen",

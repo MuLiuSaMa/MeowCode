@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { TimelineImage } from "../api";
 import { loadMarketplaceCatalog } from "../data/marketplaceCatalog";
+import { loadPluginIconMap } from "../data/pluginIcons";
 import { LuFileText, LuPuzzle, LuSparkles, LuUndo2 } from "react-icons/lu";
 import { parseUserMessage } from "../user-references";
 import "./UserBubble.css";
@@ -33,6 +34,7 @@ export function UserBubble({
   const { t } = useTranslation("chat");
   const parsed = parseUserMessage(content);
   const [icons, setIcons] = useState<Record<string, string>>({});
+  const [pluginIcons, setPluginIcons] = useState<Record<string, string>>({});
 
   useEffect(() => {
     if (!parsed.command && parsed.chips.length === 0) {
@@ -40,17 +42,26 @@ export function UserBubble({
       return;
     }
     let live = true;
-    void loadMarketplaceCatalog()
-      .then((catalog) => {
-        if (live) setIcons(catalog.icons);
-      })
-      .catch(() => undefined);
+    void Promise.all([
+      loadMarketplaceCatalog()
+        .then((catalog) => catalog.icons)
+        .catch(() => ({})),
+      loadPluginIconMap(),
+    ]).then(([catalogIcons, installedPluginIcons]) => {
+      if (!live) return;
+      setIcons(catalogIcons);
+      setPluginIcons(installedPluginIcons);
+    });
     return () => {
       live = false;
     };
     // parsed 每次渲染都是新对象，用 content 作为触发条件
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [content]);
+
+  /** 插件图标：已安装插件表优先，其次市场图标表（内置/自建插件不在市场里） */
+  const iconOf = (kind: "plugin" | "skill", id: string): string | undefined =>
+    (kind === "plugin" ? pluginIcons[id] : undefined) ?? icons[`${kind}:${id}`];
 
   const hasChips = Boolean(parsed.command) || parsed.attachments.length > 0 || parsed.chips.length > 0;
 
@@ -77,9 +88,9 @@ export function UserBubble({
           <div className="mc-userbubble__skillrow">
             {parsed.command ? (
               <span className="mc-skillchip" title={`/${parsed.command.command}`}>
-                {icons[`plugin:${parsed.command.pluginId}`] ? (
+                {iconOf("plugin", parsed.command.pluginId) ? (
                   <img
-                    src={icons[`plugin:${parsed.command.pluginId}`]}
+                    src={iconOf("plugin", parsed.command.pluginId)}
                     alt=""
                     className="mc-skillchip__icon"
                   />
@@ -101,11 +112,11 @@ export function UserBubble({
               </span>
             ))}
             {parsed.chips.map((chip) => {
-              const iconKey = `${chip.kind}:${chip.id}`;
+              const icon = iconOf(chip.kind, chip.id);
               return (
                 <span className="mc-skillchip" key={`${chip.kind}:${chip.id}`}>
-                  {icons[iconKey] ? (
-                    <img src={icons[iconKey]} alt="" className="mc-skillchip__icon" />
+                  {icon ? (
+                    <img src={icon} alt="" className="mc-skillchip__icon" />
                   ) : chip.kind === "skill" ? (
                     <LuSparkles size={11} />
                   ) : (

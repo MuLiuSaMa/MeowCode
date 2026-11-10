@@ -40,13 +40,17 @@ describe("runCapture", () => {
     expect(result.stdout.toString("utf8")).toBe("中文输出");
   });
 
-  it("caps each stream at maxCaptureBytes", async () => {
+  it("caps each stream, keeping the head and the tail", async () => {
     const result = await node({
-      script: "process.stdout.write('a'.repeat(100))",
-      maxCaptureBytes: 10,
+      script: "process.stdout.write('a'.repeat(90) + 'TAIL')",
+      maxCaptureBytes: 40,
     });
     expect(result.capped).toBe(true);
-    expect(result.stdout.length).toBe(10);
+    // 头 3/4 + 尾 1/4：报错与汇总通常在最后几行，只留头会把它们扔掉
+    expect(result.stdout.length + (result.stdoutTail?.length ?? 0)).toBe(40);
+    expect(result.stdout.toString()).not.toContain("TAIL");
+    expect(result.stdoutTail?.toString()).toContain("TAIL");
+    expect(result.stdoutOmittedBytes).toBeGreaterThan(0);
   });
 
   it("settles on timeout with the partial output", async () => {

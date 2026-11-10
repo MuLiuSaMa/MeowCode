@@ -10,8 +10,12 @@
   flex: 1;
   min-height: 0;
   overflow-y: auto;
+  /* 滚动条出现时不挤压内容：始终预留槽位（同添加模型弹窗） */
+  scrollbar-gutter: stable;
   /* 滚到底继续滚滚轮时不再链给外层：.mc-panel 是 overflow:hidden，被滚了会把页签栏顶出视口、底部露空白 */
   overscroll-behavior: contain;
+  /* 滚到底由我们自己在 useLayoutEffect 里锤，交给浏览器做滚动锚定会和流式输出抢位置（底部状态行上下跳） */
+  overflow-anchor: none;
   padding: 14px 20px 8px;
 }
 .mc-stream__inner {
@@ -25,6 +29,10 @@
   display: flex;
   flex-direction: column;
   padding-bottom: 8px;
+}
+/* 消息流里每一块都不允许被纵向压缩：流式输出时容器高度一变，挤压只会把正文/状态行裁掉 */
+.mc-stream__list > * {
+  flex-shrink: 0;
 }
 /* 每一轮一个 hover 容器：轮内 body 保留原平铺间距语义，轮间统一 18px */
 .mc-turn {
@@ -56,6 +64,16 @@
 }
 .mc-turn__body > .mc-toolrow + .mc-toolrow {
   margin-top: 2px;
+}
+/* 思考/工具分组与其它块的间距：沿用工具行节奏 */
+.mc-turn__body > * + .mc-toolgroup {
+  margin-top: 10px;
+}
+.mc-turn__body > .mc-toolgroup + * {
+  margin-top: 14px;
+}
+.mc-turn__body > .mc-toolgroup + .mc-toolgroup {
+  margin-top: 10px;
 }
 /* 每轮操作行：常驻显示 */
 .mc-turn > .mc-turninfo {

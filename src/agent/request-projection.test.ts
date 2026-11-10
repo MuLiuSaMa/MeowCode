@@ -9,6 +9,8 @@ import {
   projectAttachmentsHysteresis,
   projectUserDocuments,
   projectUserImages,
+  retainedThinkingBoundary,
+  stripThinkingBefore,
 } from "./request-projection";
 import type { ChatMessage, ProviderConfig } from "./types";
 
@@ -246,15 +248,12 @@ describe("projectAttachmentsHysteresis", () => {
     expect((first[0] as { images?: unknown }).images).toBeUndefined();
     expect((first[1] as { images?: unknown }).images).toHaveLength(1);
 
-    // 新增小图（总 70+10=80 仍 > 60，但保留集 30+10=40 > 35 → kept 被裁）
-    // 换成「仍在余量内」的新小图：40+10=50？不对——新图进保留集，kept 30+10=40 超 35。
-    // 这里验证真正的不变量：裁剪之间「未裁消息的投影字节」不变。
+    // 新增小图（总 70+10=80 仍 > 60，但 kept+new=40 只比目标线多 5，
+    // 没有吃满 trigger-target=25 的余量）→ 切点必须不动：older 仍被裁，kept 仍保留。
     const grown: ChatMessage[] = [older, kept, sized("new", 10)];
     const second = projectAttachmentsHysteresis(grown, "images", 60, 35);
-    // 保留集 = newest ≤35：new(10)+kept(30)=40 > 35 → 只留 new；older/kept 都被裁。
-    // 切点前移一次（kept 出列），older 的投影结果与上一轮一致。
     expect((second[0] as { images?: unknown }).images).toBeUndefined();
-    expect((second[1] as { images?: unknown }).images).toBeUndefined();
+    expect((second[1] as { images?: unknown }).images).toHaveLength(1);
     expect((second[2] as { images?: unknown }).images).toHaveLength(1);
     expect(second[0].role === "user" ? second[0].content : "").toBe(first[0].role === "user" ? first[0].content : "");
   });
@@ -292,5 +291,36 @@ describe("projectAttachmentsHysteresis", () => {
     // thinking 不在主路径投影范围内
     expect(projected[1].role === "assistant" ? projected[1].anthropic_thinking : undefined).toHaveLength(1);
     expect((projected[2] as { images?: unknown }).images).toHaveLength(1);
+  });
+});
+
+describe("压缩边界的 thinking 剥离", () => {
+  it("切点落在保留段最后一个真实 user 上", () => {
+    // 旧回合 → 新回合：只剥新回合之前的，工具循环里的 thinking 必须留着
+    const retained = [assistant("old", "t1"), user("q"), assistant("new", "t2")];
+    expect(retainedThinkingBoundary(retained)).toBe(1);
+  });
+
+  it("保留段没有真实 user 时不动手（可能是进行中的工具循环）", () => {
+    expect(retainedThinkingBoundary([assistant("a", "t")])).toBe(0);
+    expect(retainedThinkingBoundary([])).toBe(0);
+  });
+
+  it("最后一个真实 user 就是第一条时无需剥离", () => {
+    expect(retainedThinkingBoundary([user("q"), assistant("a", "t")])).toBe(0);
+  });
+
+  it("只剥切点之前的 thinking，且整键移除", () => {
+    const messages = [assistant("old", "t1"), user("q"), assistant("new", "t2")];
+    const stripped = stripThinkingBefore(messages, 1);
+    expect(stripped[0]).not.toHaveProperty("anthropic_thinking");
+    expect(stripped[2]).toBe(messages[2]); // 未变化的消息保持引用
+    expect(stripped[1]).toBe(messages[1]);
+  });
+
+  it("没有可剥的内容时返回原数组引用（增量链靠引用判等）", () => {
+    const messages = [user("q"), assistant("a")];
+    expect(stripThinkingBefore(messages, 0)).toBe(messages);
+    expect(stripThinkingBefore(messages, 2)).toBe(messages);
   });
 });

@@ -164,11 +164,7 @@
   color: var(--mc-text, #ddd);
   cursor: pointer;
   user-select: none;
-}
-
-.mc-oauth__check input[type="checkbox"] {
-  width: 15px;
-  height: 15px;
-  accent-color: var(--mc-accent, #7c6ee6);
-  cursor: pointer;
+  /* 市场弹窗自带紫色强调，勾选框跟随它而不是全局 brand */
+  --checkbox-accent: var(--mc-accent, #7c6ee6);
+  --checkbox-fg: #fff;
 }

@@ -131,6 +131,8 @@
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
+  /* 滚动条出现时不再挤掉卡片宽度 */
+  scrollbar-gutter: stable;
 }
 .mc-picker__item {
   display: flex;
@@ -217,12 +219,6 @@
   gap: 7px;
   font-size: var(--fs-base);
   color: var(--fg);
-  cursor: pointer;
-}
-.mc-check input {
-  width: 15px;
-  height: 15px;
-  accent-color: var(--brand);
   cursor: pointer;
 }
 .mc-check--locked {
@@ -404,6 +400,7 @@
   gap: 6px;
   max-height: 320px;
   overflow-y: auto;
+  scrollbar-gutter: stable;
   padding: 4px 2px;
 }
 .mc-fetchmodels .mc-check {
@@ -416,13 +413,9 @@
 .mc-modelrow .mc-field__label {
   display: none;
 }
-/* 模型行：勾选框 + 模型 ID + 最大上下文 + 设置/删除 */
+/* 模型行：勾选框 + 模型 ID + 最大上下文 + 设置/删除（视觉由 ui/Checkbox 统一） */
 .mc-modelrow__check {
-  width: 16px;
-  height: 16px;
   flex: none;
-  accent-color: var(--brand);
-  cursor: pointer;
 }
 .mc-modelrow__context {
   flex: 0 0 110px;

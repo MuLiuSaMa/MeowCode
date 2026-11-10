@@ -40,7 +40,7 @@ import type { WebFetchOutcome } from "./web-fetch.js";
 import { classifySandboxDenial } from "./sandbox/denial.js";
 import { getSandboxSettings } from "./sandbox/policy.js";
 import { runShellCommand } from "./exec/shell.js";
-import { MAX_COMMAND_OUTPUT_BYTES } from "./exec/types.js";
+import { MAX_COMMAND_OUTPUT_BYTES, DEFAULT_COMMAND_TIMEOUT_MS } from "./exec/types.js";
 import {
   builtinToolContract,
   isParallelSafeContract,
@@ -487,7 +487,12 @@ export const toolDefinitions: ToolDefinition[] = [
     function: {
       name: "run_command",
       description:
-        "Run a PowerShell command in the workspace. Routine commands run automatically; only destructive ones (disk, registry, shutdown) ask first. Long output keeps head and tail; full log is saved under .meowcode/tool-output/. When the command sandbox is enabled, writes outside the workspace and configured extra roots are blocked; a blocked command may ask once to retry outside the sandbox. background=true starts a long-running job (dev server, watcher) in a terminal and returns immediately; read it with the job tool.",
+        "Run a PowerShell command in the workspace. Routine commands run automatically; only destructive ones (disk, registry, shutdown) ask first. Long output keeps head and tail; full log is saved under .meowcode/tool-output/. When the command sandbox is enabled, writes outside the workspace and configured extra roots are blocked; a blocked command may ask once to retry outside the sandbox. background=true starts a long-running job (dev server, watcher) in a terminal and returns immediately; read it with the job tool. " +
+        // 这段是给模型看的写法约束：系统提示词按 token 预算只留了「怎么搜/怎么读」，
+        // 只在真要下命令时才需要读到的东西放这里。
+        "This is PowerShell, not bash: no rm -rf / export / cat / grep -r — use Remove-Item -Recurse -Force, $env:NAME='value', Get-Content, Select-String. Windows PowerShell 5.1 has no && or ||: chain with ';'. There is no stdin, so interactive prompts (Read-Host, pause, git commit without -m) hang until the timeout. " +
+        // 改文件走专用工具：这是实测过的毁文件路径，一句话指路，细节在主提示词里
+        "Edit files with edit_file/multi_edit, never by piping through PowerShell (Get-Content | Set-Content, Out-File and '>' rewrite every byte and can truncate the target). For many files at once use run_code or the project's own formatter. The shell is for build/test/run and for projecting large output (Select-Object, Select-String).",
       parameters: {
         type: "object",
         properties: {
@@ -508,7 +513,7 @@ export const toolDefinitions: ToolDefinition[] = [
     function: {
       name: "task",
       description:
-        "Spawn a subagent for one self-contained task; only its report returns. Use proactively for multi-file exploration or independent implementation. It gets the current user request and plan itself — give a short description plus scope constraints; pick the role via agent_type. background=true returns immediately and notifies later. mode=resume continues an earlier subagent by agent_id (its history is kept); mode=fork starts a general subagent with a copy of this conversation prefix so it can reuse the prompt cache. Max 3 per turn; batch related work. Writes follow the approval mode.",
+        "Spawn a subagent for one self-contained task; only its report returns. Use it for broad independent work only; handle quick searches and coupled edits yourself. It gets the current user request and plan itself — give a short description plus scope constraints; pick the role via agent_type. background=true returns immediately and notifies later. mode=resume continues an earlier subagent by agent_id (its history is kept); mode=fork copies this conversation prefix for prompt-cache reuse. Starts are budgeted per user turn (spawn/resume/fork/background all count); each result reports what is left — plan the whole turn and do the rest yourself. Writes follow the approval mode.",
       parameters: {
         type: "object",
         properties: {
@@ -564,7 +569,10 @@ export const toolDefinitions: ToolDefinition[] = [
     function: {
       name: "update_plan",
       description:
-        "Replace the task checklist with short, current steps for multi-step work.",
+        "Replace the task checklist with short, current steps for multi-step work. Keep it live: when you start a " +
+        "step set it in_progress; the moment its work is done mark it completed in the same update that starts the " +
+        "next step. Never leave finished work as pending/in_progress and never batch several finished steps into a " +
+        "later update — the checklist is the user's only progress view.",
       parameters: {
         type: "object",
         properties: {
@@ -596,7 +604,7 @@ export const toolDefinitions: ToolDefinition[] = [
     function: {
       name: "context_status",
       description:
-        "Report context-window usage: tokens used, window size, remaining headroom, compaction recommendation. Zero side effects. Call it before large explorations or when a long session feels close to its limit.",
+        "Context-window usage: tokens used, window size, remaining headroom, compaction advice. Zero side effects. Call before large explorations or when a session nears its limit.",
       parameters: {
         type: "object",
         properties: {},
@@ -631,7 +639,7 @@ export const toolDefinitions: ToolDefinition[] = [
     function: {
       name: "ask_user",
       description:
-        "Ask the user clarifying questions and wait for the answers. Be PROACTIVE: if a decision would significantly change the outcome (audience, use case, style, tech choice, scope) and cannot be safely inferred, ASK instead of guessing. Batch ALL questions into ONE call (up to 4); never one call per question. Each question: 2-4 mutually exclusive short options; the user can also type a custom answer.",
+        "Ask the user and wait for answers. Ask when a decision would significantly change the outcome and cannot be safely inferred. Batch ALL questions into ONE call (up to 4). Each: 2-4 mutually exclusive short options; the user may also type a custom answer.",
       parameters: {
         type: "object",
         properties: {
@@ -901,6 +909,12 @@ function rememberRetired(name: string): void {
  * 已发送的工具描述换字节，整段缓存前缀失效；收缩下沉到注册时按单工具裁剪。
  */
 const DYNAMIC_TOOL_BUDGET_TOKENS = 8_000;
+/** 创作入口永远可见：被 MCP 工具挤出预算后模型会以为没有该能力，转而去翻源码。 */
+const ALWAYS_VISIBLE_DYNAMIC_TOOLS = new Set([
+  "plugin_authoring_guide",
+  "create_plugin",
+  "create_skill",
+]);
 /** 单工具注册即冻结的体积上限：超出按档裁剪自身，之后集合增长不改写它。 */
 const DYNAMIC_TOOL_MAX_TOKENS = 400;
 /** 逐档收缩：工具描述 / 字段描述（0 = 删掉字段描述）。按顺序降档直到落进预算。 */
@@ -1099,7 +1113,11 @@ export function listDynamicToolDefinitions(): ToolDefinition[] {
   for (const name of sorted) {
     const definition = dynamicTools.get(name)!.definition;
     const cost = estimateToolDefinitionsTokens([definition]);
-    if (pinnedDynamicTools.includes(name) || used + cost <= DYNAMIC_TOOL_BUDGET_TOKENS) {
+    if (
+      ALWAYS_VISIBLE_DYNAMIC_TOOLS.has(name) ||
+      pinnedDynamicTools.includes(name) ||
+      used + cost <= DYNAMIC_TOOL_BUDGET_TOKENS
+    ) {
       visible.push(definition);
       used += cost;
     } else {
@@ -2349,6 +2367,39 @@ async function multiEdit(
 }
 
 /** ToolResult 适配层：执行面只回原始字节，这里保留原有的截断/落盘/文案语义。 */
+/**
+ * 命令语法写错时的定向纠错。
+ *
+ * 系统提示词里的 BASE 只剩 2 token 余量，塞不进 PowerShell 速查；工具描述能放一小段，
+ * 但真正省 token 的做法是「只在写错的那一次付一行」—— 本仓已有这个范式
+ * （write_file refused、use offset=N、Hint: oldString contains "123: "）。
+ */
+const SHELL_MISUSE_HINTS: Array<{ pattern: RegExp; hint: string }> = [
+  {
+    pattern: /is not recognized as the name of a cmdlet|The term '[^']*' is not recognized/i,
+    hint: "PowerShell doesn't have that command: Get-ChildItem (ls/find), Get-Content (cat/head/tail), Select-String (grep), Remove-Item -Recurse -Force (rm -rf), Copy-Item/Move-Item (cp/mv).",
+  },
+  {
+    pattern: /'&&' is not a valid separator|unexpected token '&&'|token '&&' is not a valid statement separator/i,
+    hint: "Windows PowerShell 5.1 has no && / ||: chain the steps with ';' (or make separate run_command calls).",
+  },
+  {
+    pattern: /(^|\n)\s*(export|sudo|chmod|chown|apt|apt-get|brew)\b/i,
+    hint: "Bash built-ins don't exist here: set env vars with $env:NAME='value', and there is no sudo (the process already runs as you).",
+  },
+];
+
+function shellMisuseHint(output: string): string | undefined {
+  for (const { pattern, hint } of SHELL_MISUSE_HINTS) {
+    if (pattern.test(output)) return hint;
+  }
+  return undefined;
+}
+
+/** 超时最常见的原因就是命令在等 stdin（而这条执行面没有 stdin 通道）。 */
+const TIMEOUT_HINT =
+  "If it was waiting for input (Read-Host, pause, a password prompt, git commit without -m), there is no stdin — pass the flags instead. If it is a dev server or watcher, use background=true.";
+
 async function runCommand(
   workspace: string,
   command: string,
@@ -2387,14 +2438,24 @@ async function runCommand(
   const denied = (output: string): string =>
     denial ? `${output}\n[sandbox] The command was blocked by the write sandbox.` : output;
   const sandboxField = denial ? { sandboxDenial: denial } : {};
+  // 命中「bash 写法」特征时给一行定向改写建议 —— 只在这一趟付 token。
+  // 刻意不看退出码：PowerShell 的「命令不存在」是**非终止错误**，进程仍退出 0，
+  // 只按 code 判断会漏掉最常见的那类写法错误。
+  const misuse =
+    !result.timedOut && !result.aborted ? shellMisuseHint(result.combined) : undefined;
+  const report = (output: string): string => {
+    const base = denied(output);
+    return misuse ? `${base}\n[hint] ${misuse}` : base;
+  };
   if (result.aborted) {
     return { output: "Command aborted by the user.", ok: false, ...sandboxField };
   }
   if (result.timedOut) {
     const partial = truncateMiddle(result.combined);
+    const seconds = Math.round((result.timeoutMs ?? DEFAULT_COMMAND_TIMEOUT_MS) / 1000);
     return {
       output: denied(
-        `Command timed out after 120s and was terminated.${partial.output ? `\n${partial.output}` : ""}`,
+        `Command timed out after ${seconds}s and was terminated.${partial.output ? `\n${partial.output}` : ""}\n[hint] ${TIMEOUT_HINT}`,
       ),
       ok: false,
       ...sandboxField,
@@ -2407,22 +2468,24 @@ async function runCommand(
   const capped = result.capped;
   const preview = truncateMiddle(full);
   if (!preview.truncated && !capped) {
-    return { output: denied(preview.output), ok: result.code === 0, ...sandboxField };
+    return { output: report(preview.output), ok: result.code === 0, ...sandboxField };
   }
   try {
     const saved = await persistToolOutput(workspace, "run_command", full);
     return {
-      output: denied(
+      output: report(
         `${preview.output}\n... [${
-          capped ? `capture stopped at ${MAX_COMMAND_OUTPUT_BYTES} bytes; ` : ""
-        }full output saved to ${saved}; read it with read_file]`,
+          capped
+            ? `output was capped at ${MAX_COMMAND_OUTPUT_BYTES} bytes (first and last part kept); `
+            : ""
+        }the log is saved to ${saved}; read it with read_file]`,
       ),
       ok: result.code === 0,
       spilled: saved,
       ...sandboxField,
     };
   } catch {
-    return { output: denied(preview.output), ok: result.code === 0, ...sandboxField };
+    return { output: report(preview.output), ok: result.code === 0, ...sandboxField };
   }
 }
 

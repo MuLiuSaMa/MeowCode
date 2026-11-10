@@ -110,10 +110,15 @@ export function ContextPopover({
       : t(category.labelKey);
   // 缓存诊断行：有最终样本才显示（老服务端/首问前 = null）
   const cacheStateKey = cache?.lastState ? CACHE_STATE_LABEL_KEYS[cache.lastState] : null;
+  // reason 可能是 `prefix_changed:system[1]+tools` 这种带分段后缀的形态：
+  // 前半段查表出多语言文案，后半段原样带出（段名本身就是最短的自解释写法）。
+  const [cacheReasonKey, cacheReasonSegments] = (cache?.lastReason ?? "").split(":");
   const cacheReasonText = cache?.lastReason
-    ? cache.lastReason in CACHE_REASON_LABEL_KEYS
-      ? t(CACHE_REASON_LABEL_KEYS[cache.lastReason])
-      : cache.lastReason
+    ? `${
+        cacheReasonKey in CACHE_REASON_LABEL_KEYS
+          ? t(CACHE_REASON_LABEL_KEYS[cacheReasonKey])
+          : cacheReasonKey
+      }${cacheReasonSegments ? ` · ${cacheReasonSegments}` : ""}`
     : null;
   const cacheRound =
     cache?.lastRound && (cache.lastRound.read != null || cache.lastRound.write != null)

@@ -5,6 +5,7 @@ import { api } from "../../api";
 import { findTemplate } from "../../data/providerCatalog";
 import { formatCapacity } from "../../util";
 import { Button } from "../ui/Button";
+import { CheckboxMark } from "../ui/Checkbox";
 import { IconButton } from "../ui/IconButton";
 import { ProviderIcon } from "../ui/ProviderIcon";
 import { Select } from "../ui/Select";
@@ -152,10 +153,11 @@ export function useProviderForm({
     setRows((prev) => prev.map((row) => (row.key === key ? { ...row, ...part } : row)));
   const editingRow = rows.find((row) => row.key === editingKey) ?? null;
 
+  /** 新行插到列表最上面：刚加的模型 ID 立刻可见，不用滚到底部 */
   const addRow = () => {
     setRows((prev) => [
-      ...prev,
       { key: rowKey(), form: { ...base, model: "", enabled: true }, contextInput: "", maxInput: "" },
+      ...prev,
     ]);
   };
 
@@ -477,14 +479,11 @@ export function ProviderFormBody({ controller }: { controller: ProviderFormContr
         <span className="mc-field__label">{t("models.form.modelId")}</span>
         {rows.map((row) => (
           <div className="mc-modelrow" key={row.key}>
-            <input
-              type="checkbox"
+            <CheckboxMark
               className="mc-modelrow__check"
               checked={row.form.enabled !== false}
-              onChange={(event) =>
-                patchRow(row.key, { form: { ...row.form, enabled: event.target.checked } })
-              }
-              aria-label={t("models.enableAria", { name: row.form.model || "—" })}
+              onChange={(enabled) => patchRow(row.key, { form: { ...row.form, enabled } })}
+              ariaLabel={t("models.enableAria", { name: row.form.model || "—" })}
             />
             <TextField
               className="mc-modelrow__id"

@@ -65,7 +65,7 @@ describe("agent profiles", () => {
       expect(AGENT_PROFILES.standard.roles).not.toContain(role);
     }
     // 提示词要求按图关门禁，而不是写死某几个角色
-    expect(complex.prompt).toContain("architecture graph is the source of truth");
+    expect(complex.prompt).toContain("single source of truth for gates");
   });
 
   it("falls back to standard for unknown values", () => {

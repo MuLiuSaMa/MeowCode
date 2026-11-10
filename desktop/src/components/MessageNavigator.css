@@ -43,6 +43,8 @@
   display: flex;
   flex-direction: column;
   overflow-y: auto;
+  /* 滚动条出现时不挤压内容：始终预留槽位（同添加模型弹窗） */
+  scrollbar-gutter: stable;
   scrollbar-width: none;
 }
 .mc-nav__list::-webkit-scrollbar {

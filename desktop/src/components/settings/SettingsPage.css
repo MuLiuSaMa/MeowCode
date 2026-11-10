@@ -10,6 +10,8 @@
   gap: 4px;
   padding: 18px 12px 16px;
   overflow-y: auto;
+  /* 滚动条出现时不挤压内容：始终预留槽位（同添加模型弹窗） */
+  scrollbar-gutter: stable;
 }
 .mc-settings__heading {
   margin: 0 0 10px;

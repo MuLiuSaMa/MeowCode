@@ -132,15 +132,23 @@ export const ATTACHMENT_HYSTERESIS_TRIGGER_BYTES = 8 * 1024 * 1024;
 export const ATTACHMENT_HYSTERESIS_TARGET_BYTES = 4 * 1024 * 1024;
 
 /**
+ * 投影结果记忆化：增量链（previous_response_id）用引用相等判断前缀可续接，
+ * 每轮新建对象会让链断掉。键必须含投影参数——同一条消息在不同阈值/切点下结果不同。
+ */
+const attachmentMemo = new WeakMap<ChatMessage, Map<string, ChatMessage>>();
+const stripThinkingMemo = new WeakMap<ChatMessage, Map<number, ChatMessage>>();
+
+/**
  * 滞回式附件投影（主路径用；opencode 的图片淘汰同款）：
  *  - 附件总量 ≤ 触发线 → 不裁；
- *  - 越过触发线 → 保留**最新**的、总量 ≤ 目标线的后缀，更旧的全部换成一行说明。
+ *  - 越过触发线 → 从最旧端裁到目标线，只保留最新的那截。
  *
- * 两次裁剪之间切点不动：切点由「历史里有什么附件」唯一决定，新增附件只会让
- * 保留集在目标线内滑动——即切点只在触发线-目标线的余量被吃满时才前移一次，
- * 代价是一次性后缀重写，换来之后每轮少发一截旧附件。逐请求重算但字节单调，
- * 重启后同一历史算出同一切点（确定性），不落盘标记。
- * （对照：count 版 projectUserImages 每来一张新图就动一次切点，主路径不适用。）
+ * 前向扫描（旧→新累计）：切点由「累计到触发线为止的最旧边界」唯一决定，
+ * 新增附件只会让 kept 增长，不会推动切点——切点只在触发线-目标线的余量被
+ * 吃满时才前移一次，代价是一次性后缀重写，换来之后每轮少发一截旧附件。
+ * （旧实现从最新往回取 ≤target 的后缀，历史一旦越线，每来一张新图切点就前移一位，
+ * 等于每张截图都重写一次前缀；这个 bug 已由 test 覆盖。）
+ * 逐请求重算但字节单调，重启后同一历史算出同一切点（确定性），不落盘标记。
  */
 export function projectAttachmentsHysteresis(
   messages: ChatMessage[],
@@ -149,9 +157,9 @@ export function projectAttachmentsHysteresis(
   target = ATTACHMENT_HYSTERESIS_TARGET_BYTES,
 ): ChatMessage[] {
   if (trigger <= 0 || target <= 0 || target >= trigger) return messages;
-  // 最新→最旧的带附件消息（下标 + payload 字节）
+  // 旧→新的带附件消息（下标 + payload 字节）
   const carrier: Array<{ index: number; bytes: number }> = [];
-  for (let index = messages.length - 1; index >= 0; index -= 1) {
+  for (let index = 0; index < messages.length; index += 1) {
     const message = messages[index];
     if (message.role !== "user" || !message[field]?.length) continue;
     const bytes = message[field]!.reduce((sum, item) => sum + (item.data?.length ?? 0), 0);
@@ -160,19 +168,20 @@ export function projectAttachmentsHysteresis(
   const total = carrier.reduce((sum, item) => sum + item.bytes, 0);
   if (total <= trigger) return messages;
 
-  // 保留最新的、总量 ≤ 目标线的后缀；cut 之前的带附件消息（更旧的）整体投影
+  // 前向扫描：只有累计越过触发线才从最旧端裁到目标线，cut 只增不减。
+  // cut < carrier.length - 1 保证永远保留最新一条附件（即使它单独超目标线）。
+  let cut = 0;
   let kept = 0;
-  let cut = carrier.length; // carrier 下标：>= cut 的（更旧的）都裁
-  for (let position = 0; position < carrier.length; position += 1) {
-    const item = carrier[position];
-    if (kept + item.bytes > target) {
-      cut = position;
-      break;
-    }
+  for (const item of carrier) {
     kept += item.bytes;
+    if (kept <= trigger) continue;
+    while (kept > target && cut < carrier.length - 1) {
+      kept -= carrier[cut].bytes;
+      cut += 1;
+    }
   }
-  if (cut === 0) cut = 1; // 最新一条附件就超目标线：仍保留最新一条，只裁更旧的
-  const dropIndexes = new Set(carrier.slice(cut).map((item) => item.index));
+  if (cut === 0) return messages;
+  const dropIndexes = new Set(carrier.slice(0, cut).map((item) => item.index));
   const note =
     field === "images"
       ? (count: number) =>
@@ -181,16 +190,23 @@ export function projectAttachmentsHysteresis(
           `[${count} document(s) omitted from an earlier message; read the file again if needed]`;
 
   let changed = false;
+  const memoKey = `${field}:${trigger}:${target}`;
   const projected = messages.map((message, index) => {
     if (message.role !== "user" || !dropIndexes.has(index)) return message;
     changed = true;
+    const cached = attachmentMemo.get(message)?.get(memoKey);
+    if (cached) return cached;
     const count = message[field]!.length;
     const text = note(count);
-    return {
+    const next = {
       ...message,
       [field]: undefined,
       content: message.content.trim() ? `${message.content}\n${text}` : text,
     } as ChatMessage;
+    const perMessage = attachmentMemo.get(message);
+    if (perMessage) perMessage.set(memoKey, next);
+    else attachmentMemo.set(message, new Map([[memoKey, next]]));
+    return next;
   });
   return changed ? projected : messages;
 }
@@ -200,6 +216,55 @@ export function projectForMainPath(messages: ChatMessage[]): ChatMessage[] {
   let projected = projectAttachmentsHysteresis(messages, "images");
   projected = projectAttachmentsHysteresis(projected, "documents");
   return projected;
+}
+
+/**
+ * 压缩保留段里「thinking 从第几条开始继续携带」的切点。
+ *
+ * 逐轮投影 thinking 会让边界每轮前移、从改动点起缓存全失效，所以主路径不动它。
+ * 但压缩边界不一样：整段前缀本来就要整体重写，此刻把旧回合的 thinking 一次性剥掉
+ * 是零额外代价的，而留在上下文里会永久占窗口、把下一次压缩触发点整体前移
+ * （对照 cc-haha：旧 thinking 不进重放）。
+ *
+ * 切点取「保留段里最后一个真实 user 消息」：它之前的 assistant 属于更早的回合，
+ * 跨轮不再需要回传 thinking；它之后的可能是当前回合的工具循环，Anthropic 要求
+ * 同一 tool-use 回合内必须原样带着，不能剥。
+ *
+ * 返回值在保留段固定不变，因此后续每轮算出的切点一致 —— 不会变成逐轮投影。
+ */
+export function retainedThinkingBoundary(retained: ChatMessage[]): number {
+  const boundary = turnBoundaryIndex(retained, 1);
+  return boundary > 0 ? boundary : 0;
+}
+
+/**
+ * 剥掉 `keepFrom` 之前的 thinking。没有变化的消息原样返回同一引用 ——
+ * 增量传输（previous_response_id）靠引用相等判断前缀可复用。
+ *
+ * 剥掉的块整键移除（而不是置 undefined）：序列化时字段存在与否影响字节，
+ * 也影响「到底剥没剥」的断言（provider.test.ts 同口径）。
+ */
+export function stripThinkingBefore(
+  messages: ChatMessage[],
+  keepFrom: number,
+): ChatMessage[] {
+  if (keepFrom <= 0) return messages;
+  let changed = false;
+  const next = messages.map((message, index) => {
+    if (index >= keepFrom || message.role !== "assistant" || !message.anthropic_thinking?.length) {
+      return message;
+    }
+    changed = true;
+    const cached = stripThinkingMemo.get(message)?.get(keepFrom);
+    if (cached) return cached;
+    const { anthropic_thinking: _strippedThinking, ...rest } = message;
+    const stripped = rest as ChatMessage;
+    const perMessage = stripThinkingMemo.get(message);
+    if (perMessage) perMessage.set(keepFrom, stripped);
+    else stripThinkingMemo.set(message, new Map([[keepFrom, stripped]]));
+    return stripped;
+  });
+  return changed ? next : messages;
 }
 
 /** 按 provider 协议组合投影；非 Anthropic 协议不碰 thinking。 */

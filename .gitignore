@@ -5,6 +5,8 @@ dist/
 coverage/
 desktop/dist/
 desktop/release/
+# 打包产物的验证副本（electron-builder 的 win-unpacked，单个 300MB+，可随时重新打包）
+desktop/release-verify*/
 /installer-output/
 desktop/renderer/
 desktop/.vite/
@@ -35,6 +37,7 @@ desktop/.vite/
 # Local agent / editor state（本机 AI 工具的缓存与计划草稿，不进仓库）
 /.workbuddy/
 /.workbuddy-ai/
+/.perch/
 /.trae/
 /.zcode/
 /.claude/

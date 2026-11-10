@@ -343,7 +343,7 @@ export async function generateLearningOps(options: {
       tools: [],
       signal: options.signal,
       onDelta: () => undefined,
-      onUsage: options.onUsage,
+      onUsageFinal: options.onUsage,
     });
     const ops = cleanLearningOps(result.message.content ?? "");
     // 空数组是合法产出（这回合确实没有可学的），直接返回

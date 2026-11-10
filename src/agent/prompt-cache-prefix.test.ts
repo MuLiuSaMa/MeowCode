@@ -216,7 +216,7 @@ describe("prompt cache prefix", () => {
     expect((second.tools.at(-1) as Record<string, unknown>).cache_control).toBeUndefined();
   });
 
-  it("keeps tool bytes when an MCP tool disappears, and drops it at the next session", async () => {
+  it("drops a disappeared MCP tool at the next turn boundary", async () => {
     const sessionsDir = await mkdtemp(path.join(tmpdir(), "meowcode-cache4-"));
     const workspace = await mkdtemp(path.join(tmpdir(), "meowcode-cache4-ws-"));
     const runtime = new AgentRuntime({ providers: [provider], sessionsDir, workspace, homeDir: sessionsDir });
@@ -236,14 +236,10 @@ describe("prompt cache prefix", () => {
 
       const first = serialize(streamMock.mock.calls[0][0] as RequestOptions);
       const second = serialize(streamMock.mock.calls[1][0] as RequestOptions);
-      // 删除延后：会话内工具块字节完全不变
-      expect(JSON.stringify(second.tools)).toBe(JSON.stringify(first.tools));
-
-      // 新会话是缓存安全边界：延后的删除真正生效
-      await runtime.newSession(workspace);
-      await runtime.prompt("third");
-      const third = serialize(streamMock.mock.calls[2][0] as RequestOptions);
-      expect(third.tools.map((tool) => tool.name)).not.toContain(gone.function.name);
+      // 删除在第一个回合边界就生效：模型不该继续对着已下线的工具反复试。
+      // 代价是一次前缀重建，比一轮错误调用便宜得多。
+      expect(second.tools.map((tool) => tool.name)).not.toContain(gone.function.name);
+      expect(first.tools.map((tool) => tool.name)).toContain(gone.function.name);
     } finally {
       unregisterDynamicTool(gone.function.name);
     }

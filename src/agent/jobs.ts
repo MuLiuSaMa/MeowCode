@@ -36,6 +36,10 @@ export type JobManager = {
 
 const JOB_BUFFER_MAX_CHARS = 256 * 1024;
 const HTTP_TIMEOUT_MS = 10_000;
+/** 本地 job 并发上限：每个 job 都是一个真进程，无上限等于允许模型 fork 炸弹。 */
+const MAX_LOCAL_JOBS = 8;
+/** 已退出 job 的保留时长：给模型留出读尾部输出的时间，之后回收。 */
+const JOB_RETENTION_MS = 10 * 60 * 1000;
 
 function tailOf(text: string, start: number): JobChunk["data"] {
   return text.slice(Math.max(0, start));
@@ -124,10 +128,26 @@ type LocalJob = {
   bufferStart: number;
   exited: boolean;
   code: number | null;
+  /** 退出时间（毫秒）：已退出的 job 保留一段时间供模型读尾部输出，之后回收 */
+  exitedAt?: number;
 };
 
 export function createLocalJobManager(): JobManager {
   const jobs = new Map<string, LocalJob>();
+
+  /** 回收已退出且超过保留期的 job，并统计还活着的数量。 */
+  const reap = (): number => {
+    const now = Date.now();
+    let live = 0;
+    for (const [id, job] of jobs) {
+      if (!job.exited) {
+        live += 1;
+        continue;
+      }
+      if (job.exitedAt !== undefined && now - job.exitedAt >= JOB_RETENTION_MS) jobs.delete(id);
+    }
+    return live;
+  };
 
   const append = (job: LocalJob, chunk: Buffer | string) => {
     job.buffer += chunk.toString();
@@ -140,6 +160,12 @@ export function createLocalJobManager(): JobManager {
 
   return {
     async start(input) {
+      const live = reap();
+      if (live >= MAX_LOCAL_JOBS) {
+        throw new Error(
+          `Background job limit reached: ${MAX_LOCAL_JOBS} jobs may run at once. Kill one with the job tool before starting another.`,
+        );
+      }
       const id = `job-${Date.now().toString(36)}-${randomUUID().slice(0, 6)}`;
       const cwd = input.cwd && input.cwd.trim() ? input.cwd : process.cwd();
       const child = spawn(input.command, {
@@ -166,9 +192,11 @@ export function createLocalJobManager(): JobManager {
       child.on("close", (code) => {
         job.exited = true;
         job.code = code;
+        job.exitedAt = Date.now();
       });
       child.on("error", (error) => {
         job.exited = true;
+        job.exitedAt = Date.now();
         append(job, `\n[spawn error] ${error.message}\n`);
       });
       return { id };

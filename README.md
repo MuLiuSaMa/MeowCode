@@ -23,6 +23,7 @@ Electron + React 负责界面，Agent 内核跑在本地 HTTP/SSE 服务里，UI
 -   **内核与界面彻底解耦**：`pnpm dev:server` 就能脱离 Electron 单独跑，任何 HTTP 客户端都能接入。
 -   **不是黑盒**：工具调用、审批、压缩、缓存策略全是 `src/agent/` 里的普通 TypeScript，改完即生效，没有打包魔法。
 -   **认真对待 Token**：服务端原生压缩 + 本地摘要 + 工具输出三层治理 + 输出预算预检，长会话不容易崩。
+-   **桌面不是壳**：终端、浏览器、文件预览、Git、Diff 审阅、悬浮岛都在同一个窗口，不用在编辑器和终端之间来回切。
 -   **本地优先**：会话、密钥、日志都留在本机；密钥进内存即从环境变量抹除，不落盘。
 
 ## 功能特性
@@ -38,13 +39,26 @@ Electron + React 负责界面，Agent 内核跑在本地 HTTP/SSE 服务里，UI
 
 -   文件与搜索：`list_dir` / `read_file` / `glob` / `grep`（内置 ripgrep）/ `write_file` / `edit_file` / `multi_edit`。
 -   命令执行：`run_command` 运行 PowerShell，长输出自动截断，高危命令给出风险提示。
--   审批四档：`read-only` / `ask` / `auto` / `full`；写文件与命令默认弹出 diff 审批，审批期间文件被外部改动会自动刷新 diff。
+-   浏览器：`browser_navigate` / `browser_click` / `browser_type` / `browser_screenshot` / `browser_snapshot` / `browser_back` / `browser_reload`；直接驱动内嵌页签的 guest webContents，快照只收可见可交互元素（最多 200 个）。
+-   网络与文档：`web_search` / `web_fetch`；PDF 直接解析（pdfjs-dist）；视频走 ffprobe + 9 帧 storyboard（约 1.5k token），长视频不硬塞上下文。
+-   电脑控制（内置插件，Windows）：`computer_screenshot` / `click` / `drag` / `scroll` / `key` / `type` / `wait` / `window_list` / `window_activate` / `clipboard`；截图走 desktopCapturer，输入走 PowerShell SendInput。
+-   审批四档：`read-only` / `ask` / `auto` / `full`；写文件与命令默认弹出 diff 审批，审批期间文件被外部改动会自动刷新 diff。批准过的操作可以沉淀成项目级规则（`.meowcode/approvals.json`），文件一改规则自动失效。
+-   写后验证：写类工具成功后自动跑 `.meowcode/verify.json` 声明的 typecheck / lint / test，失败结果压缩后附在工具回执里，模型同一回合内修复。
 -   子 Agent（`task`）：每回合最多 3 个并发，可后台运行，子 Agent 的写操作审批记在父会话上。
 
-**会话**
+**多 Agent 编排**
+
+-   13 种内置角色：`general` / `explore` / `planner` / `scoper` / `depth-prober` / `implementer` / `reviewer` / `verifier` / `fresh-verifier` / `juror` / `sweeper` / `goal-checker` / `custom`；探索、评审、裁决类角色强制只读。
+-   分层编排：T0 / T1 / T2 三层，lane 可并行推进、各自声明负责的路径与验证命令；门禁按序关账，关账角色互不复用，失败按 `onFail` 回跳到指定门禁。
+-   编排即配置：角色、层级、门禁、工具白名单与系统提示词都写在可编辑架构图里（`.meowcode/harness.json`），改完保存即生效，不用重新编译。
+
+**会话与工作区**
 
 -   三种模式：`default` 常规对话；`plan` 只读研究并输出计划文档，确认后才实施；`goal` 围绕目标用 `update_plan` 自主推进。
--   本地持久化、断点恢复、上下文压缩、自动会话标题、会话搜索与分支回溯。
+-   本地持久化、断点恢复、上下文压缩、自动会话标题、分支回溯、检查点与整轮撤销。
+-   会话全文检索：影子索引 + size/mtime 增量，零模型调用，跨会话命中直接跳转。
+-   Git 工作区：会话级 Worktree（独立检出 + 独立分支 + `refs/meowcode-backup/` 备份 ref，`node_modules` 回链原目录）；分支切换、提交、历史、逐文件 Diff 都在侧栏完成。
+-   导出：会话可导出为 HTML 或 Markdown。
 -   项目指令：自动读取工作区根目录与 `.meowcode/AGENTS.md` 作为项目级指引。
 
 **Token 效率**
@@ -57,17 +71,30 @@ Electron + React 负责界面，Agent 内核跑在本地 HTTP/SSE 服务里，UI
 -   MCP schema 瘦身与 8k 预算（保名字、按档砍描述）。
 -   读区间并集短路与跨回合结果去重。
 -   摘要失败时的零模型兜底与连续失败熔断。
+-   实时用量：输入 / 输出 / 缓存读 / 缓存写 / 命中率分开统计，同一轮多次上报按 roundId 替换而不是累加。
 
 **桌面集成**
 
--   内置终端（node-pty）、Agent 浏览器面板（打开页面 / 截图 / 点击 / 输入）。
+-   内置终端（node-pty）、浏览器面板、文件预览、插件页面板、计划面板、子 Agent 面板，右侧栏按需切换。
+-   多项目工作区切换；设置页覆盖模型与服务商、审批、沙箱、Hooks、项目规则、记忆、自我学习、Worktree、外观、快捷键、数据位置与归档。
+-   AI 悬浮岛：屏幕顶部胶囊聚合所有运行中会话，待审批亮琥珀点，悬停展开迷你聊天窗，空闲时鼠标穿透。
+-   外观：6 套配色（经典色 / 熔岩橙 / 蜜蜂黄 / 薄荷绿 / 羊皮纸 / 和谐蓝）× 明暗 / 跟随系统；11 种界面语言。
+-   托盘会话、系统通知、自动更新检查与下载。
 -   侧边聊天 `Ctrl+Alt+S`、文件快开 `Ctrl+P`、终端 `` Ctrl+` ``。
 -   图片输入：用户附图与截图回传，取决于所配模型的输入模态。
 
 **插件与技能**
 
--   进程内 TypeScript 插件、MCP 客户端、markdown 命令与 `SKILL.md` 技能。
--   插件市场一键安装；目录约定 `<工作区>/.meowcode/` 与全局 `~/.meowcode/`，项目级覆盖用户级。
+-   进程内 TypeScript 插件、MCP 客户端、markdown 命令与 `SKILL.md` 技能；目录约定 `<工作区>/.meowcode/` 与全局 `~/.meowcode/`，项目级覆盖用户级。
+-   内置市场 186 条（随市场更新）：168 个技能 / 8 个插件 / 10 个 MCP，聚合官方内置与 Trae、ZCode、Codex、DSH、Metis 等来源。
+-   第三方源接 ClawHub 与 SkillHub：分页、图标、下载量，单源故障只标记「暂不可用」，不拖垮列表；另有社区投稿与本地手动导入。
+-   一键连接：GitHub / Gitee / GitCode OAuth，用于社区投稿与 Git 平台凭据，不用自建应用、不用手填 Client ID。
+-   三个内置插件：`computer-control`（电脑控制）、`claude-code-hooks`（把 Claude Code 的 hooks 配置翻译成 MeowCode hook，CC 生态脚本尽量零改动可用）、`extension-authoring`（`create_skill` / `create_plugin`，让 Agent 把新能力直接做成已安装的技能或插件，写插件前走审批）。
+
+**数据导入**
+
+-   从 Qoder（国内 / 国际）、WorkBuddy（国内 / 国际）、ZCode、opencode、DSH、Codex 导入 MCP 连接器、记忆、技能与会话记录。
+-   只读来源应用数据，同名 / 同 ID 已存在一律跳过；`plan → apply` 两段式，桌面端逐条显示进度。
 
 **自我学习（实验性）**
 
@@ -98,7 +125,7 @@ Agent 架构编辑器
 ```
 ┌─────────────────────── Electron 桌面端 (desktop/) ───────────────────────┐
 │  React 渲染层 (Vite)  ◀──── IPC ────▶  主进程 (main.cjs)                  │
-│  会话 UI · 审批 diff · 终端 · 浏览器面板 · 设置                             │
+│  会话 · 审批 diff · 终端 · 浏览器 · Git · 市场 · 悬浮岛 · 设置            │
 └──────────────────────────────────┬───────────────────────────────────────┘
                                    │ HTTP + SSE 事件流
 ┌──────────────────────────────────▼───────────────────────────────────────┐
@@ -113,8 +140,8 @@ Agent 架构编辑器
            │ 三种协议                                   │ 工具
            ▼                                           ▼
   Anthropic Messages                          文件 / 命令 / 搜索 / 子 Agent
-  OpenAI Chat Completions                     浏览器 / MCP / 插件 / 技能
-  OpenAI Responses
+  OpenAI Chat Completions                     浏览器 / 电脑控制 / 网络与文档
+  OpenAI Responses                            MCP / 插件 / 技能
 ```
 
 ## 实测
@@ -131,7 +158,7 @@ Agent 架构编辑器
 
 ## 快速开始
 
-需要 Node.js 20+ 与 pnpm。
+需要 Windows 10/11 x64、Node.js 20+ 与 pnpm。
 
 ```powershell
 pnpm install
@@ -199,9 +226,11 @@ src/agent       Agent 内核：工具定义与执行、provider 分派、runtime
 src/agent/learning  自我学习：信号观察、经验蒸馏、召回、试用期评估与回滚
 src/server      本地 HTTP/SSE 服务：会话、事件流、工作区文件访问、插件与市场
 src/plugins     进程内插件宿主、MCP 客户端、命令与技能加载
+src/plugins/builtin  内置插件：电脑控制、Claude Code hooks 桥接、技能与插件创作
+src/git         Git 与 worktree：分支、提交、备份 ref、会话级独立检出
 src/lsp         语言服务反馈
-desktop         Electron 桌面应用：React 渲染层、主进程、终端、浏览器宿主
-resources       应用图标与插件市场内置资源
+desktop         Electron 桌面应用：React 渲染层、主进程、终端、浏览器/电脑控制宿主、悬浮岛
+resources/marketplace  内置市场资源：技能、插件、MCP 清单与图标
 scripts         构建、图标生成、市场与端到端校验脚本
 assets          README 截图与配图
 ```
@@ -216,11 +245,16 @@ assets          README 截图与配图
 | `MEOWCODE_WORKSPACE` | 默认工作区目录 |
 | `MEOWCODE_SERVER_PORT` | 服务监听端口，默认随机分配 |
 | `MEOWCODE_SELF_LEARNING` | 自我学习开关，`1` / `true` / `on` 开启；默认关闭 |
+| `MEOWCODE_CC_HOOKS_SCOPE` | Claude Code hooks 作用域：默认只跑 user 级（`user=true`、`workspace=false`） |
+| `MEOWCODE_HOOKS_RUN_MODE` | hooks 运行模式：`auto` 直接执行 / `ask` 每次询问 |
 
 ## 安全说明
 
 -   API Key 注入 server 后立即从环境变量删除；`run_command` 默认过滤敏感环境变量，避免模型通过子进程读回密钥。
 -   写文件与命令执行默认需要审批；只有 `full` 模式允许读写工作区之外的路径。
+-   浏览器宿主、电脑控制宿主、后台任务宿主都只监听 `127.0.0.1`，并用随机 token 校验请求。
+-   电脑控制启用插件即视为授权，不再逐次审批；不需要时在插件页停用。
+-   第三方市场里的技能与插件是任意代码，安装前请自行审查来源。
 -   会话与密钥数据仅保存在本机。
 
 ## 参与贡献

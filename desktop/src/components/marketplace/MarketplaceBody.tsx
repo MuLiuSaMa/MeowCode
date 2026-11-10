@@ -1083,7 +1083,7 @@ export function MarketplaceBody({
                             ? (descriptor) =>
                                 onOpenPluginPanel(
                                   descriptor.id,
-                                  descriptor.ui?.panel.title ??
+                                  descriptor.ui?.panel?.title ??
                                     descriptor.displayName ??
                                     marketEntry?.name ??
                                     descriptor.id,

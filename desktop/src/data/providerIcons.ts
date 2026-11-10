@@ -209,61 +209,104 @@ export function providerIcon(key: string | undefined, theme: "light" | "dark"): 
   return { kind: "img", src: spec.src, invert: theme === "dark" && Boolean(spec.invertOnDark) };
 }
 
-/** 模型品牌 → 图标 key（模型列表显示的是模型 Logo，不是服务商 Logo）。 */
-const MODEL_ICON_PREFIXES: Array<readonly [readonly string[], string]> = [
-  [["deepseek"], "deepseek"],
-  [["glm", "charglm", "emohaa"], "zai"],
-  [["codegeex"], "codegeex"],
-  [["mimo"], "xiaomi-mimo"],
-  [["kimi", "moonshot"], "moonshot-kimi"],
-  [["qwen", "qwq", "qvq"], "qwen"],
-  [["claude"], "claude"],
-  [["gpt", "chatgpt", "codex", "o1", "o2", "o3", "o4"], "openai"],
-  [["gemini", "gemma"], "google-gemini"],
-  [["grok"], "xai"],
-  [["mistral", "mixtral", "codestral", "devstral", "magistral"], "mistral"],
-  [["llama"], "meta"],
-  [["doubao", "seed"], "doubao"],
-  [["hunyuan"], "hunyuan"],
-  [["spark", "xinghuo"], "spark"],
-  [["ernie", "wenxin"], "wenxin"],
-  [["minimax", "abab"], "minimax"],
-  [["step"], "stepfun"],
-  [["sense"], "sensenova"],
-  [["command"], "cohere"],
-  [["sonar", "perplexity"], "perplexity"],
-  [["nemotron"], "nvidia"],
-  [["copilot"], "github-copilot"],
-  [["baichuan"], "baichuan"],
+/**
+ * 模型品牌 → 图标 key（模型列表显示的是模型 Logo，不是服务商 Logo）。
+ *
+ * 每条规则三段：
+ *  - `prefixes`：模型名（或其中一个被分隔开的词）以它开头算命中；
+ *  - `icon`：ICONS 里的 key；
+ *  - `anywhere`（可选）：够独特的品牌词，模型名里任意位置出现都算命中。
+ *    只放不会误伤的词：`o1` / `step` / `phi` / `seed` / `nova` 这类短词只在开头或独立成词时才算。
+ */
+const MODEL_ICON_RULES: Array<readonly [readonly string[], string, (readonly string[] | undefined)?]> = [
+  [["deepseek"], "deepseek", ["deepseek"]],
+  [["glm", "charglm", "emohaa"], "zai", ["glm", "charglm", "emohaa"]],
+  [["codegeex"], "codegeex", ["codegeex"]],
+  [["mimo"], "xiaomi-mimo", ["mimo"]],
+  [["kimi", "moonshot"], "moonshot-kimi", ["kimi", "moonshot"]],
+  [["qwen", "qwq", "qvq"], "qwen", ["qwen", "qwq", "qvq"]],
+  [["claude"], "claude", ["claude"]],
+  [["gpt", "chatgpt", "codex", "o1", "o2", "o3", "o4"], "openai", ["gpt", "chatgpt", "codex"]],
+  [["gemini", "gemma"], "google-gemini", ["gemini", "gemma"]],
+  [["grok"], "xai", ["grok"]],
+  [
+    ["mistral", "mixtral", "codestral", "devstral", "magistral"],
+    "mistral",
+    ["mistral", "mixtral", "codestral", "devstral", "magistral"],
+  ],
+  [["llama"], "meta", ["llama"]],
+  [["doubao", "seed"], "doubao", ["doubao"]],
+  [["hunyuan"], "hunyuan", ["hunyuan"]],
+  [["spark", "xinghuo"], "spark", ["spark", "xinghuo"]],
+  [["ernie", "wenxin"], "wenxin", ["ernie", "wenxin"]],
+  [["minimax", "abab"], "minimax", ["minimax", "abab"]],
+  [["step"], "stepfun", ["stepfun"]],
+  [["sense"], "sensenova", ["sensenova"]],
+  [["command"], "cohere", ["cohere"]],
+  [["sonar", "perplexity"], "perplexity", ["sonar", "perplexity"]],
+  [["nemotron"], "nvidia", ["nemotron"]],
+  [["copilot"], "github-copilot", ["copilot"]],
+  [["baichuan"], "baichuan", ["baichuan"]],
   [["nova"], "aws"],
-  [["cloudflare"], "cloudflare"],
-  // 小众 / 国产模型：带连字符的前缀是为了不误伤（yi- 不会命中 yiyan，ling- 不会命中 kling）
-  [["longcat"], "longcat"],
+  [["cloudflare"], "cloudflare", ["cloudflare"]],
+  // 小众 / 国产模型：带连字符的前缀是为了不误伤（yi- 不会命中 yiyan，ling- 不会命中 kling），
+  // 因此这两条也刻意没有 anywhere 兜底
+  [["longcat"], "longcat", ["longcat"]],
   [["yi-"], "yi"],
-  [["internlm"], "internlm"],
-  [["skywork"], "skywork"],
-  [["tiangong"], "tiangong"],
+  [["internlm"], "internlm", ["internlm"]],
+  [["skywork"], "skywork", ["skywork"]],
+  [["tiangong"], "tiangong", ["tiangong"]],
   [["ling-"], "ling"],
-  [["rwkv"], "rwkv"],
-  [["aquila", "emu3"], "baai"],
-  [["jamba", "jurassic"], "ai21"],
-  [["solar"], "upstage"],
-  [["arctic"], "snowflake"],
+  [["rwkv"], "rwkv", ["rwkv"]],
+  [["aquila", "emu3"], "baai", ["aquila", "emu3"]],
+  [["jamba", "jurassic"], "ai21", ["jamba", "jurassic"]],
+  [["solar"], "upstage", ["solar"]],
+  [["arctic"], "snowflake", ["arctic"]],
   [["phi"], "microsoft"],
   [["aya"], "aya"],
-  [["reka"], "reka"],
+  [["reka"], "reka", ["reka"]],
 ];
 
+// 短品牌词（o1 / step / phi / seed / nova …）在词里只允许**整词**相等，避免 stepstone / proto3 这类误伤
+const TOKEN_PREFIX_MIN = 5;
+
+/** 一个被分隔开的词是否命中品牌词：长词允许前缀（deepseek-r1 / claudeXXX），短词要求整词相等 */
+function tokenHit(token: string, prefix: string): boolean {
+  return token === prefix || (prefix.length >= TOKEN_PREFIX_MIN && token.startsWith(prefix));
+}
+
+/** 拆词：`jwadijawodwa-deepseek-1313013` → ["jwadijawodwa", "deepseek", "1313013"]（小写） */
+function modelTokens(model: string): string[] {
+  return model
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter(Boolean);
+}
+
 /**
- * 按模型名识别品牌图标；聚合平台前缀（openrouter 的 `vendor/model`）取最后一段。
+ * 按模型名识别品牌图标：大小写不敏感，随机前后缀、聚合平台前缀都不影响。
+ * （`acme-DeepSeek-1313013`、`jwadijawodwadeepseek1313013`、`openrouter/deepseek/deepseek-v3` 都认 deepseek）
+ *
+ * 匹配顺序：
+ *  1. 模型名（或其中某个被分隔开的词）以品牌词开头 —— 最准，保留原有行为；
+ *  2. 品牌词出现在模型名任意位置 —— 只对足够独特的词生效（见 MODEL_ICON_RULES 的 anywhere）。
  * 返回 undefined 表示认不出品牌，调用方用 `"meow"`（MeowCode 自己的 Logo）兜底。
  */
 export function modelIconKey(model: string): string | undefined {
   const trimmed = model.trim().toLowerCase();
   if (!trimmed) return undefined;
+  // 聚合平台前缀（openrouter 的 vendor/model）取最后一段做「开头」判定
   const bare = trimmed.slice(trimmed.lastIndexOf("/") + 1);
-  for (const [prefixes, iconKey] of MODEL_ICON_PREFIXES) {
-    if (prefixes.some((prefix) => bare.startsWith(prefix))) return iconKey;
+  const tokens = modelTokens(trimmed);
+
+  for (const [prefixes, iconKey] of MODEL_ICON_RULES) {
+    const hit = prefixes.some(
+      (prefix) => bare.startsWith(prefix) || tokens.some((token) => tokenHit(token, prefix)),
+    );
+    if (hit) return iconKey;
+  }
+  for (const [, iconKey, anywhere] of MODEL_ICON_RULES) {
+    if (anywhere?.some((needle) => trimmed.includes(needle))) return iconKey;
   }
   return undefined;
 }

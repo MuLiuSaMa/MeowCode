@@ -276,7 +276,7 @@ export async function generateMemoryOps(options: {
       tools: [],
       signal: options.signal,
       onDelta: () => undefined,
-      onUsage: options.onUsage,
+      onUsageFinal: options.onUsage,
     });
     const ops = cleanExtractionOps(result.message.content ?? "");
     // 空数组是合法产出（本段对话确实没有值得记的），直接返回

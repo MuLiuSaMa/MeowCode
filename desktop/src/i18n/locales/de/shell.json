@@ -3,6 +3,7 @@
     "home": "Start",
     "architecture": "Agent-Architektur",
     "git": "Git",
+    "mail": "E-Mail",
     "plugins": "Marketplace",
     "automation": "Automatisierungen",
     "settings": "Einstellungen"
@@ -241,5 +242,10 @@
     "body": "Bitte, bitte, schenk mir ein kleines Sternchen~",
     "dismiss": "Nee, danke",
     "accept": "Klar!"
+  },
+  "announcement": {
+    "label": "Ankündigung",
+    "close": "Schließen",
+    "viewSite": "Website besuchen"
   }
 }

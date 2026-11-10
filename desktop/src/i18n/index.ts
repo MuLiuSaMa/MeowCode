@@ -15,6 +15,7 @@ export const NAMESPACES = [
   "marketplace",
   "automation",
   "architecture",
+  "mail",
   "settings",
   "onboarding",
   "errors",
@@ -113,6 +114,16 @@ export function setupI18n(): typeof i18n {
     react: { useSuspense: false },
   });
   return i18n;
+}
+
+// 词条是启动时一次性灌进 i18next 的，普通 HMR 只换组件、不换词条，会出现
+// 「布局更新了、标题还是旧文案」。开发期直接整页刷新，保证两边一致。
+if (import.meta.hot) {
+  import.meta.hot.on("vite:afterUpdate", (payload: { updates?: Array<{ path?: string }> }) => {
+    if (payload.updates?.some((update) => update.path?.includes("/i18n/locales/"))) {
+      window.location.reload();
+    }
+  });
 }
 
 /**

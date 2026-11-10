@@ -1,7 +1,7 @@
 import { useId, useMemo, useState } from "react";
 import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
-import { LuChevronRight, LuCircleCheck, LuCircleX, LuExternalLink, LuLoaderCircle } from "react-icons/lu";
+import { LuChevronRight, LuCircleCheck, LuCircleX, LuLoaderCircle } from "react-icons/lu";
 import type { TimelineTool } from "../api";
 import { ToolBody } from "./toolviews/ToolBody";
 import { hasToolBody } from "./toolviews/registry";
@@ -453,7 +453,6 @@ export function ToolRow({
           onClick={() => onOpenFile?.(openablePath)}
         >
           {headCore}
-          <LuExternalLink size={14} className="mc-toolrow__chev" aria-hidden="true" />
         </button>
       </div>
     );

@@ -48,7 +48,11 @@ import { ShortcutsSection } from "./ShortcutsSection";
 import { WorktreeSection } from "./WorktreeSection";
 import "./SettingsPage.css";
 
-export type SettingsSectionId =
+import { LuPuzzle } from "react-icons/lu";
+import { PluginContribution } from "../../plugins/PluginSlot";
+import { usePluginSlot } from "../../plugins/runtime";
+
+export type CoreSettingsSectionId =
   | "general"
   | "appearance"
   | "shortcuts"
@@ -67,9 +71,12 @@ export type SettingsSectionId =
   | "archive"
   | "about";
 
+/** 插件贡献的分区 id：plugin:<pluginId>:<entryId>。 */
+export type SettingsSectionId = CoreSettingsSectionId | `plugin:${string}`;
+
 /** 表里只存 key：模块顶层调 t() 会在 import 期求值，切语言不刷新。 */
 const SECTIONS: Array<{
-  id: SettingsSectionId;
+  id: CoreSettingsSectionId;
   labelKey: string;
   icon: typeof LuSettings;
   divider?: boolean;
@@ -107,6 +114,7 @@ export function SettingsNav({
   onSection: (id: SettingsSectionId) => void;
 }) {
   const { t } = useTranslation("settings");
+  const pluginSections = usePluginSlot("settings.sections");
   return (
     <nav className="mc-panel mc-panel--conversations mc-settings__nav" aria-label={t("nav.ariaLabel")}>
       <h1 className="mc-settings__heading">{t("nav.heading")}</h1>
@@ -129,6 +137,23 @@ export function SettingsNav({
             </li>
           </Fragment>
         ))}
+        {pluginSections.map((contribution) => {
+          const id = `plugin:${contribution.pluginId}:${contribution.entry.id}` as SettingsSectionId;
+          return (
+            <li key={id}>
+              <button
+                type="button"
+                className="mc-settings__navitem"
+                data-active={section === id}
+                aria-current={section === id ? "page" : undefined}
+                onClick={() => onSection(id)}
+              >
+                <LuPuzzle size={15} />
+                {contribution.entry.title ?? contribution.entry.id}
+              </button>
+            </li>
+          );
+        })}
       </ul>
     </nav>
   );
@@ -143,6 +168,8 @@ export function SettingsBody({
   appInfo,
   providers,
   activeProviderId,
+  mailAiProviderId,
+  onChangeMailAiProvider,
   effort,
   turnRunning,
   sessions,
@@ -186,6 +213,9 @@ export function SettingsBody({
   appInfo: AppInfo | null;
   providers: ProviderSettings[];
   activeProviderId: string;
+  /** 邮件「AI 写」使用的模型 id；空串 = 跟随聊天 */
+  mailAiProviderId: string;
+  onChangeMailAiProvider: (providerId: string) => void;
   effort: string;
   /** 任意会话有回合在跑：保存模型会重启 agent 服务，需要确认 */
   turnRunning: boolean;
@@ -237,6 +267,7 @@ export function SettingsBody({
   /** 数据导入落盘后刷新会话列表（导入的摘要会话要立刻出现在侧栏） */
   onReloadSessions: () => void;
 }) {
+  const pluginSections = usePluginSlot("settings.sections");
   const updateInstructionSettings = async (
     patch: Partial<Pick<Preferences, "includeAgentsMd" | "includeClaudeMd">>,
   ) => {
@@ -248,7 +279,7 @@ export function SettingsBody({
     }
   };
 
-  const body: Record<SettingsSectionId, ReactNode> = {
+  const body: Record<CoreSettingsSectionId, ReactNode> = {
     general: (
       <GeneralSection
         closeAction={preferences.closeAction}
@@ -257,14 +288,21 @@ export function SettingsBody({
         onLanguage={(value) => onSavePreferences({ language: value })}
         speechStyle={preferences.speechStyle ?? "normal"}
         onSpeechStyleChange={(value) => onSavePreferences({ speechStyle: value })}
+        progressPillDismiss={preferences.progressPillDismiss ?? "commit"}
+        onProgressPillDismissChange={(value) => onSavePreferences({ progressPillDismiss: value })}
         silentUpdate={preferences.silentUpdate ?? true}
         onSilentUpdateChange={(value) => onSavePreferences({ silentUpdate: value })}
         notifications={preferences.notifications ?? true}
         onNotificationsChange={(value) => onSavePreferences({ notifications: value })}
+        announcements={preferences.announcements ?? true}
+        onAnnouncementsChange={(value) => onSavePreferences({ announcements: value })}
         nextPromptSuggestions={preferences.nextPromptSuggestions ?? false}
         onNextPromptSuggestionsChange={(value) =>
           onSavePreferences({ nextPromptSuggestions: value })
         }
+        providers={providers}
+        mailAiProviderId={mailAiProviderId}
+        onChangeMailAiProvider={onChangeMailAiProvider}
         onToast={onToast}
       />
     ),
@@ -377,5 +415,29 @@ export function SettingsBody({
     ),
   };
 
-  return <div className="mc-settings__body">{body[section]}</div>;
+  // 插件分区：plugin:<pluginId>:<entryId>，按 id 精确取一条贡献
+  const pluginContribution = (() => {
+    if (!section.startsWith("plugin:")) return null;
+    const rest = section.slice("plugin:".length);
+    const separator = rest.indexOf(":");
+    if (separator <= 0) return null;
+    const pluginId = rest.slice(0, separator);
+    const entryId = rest.slice(separator + 1);
+    return (
+      pluginSections.find(
+        (contribution) =>
+          contribution.pluginId === pluginId && contribution.entry.id === entryId,
+      ) ?? null
+    );
+  })();
+
+  return (
+    <div className="mc-settings__body">
+      {pluginContribution ? (
+        <PluginContribution contribution={pluginContribution} props={{}} />
+      ) : (
+        body[section as CoreSettingsSectionId]
+      )}
+    </div>
+  );
 }

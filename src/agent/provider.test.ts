@@ -190,6 +190,66 @@ describe("streamChatCompletion usage reporting", () => {
     // 返回值保持兼容：既有调用方仍拿到最终 usage
     expect(result.usage?.outputTokens).toBe(20);
   });
+
+  it("calls onUsageFinal once with the final usage", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        sseResponse([
+          { choices: [{ delta: { content: "hi" } }] },
+          {
+            choices: [{ delta: {}, finish_reason: "stop" }],
+            usage: {
+              prompt_tokens: 1000,
+              completion_tokens: 20,
+              prompt_tokens_details: { cached_tokens: 800 },
+            },
+          },
+        ]),
+      ),
+    );
+
+    const live: Array<{ outputTokens?: number }> = [];
+    const finals: Array<{ inputTokens?: number; outputTokens?: number; cacheReadTokens?: number }> = [];
+    await streamChatCompletion({
+      ...baseOptions,
+      onUsage: (usage) => live.push({ ...usage }),
+      onUsageFinal: (usage) => finals.push({ ...usage }),
+    });
+
+    expect(live.length).toBeGreaterThan(0);
+    expect(finals).toHaveLength(1);
+    expect(finals[0]).toMatchObject({ inputTokens: 1000, outputTokens: 20, cacheReadTokens: 800 });
+  });
+
+  it("calls onUsageFinal with the last observed usage when the stream fails", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        incompleteSseResponse([
+          {
+            choices: [],
+            usage: {
+              prompt_tokens: 640,
+              completion_tokens: 12,
+              prompt_tokens_details: { cached_tokens: 500 },
+            },
+          },
+        ]),
+      ),
+    );
+
+    const finals: Array<{ inputTokens?: number; outputTokens?: number; cacheReadTokens?: number }> = [];
+    await expect(
+      streamChatCompletion({
+        ...baseOptions,
+        onUsageFinal: (usage) => finals.push({ ...usage }),
+      }),
+    ).rejects.toThrow(/before completion/);
+
+    expect(finals).toHaveLength(1);
+    expect(finals[0]).toMatchObject({ inputTokens: 640, outputTokens: 12, cacheReadTokens: 500 });
+  });
 });
 
 describe("streamChatCompletion tool progress", () => {

@@ -39,7 +39,8 @@
   },
   "assistant": {
     "thinking": "सोच की प्रक्रिया",
-    "thinkingInProgress": "सोच रहा है…"
+    "thinkingInProgress": "सोच रहा है…",
+    "thinkingDone": "सोचा गया"
   },
   "status": {
     "idle": "मुफ़्त नाश्ता",
@@ -291,7 +292,10 @@
       "added": "जोड़ा गया",
       "updated": "अद्यतन किया गया",
       "deleted": "हटाया गया"
-    }
+    },
+    "groupRan": "{{n}} टूल चलाए",
+    "groupFailed": ", {{n}} विफल",
+    "groupThinking": "{{n}} बार सोचा"
   },
   "role": {
     "general": "सामान्य",
@@ -332,6 +336,10 @@
     "gitFailed": "परिवर्तन पढ़ने में विफल",
     "agents": "एजेंट",
     "noAgents": "अभी कोई सबएजेंट नहीं",
+    "terminals": "टर्मिनल",
+    "noTerminals": "कोई चालू टर्मिनल नहीं",
+    "stopTerminal": "टर्मिनल रोकें",
+    "terminalRunning": "चल रहा है",
     "open": "वर्कस्पेस अवलोकन खोलें",
     "close": "वर्कस्पेस अवलोकन बंद करें",
     "commitOrPush": "कमिट या पुश करें",

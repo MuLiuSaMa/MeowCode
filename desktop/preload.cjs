@@ -30,6 +30,13 @@ contextBridge.exposeInMainWorld("meow", {
     if (!base) return null;
     return `${base.serverUrl}/plugin-ui/${encodeURIComponent(pluginId)}/${encodeURIComponent(entry)}?token=${encodeURIComponent(base.token)}`;
   },
+  /** 插件槽位脚本的 URL（与面板同一个 `/plugin-ui` 资源通道，带 query token） */
+  pluginClientUrl: async (pluginId, entry = "client.js") => {
+    if (!pluginId) return null;
+    const base = await resolveAssetBase();
+    if (!base) return null;
+    return `${base.serverUrl}/plugin-ui/${encodeURIComponent(pluginId)}/${encodeURIComponent(entry)}?token=${encodeURIComponent(base.token)}`;
+  },
   /** 窗口是否启用了系统亚克力背板（渲染层据此把 body/root 画成透明） */
   acrylic: process.argv.includes("--meow-backdrop=acrylic"),
   /** 拖入/选中的本地文件 → 绝对路径（Electron 32+ 的 File.path 已移除，改走 webUtils） */
@@ -42,9 +49,11 @@ contextBridge.exposeInMainWorld("meow", {
   },
   getSettings: () => ipcRenderer.invoke("meow:get-settings"),
   saveSettings: (settings) => ipcRenderer.invoke("meow:save-settings", settings),
-  /** 插件启停（写 settings.plugins 后重启 agent server 生效） */
+  /** 服务商列表增删改：只写盘 + 热更新 server（不重启，不中断对话） */
+  saveProviders: (payload) => ipcRenderer.invoke("meow:save-providers", payload),
+  /** 插件启停（写 settings.plugins 后热更新 server，不中断对话） */
   setPluginsState: (payload) => ipcRenderer.invoke("meow:set-plugins-state", payload),
-  /** Claude Code hooks：启停/运行方式/工作区范围（重启 agent server 生效） */
+  /** Claude Code hooks：启停/运行方式/工作区范围（热更新，不重启 agent server） */
   saveHooksSettings: (payload) => ipcRenderer.invoke("meow:save-hooks-settings", payload),
   /** 打开已知的 Claude Code hooks 配置文件（layer: user/project/local） */
   openHooksFile: (layer) => ipcRenderer.invoke("meow:open-hooks-file", layer),
@@ -103,6 +112,9 @@ contextBridge.exposeInMainWorld("meow", {
 
   // ---- 自绘标题栏的窗口操作 ----
   minimizeWindow: () => ipcRenderer.invoke("meow:window-minimize"),
+  /** 手动拖动：开始/结束窗口移动（标题栏公告等可拖区域用） */
+  startWindowDrag: () => ipcRenderer.invoke("meow:window-start-drag"),
+  endWindowDrag: () => ipcRenderer.invoke("meow:window-end-drag"),
   toggleMaximizeWindow: () => ipcRenderer.invoke("meow:window-toggle-maximize"),
   closeWindow: () => ipcRenderer.invoke("meow:window-close"),
   getWindowState: () => ipcRenderer.invoke("meow:window-state"),
@@ -110,6 +122,16 @@ contextBridge.exposeInMainWorld("meow", {
     const wrapped = (_event, payload) => listener(payload);
     ipcRenderer.on("meow:window-state", wrapped);
     return () => ipcRenderer.removeListener("meow:window-state", wrapped);
+  },
+
+  // ---- 公告（标题栏上方的公告条） ----
+  getAnnouncement: () => ipcRenderer.invoke("meow:announcement"),
+  /** 关闭公告（主进程按 id 落盘，重启/换环境仍保持关闭） */
+  dismissAnnouncement: (id) => ipcRenderer.invoke("meow:announcement-dismiss", id),
+  onAnnouncement: (listener) => {
+    const wrapped = (_event, payload) => listener(payload);
+    ipcRenderer.on("meow:announcement", wrapped);
+    return () => ipcRenderer.removeListener("meow:announcement", wrapped);
   },
 
   // ---- 轻量偏好：主题 / 关闭方式（只写盘，不重启 agent server）----
@@ -253,6 +275,7 @@ contextBridge.exposeInMainWorld("meow", {
   termKill: (id) => ipcRenderer.invoke("meow:term-kill", id),
   termAttach: (id) => ipcRenderer.invoke("meow:term-attach", id),
   termRead: (id, offset) => ipcRenderer.invoke("meow:term-read", id, offset),
+  termList: () => ipcRenderer.invoke("meow:term-list"),
   onEnsureJobTab: (listener) => {
     const wrapped = (_event, payload) => listener(payload);
     ipcRenderer.on("meow:job-ensure-tab", wrapped);
@@ -267,5 +290,31 @@ contextBridge.exposeInMainWorld("meow", {
     const wrapped = (_event, payload) => listener(payload);
     ipcRenderer.on("meow:term-exit", wrapped);
     return () => ipcRenderer.removeListener("meow:term-exit", wrapped);
+  },
+
+  // ---- 邮箱聚合 ----
+  mailAccountsList: () => ipcRenderer.invoke("meow:mail-accounts-list"),
+  mailAccountSave: (payload) => ipcRenderer.invoke("meow:mail-accounts-save", payload),
+  mailAccountRemove: (accountId) => ipcRenderer.invoke("meow:mail-accounts-remove", { accountId }),
+  mailAccountTest: (payload) => ipcRenderer.invoke("meow:mail-accounts-test", payload),
+  mailSync: (payload) => ipcRenderer.invoke("meow:mail-sync", payload),
+  mailCounts: (accountId) => ipcRenderer.invoke("meow:mail-counts", { accountId }),
+  mailList: (payload) => ipcRenderer.invoke("meow:mail-list", payload),
+  mailMessage: (payload) => ipcRenderer.invoke("meow:mail-message", payload),
+  mailSetSeen: (payload) => ipcRenderer.invoke("meow:mail-message-seen", payload),
+  mailDelete: (payload) => ipcRenderer.invoke("meow:mail-message-delete", payload),
+  mailDownloadAttachment: (payload) => ipcRenderer.invoke("meow:mail-attachment-download", payload),
+  mailPickAttachments: () => ipcRenderer.invoke("meow:mail-pick-attachments"),
+  mailDraftsList: (accountId) => ipcRenderer.invoke("meow:mail-drafts-list", { accountId }),
+  mailDraftSave: (payload) => ipcRenderer.invoke("meow:mail-drafts-save", payload),
+  mailDraftDelete: (id) => ipcRenderer.invoke("meow:mail-drafts-delete", { id }),
+  mailSend: (payload) => ipcRenderer.invoke("meow:mail-send", payload),
+  mailOutboxList: (accountId) => ipcRenderer.invoke("meow:mail-outbox-list", { accountId }),
+  mailOutboxRetry: (id) => ipcRenderer.invoke("meow:mail-outbox-retry", { id }),
+  mailOutboxDelete: (id) => ipcRenderer.invoke("meow:mail-outbox-delete", { id }),
+  onMailEvent: (listener) => {
+    const wrapped = (_event, payload) => listener(payload);
+    ipcRenderer.on("meow:mail-event", wrapped);
+    return () => ipcRenderer.removeListener("meow:mail-event", wrapped);
   },
 });

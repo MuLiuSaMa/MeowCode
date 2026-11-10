@@ -56,3 +56,19 @@ export function withPythonUtf8Env(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   env.PYTHONIOENCODING = "utf-8";
   return env;
 }
+
+/**
+ * 让子进程自己别输出彩色/花哨排版：`NO_COLOR` 是各大 CLI 的通用约定，
+ * `TERM=dumb` 让依赖 terminfo 的工具降级成纯文本。
+ *
+ * 比事后 strip 更划算 —— 这些字节根本不会被写出来，也就不用进采集上限和上下文。
+ * `FORCE_COLOR` / `CLICOLOR` 必须删掉：父进程（或用户 shell）里设过的话会压过 NO_COLOR。
+ */
+export function withPlainOutputEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  for (const key of Object.keys(env)) {
+    if (/^(NO_COLOR|TERM|CLICOLOR|CLICOLOR_FORCE|FORCE_COLOR|COLORTERM)$/i.test(key)) delete env[key];
+  }
+  env.NO_COLOR = "1";
+  env.TERM = "dumb";
+  return env;
+}

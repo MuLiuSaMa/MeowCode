@@ -170,7 +170,7 @@ describe("Anthropic native search", () => {
       { url: "https://example.com/b", title: "B" },
     ]);
     expect(result.usage).toEqual({
-      inputTokens: 10,
+      inputTokens: 17,
       outputTokens: 20,
       cacheReadTokens: 3,
       cacheWriteTokens: 4,

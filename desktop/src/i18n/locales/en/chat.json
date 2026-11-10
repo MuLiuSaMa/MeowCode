@@ -39,7 +39,8 @@
   },
   "assistant": {
     "thinking": "Thinking process",
-    "thinkingInProgress": "Thinking…"
+    "thinkingInProgress": "Thinking…",
+    "thinkingDone": "Thought"
   },
   "status": {
     "idle": "Snacking for free",
@@ -291,7 +292,10 @@
       "added": "Added",
       "updated": "Updated",
       "deleted": "Deleted"
-    }
+    },
+    "groupRan": "Ran {{n}} tools",
+    "groupFailed": ", {{n}} failed",
+    "groupThinking": "{{n}} thoughts"
   },
   "role": {
     "general": "General",
@@ -332,6 +336,10 @@
     "gitFailed": "Failed to read changes",
     "agents": "Agents",
     "noAgents": "No subagents yet",
+    "terminals": "Terminals",
+    "noTerminals": "No running terminals",
+    "stopTerminal": "Stop terminal",
+    "terminalRunning": "Running",
     "open": "Open workspace overview",
     "close": "Close workspace overview",
     "commitOrPush": "Commit or push",

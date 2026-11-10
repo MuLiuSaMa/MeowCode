@@ -261,6 +261,20 @@ const defaultLoader: PdfLoader = async (data) => {
   };
 };
 
+/** 只读页数，不抽正文：给 prompt 附件的 token 估算用；解析失败返回 undefined。 */
+export async function readPdfPageCount(
+  data: Uint8Array,
+  loader: PdfLoader = defaultLoader,
+): Promise<number | undefined> {
+  if (data.byteLength > MAX_PDF_BYTES) return undefined;
+  try {
+    const doc = await loader(data);
+    return doc.pageCount > 0 ? doc.pageCount : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 /**
  * 读一个 PDF 的文本层。
  *

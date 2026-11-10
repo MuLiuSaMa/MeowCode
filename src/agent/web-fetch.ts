@@ -18,7 +18,7 @@ const MAX_BODY_CHARS = 100_000;
 const MAX_REDIRECTS = 5;
 /** 整个抓取（重定向 + 响应头 + 正文）的硬上限：卡住的站点不能拖死整个回合。 */
 const WEB_FETCH_TIMEOUT_MS = 10_000;
-const USER_AGENT = "MeowCode/1.1.0 (+https://github.com/MuLiuSaMa/MeowCode)";
+const USER_AGENT = "MeowCode/1.2.0 (+https://github.com/MuLiuSaMa/MeowCode)";
 const DEEPSEEK_FETCH_ENDPOINT = "https://api.deepseek.com/v1/tools/fetch";
 
 export type WebFetchOutcome = {

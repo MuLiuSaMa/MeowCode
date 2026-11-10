@@ -15,6 +15,14 @@
       "dazui": "大嘴"
     }
   },
+  "progressPill": {
+    "field": "輸入框上方資訊膠囊",
+    "desc": "輸入框上方資訊膠囊的收起時機：提交後消失，或對話結束後消失。",
+    "options": {
+      "commit": "提交後消失",
+      "turn-end": "對話結束後消失"
+    }
+  },
   "nav": {
     "heading": "設定",
     "ariaLabel": "設定分區",
@@ -42,11 +50,7 @@
   "close": {
     "section": "關閉方式",
     "field": "關閉視窗時",
-    "desc": {
-      "ask": "每次關閉視窗時詢問你要縮到系統匣還是直接結束。",
-      "tray": "關閉視窗時隱藏到系統匣，MeowCode 繼續在背景執行。",
-      "quit": "關閉視窗會直接結束 MeowCode。"
-    },
+    "desc": "關閉主視窗時的行為：每次詢問、隱藏到系統匣繼續背景執行，或直接結束。",
     "options": {
       "ask": "每次詢問",
       "tray": "縮到系統匣",
@@ -56,10 +60,7 @@
   "update": {
     "section": "更新",
     "field": "背景下載更新",
-    "desc": {
-      "on": "啟動時偵測到新版本就在背景自動下載，完成後導覽列左下角會出現重新啟動按鈕，點擊即可安裝。",
-      "off": "只在啟動時安靜檢查新版本並提醒，下載與安裝需要在關於頁手動進行。"
-    }
+    "desc": "檢查到新版本時在背景下載，完成後導覽列左下角出現重新啟動按鈕，點擊即可安裝。"
   },
   "appearance": {
     "themeSection": "主題",
@@ -205,6 +206,9 @@
     "empty": "還沒有設定任何模型。點「新增模型」開始。",
     "deleteTitle": "刪除服務商",
     "deleteMessage": "確定刪除「{{name}}」嗎？刪除後需要重新設定才能使用。",
+    "deleteGroupAria": "刪除服務商 {{name}}",
+    "deleteGroupTitle": "刪除服務商",
+    "deleteGroupMessage": "確定刪除「{{name}}」及其下 {{count}} 個模型嗎？刪除後需要重新設定才能使用。",
     "restartTitle": "儲存會重啟本機服務",
     "restartMessage": "模型變更需要重啟本機 agent 服務才生效，進行中的回合會被中斷。仍要儲存嗎？",
     "restartConfirm": "仍要儲存",
@@ -336,10 +340,7 @@
   "island": {
     "section": "AI 悬浮岛",
     "field": "启用悬浮岛",
-    "desc": {
-      "on": "悬浮岛已开启：屏幕顶部居中显示所有运行中会话的状态，鼠标放上去可展开查看对话、直接输入或停止任务。",
-      "off": "开启后在屏幕顶部居中显示一枚胶囊，实时显示所有运行中会话的状态；鼠标放上去可展开成对话小窗。"
-    }
+    "desc": "在螢幕頂部置中顯示所有執行中對話的狀態膠囊；滑鼠移上去可展開成對話小窗，直接輸入或停止任務。"
   },
   "hooks": {
     "loading": "正在讀取 Hooks 設定…",
@@ -350,15 +351,9 @@
       "section": "匯入 Claude Code Hooks",
       "description": "讀取 ~/.claude/settings.json 與工作區 .claude 設定；工作區設定預設不執行。",
       "master": "啟用 Hooks",
-      "masterHint": {
-        "on": "已載入 Claude Code hook 設定。",
-        "off": "已停用：設定僅供唯讀顯示，不會執行。"
-      },
+      "masterHint": "載入並執行 Claude Code hook 設定；停用後僅唯讀顯示，不執行任何腳本。",
       "workspace": "包含工作區 .claude 設定",
-      "workspaceHint": {
-        "on": "工作區 .claude/settings*.json 中的 hooks 會執行。",
-        "off": "只執行 ~/.claude 設定；工作區設定僅供顯示。"
-      },
+      "workspaceHint": "是否執行工作區 .claude/settings*.json 裡的 hooks；關閉時只執行 ~/.claude 設定。",
       "workspaceWarning": "工作區 hooks 來自目前倉庫檔案，可能被提交惡意指令。只在信任此倉庫時開啟。",
       "disabledNote": "Hooks 已停用。開啟上方開關後，指令才會執行。"
     },
@@ -548,10 +543,7 @@
     "desc": "日常行為偏好，修改後立即生效。",
     "notify": {
       "field": "系統通知",
-      "desc": {
-        "on": "回合結束、需要確認或被中斷時，視窗不在前景就彈系統通知（顯示對話標題與回覆摘要）。",
-        "off": "關閉後不再彈任何系統通知。"
-      }
+      "desc": "回合結束、需要確認或被中斷且視窗不在前景時，彈出系統通知（顯示交談標題與回覆摘要）。"
     },
     "promptSuggestions": {
       "field": "輸入建議",
@@ -565,6 +557,17 @@
       "field": "供應商故障轉移",
       "desc": "主服務商逾時、限流或伺服器故障時，本回合自動切到其他已啟用的服務商，最多切換 2 次。",
       "toggleFailed": "儲存供應商故障轉移開關失敗"
+    },
+    "mailAi": {
+      "field": "除了聊天使用的模型",
+      "follow": "跟隨聊天"
+    },
+    "other": {
+      "section": "常規"
+    },
+    "announcement": {
+      "field": "公告",
+      "desc": "在標題列顯示官方公告（新版本與新模型動態）。"
     }
   },
   "proxy": {

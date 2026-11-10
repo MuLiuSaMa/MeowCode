@@ -9,7 +9,7 @@ import {
   listDynamicToolDefinitions,
 } from "../agent/tools.js";
 import { PluginRegistry } from "./registry.js";
-import type { PluginTool } from "./types.js";
+import type { PluginManifest, PluginTool } from "./types.js";
 
 function makeTool(name: string, overrides: Partial<PluginTool> = {}): PluginTool {
   return {
@@ -150,5 +150,60 @@ describe("PluginRegistry.createApi", () => {
     } finally {
       await fs.rm(dir, { recursive: true, force: true });
     }
+  });
+});
+
+describe("PluginRegistry manifest permissions", () => {
+  const manifest: PluginManifest = {
+    id: "p1",
+    version: "1.0.0",
+    apiVersion: 2,
+    permissions: ["tools"],
+  };
+
+  it("未声明 hooks/commands/rpc 时对应注册被拒", () => {
+    const registry = new PluginRegistry();
+    registry.addPlugin("p1", "user", "/tmp/p1", manifest);
+    expect(() => registry.addHook("p1", "turn_end", () => undefined)).toThrow(/hooks/);
+    expect(() => registry.addCommand("p1", { name: "cmd", run: () => "" })).toThrow(/commands/);
+    expect(() => registry.addRpc("p1", "do", () => undefined)).toThrow(/rpc/);
+    registry.unregisterAll();
+  });
+
+  it("tools 权限允许注册工具，storage 权限缺失时 client 侧仍按 API 检查", () => {
+    const registry = new PluginRegistry();
+    registry.addPlugin("p1", "user", "/tmp/p1", manifest);
+    expect(registry.addTool("p1", makeTool("manifest_tool")).ok).toBe(true);
+    registry.unregisterAll();
+  });
+
+  it("RPC 注册后可查询，rollback 精确清理", () => {
+    const registry = new PluginRegistry();
+    registry.addPlugin("p1", "user", "/tmp/p1", {
+      ...manifest,
+      permissions: ["rpc"] as const,
+    });
+    registry.addRpc("p1", "ping", () => "pong");
+    expect(registry.getRpc("p1", "ping")).toBeDefined();
+    expect(registry.rpcMethodsOf("p1")).toEqual(["ping"]);
+    registry.rollbackPlugin("p1");
+    expect(registry.getRpc("p1", "ping")).toBeUndefined();
+    registry.unregisterAll();
+  });
+
+  it("descriptor 暴露 manifest 与 client 描述", () => {
+    const registry = new PluginRegistry();
+    registry.addPlugin(
+      "p1",
+      "user",
+      "/tmp/p1",
+      { ...manifest, permissions: ["ui"] as const },
+      { client: { entry: "client.js", permissions: ["ui"] } },
+    );
+    const [descriptor] = registry.listDescriptors();
+    expect(descriptor?.version).toBe("1.0.0");
+    expect(descriptor?.manifest?.permissions).toEqual(["ui"]);
+    expect(descriptor?.ui?.client).toEqual({ entry: "client.js", permissions: ["ui"] });
+    registry.unregisterAll();
   });
 });

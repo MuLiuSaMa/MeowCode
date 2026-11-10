@@ -38,6 +38,8 @@ export function ModelsSection({
   const [pickerOpen, setPickerOpen] = useState(false);
   const [editing, setEditing] = useState<ProviderSettings | null>(null);
   const [pendingDelete, setPendingDelete] = useState<string | null>(null);
+  /** 删除整个服务商（该组下所有模型）的待确认分组键 */
+  const [pendingDeleteGroup, setPendingDeleteGroup] = useState<string | null>(null);
   /** 回合进行中被拦下的改动：确认后再真正提交 */
   const [pendingCommit, setPendingCommit] = useState<{
     next: ProviderSettings[];
@@ -94,7 +96,26 @@ export function ModelsSection({
     setPendingDelete(null);
   };
 
+  /**
+   * 删除整个服务商：一次性移除该组下的全部模型条目。
+   * 逐条点删除删一个多模型服务商要点很多次，而且中间每一次都要重启一次 agent server。
+   */
+  const handleDeleteGroup = (groupKey: string) => {
+    const doomed = providers.filter((item) => groupKeyOf(item) === groupKey);
+    if (!doomed.length) return;
+    const ids = new Set(doomed.map((item) => item.id));
+    const next = providers.filter((item) => !ids.has(item.id));
+    const activeId = ids.has(activeProviderId)
+      ? (next.find((item) => item.enabled !== false)?.id ?? next[0]?.id)
+      : activeProviderId;
+    commit(next, activeId);
+    setPendingDeleteGroup(null);
+  };
+
   const deleteTarget = pendingDelete ? providers.find((item) => item.id === pendingDelete) : null;
+  const deleteGroupTarget = pendingDeleteGroup
+    ? providers.filter((item) => groupKeyOf(item) === pendingDeleteGroup)
+    : [];
 
   const groups = (() => {
     const map = new Map<string, { key: string; items: ProviderSettings[] }>();
@@ -145,6 +166,13 @@ export function ModelsSection({
                         <LuPencil size={13} />
                         {t("models.editGroup")}
                       </button>
+                      <IconButton
+                        label={t("models.deleteGroupAria", { name: first.name })}
+                        size="sm"
+                        onClick={() => setPendingDeleteGroup(group.key)}
+                      >
+                        <LuTrash2 size={14} />
+                      </IconButton>
                     </div>
                     <div className="mc-models__grouplist">
                       {group.items.map((provider) => {
@@ -198,6 +226,25 @@ export function ModelsSection({
         <div className="mc-dialog__footer">
           <Button onClick={() => setPendingDelete(null)}>{t("actions.cancel")}</Button>
           <Button variant="danger" onClick={() => deleteTarget && handleDelete(deleteTarget.id)}>
+            {t("actions.confirmDelete")}
+          </Button>
+        </div>
+      </Dialog>
+
+      <Dialog open={pendingDeleteGroup !== null} onClose={() => setPendingDeleteGroup(null)}>
+        <h2 className="mc-dialog__title">{t("models.deleteGroupTitle")}</h2>
+        <p className="mc-dialog__desc">
+          {t("models.deleteGroupMessage", {
+            name: deleteGroupTarget[0]?.name ?? "",
+            count: deleteGroupTarget.length,
+          })}
+        </p>
+        <div className="mc-dialog__footer">
+          <Button onClick={() => setPendingDeleteGroup(null)}>{t("actions.cancel")}</Button>
+          <Button
+            variant="danger"
+            onClick={() => pendingDeleteGroup && handleDeleteGroup(pendingDeleteGroup)}
+          >
             {t("actions.confirmDelete")}
           </Button>
         </div>

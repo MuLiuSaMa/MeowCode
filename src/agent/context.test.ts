@@ -3,6 +3,7 @@ import {
   breakdownMessages,
   compactionTriggerTokens,
   estimateContextTokens,
+  estimateDocumentTokens,
   estimateMessageTokens,
   estimateMessagesTokens,
   estimateTokens,
@@ -36,6 +37,8 @@ describe("estimateTokens", () => {
     expect(estimateTokens("你好ab")).toBe(3); // 2 CJK + ceil(2/4)
     expect(estimateTokens("中文内容 abc")).toBe(5); // 4 CJK + ceil(4/4)
     expect(estimateTokens("，。")).toBe(2); // CJK 标点同按 1 字计
+    expect(estimateTokens("안녕")).toBe(2); // Hangul 也按 CJK 口径
+    expect(estimateTokens("한국어")).toBe(3);
   });
 
   it("统计消息时把 tool_calls 的参数也算进去", () => {
@@ -48,6 +51,19 @@ describe("estimateTokens", () => {
     };
     // content 为 null 时只算工具名 + 参数
     expect(estimateMessageTokens(message)).toBe(estimateTokens("read_file") + estimateTokens('{"path":"a.ts"}'));
+  });
+});
+
+describe("estimateDocumentTokens", () => {
+  it("有页数时按 3k/页上限估算，且至少 4k", () => {
+    expect(estimateDocumentTokens({ data: "", pages: 1 })).toBe(4_000);
+    expect(estimateDocumentTokens({ data: "", pages: 10 })).toBe(30_000);
+  });
+
+  it("没有页数时按体积保守回退，不再固定 4k", () => {
+    expect(estimateDocumentTokens({ data: "x".repeat(100_000) })).toBe(10_000);
+    expect(estimateDocumentTokens({ data: "x".repeat(1_000_000) })).toBe(100_000);
+    expect(estimateDocumentTokens({ data: "x".repeat(2_000_000) })).toBe(200_000);
   });
 });
 

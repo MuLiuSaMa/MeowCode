@@ -4,6 +4,7 @@ import { LuChevronDown } from "react-icons/lu";
 import { detectedCapabilities } from "../../modelProfiles";
 import { formatCapacity } from "../../util";
 import { Button } from "../ui/Button";
+import { Checkbox } from "../ui/Checkbox";
 import { Dialog } from "../ui/Dialog";
 import { Select } from "../ui/Select";
 import { TextField } from "../ui/TextField";
@@ -157,23 +158,26 @@ export function ModelSettingsDialog({
               const checked = value === "text" || (form.inputModalities ?? ["text"]).includes(value);
               const locked = value === "text";
               return (
-                <label key={value} className={`mc-check${locked ? " mc-check--locked" : ""}`}>
-                  <input
-                    type="checkbox"
-                    checked={locked ? true : checked}
-                    disabled={locked}
-                    onChange={(event) => {
-                      autoFilledRef.current.image = false;
-                      const current = form.inputModalities ?? ["text"];
-                      const next = event.target.checked
-                        ? [...new Set<InputModality>([...current, value])]
-                        : current.filter((item) => item !== value);
-                      onChange({ inputModalities: next.length ? next : ["text"] });
-                    }}
-                  />
-                  {t(`models.modalityOptions.${value}`)}
-                  {locked ? t("models.form.requiredTag") : null}
-                </label>
+                <Checkbox
+                  key={value}
+                  className={`mc-check${locked ? " mc-check--locked" : ""}`}
+                  checked={locked ? true : checked}
+                  disabled={locked}
+                  onChange={(nextChecked) => {
+                    autoFilledRef.current.image = false;
+                    const current = form.inputModalities ?? ["text"];
+                    const next = nextChecked
+                      ? [...new Set<InputModality>([...current, value])]
+                      : current.filter((item) => item !== value);
+                    onChange({ inputModalities: next.length ? next : ["text"] });
+                  }}
+                  label={
+                    <span>
+                      {t(`models.modalityOptions.${value}`)}
+                      {locked ? t("models.form.requiredTag") : null}
+                    </span>
+                  }
+                />
               );
             })}
           </div>

@@ -20,6 +20,13 @@ import type { ProviderConfig } from "./types.js";
 export const MAX_FALLBACK_HOPS = 2;
 
 /**
+ * 故障转移的墙钟预算：从本回合首个请求算起，超过这个时长不再尝试新 provider。
+ * 每次尝试本身已有超时与退避，但「3 次尝试 × 多跳」叠起来可以耗掉好几分钟；
+ * 用户宁可看到一个明确的失败，也不要一个永远不动的界面。
+ */
+export const FAILOVER_WALL_CLOCK_MS = 45_000;
+
+/**
  * 只有这几类值得切链：
  *  - timeout：`fetchWithRetry` 已经重试过同样的端点，仍然不通；
  *  - rate_limit：429 等下去不如换一家；

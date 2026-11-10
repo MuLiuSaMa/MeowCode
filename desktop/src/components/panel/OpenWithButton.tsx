@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useLayoutEffect, useEffect, useRef, useState, type CSSProperties } from "react";
 import { useTranslation } from "react-i18next";
 import { LuAppWindow, LuChevronDown, LuFolderOpen } from "react-icons/lu";
 import { Spinner } from "../ui/Spinner";
@@ -21,6 +21,11 @@ type Detection = {
 type Selection = { kind: "explorer" } | { kind: "app"; exe: string; name: string };
 
 const STORAGE_KEY = "meow:open-with:last";
+/** 下拉菜单的尺寸约束：窄面板里不能沿旧路径向左溢出（会被面板 overflow:hidden 剪掉） */
+const MENU_MIN_WIDTH = 224;
+const MENU_MAX_WIDTH = 300;
+const MENU_GAP = 6;
+const SCREEN_MARGIN = 8;
 
 function loadSelection(): Selection | null {
   try {
@@ -68,6 +73,7 @@ export function OpenWithButton({
 }) {
   const { t } = useTranslation("panel");
   const [open, setOpen] = useState(false);
+  const [menuStyle, setMenuStyle] = useState<CSSProperties | null>(null);
   const [selection, setSelection] = useState<Selection | null>(() => loadSelection());
   const [detection, setDetection] = useState<Detection | null>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -125,6 +131,70 @@ export function OpenWithButton({
       document.removeEventListener("pointerdown", onPointerDown);
       document.removeEventListener("keydown", onKeyDown);
     };
+  }, [open]);
+
+  /**
+   * 菜单定位：面板是 overflow:hidden 且经常很窄，原来靠 CSS 的 right:0 贴着按钮右缘，
+   * 面板一变窄就从左侧溢出被剪掉（只看得到一个空格子）。改成 fixed + 按窗口实测回夹，
+   * 宽度也跟着可用空间缩（窄到极限时贴着屏幕边缘，不再溢出）。
+   */
+  useLayoutEffect(() => {
+    if (!open) {
+      setMenuStyle(null);
+      return;
+    }
+    const anchor = wrapRef.current;
+    if (!anchor) return;
+    const rect = anchor.getBoundingClientRect();
+    const viewport = window.innerWidth;
+    const viewportHeight = window.innerHeight;
+    const width = Math.max(
+      160,
+      Math.min(MENU_MAX_WIDTH, Math.max(MENU_MIN_WIDTH, rect.width + 40)),
+    );
+    // 右对齐到按钮（菜单向左展开），超左边界就贴 8px 后向右推
+    let left = rect.right - width;
+    left = Math.max(SCREEN_MARGIN, Math.min(left, viewport - width - SCREEN_MARGIN));
+    const spaceBelow = viewportHeight - rect.bottom - MENU_GAP - SCREEN_MARGIN;
+    const spaceAbove = rect.top - MENU_GAP - SCREEN_MARGIN;
+    // 下方放不下就翻到上方：两种方向都至少留 120px
+    const flipUp = spaceBelow < 160 && spaceAbove > spaceBelow;
+    setMenuStyle(
+      flipUp
+        ? {
+            position: "fixed",
+            left: Math.round(left),
+            bottom: Math.round(viewportHeight - rect.top + MENU_GAP),
+            width: Math.round(width),
+            maxHeight: Math.round(Math.max(120, spaceAbove)),
+          }
+        : {
+            position: "fixed",
+            left: Math.round(left),
+            top: Math.round(rect.bottom + MENU_GAP),
+            width: Math.round(width),
+            maxHeight: Math.round(Math.max(120, spaceBelow)),
+          },
+    );
+  }, [open]);
+
+  // 打开期间窗口尺寸变化（拖面板/拖窗口）：把菜单收回屏幕内，不留在面板外
+  useEffect(() => {
+    if (!open) return;
+    const recompute = () => {
+      setMenuStyle((current) => {
+        if (!current) return current;
+        const width = Number(current.width ?? MENU_MIN_WIDTH);
+        const left = Number(current.left ?? SCREEN_MARGIN);
+        const clamped = Math.max(
+          SCREEN_MARGIN,
+          Math.min(left, window.innerWidth - width - SCREEN_MARGIN),
+        );
+        return clamped === left ? current : { ...current, left: clamped };
+      });
+    };
+    window.addEventListener("resize", recompute);
+    return () => window.removeEventListener("resize", recompute);
   }, [open]);
 
   const selectedApp =
@@ -207,7 +277,7 @@ export function OpenWithButton({
       </button>
 
       {open ? (
-        <div className="mc-openwith__menu" role="menu">
+        <div className="mc-openwith__menu" role="menu" style={menuStyle ?? undefined}>
           {detection === null ? (
             <div className="mc-openwith__loading">
               <Spinner size={14} />

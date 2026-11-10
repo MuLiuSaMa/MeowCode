@@ -3,6 +3,7 @@ import type { FileHandle } from "node:fs/promises";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { buildMessageUnits, estimateMessagesTokens, repairToolPairs } from "./context.js";
+import { retainedThinkingBoundary, stripThinkingBefore } from "./request-projection.js";
 import { countDiffStats } from "./diff.js";
 import { readJsonFile, writeJsonAtomic } from "./atomic-json.js";
 import type {
@@ -191,13 +192,14 @@ export class SessionStore {
   }
 
   /**
-   * 缓存血缘根：fork 用来源会话，子 Agent 用直接父会话（rootSessionId）。
-   * 普通会话没有血缘，返回 undefined。
+   * 缓存血缘根：只有 fork（复制了父历史）才继承来源键。
+   * spawn 子 Agent 不复制父历史、system[0] 也不同，共享键只会挤占父分片；
+   * 普通会话与 spawn 子会话返回 undefined。
    */
   get affinityRootId(): string | undefined {
     const header = this.entries[0];
     if (header?.type !== "session") throw new Error("Session header is missing.");
-    return header.forkedFrom ?? header.rootSessionId;
+    return header.forkedFrom;
   }
 
   get worktree(): SessionWorktree | undefined {
@@ -1053,6 +1055,16 @@ export class SessionStore {
 
   async appendCompactionSummary(summary: string, keepRecentMessages = 0): Promise<string> {
     const id = newEntryId();
+    // 压缩边界是唯一可以安全改写历史的时刻：把保留段里「最后一个真实 user 之前」的
+    // thinking 一次性剥掉（切点在此刻冻结，之后不再随回合前移，不然就成逐轮投影了）。
+    const retained: ChatMessage[] = [];
+    if (keepRecentMessages > 0) {
+      for (const entry of this.entries) {
+        if (entry.type === "message") retained.push(entry.message);
+      }
+      retained.splice(0, Math.max(0, retained.length - keepRecentMessages));
+    }
+    const thinkingKeepFromRetained = retainedThinkingBoundary(retained);
     await this.appendEntry((parentId) => ({
       type: "compaction_summary",
       id,
@@ -1060,6 +1072,7 @@ export class SessionStore {
       timestamp: new Date().toISOString(),
       summary,
       ...(keepRecentMessages > 0 ? { keepRecentMessages } : {}),
+      ...(thinkingKeepFromRetained > 0 ? { thinkingKeepFromRetained } : {}),
     }));
     return id;
   }
@@ -1126,7 +1139,7 @@ export class SessionStore {
   /** 追加一条运行时上下文（如压缩后的计划快照 / @文件引用），按位置参与后续请求。 */
   async appendContextNote(
     content: string,
-    source: "plan" | "file" | "subagent" | "workflow" | "plugin" = "plan",
+    source: "plan" | "file" | "subagent" | "workflow" | "plugin" | "style" = "plan",
   ): Promise<string> {
     const id = newEntryId();
     await this.appendEntry((parentId) => ({
@@ -1462,8 +1475,22 @@ export class SessionStore {
       if (message.role !== "tool") return message;
       const digest = overrides.get(message.tool_call_id);
       if (!digest) return message;
-      return { ...message, content: `[summarized] ${digest}`, images: undefined };
+      // 纪要内容没变就复用同一个对象：增量链靠引用相等判断前缀可续接。
+      const cached = this.digestMessages.get(message);
+      if (cached?.digest === digest) return cached.message;
+      const next = { ...message, content: `[summarized] ${digest}`, images: undefined };
+      this.digestMessages.set(message, { digest, message: next });
+      return next;
     });
+  }
+
+  /** 合成消息按 entry 记忆化，避免每轮访问都新建字面量。 */
+  private noteMessage(entry: SessionEntry, build: () => ChatMessage): ChatMessage {
+    const cached = this.noteMessages.get(entry);
+    if (cached) return cached;
+    const message = build();
+    this.noteMessages.set(entry, message);
+    return message;
   }
 
   /**
@@ -1486,7 +1513,13 @@ export class SessionStore {
         for (const entry of this.entries.slice(0, lastSummaryIndex)) {
           if (entry.type === "message") before.push(entry.message);
         }
-        messages.push(...before.slice(-keep));
+        // 切点在压缩时冻结：保留段本身不再变化，所以每轮算出的结果一致
+        messages.push(
+          ...stripThinkingBefore(
+            before.slice(-keep),
+            summaryEntry.thinkingKeepFromRetained ?? 0,
+          ),
+        );
       }
     }
     for (const entry of this.entries.slice(startIndex + 1)) {
@@ -1514,6 +1547,23 @@ export class SessionStore {
   }
 
   /**
+   * 合成消息按 entry 记忆化：增量链（previous_response_id）用引用相等判断前缀，
+   * 每轮重建字面量会让链断掉，之后每轮全量重发。
+   */
+  private noteMessages = new WeakMap<SessionEntry, ChatMessage>();
+  /** 工具纪要替换结果按「原消息 + 纪要内容」记忆化，纪要变了才重建。 */
+  private digestMessages = new WeakMap<ChatMessage, { digest: string; message: ChatMessage }>();
+  /**
+   * effectiveMessages 整体投影缓存。entries 只追加不截断（rewind 也是 append），
+   * 所以 length 可当版本号；原生压缩点可回放性变化会整体改变投影，必须一起进键。
+   */
+  private effectiveCache: {
+    size: number;
+    replayable: boolean;
+    messages: ChatMessage[];
+  } | null = null;
+
+  /**
    * 当前 provider 能否重放最新的服务端原生压缩点。加密 item 与端点/模型绑定，
    * runtime 在换模型/换服务商后置 false：此时退回原始历史（JSONL 里完整保留），
    * 由裁剪兜住窗口，而不是把上下文交给一个回放不了的 item。
@@ -1525,8 +1575,29 @@ export class SessionStore {
    * 摘要以一条 user 消息的形式作为请求前缀，计划等上下文按记录位置穿插。
    * 摘要条目带有 keepRecentMessages 时，压缩点之前最近 N 条真实消息仍逐字参与请求。
    * 服务端原生压缩点则以 native_compaction 消息回放加密 item（不再保留旧消息）。
+   *
+   * 返回值按 entries 长度缓存，合成消息按 entry 记忆化：增量链用引用相等判断
+   * 前缀可续接，每次重建都会让链断掉。调用方不得原地修改返回数组。
    */
   get effectiveMessages(): ChatMessage[] {
+    const cached = this.effectiveCache;
+    if (
+      cached &&
+      cached.size === this.entries.length &&
+      cached.replayable === this.nativeCompactionReplayable
+    ) {
+      return cached.messages;
+    }
+    const messages = this.buildEffectiveMessages();
+    this.effectiveCache = {
+      size: this.entries.length,
+      replayable: this.nativeCompactionReplayable,
+      messages,
+    };
+    return messages;
+  }
+
+  private buildEffectiveMessages(): ChatMessage[] {
     const lastSummaryIndex = this.findLastSummaryIndex();
     const messages: ChatMessage[] = [];
     const summaryEntry = lastSummaryIndex >= 0 ? this.entries[lastSummaryIndex] : null;
@@ -1534,32 +1605,43 @@ export class SessionStore {
     const blocked = summaryEntry?.type === "native_compaction" && !this.nativeCompactionReplayable;
     const startIndex = blocked ? -1 : lastSummaryIndex;
     if (summaryEntry?.type === "compaction_summary") {
-      messages.push({
-        role: "user",
-        content: `Earlier conversation summary:\n${summaryEntry.summary}`,
-      });
+      messages.push(
+        this.noteMessage(summaryEntry, () => ({
+          role: "user",
+          content: `Earlier conversation summary:\n${summaryEntry.summary}`,
+        })),
+      );
       const keep = summaryEntry.keepRecentMessages ?? 0;
       if (keep > 0) {
         const before: ChatMessage[] = [];
         for (const entry of this.entries.slice(0, lastSummaryIndex)) {
           if (entry.type === "message") before.push(entry.message);
         }
-        messages.push(...before.slice(-keep));
+        // 保留段里旧回合的 thinking 在压缩时已被判定可剥：重放时不再回传，
+        // 切点冻结在压缩那一刻，所以这仍是「一次改写」而不是逐轮投影
+        messages.push(
+          ...stripThinkingBefore(
+            before.slice(-keep),
+            summaryEntry.thinkingKeepFromRetained ?? 0,
+          ),
+        );
       }
     } else if (summaryEntry?.type === "native_compaction" && !blocked) {
-      messages.push({
-        role: "native_compaction",
-        content:
-          summaryEntry.summary ||
-          "Earlier conversation history was compacted server-side by the provider.",
-        native: summaryEntry.native,
-      });
+      messages.push(
+        this.noteMessage(summaryEntry, () => ({
+          role: "native_compaction",
+          content:
+            summaryEntry.summary ||
+            "Earlier conversation history was compacted server-side by the provider.",
+          native: summaryEntry.native,
+        })),
+      );
     }
     for (const entry of this.entries.slice(startIndex + 1)) {
       if (entry.type === "message") {
         messages.push(entry.message);
       } else if (entry.type === "context_note") {
-        messages.push({ role: "user", content: entry.content });
+        messages.push(this.noteMessage(entry, () => ({ role: "user", content: entry.content })));
       }
     }
     return repairToolPairs(this.applyToolDigests(messages));
@@ -1596,6 +1678,35 @@ export class SessionStore {
 
   private get partialFile(): string {
     return path.join(path.dirname(this.filePath), ".partial", `${this.id}.json`);
+  }
+
+  /** 已读区间快照的落盘位置：与 .partial 同级，按会话 id 命名。 */
+  private get readStateFile(): string {
+    return path.join(path.dirname(this.filePath), ".readstate", `${this.id}.json`);
+  }
+
+  /**
+   * 保存「模型读过哪些文件的哪几行」快照（best-effort，失败即忽略）。
+   *
+   * 不进 JSONL 日志：它的作用是加速（省掉整段重读），丢了的代价只是重读一次，
+   * 不是事实性数据 —— 独立小文件最省事，也不会污染会话时间线。
+   */
+  async saveReadCoverage(snapshot: unknown): Promise<void> {
+    if (!Array.isArray(snapshot) || !snapshot.length) return;
+    try {
+      await writeJsonAtomic(this.readStateFile, snapshot);
+    } catch {
+      // 写失败不影响对话
+    }
+  }
+
+  /** 读取已读区间快照；没有/损坏都返回 null（按「没读过」处理）。 */
+  async loadReadCoverage<T>(): Promise<T | null> {
+    try {
+      return (await readJsonFile<T>(this.readStateFile)) ?? null;
+    } catch {
+      return null;
+    }
   }
 
   async writePartial(input: {

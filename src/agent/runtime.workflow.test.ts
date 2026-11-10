@@ -81,7 +81,7 @@ describe("治理层集成（goal 模式，T1 全流程）", () => {
           message: {
             role: "assistant",
             content:
-              'Checked the diff.\n```json\n{"status": "completed", "summary": "reviewed, no critical issues", "findings": []}\n```',
+              'Checked the diff.\n```json\n{"status": "completed", "summary": "reviewed, no critical issues", "checked": ["git diff", "diff --stat"], "findings": []}\n```',
           },
         };
       }
@@ -94,7 +94,7 @@ describe("治理层集成（goal 模式，T1 全流程）", () => {
           message: {
             role: "assistant",
             content:
-              'All commands passed.\n```json\n{"status": "completed", "summary": "verification passed"}\n```',
+              'All commands passed.\n```json\n{"status": "completed", "summary": "verification passed", "checked": ["pnpm test → exit 0"]}\n```',
           },
         };
       }

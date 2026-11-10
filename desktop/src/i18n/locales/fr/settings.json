@@ -15,6 +15,14 @@
       "dazui": "大嘴"
     }
   },
+  "progressPill": {
+    "field": "Pastille d’infos au-dessus de la saisie",
+    "desc": "Quand la pastille d’état au-dessus du champ de saisie se masque : après le commit ou à la fin du tour.",
+    "options": {
+      "commit": "Masquer après le commit",
+      "turn-end": "Masquer après le tour"
+    }
+  },
   "nav": {
     "heading": "Paramètres",
     "ariaLabel": "Sections des paramètres",
@@ -42,11 +50,7 @@
   "close": {
     "section": "Fermeture de la fenêtre",
     "field": "À la fermeture de la fenêtre",
-    "desc": {
-      "ask": "Demander à chaque fois s’il faut réduire dans la barre d’état ou quitter.",
-      "tray": "La fenêtre se cache dans la barre d’état et MeowCode continue en arrière-plan.",
-      "quit": "Fermer la fenêtre quitte MeowCode immédiatement."
-    },
+    "desc": "Comportement à la fermeture de la fenêtre principale : demander à chaque fois, masquer dans la zone de notification ou quitter.",
     "options": {
       "ask": "Demander",
       "tray": "Réduire",
@@ -56,10 +60,7 @@
   "update": {
     "section": "Mises à jour",
     "field": "Télécharger les mises à jour en arrière-plan",
-    "desc": {
-      "on": "Au démarrage, la nouvelle version est téléchargée en silence ; un bouton de redémarrage apparaît ensuite en bas à gauche de la barre latérale — cliquez pour installer.",
-      "off": "Vérifier et notifier seulement au démarrage ; le téléchargement et l’installation restent manuels dans « À propos »."
-    }
+    "desc": "Les nouvelles versions se téléchargent en arrière-plan ; une fois prêtes, un bouton de redémarrage apparaît en bas à gauche de la barre latérale pour installer."
   },
   "appearance": {
     "themeSection": "Thème",
@@ -205,6 +206,9 @@
     "empty": "Aucun modèle configuré pour l’instant. Cliquez sur « Ajouter un modèle » pour commencer.",
     "deleteTitle": "Supprimer le fournisseur",
     "deleteMessage": "Supprimer « {{name}} » ? Il devra être reconfiguré pour être utilisé.",
+    "deleteGroupAria": "Supprimer le fournisseur {{name}}",
+    "deleteGroupTitle": "Supprimer le fournisseur",
+    "deleteGroupMessage": "Supprimer « {{name}} » et ses {{count}} modèles ? Il devra être reconfiguré pour être utilisé.",
     "restartTitle": "L’enregistrement redémarre le service local",
     "restartMessage": "Les modifications de modèles redémarrent le service agent local et interrompent le tour en cours. Enregistrer quand même ?",
     "restartConfirm": "Enregistrer quand même",
@@ -336,10 +340,7 @@
   "island": {
     "section": "AI 悬浮岛",
     "field": "启用悬浮岛",
-    "desc": {
-      "on": "悬浮岛已开启：屏幕顶部居中显示所有运行中会话的状态，鼠标放上去可展开查看对话、直接输入或停止任务。",
-      "off": "开启后在屏幕顶部居中显示一枚胶囊，实时显示所有运行中会话的状态；鼠标放上去可展开成对话小窗。"
-    }
+    "desc": "Une capsule en haut au centre de l’écran affiche toutes les sessions en cours ; survolez-la pour l’ouvrir en mini-fenêtre de chat et répondre ou arrêter une tâche."
   },
   "hooks": {
     "loading": "Chargement de la configuration des hooks…",
@@ -350,15 +351,9 @@
       "section": "Importer les hooks Claude Code",
       "description": "Lit ~/.claude/settings.json et les configurations .claude de l’espace de travail. Les configurations de l’espace de travail ne sont pas exécutées par défaut.",
       "master": "Activer les hooks",
-      "masterHint": {
-        "on": "La configuration des hooks Claude Code est chargée.",
-        "off": "Désactivé : la configuration est affichée en lecture seule et ne sera pas exécutée."
-      },
+      "masterHint": "Charger et exécuter la configuration des hooks Claude Code ; désactivée, elle est affichée en lecture seule et jamais exécutée.",
       "workspace": "Inclure la configuration .claude de l’espace de travail",
-      "workspaceHint": {
-        "on": "Les hooks de .claude/settings*.json de l’espace de travail seront exécutés.",
-        "off": "Seule la configuration ~/.claude est exécutée ; celle de l’espace de travail est affichée à titre indicatif."
-      },
+      "workspaceHint": "Exécuter ou non les hooks de .claude/settings*.json de l’espace de travail ; désactivé, seule la configuration ~/.claude s’exécute.",
       "workspaceWarning": "Les hooks de l’espace de travail proviennent de fichiers du dépôt et peuvent contenir des commandes malveillantes. Ne les activez que si vous faites confiance à ce dépôt.",
       "disabledNote": "Les hooks sont désactivés. Activez l’interrupteur ci-dessus pour exécuter les commandes."
     },
@@ -548,10 +543,7 @@
     "desc": "Comportement courant. Les changements s'appliquent aussitôt.",
     "notify": {
       "field": "Notifications système",
-      "desc": {
-        "on": "Si la fenêtre est en arrière-plan, afficher une notification système à la fin d'un tour, en cas de confirmation requise ou d'interruption (titre de la conversation et résumé de la réponse).",
-        "off": "Aucune notification système ne sera affichée."
-      }
+      "desc": "Afficher une notification système avec le titre de la conversation et un résumé de la réponse lorsqu’un tour se termine, demande une confirmation ou est interrompu et que la fenêtre est en arrière-plan."
     },
     "promptSuggestions": {
       "field": "Suggestions de prochain message",
@@ -565,6 +557,17 @@
       "field": "Basculement du fournisseur",
       "desc": "En cas de délai d’attente, de limitation de débit ou d’erreur serveur du fournisseur principal, ce tour bascule automatiquement vers un autre fournisseur activé (2 sauts max).",
       "toggleFailed": "Échec de l’enregistrement du basculement du fournisseur"
+    },
+    "mailAi": {
+      "field": "Modèle hors chat",
+      "follow": "Suivre le chat"
+    },
+    "other": {
+      "section": "Général"
+    },
+    "announcement": {
+      "field": "Annonces",
+      "desc": "Afficher les annonces officielles dans la barre de titre (nouvelles versions et actualités des modèles)."
     }
   },
   "proxy": {

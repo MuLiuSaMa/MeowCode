@@ -14,10 +14,14 @@ const {
   shell,
 } = require("electron");
 const { registerTerminalIpc } = require("./terminals.cjs");
+const { createMailHost } = require("./mail-host.cjs");
 const { createJobHost } = require("./job-host.cjs");
 const { createBrowserHostController } = require("./browser-host.cjs");
 const { createComputerHostController } = require("./computer-host.cjs");
+const { createNoticeController } = require("./notice.cjs");
 const { mainStrings } = require("./main-i18n.cjs");
+// 拖动窗口的位置计算（钉死尺寸，见文件头注释）
+const { dragBounds } = require("./window-drag.cjs");
 const {
   normalizeTraySessions,
   traySessionLabel,
@@ -212,6 +216,8 @@ if (process.platform === "win32") {
 const CLOSE_ACTIONS = ["ask", "tray", "quit"];
 /** 用户可见回复的语色：普通 / 永雏塔菲 / 大嘴 */
 const SPEECH_STYLES = ["normal", "tafei", "dazui"];
+/** 输入框上方信息胶囊的收起时机：提交后（跟随工作区未提交状态）/ 对话结束后 */
+const PROGRESS_PILL_DISMISS = ["commit", "turn-end"];
 const PROXY_MODES = ["direct", "system", "manual"];
 
 /**
@@ -290,6 +296,8 @@ const ISLAND_WINDOW_HEIGHT = 680;
 const browserHost = createBrowserHostController({ getMainWindow: () => mainWindow });
 /** 电脑控制桥（computer_* 工具）：截图走 desktopCapturer，输入走常驻 PowerShell 助手 */
 const computerHost = createComputerHostController();
+/** 公告控制器：拉取 NexBox 数据仓的 notice_meowcode.json（见 notice.cjs） */
+let noticeController = null;
 let tray = null;
 /** 真退出（托盘菜单 / before-quit）时为 true，此时 close 事件直接放行 */
 let isQuitting = false;
@@ -559,6 +567,8 @@ function defaultSettings() {
     closeAction: "ask",
     language: "system",
     speechStyle: "normal",
+    // 信息胶囊：默认「提交后消失」，与引入这个设置之前的行为一致
+    progressPillDismiss: "commit",
     // 记忆总开关：开 = 自动蒸馏 + 注入记忆索引 + 下发记忆工具；关 = 全部停用（记忆文件仍保留）
     memoryEnabled: true,
     // 自我学习（技能 / 项目经验 / 用户模型）：实验性能力，默认关闭，设置页可开
@@ -575,6 +585,8 @@ function defaultSettings() {
     projectNames: {},
     pinnedProjects: [],
     removedProjects: [],
+    // 邮件「AI 写」使用的模型 id；空串 = 跟随聊天模型
+    mailAiProviderId: "",
     githubAuth: {},
     mcpCredentials: {},
     oauthApps: {},
@@ -653,6 +665,10 @@ function migrateSettings(raw) {
     language: LANGUAGE_PREFERENCES.includes(parsed.language) ? parsed.language : "system",
     palette: PALETTES.includes(parsed.palette) ? parsed.palette : "classic",
     speechStyle: SPEECH_STYLES.includes(parsed.speechStyle) ? parsed.speechStyle : "normal",
+    // 信息胶囊收起时机：缺字段的老用户补「提交后消失」（保持原行为）
+    progressPillDismiss: PROGRESS_PILL_DISMISS.includes(parsed.progressPillDismiss)
+      ? parsed.progressPillDismiss
+      : "commit",
     // 全新安装走 defaultSettings() 回退（显式 false）；已有 settings.json 缺字段的老用户补 true
     onboardingCompleted:
       typeof parsed.onboardingCompleted === "boolean" ? parsed.onboardingCompleted : true,
@@ -678,6 +694,8 @@ function migrateSettings(raw) {
         : {},
     pinnedProjects: Array.isArray(parsed.pinnedProjects) ? parsed.pinnedProjects : [],
     removedProjects: Array.isArray(parsed.removedProjects) ? parsed.removedProjects : [],
+    mailAiProviderId:
+      typeof parsed.mailAiProviderId === "string" ? parsed.mailAiProviderId.trim() : "",
     // 界面字体：空串 = 默认 MiSans；customFonts = 导入的自定义字体文件
     fontFamily: typeof parsed.fontFamily === "string" ? parsed.fontFamily : "",
     // 代码字体：空串 = 默认等宽栈
@@ -822,6 +840,10 @@ function publicSettings(settings) {
     closeAction: settings.closeAction ?? "ask",
     language: LANGUAGE_PREFERENCES.includes(settings.language) ? settings.language : "system",
     speechStyle: SPEECH_STYLES.includes(settings.speechStyle) ? settings.speechStyle : "normal",
+    /** 输入框上方信息胶囊的收起时机 */
+    progressPillDismiss: PROGRESS_PILL_DISMISS.includes(settings.progressPillDismiss)
+      ? settings.progressPillDismiss
+      : "commit",
     onboardingCompleted: typeof settings.onboardingCompleted === "boolean" ? settings.onboardingCompleted : true,
     /** 记忆总开关：默认开（关掉后不蒸馏、不注入、不下发记忆工具） */
     memoryEnabled:
@@ -846,9 +868,12 @@ function publicSettings(settings) {
     removedProjects: Array.isArray(settings.removedProjects) ? settings.removedProjects : [],
     silentUpdate: typeof settings.silentUpdate === "boolean" ? settings.silentUpdate : true,
     notifications: typeof settings.notifications === "boolean" ? settings.notifications : true,
+    announcements: typeof settings.announcements === "boolean" ? settings.announcements : true,
     floatingIsland: typeof settings.floatingIsland === "boolean" ? settings.floatingIsland : false,
     nextPromptSuggestions:
       typeof settings.nextPromptSuggestions === "boolean" ? settings.nextPromptSuggestions : false,
+    mailAiProviderId:
+      typeof settings.mailAiProviderId === "string" ? settings.mailAiProviderId : "",
     worktreeFetchUpstream:
       typeof settings.worktreeFetchUpstream === "boolean" ? settings.worktreeFetchUpstream : false,
     worktreeAutoCleanup:
@@ -1221,8 +1246,12 @@ function flushUiState() {
   }
 }
 
-function buildServerEnv(settings) {
-  const providers = (settings.providers ?? []).map((provider) => ({
+/**
+ * settings.providers（密钥是加密串）→ server 侧的 ProviderConfig（解密后的 apiKey）。
+ * 启动时进 env，运行中增删改模型走 PUT /config/providers（不重启进程）。
+ */
+function providersForServer(settings) {
+  return (settings.providers ?? []).map((provider) => ({
     id: provider.id,
     name: provider.name,
     baseUrl: provider.baseUrl,
@@ -1245,6 +1274,10 @@ function buildServerEnv(settings) {
     extraBody: provider.extraBody,
     nativeCompaction: provider.nativeCompaction,
   }));
+}
+
+function buildServerEnv(settings) {
+  const providers = providersForServer(settings);
   const ripgrepPath = devRepoRoot()
     ? ""
     : path.join(process.resourcesPath, "agent-server", "ripgrep", process.platform === "win32" ? "rg.exe" : "rg");
@@ -2780,7 +2813,74 @@ ipcMain.handle("meow:save-settings", async (_event, nextSettings) => {
   return publicSettings(settings);
 });
 
-// ---- 插件启停：只动 settings.plugins，写盘后重启 agent server 生效 ----
+// ---- 服务商列表增删改：轻量落盘 + 热更新运行中的 server（不重启进程） ----
+/**
+ * 服务商热更新：桌面端已落盘，这里只把解密后的配置推给运行中的 server。
+ * server 没起来时无需推送（下次启动 env 里已是新列表）。
+ */
+async function pushProviders(providers, providerId) {
+  if (!serverUrl) return;
+  const response = await fetch(`${serverUrl}/config/providers`, {
+    method: "PUT",
+    headers: {
+      authorization: `Bearer ${serverToken}`,
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({ providers, providerId }),
+  });
+  if (!response.ok) throw new Error(`provider update failed: HTTP ${response.status}`);
+}
+
+/**
+ * 保存模型列表（增删改 / 启用开关）：只写盘 + 热更新 server。
+ * 走 meow:save-settings 会 startServer() 重启进程，把运行中的回合直接杀掉。
+ */
+ipcMain.handle("meow:save-providers", async (_event, payload) => {
+  ensureDirs();
+  const incoming = payload && typeof payload === "object" ? payload : {};
+  const previous = readSettings();
+  const providers = (Array.isArray(incoming.providers) ? incoming.providers : []).map((provider) => {
+    // 同一服务商下新增的模型条目是全新 id：密钥从同组来源条目继承，否则会丢 key
+    const existing =
+      (previous.providers ?? []).find((item) => item.id === provider.id) ??
+      (typeof provider.apiKeySourceId === "string"
+        ? (previous.providers ?? []).find((item) => item.id === provider.apiKeySourceId)
+        : undefined);
+    return providerFields(provider, existing);
+  });
+  const settings = migrateSettings({
+    ...previous,
+    providers,
+    providerId:
+      (typeof incoming.providerId === "string" && incoming.providerId) ||
+      providers.find((item) => item.id)?.id ||
+      providers[0]?.id ||
+      previous.providerId,
+  });
+  writeSettings(settings);
+  await pushProviders(providersForServer(settings), settings.providerId);
+  return publicSettings(settings);
+});
+
+// ---- 插件启停：写 settings.plugins 后热更新运行中的 server（不重启进程） ----
+/**
+ * 插件启停热更新：只让运行中的 server 更新禁用列表并重载插件，不重启进程。
+ * server 没起来时才启动一次；启动后 env 里已经是新列表。
+ */
+async function pushPluginDisabled(disabled) {
+  if (!serverUrl) await startServer();
+  if (!serverUrl) throw new Error("Agent server is not ready.");
+  const response = await fetch(`${serverUrl}/plugins/disabled`, {
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${serverToken}`,
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({ disabled }),
+  });
+  if (!response.ok) throw new Error(`plugin state update failed: HTTP ${response.status}`);
+}
+
 ipcMain.handle("meow:set-plugins-state", async (_event, payload) => {
   ensureDirs();
   const disabled = Array.isArray(payload?.disabled)
@@ -2792,11 +2892,28 @@ ipcMain.handle("meow:set-plugins-state", async (_event, payload) => {
     plugins: { ...(previous.plugins ?? {}), disabled },
   });
   writeSettings(settings);
-  await startServer();
+  await pushPluginDisabled(disabled);
   return publicSettings(settings);
 });
 
-// ---- Claude Code hooks：启停 + 运行方式 + 工作区配置范围；写盘后重启 agent server ----
+// ---- Claude Code hooks：启停 + 运行方式 + 工作区配置范围；插件启停走热更新 ----
+/**
+ * hooks 运行方式/工作区范围热更新：server 侧只改 env，插件每次执行时读 env，不重启进程。
+ * server 没起来时无需推送（下次启动 env 里已是新值）。
+ */
+async function pushHooksConfig({ runMode, includeWorkspace }) {
+  if (!serverUrl) return;
+  const response = await fetch(`${serverUrl}/config/hooks`, {
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${serverToken}`,
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({ runMode, includeWorkspace }),
+  });
+  if (!response.ok) throw new Error(`hooks config update failed: HTTP ${response.status}`);
+}
+
 ipcMain.handle("meow:save-hooks-settings", async (_event, payload) => {
   ensureDirs();
   const incoming = payload && typeof payload === "object" ? payload : {};
@@ -2804,11 +2921,11 @@ ipcMain.handle("meow:save-hooks-settings", async (_event, payload) => {
   const enabled = incoming.enabled !== false;
   const runMode = incoming.runMode === "ask" ? "ask" : "auto";
   const includeWorkspace = incoming.includeWorkspace === true;
-  const disabled = new Set(
-    Array.isArray(previous.plugins?.disabled)
-      ? previous.plugins.disabled
-      : ["computer-control"],
-  );
+  const previousDisabled = Array.isArray(previous.plugins?.disabled)
+    ? previous.plugins.disabled
+    : ["computer-control"];
+  const wasEnabled = !previousDisabled.includes("claude-code-hooks");
+  const disabled = new Set(previousDisabled);
   if (enabled) disabled.delete("claude-code-hooks");
   else disabled.add("claude-code-hooks");
   const settings = migrateSettings({
@@ -2817,7 +2934,9 @@ ipcMain.handle("meow:save-hooks-settings", async (_event, payload) => {
     hooks: { runMode, includeWorkspace },
   });
   writeSettings(settings);
-  await startServer();
+  // 运行方式/范围只改 env；只有启停状态变了才重载插件（避免无谓的目录改写）
+  await pushHooksConfig({ runMode, includeWorkspace });
+  if (enabled !== wasEnabled) await pushPluginDisabled([...disabled]);
   return publicSettings(settings);
 });
 
@@ -3300,6 +3419,76 @@ ipcMain.handle("meow:window-minimize", () => {
   mainWindow?.minimize();
 });
 
+// 标题栏公告：拖动文字等于拖动窗口（渲染层判断位移后调用）。
+// no-drag 区域内 ReleaseCapture+WM_NCLBUTTONDOWN 进不了系统移动循环（鼠标捕获在渲染进程），
+// 这里改用主进程轮询光标 + 逐帧移动的方案：稳定、与是否 no-drag 无关。
+//
+// 两个坑，都表现为「拖一下窗口变大」：
+//  1. 只调 setPosition：Electron 每帧读当前尺寸再写回，缩放显示器上 DIP↔像素往返取整，
+//     每帧可能多 1px，拖一会儿窗口就胖一圈。→ 逐帧 setBounds，宽高钉死起拖快照。
+//  2. 最大化状态下起拖：快照拿到的是全屏矩形，挪走的就是一个「全屏大小的普通窗口」。
+//     → 先 unmaximize 还原，等系统落定后再按还原后的尺寸起拖（与系统拖标题栏一致）。
+let windowDragTimer = null;
+let windowDragState = null;
+/** 起拖序号：unmaximize 后延迟起拖期间若又结束/重开，旧的那次必须作废 */
+let windowDragSeq = 0;
+
+function stopWindowDrag() {
+  windowDragSeq += 1;
+  if (windowDragTimer) clearInterval(windowDragTimer);
+  windowDragTimer = null;
+  windowDragState = null;
+}
+
+/** 每帧：光标位移 → 新矩形（尺寸永远取起拖时那份）。 */
+function stepWindowDrag() {
+  const state = windowDragState;
+  // 兜底：渲染层没发结束（崩溃/丢抬起）时最长 60s 自动停
+  if (!state || state.win.isDestroyed() || Date.now() - state.startedAt > 60_000) {
+    stopWindowDrag();
+    return;
+  }
+  const next = dragBounds(state.bounds, state.startCursor, screen.getCursorScreenPoint());
+  // 光标没动就别写窗口：省掉每秒 60 次无意义的 move 事件（还会触发状态落盘）
+  if (next.x === state.lastX && next.y === state.lastY) return;
+  state.lastX = next.x;
+  state.lastY = next.y;
+  state.win.setBounds(next);
+}
+
+ipcMain.handle("meow:window-start-drag", (event) => {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  if (!win || win.isDestroyed() || win.isFullScreen()) return false;
+  stopWindowDrag();
+  const seq = windowDragSeq;
+  const begin = () => {
+    // 等待期间被 endWindowDrag / 新一次 start 顶掉就作废
+    if (seq !== windowDragSeq || win.isDestroyed()) return;
+    windowDragState = {
+      win,
+      startCursor: screen.getCursorScreenPoint(),
+      bounds: win.getBounds(),
+      startedAt: Date.now(),
+      lastX: Number.NaN,
+      lastY: Number.NaN,
+    };
+    win.once("closed", stopWindowDrag);
+    windowDragTimer = setInterval(stepWindowDrag, 16);
+  };
+  if (win.isMaximized()) {
+    win.unmaximize();
+    // unmaximize 是异步的：立刻 getBounds() 还可能拿到最大化矩形，等系统摆回还原尺寸
+    setTimeout(begin, 60);
+  } else {
+    begin();
+  }
+  return true;
+});
+ipcMain.handle("meow:window-end-drag", () => {
+  stopWindowDrag();
+  return true;
+});
+
 ipcMain.handle("meow:window-toggle-maximize", () => {
   if (!mainWindow) return false;
   if (mainWindow.isMaximized()) mainWindow.unmaximize();
@@ -3717,6 +3906,15 @@ app.on("web-contents-created", (_event, contents) => {
 
 /** 终端 PTY 管理器（右侧面板终端页签）；退出前全量释放，防止 conpty 残留阻塞退出 */
 const terminalManager = registerTerminalIpc(ipcMain, () => mainWindow);
+/** 邮箱聚合：IMAP/SMTP、轮询同步与发送队列都在主进程；数据落在 userData/mail */
+const mailHost = createMailHost({
+  ipcMain,
+  getWindow: () => mainWindow,
+  dataDir: app.getPath("userData"),
+  encrypt: encryptApiKey,
+  decrypt: decryptApiKey,
+});
+mailHost.start();
 /**
  * agent 后台任务控制面：与浏览器桥同款 loopback HTTP + token。
  * 任务在同一个终端 PTY 里跑，渲染层收到 ensure-tab 后按 id 打开终端页签即可接管输入。
@@ -3739,6 +3937,7 @@ void jobHost.start().catch((error) => {
 });
 app.on("before-quit", () => {
   terminalManager.disposeAll();
+  void mailHost.dispose();
   jobHost.close();
   clearGithubRefresh();
   githubFlows.clear();
@@ -3813,6 +4012,9 @@ ipcMain.handle("meow:get-preferences", () => {
     closeAction: CLOSE_ACTIONS.includes(settings.closeAction) ? settings.closeAction : "ask",
     language: LANGUAGE_PREFERENCES.includes(settings.language) ? settings.language : "system",
     speechStyle: SPEECH_STYLES.includes(settings.speechStyle) ? settings.speechStyle : "normal",
+    progressPillDismiss: PROGRESS_PILL_DISMISS.includes(settings.progressPillDismiss)
+      ? settings.progressPillDismiss
+      : "commit",
     onboardingCompleted:
       typeof settings.onboardingCompleted === "boolean" ? settings.onboardingCompleted : true,
     archivedSessions: Array.isArray(settings.archivedSessions) ? settings.archivedSessions : [],
@@ -3823,11 +4025,15 @@ ipcMain.handle("meow:get-preferences", () => {
     silentUpdate: typeof settings.silentUpdate === "boolean" ? settings.silentUpdate : true,
     // 系统通知：默认开启
     notifications: typeof settings.notifications === "boolean" ? settings.notifications : true,
+    // 标题栏公告：默认开启
+    announcements: typeof settings.announcements === "boolean" ? settings.announcements : true,
     // AI 悬浮岛：默认关闭
     floatingIsland: typeof settings.floatingIsland === "boolean" ? settings.floatingIsland : false,
     // 输入建议：每轮回合后预测下一句（默认关闭，开启前会提示额外 token）
     nextPromptSuggestions:
       typeof settings.nextPromptSuggestions === "boolean" ? settings.nextPromptSuggestions : false,
+    mailAiProviderId:
+      typeof settings.mailAiProviderId === "string" ? settings.mailAiProviderId : "",
     worktreeFetchUpstream:
       typeof settings.worktreeFetchUpstream === "boolean" ? settings.worktreeFetchUpstream : false,
     worktreeAutoCleanup:
@@ -3869,6 +4075,13 @@ ipcMain.handle("meow:save-preferences", (_event, prefs) => {
   if (prefs?.speechStyle !== undefined && SPEECH_STYLES.includes(prefs.speechStyle)) {
     next.speechStyle = prefs.speechStyle;
   }
+  // 信息胶囊收起时机：纯渲染层偏好，只写盘，不重启 agent server
+  if (
+    prefs?.progressPillDismiss !== undefined &&
+    PROGRESS_PILL_DISMISS.includes(prefs.progressPillDismiss)
+  ) {
+    next.progressPillDismiss = prefs.progressPillDismiss;
+  }
   // 工作区只决定「新建会话的默认目录」（/session/new 每次都会带 cwd）。
   // 绝不能走 meow:save-settings：那条路会 startServer() 重启 agent server，
   // 把运行中的回合和后台会话一起杀掉——这正是「换工作区后对话就结束」的根因。
@@ -3901,6 +4114,10 @@ ipcMain.handle("meow:save-preferences", (_event, prefs) => {
   if (typeof prefs?.notifications === "boolean") {
     next.notifications = prefs.notifications;
   }
+  // 标题栏公告开关：纯渲染层偏好，只写盘，不重启 agent server
+  if (typeof prefs?.announcements === "boolean") {
+    next.announcements = prefs.announcements;
+  }
   // 界面字体：空串 = 默认 MiSans
   if (typeof prefs?.fontFamily === "string") {
     next.fontFamily = prefs.fontFamily.slice(0, 120);
@@ -3916,6 +4133,10 @@ ipcMain.handle("meow:save-preferences", (_event, prefs) => {
   // 输入建议：默认关闭；只影响渲染层是否在回合后请求预测
   if (typeof prefs?.nextPromptSuggestions === "boolean") {
     next.nextPromptSuggestions = prefs.nextPromptSuggestions;
+  }
+  // 邮件 AI 写作模型：空串 = 跟随聊天模型；只写盘，不重启 agent server
+  if (typeof prefs?.mailAiProviderId === "string") {
+    next.mailAiProviderId = prefs.mailAiProviderId.trim();
   }
   // 供应商故障转移：默认关闭；实时生效走 /config/provider-fallback
   if (typeof prefs?.providerFallback === "boolean") {
@@ -3937,6 +4158,32 @@ ipcMain.handle("meow:save-preferences", (_event, prefs) => {
   }
   if (typeof prefs?.includeClaudeMd === "boolean") {
     next.includeClaudeMd = prefs.includeClaudeMd;
+  }
+  // 插件 UI 授权记忆：按插件 id 合并进 settings.plugins.approvals。
+  // 只写盘、不重启 agent server：启用插件弹授权时批准，不该杀掉运行中的回合。
+  if (
+    prefs?.pluginApprovals &&
+    typeof prefs.pluginApprovals === "object" &&
+    !Array.isArray(prefs.pluginApprovals)
+  ) {
+    const approvals = { ...(settings.plugins?.approvals ?? {}) };
+    for (const [pluginId, record] of Object.entries(prefs.pluginApprovals)) {
+      if (!pluginId.trim() || !record || typeof record !== "object" || Array.isArray(record)) continue;
+      const version = typeof record.version === "string" ? record.version.trim() : "";
+      if (!version) continue;
+      approvals[pluginId] = {
+        version,
+        permissions: Array.isArray(record.permissions)
+          ? record.permissions.filter((item) => typeof item === "string" && item.trim())
+          : [],
+        approvedAt:
+          typeof record.approvedAt === "string" && record.approvedAt.trim()
+            ? record.approvedAt
+            : new Date().toISOString(),
+        ...(record.declined === true ? { declined: true } : {}),
+      };
+    }
+    next.plugins = { ...(next.plugins ?? {}), approvals };
   }
   // 读-改-写：保留 providers 里的 apiKeyEncrypted
   writeSettings(next);
@@ -3976,6 +4223,9 @@ ipcMain.handle("meow:save-preferences", (_event, prefs) => {
     palette: PALETTES.includes(next.palette) ? next.palette : "classic",
     closeAction: next.closeAction,
     language: LANGUAGE_PREFERENCES.includes(next.language) ? next.language : "system",
+    progressPillDismiss: PROGRESS_PILL_DISMISS.includes(next.progressPillDismiss)
+      ? next.progressPillDismiss
+      : "commit",
     onboardingCompleted:
       typeof next.onboardingCompleted === "boolean" ? next.onboardingCompleted : true,
     archivedSessions: Array.isArray(next.archivedSessions) ? next.archivedSessions : [],
@@ -3984,6 +4234,7 @@ ipcMain.handle("meow:save-preferences", (_event, prefs) => {
     removedProjects: Array.isArray(next.removedProjects) ? next.removedProjects : [],
     silentUpdate: typeof next.silentUpdate === "boolean" ? next.silentUpdate : true,
     notifications: typeof next.notifications === "boolean" ? next.notifications : true,
+    announcements: typeof next.announcements === "boolean" ? next.announcements : true,
     floatingIsland: typeof next.floatingIsland === "boolean" ? next.floatingIsland : false,
     nextPromptSuggestions:
       typeof next.nextPromptSuggestions === "boolean" ? next.nextPromptSuggestions : false,
@@ -4329,6 +4580,25 @@ if (!hasSingleInstanceLock) {
     // 先读本机缓存，过期再后台拉取；拉取完成后会把新规则推给渲染层
     fetchModelProfiles();
     setInterval(fetchModelProfiles, MODEL_PROFILES_TTL).unref();
+    // 公告：先展示磁盘缓存，再后台拉取（失败静默），每 3 小时刷新
+    noticeController = createNoticeController({
+      cachePath: path.join(settingsDir, "announcement.json"),
+      onUpdate: (notice) => {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          try {
+            mainWindow.webContents.send("meow:announcement", notice);
+          } catch {
+            // 窗口正在销毁
+          }
+        }
+      },
+    });
+    ipcMain.handle("meow:announcement", () => noticeController?.get() ?? null);
+    ipcMain.handle("meow:announcement-dismiss", (_event, id) => {
+      noticeController?.dismiss(typeof id === "string" ? id : "");
+      return null;
+    });
+    noticeController.start();
     try {
       await browserHost.start();
     } catch (error) {
@@ -4386,6 +4656,7 @@ app.on("before-quit", (event) => {
     automationScheduler.stop();
     browserHost.stop();
     computerHost.stop();
+    noticeController?.stop();
     void stopServer().finally(() => {
       quitAfterShutdown = true;
       app.quit();
@@ -4396,4 +4667,5 @@ app.on("before-quit", (event) => {
   automationScheduler.stop();
   browserHost.stop();
   computerHost.stop();
+  noticeController?.stop();
 });

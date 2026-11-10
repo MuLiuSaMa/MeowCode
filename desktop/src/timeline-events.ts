@@ -49,16 +49,30 @@ export function applyTimelineEvent(
     }
     case "assistant_delta": {
       const last = next.at(-1);
+      const thinkingMs = event.thinkingMs;
       if (last?.kind === "message" && last.role === "assistant" && last.streaming) {
-        next[next.length - 1] = { ...last, content: last.content + (event.delta ?? "") };
+        next[next.length - 1] = {
+          ...last,
+          content: last.content + (event.delta ?? ""),
+          ...(thinkingMs !== undefined ? { thinkingMs } : {}),
+        };
       } else {
         next.push({
           kind: "message",
           key: nextKey("assistant"),
           role: "assistant",
           content: event.delta ?? "",
+          ...(thinkingMs !== undefined ? { thinkingMs } : {}),
           streaming: true,
         });
+      }
+      break;
+    }
+    case "thinking_complete": {
+      // 只有工具调用的轮次没有正文增量：思考时长在消息落盘时补一个事件
+      const last = next.at(-1);
+      if (last?.kind === "message" && last.role === "assistant") {
+        next[next.length - 1] = { ...last, thinkingMs: event.thinkingMs };
       }
       break;
     }
@@ -69,6 +83,7 @@ export function applyTimelineEvent(
           ...last,
           content: event.text ?? last.content,
           thinking: event.reasoning ?? last.thinking,
+          ...(event.thinkingMs !== undefined ? { thinkingMs: event.thinkingMs } : {}),
           streaming: false,
         };
       } else {
@@ -78,6 +93,7 @@ export function applyTimelineEvent(
           role: "assistant",
           content: event.text ?? "",
           thinking: event.reasoning,
+          ...(event.thinkingMs !== undefined ? { thinkingMs: event.thinkingMs } : {}),
         });
       }
       break;

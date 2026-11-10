@@ -43,6 +43,11 @@ export type OutputBudget = {
   inputTokens: number;
   /** 预算来源：真实用量 / 字符估算 / 窗口未知直接用配置 */
   source: "measured" | "estimate" | "configured";
+  /**
+   * 窗口余量已经容不下最小输出预算：请求必被服务商拒绝（400），
+   * 调用方应直接报 PromptTooLargeError，而不是发一个注定失败的请求。
+   */
+  overflow: boolean;
 };
 
 export function resolveOutputBudget(input: OutputBudgetInput): OutputBudget {
@@ -67,10 +72,23 @@ export function resolveOutputBudget(input: OutputBudgetInput): OutputBudget {
       available: Number.POSITIVE_INFINITY,
       inputTokens,
       source: "configured",
+      overflow: false,
     };
   }
 
   const available = window - inputTokens - CONTEXT_SAFETY_TOKENS;
+  // 余量已经装不下最小输出：按 256 硬发只会换回一个 400，不如明确报出来。
+  // 调用方拿到 overflow 就抛 PromptTooLargeError（含真实数字，用户可以据此拆附件）。
+  if (available < MIN_OUTPUT_TOKENS) {
+    return {
+      tokens: MIN_OUTPUT_TOKENS,
+      clamped: true,
+      available,
+      inputTokens,
+      source: measured === null ? "estimate" : "measured",
+      overflow: true,
+    };
+  }
   const tokens = Math.max(MIN_OUTPUT_TOKENS, Math.min(configured, available));
   return {
     tokens,
@@ -78,5 +96,6 @@ export function resolveOutputBudget(input: OutputBudgetInput): OutputBudget {
     available,
     inputTokens,
     source: measured === null ? "estimate" : "measured",
+    overflow: false,
   };
 }

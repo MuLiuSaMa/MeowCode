@@ -13,7 +13,7 @@ export function IslandSection({
   const { t } = useTranslation("settings");
   return (
     <div className="mc-settings__inner">
-      <Section title={t("island.section")} description={t(floatingIsland ? "island.desc.on" : "island.desc.off")}>
+      <Section title={t("island.section")} description={t("island.desc")}>
         <FieldRow label={t("island.field")}>
           <Toggle checked={floatingIsland} onChange={onFloatingIslandChange} label={t("island.field")} />
         </FieldRow>

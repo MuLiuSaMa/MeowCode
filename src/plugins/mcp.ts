@@ -776,7 +776,7 @@ export const createStdioOrHttpClient: McpClientFactory = async (config, serverNa
         .catch(() => undefined);
       if (tokens?.access_token) headers.Authorization = `Bearer ${tokens.access_token}`;
     }
-    const client = new Client({ name: "meowcode", version: "1.1.0" });
+    const client = new Client({ name: "meowcode", version: "1.2.0" });
     const transport = new StreamableHTTPClientTransport(url, { requestInit: { headers } });
     try {
       // 裸连：Firecrawl 这类免 key HTTP MCP 直接通
@@ -787,7 +787,7 @@ export const createStdioOrHttpClient: McpClientFactory = async (config, serverNa
       throw new McpAuthRequiredError(serverName ?? url.host);
     }
   }
-  const client = new Client({ name: "meowcode", version: "1.1.0" });
+  const client = new Client({ name: "meowcode", version: "1.2.0" });
   if (typeof config.command === "string" && config.command.length > 0) {
     const env: Record<string, string> = {};
     for (const [key, value] of Object.entries(process.env)) {

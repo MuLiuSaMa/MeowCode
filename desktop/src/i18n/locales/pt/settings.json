@@ -15,6 +15,14 @@
       "dazui": "大嘴"
     }
   },
+  "progressPill": {
+    "field": "Pílula de informações acima do campo",
+    "desc": "Quando a cápsula de status acima do campo de entrada é ocultada: após o commit ou ao fim do turno.",
+    "options": {
+      "commit": "Ocultar após commit",
+      "turn-end": "Ocultar após o turno"
+    }
+  },
   "nav": {
     "heading": "Configurações",
     "ariaLabel": "Seções das configurações",
@@ -42,11 +50,7 @@
   "close": {
     "section": "Fechamento da janela",
     "field": "Ao fechar a janela",
-    "desc": {
-      "ask": "Perguntar a cada vez se recolhe para a bandeja ou encerra.",
-      "tray": "Ao fechar, a janela fica oculta na bandeja do sistema e o MeowCode continua em segundo plano.",
-      "quit": "Fechar a janela encerra o MeowCode imediatamente."
-    },
+    "desc": "O que acontece ao fechar a janela principal: perguntar sempre, ocultar na bandeja do sistema e continuar em segundo plano, ou sair.",
     "options": {
       "ask": "Perguntar",
       "tray": "Recolher",
@@ -56,10 +60,7 @@
   "update": {
     "section": "Atualizações",
     "field": "Baixar atualizações em segundo plano",
-    "desc": {
-      "on": "Ao iniciar, a nova versão é baixada em segundo plano. Depois aparece um botão de reinício no canto inferior esquerdo da barra lateral — clique para instalar.",
-      "off": "Apenas verificar e avisar ao iniciar; baixar e instalar continua manual na página Sobre."
-    }
+    "desc": "As novas versões são baixadas em segundo plano; ao concluir, surge um botão de reinício no canto inferior esquerdo da barra lateral para instalar."
   },
   "appearance": {
     "themeSection": "Tema",
@@ -205,6 +206,9 @@
     "empty": "Nenhum modelo configurado ainda. Comece em \"Adicionar modelo\".",
     "deleteTitle": "Excluir provedor",
     "deleteMessage": "Excluir \"{{name}}\"? Será preciso configurá-lo novamente para poder usá-lo.",
+    "deleteGroupAria": "Excluir provedor {{name}}",
+    "deleteGroupTitle": "Excluir provedor",
+    "deleteGroupMessage": "Excluir \"{{name}}\" e todos os {{count}} modelos abaixo dele? Será preciso configurá-lo novamente para poder usá-lo.",
     "restartTitle": "Salvar reinicia o serviço local",
     "restartMessage": "Alterações de modelos reiniciam o serviço agent local e interrompem o turno em andamento. Salvar mesmo assim?",
     "restartConfirm": "Salvar mesmo assim",
@@ -336,10 +340,7 @@
   "island": {
     "section": "AI 悬浮岛",
     "field": "启用悬浮岛",
-    "desc": {
-      "on": "悬浮岛已开启：屏幕顶部居中显示所有运行中会话的状态，鼠标放上去可展开查看对话、直接输入或停止任务。",
-      "off": "开启后在屏幕顶部居中显示一枚胶囊，实时显示所有运行中会话的状态；鼠标放上去可展开成对话小窗。"
-    }
+    "desc": "Uma cápsula no topo central da tela mostra todas as sessões em execução; passe o cursor para expandi-la em uma mini janela de chat e responder ou parar uma tarefa."
   },
   "hooks": {
     "loading": "Carregando a configuração de hooks…",
@@ -350,15 +351,9 @@
       "section": "Importar hooks do Claude Code",
       "description": "Lê ~/.claude/settings.json e as configurações .claude do workspace. As configurações do workspace não são executadas por padrão.",
       "master": "Ativar hooks",
-      "masterHint": {
-        "on": "A configuração de hooks do Claude Code foi carregada.",
-        "off": "Desativado: a configuração é exibida apenas para leitura e não será executada."
-      },
+      "masterHint": "Carregar e executar a configuração de hooks do Claude Code; desativada, é exibida apenas para leitura e nunca é executada.",
       "workspace": "Incluir configuração .claude do workspace",
-      "workspaceHint": {
-        "on": "Os hooks em .claude/settings*.json do workspace serão executados.",
-        "off": "Apenas a configuração ~/.claude é executada; a do workspace é apenas exibida."
-      },
+      "workspaceHint": "Se os hooks de .claude/settings*.json do espaço de trabalho são executados; desativado, apenas a configuração ~/.claude é executada.",
       "workspaceWarning": "Os hooks do workspace vêm de arquivos do repositório e podem conter comandos maliciosos. Ative apenas se confiar neste repositório.",
       "disabledNote": "Os hooks estão desativados. Ative o interruptor acima para executar comandos."
     },
@@ -548,10 +543,7 @@
     "desc": "Comportamento do dia a dia. As mudanças valem na hora.",
     "notify": {
       "field": "Notificações do sistema",
-      "desc": {
-        "on": "Se a janela estiver em segundo plano, mostrar uma notificação ao concluir um turno, pedir confirmação ou ser interrompido (título da conversa e resumo da resposta).",
-        "off": "Nenhuma notificação do sistema será mostrada."
-      }
+      "desc": "Mostrar uma notificação do sistema com o título da conversa e o resumo da resposta quando um turno termina, exige aprovação ou é interrompido e a janela está em segundo plano."
     },
     "promptSuggestions": {
       "field": "Sugestões de próxima mensagem",
@@ -565,6 +557,17 @@
       "field": "Failover do provedor",
       "desc": "Quando o provedor principal expira, atinge limite de requisições ou retorna erro de servidor, este turno muda automaticamente para outro provedor habilitado (até 2 saltos).",
       "toggleFailed": "Falha ao salvar a configuração de failover do provedor"
+    },
+    "mailAi": {
+      "field": "Modelo fora do chat",
+      "follow": "Seguir o chat"
+    },
+    "other": {
+      "section": "Geral"
+    },
+    "announcement": {
+      "field": "Anúncios",
+      "desc": "Mostrar anúncios oficiais na barra de título (novas versões e novidades de modelos)."
     }
   },
   "proxy": {

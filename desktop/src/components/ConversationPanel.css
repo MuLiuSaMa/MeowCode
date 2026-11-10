@@ -39,6 +39,8 @@
   flex: 1;
   min-height: 0;
   overflow-y: auto;
+  /* 滚动条出现时不挤压内容：始终预留槽位（同添加模型弹窗） */
+  scrollbar-gutter: stable;
   overflow-x: hidden;
   padding-right: 2px;
 }
@@ -475,24 +477,9 @@
 }
 
 /* ---- 多选：行内勾选框 ---- */
-/* 用负边距把勾选框塞进行首 32px 缩进里：它在 flex 行内居中（与标题同一套垂直居中），
-   标题的 x 位置（padding 32px）完全不变，也不需要绝对定位猜基线 */
+/* 视觉由 ui/Checkbox 统一提供，这里只负责塞进行首 32px 缩进 */
 .mc-convpanel__check {
-  flex: none;
   margin-left: -21px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 14px;
-  height: 14px;
-  border: 1px solid var(--border-strong);
-  border-radius: 4px;
-  color: var(--brand-fg);
-  transition: background-color var(--dur) var(--ease), border-color var(--dur) var(--ease);
-}
-.mc-convpanel__check[data-checked="true"] {
-  border-color: var(--brand);
-  background: var(--brand);
 }
 .mc-convpanel__itemrow[data-selecting="true"] .mc-convpanel__rowbtn {
   display: none;

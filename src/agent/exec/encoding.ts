@@ -117,27 +117,90 @@ export function decodeCommandOutput(buffer: Buffer, legacyLabel?: string): strin
  * 命令输出先按字节累积、结束时一次性解码。
  * 逐 chunk toString("utf8") 会把跨 chunk 边界的多字节字符（中文 Windows 上很常见）切成乱码；
  * 无上限累积则刷屏命令会先把内存吃满，truncateMiddle 根本没机会生效。
+ *
+ * 采集策略是「头 + 滚动尾」：达到上限后不再从尾部一路丢弃 —— 报错和汇总几乎总在
+ * 输出的最后几行，只留头等于把最该看的那段扔掉。具体份额由 tailShare 决定（默认 1/4），
+ * 中间被省略的字节数单独记账，交给工具层在文本里明确标出「这里少了多少」。
  */
-export function createOutputSink(limit: number) {
-  const chunks: Buffer[] = [];
-  let bytes = 0;
-  let decoded: string | undefined;
+export function createOutputSink(limit: number, tailShare = 0.25) {
+  const headLimit = Math.max(0, Math.floor(limit * (1 - tailShare)));
+  const tailLimit = Math.max(0, limit - headLimit);
+  const head: Buffer[] = [];
+  const tail: Buffer[] = [];
+  let headBytes = 0;
+  let tailBytes = 0;
+  let omittedBytes = 0;
+  let decodedHead: string | undefined;
+  let decodedTail: string | undefined;
+
+  /**
+   * 把尾部裁回 tailLimit 以内，并且**从行首开始保留**：
+   * 尾部的第一块如果从多字节字符中间开始，后面解码必然走「残缺 UTF-8」分支，
+   * 整段被误判成旧码页就成乱码了。按行对齐是最省事的字符边界保证。
+   */
+  const trimTail = (): void => {
+    while (tailBytes > tailLimit && tail.length) {
+      const first = tail[0];
+      const excess = tailBytes - tailLimit;
+      if (first.length <= excess) {
+        tail.shift();
+        tailBytes -= first.length;
+        omittedBytes += first.length;
+        continue;
+      }
+      const newline = first.indexOf(0x0a, excess);
+      const cut = newline === -1 ? excess : newline + 1;
+      tail[0] = first.subarray(cut);
+      tailBytes -= cut;
+      omittedBytes += cut;
+      break;
+    }
+  };
+
   return {
     push(chunk: Buffer): void {
-      if (bytes >= limit) return;
-      const room = limit - bytes;
-      chunks.push(chunk.length > room ? chunk.subarray(0, room) : chunk);
-      bytes += Math.min(chunk.length, room);
+      let rest = chunk;
+      if (headBytes < headLimit) {
+        const room = headLimit - headBytes;
+        const take = Math.min(room, rest.length);
+        if (take > 0) {
+          head.push(rest.subarray(0, take));
+          headBytes += take;
+          rest = rest.subarray(take);
+        }
+      }
+      if (!rest.length) return;
+      if (tailLimit === 0) {
+        omittedBytes += rest.length;
+        return;
+      }
+      tail.push(rest);
+      tailBytes += rest.length;
+      trimTail();
     },
+    /** 是否真的丢过字节（只是填满上限不算） */
     get capped(): boolean {
-      return bytes >= limit;
+      return omittedBytes > 0;
     },
+    /** 头尾之间被省略的字节数 */
+    get omittedBytes(): number {
+      return omittedBytes;
+    },
+    /** 头部（未截断时就是全部内容） */
     buffer(): Buffer {
-      return Buffer.concat(chunks);
+      return Buffer.concat(head);
+    },
+    /** 滚动尾：仅当输出超过上限时才有内容 */
+    tail(): Buffer {
+      return Buffer.concat(tail);
     },
     text(legacyLabel?: string): string {
-      decoded ??= decodeCommandOutput(Buffer.concat(chunks), legacyLabel);
-      return decoded;
+      decodedHead ??= decodeCommandOutput(Buffer.concat(head), legacyLabel);
+      return decodedHead;
+    },
+    tailText(legacyLabel?: string): string {
+      decodedTail ??= decodeCommandOutput(Buffer.concat(tail), legacyLabel);
+      return decodedTail;
     },
   };
 }

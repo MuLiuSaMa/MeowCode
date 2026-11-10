@@ -3,6 +3,7 @@
     "home": "Inicio",
     "architecture": "Arquitectura del agente",
     "git": "Git",
+    "mail": "Correo",
     "plugins": "Tienda de plugins",
     "automation": "Automatización",
     "settings": "Ajustes"
@@ -241,5 +242,10 @@
     "body": "Porfi, dame una estrellita~",
     "dismiss": "No, gracias",
     "accept": "¡Vale!"
+  },
+  "announcement": {
+    "label": "Anuncio",
+    "close": "Cerrar",
+    "viewSite": "Ver sitio web"
   }
 }

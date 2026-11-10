@@ -1,6 +1,6 @@
 {
   "name": "@meowcode/desktop",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "private": true,
   "author": {
     "name": "MuLiuSaMa"
@@ -19,7 +19,9 @@
     "dompurify": "^3.3.0",
     "highlight.js": "^11.12.0",
     "i18next": "^26.5.11",
+    "imapflow": "^2.11.0",
     "katex": "^0.19.1",
+    "mailparser": "^3.14.2",
     "markdown-it": "^14.1.0",
     "markdown-it-abbr": "^2.0.0",
     "markdown-it-anchor": "^10.0.0",
@@ -41,6 +43,7 @@
     "marked": "^16.4.1",
     "mermaid": "^12.3.0",
     "node-pty": "^1.1.0",
+    "nodemailer": "^10.4.0",
     "react": "^19.2.1",
     "react-dom": "^19.2.1",
     "react-i18next": "^17.1.9",

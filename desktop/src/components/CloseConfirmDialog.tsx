@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "./ui/Button";
+import { Checkbox } from "./ui/Checkbox";
 import { Dialog } from "./ui/Dialog";
 
 /**
@@ -30,10 +31,12 @@ export function CloseConfirmDialog({
       </span>
       <p className="mc-dialog__desc">{t("closeDialog.desc")}</p>
 
-      <label className="mc-dialog__remember">
-        <input type="checkbox" checked={remember} onChange={(event) => setRemember(event.target.checked)} />
-        {t("closeDialog.remember")}
-      </label>
+      <Checkbox
+        className="mc-dialog__remember"
+        checked={remember}
+        onChange={setRemember}
+        label={t("closeDialog.remember")}
+      />
 
       <div className="mc-dialog__footer">
         <Button variant="ghost" onClick={() => onDecide("cancel", false)}>

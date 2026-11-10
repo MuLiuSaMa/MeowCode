@@ -1,5 +1,7 @@
 import { useTranslation } from "react-i18next";
 import type { TimelineTool } from "../../api";
+import { PluginSlot } from "../../plugins/PluginSlot";
+import { usePluginSlot } from "../../plugins/runtime";
 import type { ToolStatus } from "./types";
 import { resolveToolView } from "./registry";
 import { ToolOutputNotes } from "./parts";
@@ -16,6 +18,15 @@ export function ToolBody({
   onOpenFile?: (path: string) => void;
 }) {
   const { t } = useTranslation("chat");
+  const pluginCards = usePluginSlot("message.toolCard", item.tool);
+  if (pluginCards.length > 0) {
+    return (
+      <>
+        <PluginSlot name="message.toolCard" slotKey={item.tool} props={{ tool: item, status }} />
+        <ToolOutputNotes item={item} t={t} />
+      </>
+    );
+  }
   const View = resolveToolView(item.tool);
   return (
     <>

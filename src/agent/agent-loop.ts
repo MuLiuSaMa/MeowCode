@@ -12,11 +12,14 @@ import {
   estimateMessagesTokens,
   estimateRequestInputTokens,
   estimateToolDefinitionsTokens,
+  PromptTooLargeError,
   repairToolPairs,
   trimMessages,
   type ContextUsageAnchor,
 } from "./context.js";
 import { isContextOverflow } from "./compaction.js";
+import { CONTEXT_SAFETY_TOKENS } from "./output-budget.js";
+import { callSignature, TurnBudget } from "./turn-budget.js";
 import type { StreamCompletionResult } from "./provider.js";
 import type { ToolCallProgress } from "./tool-progress.js";
 import type { ChatMessage, ProviderConfig, ToolCall, ToolDefinition } from "./types.js";
@@ -93,6 +96,8 @@ export type AgentStreamOptions = {
   onThinking?: (delta: string) => void;
   onToolCall?: (progress: ToolCallProgress) => void;
   onToolCallComplete?: (call: ToolCall) => void;
+  /** 网络层尝试次数；主循环传 2（见 runtime），辅助请求缺省 3 */
+  fetchAttempts?: number;
 };
 
 /**
@@ -173,12 +178,19 @@ export interface AgentLoopHost {
    */
   isParallelSafe?(toolName: string): boolean;
 
+  /**
+   * 回合级预算：轮次上限与 token 上限。未实现时用默认轮次上限、不设 token 上限。
+   * token 上限的语义是「本回合累计输入 + 输出」，由宿主按 provider 窗口给值。
+   */
+  turnBudget?(): { maxRounds?: number; maxTokens?: number | null };
+
   hooks?: AgentLoopHooks;
 }
 
 /**
- * 工具轮次不设上限：模型要连续调多少轮就跑多少轮，停止靠用户的中止按钮。
- * 唯一的额外出口是宿主 hooks（shouldStopAfterTurn / prepareNextTurn）。
+ * 回合循环。工具轮次受 TurnBudget 约束（轮次上限 + token 上限 + 交替循环检测）：
+ * 正常任务远达不到上限，预算只为「模型跑飞」兜底——没有它，一个失控回合
+ * 只能靠用户手动点停止，代价是整段额度。
  */
 export async function runAgentLoop(host: AgentLoopHost): Promise<void> {
   // 故障转移会就地替换本回合的 provider（用户的全局配置不动）
@@ -188,6 +200,8 @@ export async function runAgentLoop(host: AgentLoopHost): Promise<void> {
   let roundStartedAt: number | null = null;
   let lastSpeed: number | null = null;
   let messages: ChatMessage[] = host.initialMessages();
+  // 回合级预算：轮次 + token + 交替循环。宿主可按 provider 窗口收紧。
+  const budget = new TurnBudget(host.turnBudget?.() ?? {});
   // 溢出降级档位：0 未处理 → 1 已确定性收缩 → 2 已摘要工具输出 → 3 已全量压缩
   let escalation = 0;
   // 本回合 turn_stop 拦截计数（硬上限 MAX_TURN_STOP_BLOCKS 防 hook 死循环）
@@ -200,6 +214,14 @@ export async function runAgentLoop(host: AgentLoopHost): Promise<void> {
       : READ_ONLY_PARALLEL_TOOLS.has(call.function.name);
 
   while (true) {
+    // 回合级预算：硬停靠 budget，软提醒在停手前注入一次让模型自己收尾
+    const roundGate = budget.beginRound();
+    if (roundGate.stop) {
+      host.onError(roundGate.stop);
+      await host.persistMetrics({ startedAt: turnStartedAt, firstDeltaAt, lastSpeed });
+      return;
+    }
+    if (roundGate.note) await host.pushUserMessage(messages, roundGate.note);
     // 服务商声明了上下文窗口就按窗口裁剪：永远保留 system，
     // 带 tool_calls 的 assistant 与它的 tool 结果成组丢弃，避免孤儿 tool_call_id。
     // 配对修复必须无条件执行：没配 contextWindow 时不会走 trimMessages，
@@ -229,6 +251,12 @@ export async function runAgentLoop(host: AgentLoopHost): Promise<void> {
         provider,
         estimateRequestInputTokens(messages, host.usageAnchor(), toolTokens),
       );
+      // 裁剪后仍然放不下：说明当前 user 回合/附件本身不可压缩，继续发只会撞服务商溢出。
+      // 工具定义是固定开销，不参与“当前回合能否压缩”的判定（小窗口工具循环仍应按原逻辑收缩工具输出）。
+      const irreducibleInput = estimateMessagesTokens(messages);
+      if (irreducibleInput + outputTokens + CONTEXT_SAFETY_TOKENS > provider.contextWindow) {
+        throw new PromptTooLargeError(irreducibleInput, outputTokens, provider.contextWindow);
+      }
     }
 
     let result;
@@ -321,6 +349,8 @@ export async function runAgentLoop(host: AgentLoopHost): Promise<void> {
         if (seconds >= 0.05) roundSpeed = result.usage.outputTokens / seconds;
       }
       if (roundSpeed != null) lastSpeed = roundSpeed;
+      // 回合 token 记账：超过预算下一轮轮首即硬停
+      budget.recordUsage(result.usage);
       await host.recordUsage(
         result.usage,
         roundSpeed != null ? { tokensPerSecond: roundSpeed } : undefined,
@@ -387,6 +417,40 @@ export async function runAgentLoop(host: AgentLoopHost): Promise<void> {
       tool_call_id: call.id,
       name: call.function.name,
     });
+
+    // 交替循环检测：任何可能有副作用的调用（写类 / 命令 / 子 Agent）都会清空窗口，
+    // 只有「纯只读原地打转」才计数——A/B 来回横跳是该拦的，改动后重读不是。
+    const blockedByBudget = new Map<string, string>();
+    const budgetNotes = new Map<string, string>();
+    for (const call of toolCalls) {
+      const verdict = budget.observeCall(
+        callSignature(call.function.name, call.function.arguments ?? ""),
+        !parallelSafe(call),
+      );
+      if (verdict.blocked) blockedByBudget.set(call.id, verdict.blocked);
+      else if (verdict.reminder) budgetNotes.set(call.id, verdict.reminder);
+    }
+    if (blockedByBudget.size) {
+      for (const call of toolCalls) {
+        const reason = blockedByBudget.get(call.id);
+        if (!reason) continue;
+        const message: ToolResultMessage = {
+          role: "tool",
+          content: reason,
+          tool_call_id: call.id,
+          name: call.function.name,
+        };
+        host.onToolBlocked?.(call, message);
+        await host.pushToolMessage(messages, message);
+      }
+    }
+    /** 附上交替循环提醒（同一签名在窗口里反复出现时由 budget 生成）。 */
+    const withBudgetNote = (call: ToolCall, message: ToolResultMessage): ToolResultMessage => {
+      const note = budgetNotes.get(call.id);
+      if (!note) return message;
+      budgetNotes.delete(call.id);
+      return { ...message, content: `${message.content}\n\n${note}` };
+    };
     /** 宿主门禁：返回拦截原因，null 放行（未注册钩子时恒为 null） */
     const gate = async (call: ToolCall): Promise<string | null> => {
       const verdict = await hooks?.beforeToolCall?.(call);
@@ -403,7 +467,7 @@ export async function runAgentLoop(host: AgentLoopHost): Promise<void> {
         await hooks?.afterToolCall?.(call, message);
         return message;
       }
-      const message = await host.executeToolCall(call, messages);
+      const message = withBudgetNote(call, await host.executeToolCall(call, messages));
       await hooks?.afterToolCall?.(call, message);
       return message;
     };
@@ -424,7 +488,7 @@ export async function runAgentLoop(host: AgentLoopHost): Promise<void> {
     const runReadOnly = async (call: ToolCall): Promise<ToolResultMessage> => {
       const early = host.earlyRun(call.id);
       if (early) {
-        const message = await early;
+        const message = withBudgetNote(call, await early);
         await hooks?.afterToolCall?.(call, message);
         return message;
       }
@@ -435,13 +499,15 @@ export async function runAgentLoop(host: AgentLoopHost): Promise<void> {
         await hooks?.afterToolCall?.(call, message);
         return message;
       }
-      const message = await host.executeReadOnlyToolCall(call, messages);
+      const message = withBudgetNote(call, await host.executeReadOnlyToolCall(call, messages));
       await hooks?.afterToolCall?.(call, message);
       return message;
     };
 
-    const taskCalls = toolCalls.filter((call) => call.function.name === "task");
-    const otherCalls = toolCalls.filter((call) => call.function.name !== "task");
+    // 被预算拦下的调用已经落过 tool 消息，不再进入执行分支
+    const executableCalls = toolCalls.filter((call) => !blockedByBudget.has(call.id));
+    const taskCalls = executableCalls.filter((call) => call.function.name === "task");
+    const otherCalls = executableCalls.filter((call) => call.function.name !== "task");
 
     if (taskCalls.length) {
       // update_plan 先落盘：同一批里省略 prompt 的 task 会自动读取最新计划。
@@ -483,13 +549,13 @@ export async function runAgentLoop(host: AgentLoopHost): Promise<void> {
       for (const promise of taskPromises) {
         await host.pushToolMessage(messages, await promise);
       }
-    } else if (toolCalls.every((call) => parallelSafe(call))) {
-      const results = await Promise.all(toolCalls.map((call) => runReadOnly(call)));
+    } else if (executableCalls.every((call) => parallelSafe(call))) {
+      const results = await Promise.all(executableCalls.map((call) => runReadOnly(call)));
       for (const result of results) {
         await host.pushToolMessage(messages, result);
       }
     } else {
-      for (const call of toolCalls) {
+      for (const call of executableCalls) {
         if (host.aborted()) {
           // 用户已停止：不再执行剩余写操作，但补上 tool 结果保证历史配对完整
           await host.pushToolMessage(messages, abortedMessage(call));

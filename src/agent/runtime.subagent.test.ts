@@ -452,6 +452,75 @@ describe("AgentRuntime subagents", () => {
     expect(
       taskResults?.filter((message) => message.content.includes("Subagent limit reached")),
     ).toHaveLength(1);
+    expect(
+      taskResults?.filter((message) =>
+        message.content.includes(
+          `Subagent starts left this turn: 0/${MAX_SUBAGENTS_PER_TURN}.`,
+        ),
+      ),
+    ).toHaveLength(MAX_SUBAGENTS_PER_TURN);
+    expect(
+      taskResults?.find((message) => message.content.includes("Subagent limit reached"))?.content,
+    ).toContain("Do not retry this turn");
+
+    await runtime.closeSession();
+  });
+
+  it("counts model-initiated resume against the per-turn budget", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "meowcode-subagents-"));
+    const workspace = await mkdtemp(path.join(tmpdir(), "meowcode-subws-"));
+    const runtime = makeRuntime(dir);
+    await runtime.newSession(workspace);
+    await runtime.setApprovalMode("full");
+    await runtime.setAgentProfile("minimal");
+    const events = collectEvents(runtime);
+    let parentCalls = 0;
+    let resumeTarget = "";
+
+    streamMock.mockImplementation(async ({ messages }: { messages: ChatMessage[] }) => {
+      if (isChildRequest(messages)) {
+        return { message: { role: "assistant", content: "child done" } };
+      }
+      parentCalls += 1;
+      if (parentCalls === 1) {
+        return {
+          message: {
+            role: "assistant",
+            content: null,
+            tool_calls: [taskCallWith("spawn-1", { description: "first pass" })],
+          },
+        };
+      }
+      if (parentCalls === 2) {
+        resumeTarget = runtime.current?.subagents[0]?.agentId ?? "";
+        return {
+          message: {
+            role: "assistant",
+            content: null,
+            tool_calls: [
+              taskCallWith("resume-1", {
+                description: "go deeper",
+                mode: "resume",
+                agent_id: resumeTarget,
+                prompt: "go deeper",
+              }),
+            ],
+          },
+        };
+      }
+      return { message: { role: "assistant", content: "parent done" } };
+    });
+
+    await runtime.prompt("delegate once, then resume");
+
+    expect(resumeTarget).not.toBe("");
+    const results = (runtime.current?.messages ?? [])
+      .filter((message) => message.role === "tool" && message.name === "task")
+      .map((message) => (typeof message.content === "string" ? message.content : ""))
+      .join("\n");
+    expect(results).toContain("Subagent limit reached");
+    expect(events.some((event) => event.type === "subagent_resumed")).toBe(false);
+    expect(runtime.current?.subagents).toHaveLength(1);
 
     await runtime.closeSession();
   });

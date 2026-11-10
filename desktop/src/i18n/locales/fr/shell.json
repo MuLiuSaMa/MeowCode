@@ -3,6 +3,7 @@
     "home": "Accueil",
     "architecture": "Architecture de l’agent",
     "git": "Git",
+    "mail": "E-mail",
     "plugins": "Place de marché",
     "automation": "Automatisations",
     "settings": "Paramètres"
@@ -241,5 +242,10 @@
     "body": "S'il te plaît, offre-moi une petite étoile~",
     "dismiss": "Non merci",
     "accept": "D'accord"
+  },
+  "announcement": {
+    "label": "Annonce",
+    "close": "Fermer",
+    "viewSite": "Voir le site"
   }
 }

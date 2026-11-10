@@ -281,7 +281,7 @@ describe("AgentRuntime context compaction", () => {
     expect(firstToolIndex).toBe(-1);
   });
 
-  it("stops calling the summary model after three failures", async () => {
+  it("enters a cooldown after two summary failures and stops calling the summary model", async () => {
     const dir = await mkdtemp(path.join(tmpdir(), "meowcode-runtime-"));
     const runtime = makeRuntime(dir);
     await runtime.newSession();
@@ -299,7 +299,9 @@ describe("AgentRuntime context compaction", () => {
 
     for (let round = 0; round < 4; round += 1) await runtime.prompt(`round ${round}`);
 
-    expect(streamMock).toHaveBeenCalledTimes(3 * 3 + 2);
+    // 连续 2 次摘要失败即进入 600s 冷却：后续轮次不再调用摘要模型，
+    // 总请求数从「3 次失败后才熔断」的 11 降到 9。
+    expect(streamMock).toHaveBeenCalledTimes(9);
   });
 
   it("escapes overflow with the lightweight tool-output shrink before any model call", async () => {
@@ -984,7 +986,7 @@ describe("AgentRuntime context usage", () => {  it("falls back to estimates, the
     });
   });
 
-  it("回合出错时撤回未提交的实时样本，统计不虚高", async () => {
+  it("回合出错时保留最后一次部分用量，不再撤回成 0", async () => {
     const dir = await mkdtemp(path.join(tmpdir(), "meowcode-runtime-"));
     const runtime = makeRuntime(dir);
     await runtime.newSession();
@@ -1003,8 +1005,14 @@ describe("AgentRuntime context usage", () => {  it("falls back to estimates, the
     );
     const live = usageEvents.find((event) => !event.final && !event.retracted);
     expect(live).toBeTruthy();
-    const retracted = usageEvents.find((event) => event.retracted);
-    expect(retracted?.roundId).toBe(live?.roundId);
+    const final = usageEvents.find((event) => event.final === true);
+    expect(final).toMatchObject({
+      roundId: live?.roundId,
+      source: "chat",
+      inputTokens: 900,
+      outputTokens: 12,
+    });
+    expect(usageEvents.some((event) => event.retracted)).toBe(false);
   });
 });
 
@@ -2160,6 +2168,75 @@ describe("usage persistence", () => {
     });
   });
 
+  it("persists background suggestion usage once per request", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "meowcode-runtime-"));
+    const runtime = makeRuntime(dir);
+    await runtime.newSession();
+    streamMock
+      .mockResolvedValueOnce({ message: { role: "assistant", content: "Done." } })
+      .mockImplementationOnce(
+        async (options: {
+          onUsage?: (usage: Record<string, number>) => void;
+          onUsageFinal?: (usage: Record<string, number>) => void;
+        }) => {
+          // 模拟 Anthropic 的累计快照：旧实现会把每一条都 append 一次
+          options.onUsage?.({ inputTokens: 5, outputTokens: 1 });
+          options.onUsage?.({ inputTokens: 7, outputTokens: 2 });
+          options.onUsageFinal?.({ inputTokens: 7, outputTokens: 2 });
+          return {
+            message: { role: "assistant", content: "run tests" },
+            usage: { inputTokens: 7, outputTokens: 2 },
+          };
+        },
+      );
+
+    await runtime.prompt("hi");
+    expect(await runtime.suggestNextPrompt()).toBe("run tests");
+
+    const { SessionStore } = await import("./session-store.js");
+    const reloaded = await SessionStore.load(runtime.current!.filePath);
+    const usageEntries = reloaded.entries.filter(
+      (entry) => entry.type === "usage" && entry.source === "suggestion",
+    );
+    expect(usageEntries).toHaveLength(1);
+    expect(usageEntries[0]).toMatchObject({ inputTokens: 7, outputTokens: 2 });
+  });
+
+  it("persists partial usage when a stream fails after reporting usage", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "meowcode-runtime-"));
+    const runtime = makeRuntime(dir);
+    await runtime.newSession();
+    const events = await collectEvents(runtime);
+    streamMock.mockImplementationOnce(
+      async (options: { onUsage?: (usage: Record<string, number>) => void }) => {
+        options.onUsage?.({ inputTokens: 900, outputTokens: 12, cacheReadTokens: 700 });
+        throw new Error("stream died");
+      },
+    );
+
+    await runtime.prompt("hi").catch(() => undefined);
+
+    const { SessionStore } = await import("./session-store.js");
+    const reloaded = await SessionStore.load(runtime.current!.filePath);
+    const usageEntries = reloaded.entries.filter((entry) => entry.type === "usage");
+    expect(usageEntries).toHaveLength(1);
+    expect(usageEntries[0]).toMatchObject({
+      source: "chat",
+      inputTokens: 900,
+      outputTokens: 12,
+      cacheReadTokens: 700,
+    });
+    expect(
+      events.some(
+        (event) =>
+          event.type === "usage" &&
+          event.final === true &&
+          event.source === "chat" &&
+          event.inputTokens === 900,
+      ),
+    ).toBe(true);
+  });
+
   it("persists turn timing metrics", async () => {
     const dir = await mkdtemp(path.join(tmpdir(), "meowcode-runtime-"));
     const runtime = makeRuntime(dir);
@@ -2184,7 +2261,59 @@ describe("usage persistence", () => {
   });
 });
 
-describe("workspace instructions", () => {  it("injects AGENTS.md once per session; mid-session edits don't change the prompt", async () => {
+describe("prompt size guard", () => {
+  it("rejects a prompt that cannot fit the model window before calling the provider", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "meowcode-runtime-"));
+    const runtime = new AgentRuntime({
+      providers: [
+        {
+          id: "p",
+          name: "P",
+          baseUrl: "http://localhost",
+          model: "m",
+          contextWindow: 2_000,
+        },
+      ],
+      sessionsDir: dir,
+      homeDir: dir,
+    });
+    await runtime.newSession();
+    const events = await collectEvents(runtime);
+
+    await runtime.prompt("x".repeat(20_000)).catch(() => undefined);
+
+    expect(streamMock).not.toHaveBeenCalled();
+    expect(
+      events.some((event) => event.type === "error" && /超过模型窗口/.test(event.message)),
+    ).toBe(true);
+  });
+
+  it("reports a document that alone exceeds the window", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "meowcode-runtime-"));
+    const runtime = new AgentRuntime({
+      providers: [
+        {
+          id: "p",
+          name: "P",
+          baseUrl: "http://localhost",
+          model: "m",
+          contextWindow: 16_000,
+        },
+      ],
+      sessionsDir: dir,
+      homeDir: dir,
+    });
+    await runtime.newSession();
+
+    const error = runtime.promptTooLarge("", undefined, [
+      { data: "x".repeat(1_000_000), mimeType: "application/pdf", name: "big.pdf" },
+    ]);
+    expect(error?.name).toBe("PromptTooLargeError");
+    expect(error?.message).toContain("超过模型窗口");
+  });
+});
+
+describe("workspace instructions", () => {  it("injects AGENTS.md and reloads it when the source file changes", async () => {
     const dir = await mkdtemp(path.join(tmpdir(), "meowcode-runtime-"));
     const workspace = await mkdtemp(path.join(tmpdir(), "meowcode-ws-"));
     await writeFile(path.join(workspace, "AGENTS.md"), "RULE ONE");
@@ -2201,7 +2330,9 @@ describe("workspace instructions", () => {  it("injects AGENTS.md once per sessi
     expect(firstSystems[0].content).toContain("You are MeowCode");
     expect(firstSystems[1].content).toContain("RULE ONE");
 
-    // 会话级快照：中途改 AGENTS.md 不换 system[1] 字节（缓存前缀稳定），重开会话才生效
+    // 会话内改 AGENTS.md：每回合 stat 一次，变了就重载（缓存该断就断，
+    // 比让用户对着「我明明改了它不听」划算）
+    await new Promise((resolve) => setTimeout(resolve, 30));
     await writeFile(path.join(workspace, "AGENTS.md"), "RULE TWO");
     streamMock.mockResolvedValueOnce({ message: { role: "assistant", content: "again" } });
     await runtime.prompt("again");
@@ -2209,10 +2340,9 @@ describe("workspace instructions", () => {  it("injects AGENTS.md once per sessi
     const secondSystems = second.filter(
       (message): message is Extract<ChatMessage, { role: "system" }> => message.role === "system",
     );
-    expect(secondSystems[1].content).toContain("RULE ONE");
+    expect(secondSystems[1].content).toContain("RULE TWO");
 
-    // 重开会话重新加载：新会话拿到改后的内容
-    await runtime.newSession(workspace);
+    // 没再改时不重载：前缀字节保持稳定
     streamMock.mockResolvedValueOnce({ message: { role: "assistant", content: "third" } });
     await runtime.prompt("third");
     const third = streamMock.mock.calls[2][0].messages as ChatMessage[];
@@ -4062,7 +4192,7 @@ describe("lineage cache affinity", () => {
     return { runtime, dir, workspace };
   }
 
-  it("lets forks and sibling subagents share the source key on the official endpoint", async () => {
+  it("lets forks inherit the source key while spawn subagents keep their own", async () => {
     const { runtime, dir, workspace } = await makeLineageRuntime(official);
     const source = await SessionStore.create(path.join(dir, "source.jsonl"), workspace);
     await runtime.switchSession(source.filePath);
@@ -4088,8 +4218,8 @@ describe("lineage cache affinity", () => {
     const firstKey = policyOf(runtime, official).promptCacheKey;
     await runtime.switchSession(second.filePath);
     const secondKey = policyOf(runtime, official).promptCacheKey;
-    expect(firstKey).toBe(`${source.id}:main`);
-    expect(secondKey).toBe(firstKey);
+    expect(firstKey).toBe(`${first.id}:main`);
+    expect(secondKey).toBe(`${second.id}:main`);
   });
 
   it("keeps each session's own key on non-official Responses hosts", async () => {

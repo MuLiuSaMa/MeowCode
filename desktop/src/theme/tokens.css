@@ -121,13 +121,13 @@
   --ring: rgba(255 255 255 / 0.55);
   --ring-strong: rgba(255 255 255 / 0.80);
 
-  /* ---- radius scale (Codex base 12.5 / 2xl 20) ---- */
-  --radius-xs: 6px;
-  --radius-sm: 8px;
-  --radius-md: 10px;
-  --radius-lg: 12.5px;
-  --radius-xl: 16px;
-  --radius-2xl: 20px;
+  /* ---- radius scale（连续曲率圆角，整体加大一档） ---- */
+  --radius-xs: 10px;
+  --radius-sm: 13px;
+  --radius-md: 16px;
+  --radius-lg: 20px;
+  --radius-xl: 26px;
+  --radius-2xl: 34px;
   --radius-full: 9999px;
 
   /* ---- shadows: restrained ---- */

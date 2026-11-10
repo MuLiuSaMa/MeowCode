@@ -96,6 +96,14 @@ type ReadRange = { start: number; end: number; callIds: string[]; at: number };
 type FileCoverage = { file: string; version: string; total: number; ranges: ReadRange[] };
 type ResultEntry = { hash: string; turn: number; callId: string; length: number };
 
+/** 可落盘的已读区间快照：只保留恢复所需的字段（callId/回合号是进程内概念）。 */
+export type ReadCoverageSnapshot = Array<{
+  file: string;
+  version: string;
+  total: number;
+  ranges: Array<{ start: number; end: number }>;
+}>;
+
 /** 合并重叠或相邻区间；保留每段的贡献 callId（用于可见性校验）。 */
 function mergeRanges(ranges: ReadRange[]): ReadRange[] {
   const sorted = [...ranges].sort((left, right) => left.start - right.start || left.end - right.end);
@@ -130,6 +138,53 @@ export class LoopGuard {
   clearReadVersions(): void {
     this.coverage.clear();
     this.results.clear();
+  }
+
+  /**
+   * 导出已读区间快照（落盘用）。
+   *
+   * 这张表原来只在进程内活着：重启后「这个文件我读过、内容是 X 版」全部丢失，
+   * 模型只能整段重读，一次就是几千 token。落盘后重启/换窗口仍能命中
+   * 「已读过且未变更」的短路。
+   */
+  exportCoverage(): ReadCoverageSnapshot {
+    return [...this.coverage.values()].map((entry) => ({
+      file: entry.file,
+      version: entry.version,
+      total: entry.total,
+      ranges: entry.ranges.map((range) => ({ start: range.start, end: range.end })),
+    }));
+  }
+
+  /**
+   * 恢复已读区间。版本键（inode:size:mtimeNs）对不上的直接丢弃：
+   * 文件在进程外改过，旧区间不再成立，宁可让模型重读也不要给出过期正文。
+   */
+  async restoreCoverage(snapshot: ReadCoverageSnapshot | null | undefined): Promise<void> {
+    if (!snapshot?.length) return;
+    for (const entry of snapshot) {
+      if (!entry?.file || !entry.version || !entry.ranges?.length) continue;
+      const version = await captureVersion(entry.file).catch(() => "absent");
+      if (version !== entry.version) continue;
+      const key = fileKey(entry.file);
+      this.coverage.delete(key);
+      this.coverage.set(key, {
+        file: entry.file,
+        version,
+        total: Math.max(1, entry.total),
+        ranges: entry.ranges.map((range) => ({
+          start: range.start,
+          end: range.end,
+          callIds: [],
+          at: this.turnSeq,
+        })),
+      });
+      while (this.coverage.size > MAX_COVERAGE_FILES) {
+        const oldest = this.coverage.keys().next().value;
+        if (oldest === undefined) break;
+        this.coverage.delete(oldest);
+      }
+    }
   }
 
   /** 每回合开始时清空循环检测状态：跨回合的相同调用不算循环。 */

@@ -7,9 +7,12 @@
   align-items: center;
   gap: 8px;
   min-height: 28px;
-  /* 负边距让图标与正文左缘对齐，hover 胶囊向左扩 8px 并从行尾收齐 */
+  /* 负边距让图标与正文左缘对齐，hover 胶囊向左扩 8px 后正好包住内容 */
   margin-left: -8px;
-  width: calc(100% + 8px);
+  /* 行宽跟内容走：短行不再拉成整行 */
+  width: fit-content;
+  /* 但绝不能超过内容区一行：长命令 / 长 pattern 在行尾省略，不出横向滚动条 */
+  max-width: calc(100% + 8px);
   padding: 4px 8px;
   border: 0;
   border-radius: var(--radius-sm);
@@ -66,7 +69,7 @@
 .mc-toolrow__chip {
   flex: 0 1 auto;
   min-width: 0;
-  max-width: 55%;
+  max-width: 320px;
   padding: 1px 7px;
   border: 1px solid var(--border);
   border-radius: var(--radius-xs);
@@ -151,7 +154,8 @@
   display: flex;
   flex-direction: column;
   gap: 10px;
-  padding: 2px 8px 10px 32px;
+  /* 展开内容与标题文字左缘对齐：head 的 label 起点 = -8(margin) + 8(padding) + 16(icon) + 8(gap) = 24 */
+  padding: 2px 8px 10px 24px;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -163,12 +167,11 @@
   }
 }
 
-/* 写/改文件的增删行数：贴右显示（来自 file_changed 的实时统计） */
+/* 写/改文件的增删行数：跟在内容后面，不再靠 margin 推到行尾 */
 .mc-toolrow__stats {
   display: inline-flex;
   flex: none;
   gap: 6px;
-  margin-left: auto;
   font-size: var(--fs-caption);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;

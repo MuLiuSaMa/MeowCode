@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { LuTriangleAlert } from "react-icons/lu";
 import type { RewindFileAction, RewindPlan } from "../api";
+import { Checkbox } from "./ui/Checkbox";
 import "./RewindDialog.css";
 
 /**
@@ -58,14 +59,12 @@ export function RewindDialog({
                   title={t("checkpoint.groupDelete", { count: deletes.length })}
                   files={deletes}
                 />
-                <label className="mc-rewind__check">
-                  <input
-                    type="checkbox"
-                    checked={keepNewFiles}
-                    onChange={(event) => setKeepNewFiles(event.target.checked)}
-                  />
-                  {t("checkpoint.keepNewFiles")}
-                </label>
+                <Checkbox
+                  className="mc-rewind__check"
+                  checked={keepNewFiles}
+                  onChange={setKeepNewFiles}
+                  label={t("checkpoint.keepNewFiles")}
+                />
               </div>
             ) : null}
             {conflicts.length > 0 ? (
@@ -74,14 +73,13 @@ export function RewindDialog({
                   title={t("checkpoint.groupConflict", { count: conflicts.length })}
                   files={conflicts}
                 />
-                <label className="mc-rewind__check">
-                  <input
-                    type="checkbox"
-                    checked={force}
-                    onChange={(event) => setForce(event.target.checked)}
-                  />
-                  {t("checkpoint.overwriteExternal")}
-                </label>
+                <Checkbox
+                  className="mc-rewind__check"
+                  checked={force}
+                  onChange={setForce}
+                  label={t("checkpoint.overwriteExternal")}
+                  danger={force}
+                />
               </div>
             ) : null}
             {others.length > 0 ? (

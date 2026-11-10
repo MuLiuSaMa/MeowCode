@@ -65,10 +65,17 @@ body {
   border-color: var(--border-hover);
 }
 
+/* 岛体是胶囊：收缩态保持正圆角（squircle 会把 999px 压成圆角矩形）；
+   展开成面板时才用连续曲率，与全局一致 */
+.island {
+  corner-shape: round;
+}
+
 .island[data-expanded="true"] {
   width: var(--island-w);
   height: var(--island-h);
   border-radius: var(--radius-2xl);
+  corner-shape: squircle;
   cursor: default;
   /* 展开编排（NexBox/iOS 灵动岛式两段）：先横向拉开且圆角立刻收成矩形（不出现"气球"中间帧），
      再向下生长出面板身体；轻微回弹让落地更顺滑 */

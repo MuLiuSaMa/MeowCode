@@ -15,6 +15,14 @@
       "dazui": "大嘴"
     }
   },
+  "progressPill": {
+    "field": "Info-Pille über dem Eingabefeld",
+    "desc": "Wann die Statuskapsel über dem Eingabefeld ausgeblendet wird: nach dem Commit oder am Ende des Turns.",
+    "options": {
+      "commit": "Nach Commit ausblenden",
+      "turn-end": "Nach Turn ausblenden"
+    }
+  },
   "nav": {
     "heading": "Einstellungen",
     "ariaLabel": "Einstellungsbereiche",
@@ -42,11 +50,7 @@
   "close": {
     "section": "Fenster schließen",
     "field": "Beim Schließen des Fensters",
-    "desc": {
-      "ask": "Jedes Mal nachfragen, ob ins Tray ausgeblendet oder beendet wird.",
-      "tray": "Das Fenster wird ins Systemtray ausgeblendet; MeowCode läuft im Hintergrund weiter.",
-      "quit": "Das Fenster beendet MeowCode sofort."
-    },
+    "desc": "Verhalten beim Schließen des Hauptfensters: jedes Mal fragen, in den Systemtray ausblenden und weiterlaufen oder beenden.",
     "options": {
       "ask": "Jedes Mal nachfragen",
       "tray": "Ins Tray",
@@ -56,10 +60,7 @@
   "update": {
     "section": "Updates",
     "field": "Updates im Hintergrund laden",
-    "desc": {
-      "on": "Beim Start gefundene neue Versionen werden automatisch geladen. Danach erscheint unten links in der Seitenleiste ein Neustart-Knopf — klicken zum Installieren.",
-      "off": "Beim Start nur still prüfen und hinweisen; Herunterladen und Installieren bleibt Handarbeit auf der Info-Seite."
-    }
+    "desc": "Neue Versionen werden im Hintergrund heruntergeladen; danach erscheint unten links in der Seitenleiste eine Schaltfläche zum Neustarten und Installieren."
   },
   "appearance": {
     "themeSection": "Design",
@@ -205,6 +206,9 @@
     "empty": "Noch kein Modell konfiguriert. Beginnen Sie mit „Modell hinzufügen“.",
     "deleteTitle": "Anbieter löschen",
     "deleteMessage": "„{{name}}“ löschen? Danach muss es neu eingerichtet werden.",
+    "deleteGroupAria": "Anbieter {{name}} löschen",
+    "deleteGroupTitle": "Anbieter löschen",
+    "deleteGroupMessage": "„{{name}}“ und alle {{count}} Modelle darunter löschen? Danach muss alles neu eingerichtet werden.",
     "restartTitle": "Speichern startet den lokalen Dienst neu",
     "restartMessage": "Modelländerungen starten den lokalen Agent-Dienst neu; der laufende Turn wird unterbrochen. Trotzdem speichern?",
     "restartConfirm": "Trotzdem speichern",
@@ -336,10 +340,7 @@
   "island": {
     "section": "AI 悬浮岛",
     "field": "启用悬浮岛",
-    "desc": {
-      "on": "悬浮岛已开启：屏幕顶部居中显示所有运行中会话的状态，鼠标放上去可展开查看对话、直接输入或停止任务。",
-      "off": "开启后在屏幕顶部居中显示一枚胶囊，实时显示所有运行中会话的状态；鼠标放上去可展开成对话小窗。"
-    }
+    "desc": "Eine Kapsel oben in der Bildschirmmitte zeigt alle laufenden Sitzungen; beim Überfahren klappt sie zu einem Mini-Chat auf, in dem du antworten oder eine Aufgabe stoppen kannst."
   },
   "hooks": {
     "loading": "Hooks-Konfiguration wird geladen…",
@@ -350,15 +351,9 @@
       "section": "Claude Code Hooks importieren",
       "description": "Liest ~/.claude/settings.json und .claude-Konfigurationen im Arbeitsbereich. Arbeitsbereich-Konfigurationen werden standardmäßig nicht ausgeführt.",
       "master": "Hooks aktivieren",
-      "masterHint": {
-        "on": "Claude Code Hook-Konfiguration ist geladen.",
-        "off": "Deaktiviert: Konfiguration wird nur lesend angezeigt und nicht ausgeführt."
-      },
+      "masterHint": "Claude-Code-Hook-Konfiguration laden und ausführen; deaktiviert wird sie nur lesend angezeigt und nie ausgeführt.",
       "workspace": ".claude-Konfiguration des Arbeitsbereichs einbeziehen",
-      "workspaceHint": {
-        "on": "Hooks in .claude/settings*.json des Arbeitsbereichs werden ausgeführt.",
-        "off": "Nur ~/.claude-Konfiguration wird ausgeführt; Arbeitsbereich-Konfiguration wird nur angezeigt."
-      },
+      "workspaceHint": "Ob Hooks aus .claude/settings*.json im Arbeitsbereich ausgeführt werden; aus steht nur die ~/.claude-Konfiguration.",
       "workspaceWarning": "Hooks im Arbeitsbereich stammen aus Dateien dieses Repositories und können bösartige Befehle enthalten. Nur aktivieren, wenn du diesem Repository vertraust.",
       "disabledNote": "Hooks sind deaktiviert. Aktiviere den Schalter oben, um Befehle auszuführen."
     },
@@ -548,10 +543,7 @@
     "desc": "Alltägliches Verhalten. Änderungen wirken sofort.",
     "notify": {
       "field": "Systembenachrichtigungen",
-      "desc": {
-        "on": "Wenn das Fenster im Hintergrund ist, bei Abschluss, Bestätigungsbedarf oder Abbruch eine Systembenachrichtigung mit Chat-Titel und Antwortauszug zeigen.",
-        "off": "Es werden keine Systembenachrichtigungen gezeigt."
-      }
+      "desc": "Systembenachrichtigung mit Chat-Titel und Antwortzusammenfassung anzeigen, wenn ein Turn endet, eine Bestätigung braucht oder unterbrochen wird und das Fenster im Hintergrund ist."
     },
     "promptSuggestions": {
       "field": "Vorschläge für die nächste Nachricht",
@@ -565,6 +557,17 @@
       "field": "Anbieter-Failover",
       "desc": "Bei Zeitüberschreitung, Ratenlimit oder Serverfehler des Hauptanbieters wechselt dieser Turn automatisch zu einem anderen aktivierten Anbieter (max. 2 Wechsel).",
       "toggleFailed": "Anbieter-Failover-Einstellung konnte nicht gespeichert werden"
+    },
+    "mailAi": {
+      "field": "Modell außerhalb des Chats",
+      "follow": "Chat folgen"
+    },
+    "other": {
+      "section": "Allgemein"
+    },
+    "announcement": {
+      "field": "Ankündigungen",
+      "desc": "Offizielle Ankündigungen in der Titelleiste anzeigen (neue Versionen und Modell-News)."
     }
   },
   "proxy": {

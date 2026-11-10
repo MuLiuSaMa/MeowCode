@@ -45,12 +45,7 @@
   align-items: center;
   gap: 10px;
 }
-.mc-header__overviewrow {
-  /* 悬浮在对话上方，不占 header 的第二行高度 */
-  position: absolute;
-  top: calc(100% + 2px);
-  right: 20px;
-  z-index: 24;
+.mc-header__overview {
   display: flex;
-  justify-content: flex-end;
+  align-items: center;
 }

@@ -19,6 +19,12 @@ export type AgentDefinition = {
   tools?: ReadonlySet<string>;
   /** 无文件写权限的角色（verifier 可跑命令但不可改文件） */
   readOnly?: boolean;
+  /**
+   * 可以跑命令、但禁止任何文件写入的角色（verifier / fresh-verifier）。
+   * 与 readOnly 的区别：readOnly 会连 run_command 一起拦掉，验证角色必须能跑检查。
+   * 生效点有两处：工具白名单（写类工具直接不可见）与 run_code 的 meow.write 桥。
+   */
+  writeDenied?: boolean;
   /** 该角色有权关闭的治理门禁（门禁 id 由架构图定义，如 G4 / G6 / G7 / goal-check） */
   expectedGates?: string[];
   /** false = 不注入工作区 AGENTS.md（explore 沿用旧行为） */
@@ -203,7 +209,8 @@ Relative paths resolve against the workspace. Write, edit, and command tools fol
     systemPrompt: VERIFIER_SYSTEM_PROMPT,
     tools: VERIFIER_TOOLS,
     // 不设 readOnly：验证要真实执行命令（read-only 审批模式会拦 run_command），
-    // 文件写权限由工具白名单排除
+    // 但必须 writeDenied —— 否则 full 模式下验证角色能先把测试改绿再报 PASS。
+    writeDenied: true,
     expectedGates: ["G6"],
     injectInstructions: true,
   },
@@ -212,6 +219,7 @@ Relative paths resolve against the workspace. Write, edit, and command tools fol
     description: "独立复验：没参与实现的人自己重跑检查（G6）",
     systemPrompt: FRESH_VERIFIER_SYSTEM_PROMPT,
     tools: VERIFIER_TOOLS,
+    writeDenied: true,
     expectedGates: ["G6"],
     injectInstructions: true,
   },
@@ -256,6 +264,25 @@ Relative paths resolve against the workspace. Write, edit, and command tools fol
 /** 未知角色（旧会话数据 / 模型幻觉）一律回落 general。 */
 export function definitionFor(name: string): AgentDefinition {
   return (BUILTIN_AGENTS as Record<string, AgentDefinition | undefined>)[name] ?? BUILTIN_AGENTS.general;
+}
+
+/**
+ * 写类工具：writeDenied 角色一律不可用。
+ * run_code 不在此列 —— 它是只读批量的主力（批量读/搜索），
+ * 写后门由 runCodeHostTool 的桥接判定单独拦（见 AgentRuntime.denyHostWrites）。
+ */
+export const WRITE_TOOLS: ReadonlySet<string> = new Set([
+  "write_file",
+  "edit_file",
+  "multi_edit",
+  "apply_patch",
+  "delete_file",
+  "move_file",
+]);
+
+/** 该角色是否禁止某个工具（写类工具 + writeDenied 角色）。 */
+export function roleDeniesTool(definition: AgentDefinition, tool: string): boolean {
+  return definition.writeDenied === true && WRITE_TOOLS.has(tool);
 }
 
 export function isAgentRole(name: unknown): name is AgentRole {

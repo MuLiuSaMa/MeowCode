@@ -15,7 +15,16 @@ vi.mock("./title-generator.js", () => ({
 
 const { AgentRuntime } = await import("./runtime.js");
 
-type Captured = { system: string; tools: string[]; messages: ChatMessage[] };
+type Captured = {
+  system: string;
+  tools: string[];
+  taskDescription: string;
+  messages: ChatMessage[];
+};
+
+function taskDescription(tools: ToolDefinition[]): string {
+  return tools.find((tool) => tool.function.name === "task")?.function.description ?? "";
+}
 
 function makeRuntime(sessionsDir: string): InstanceType<typeof AgentRuntime> {
   return new AgentRuntime({
@@ -32,6 +41,7 @@ function captureCalls(): Captured[] {
       captured.push({
         system: typeof system?.content === "string" ? system.content : "",
         tools: options.tools.map((tool) => tool.function.name),
+        taskDescription: taskDescription(options.tools),
         messages: options.messages,
       });
       return {
@@ -82,6 +92,7 @@ describe("AgentRuntime agent profiles", () => {
     expect(captured).toHaveLength(1);
     expect(captured[0].tools.sort()).toEqual(["admit", "read_file", "run_command", "task"]);
     expect(captured[0].system).toContain("minimal mode");
+    expect(captured[0].taskDescription).toContain("at most 1 subagent start per user turn");
   });
 
   it("standard keeps the full tool set and every subagent role", async () => {
@@ -94,7 +105,8 @@ describe("AgentRuntime agent profiles", () => {
 
     expect(captured[0].tools).toContain("write_file");
     expect(captured[0].tools).toContain("multi_edit");
-    expect(captured[0].system).toContain("You are MeowCode, a practical local coding agent");
+    expect(captured[0].system).toContain("You are MeowCode, a local coding agent");
+    expect(captured[0].taskDescription).toContain("at most 3 subagent starts per user turn");
   });
 
   it("complex keeps every tool and adds the orchestration prompt", async () => {
@@ -108,6 +120,7 @@ describe("AgentRuntime agent profiles", () => {
 
     expect(captured[0].tools).toContain("write_file");
     expect(captured[0].system).toContain("Complex mode is active");
+    expect(captured[0].taskDescription).toContain("at most 5 subagent starts per user turn");
   });
 
   it("minimal narrows task.agent_type to general / explore", async () => {
@@ -145,6 +158,7 @@ describe("AgentRuntime agent profiles", () => {
         captured.push({
           system: typeof system?.content === "string" ? system.content : "",
           tools: options.tools.map((tool) => tool.function.name),
+          taskDescription: taskDescription(options.tools),
           messages: options.messages,
         });
         if (!options.messages.some((message) => message.role === "tool")) {
@@ -234,6 +248,7 @@ describe("AgentRuntime agent profiles", () => {
         captured.push({
           system: prompt,
           tools: options.tools.map((tool) => tool.function.name),
+          taskDescription: taskDescription(options.tools),
           messages: options.messages,
         });
         if (!options.messages.some((message) => message.role === "tool")) {

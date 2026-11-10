@@ -462,17 +462,23 @@ button.mc-tv__path:hover {
 .mc-tv__paramcode {
   margin: 0;
   padding: 6px 8px;
-  max-height: 200px;
-  overflow: auto;
+  /* 常规参数完整展开；只有超大参数（>20k 字符）才限高滚动 */
+  max-height: none;
+  overflow: visible;
+  white-space: pre-wrap;
+  word-break: break-word;
   border: 1px solid var(--border);
   border-radius: var(--radius-xs);
   background: var(--surface);
   font-family: var(--font-mono);
   font-size: var(--fs-xs);
   line-height: 1.5;
-  white-space: pre-wrap;
-  word-break: break-word;
   color: var(--fg-subtle);
+}
+/* 超大参数才限高，避免一张卡片被 100k 字符撑爆 */
+.mc-tv__paramcode[data-long="true"] {
+  max-height: 200px;
+  overflow: auto;
 }
 
 @media (prefers-reduced-motion: reduce) {

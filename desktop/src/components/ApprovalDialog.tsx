@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "./ui/Button";
+import { Checkbox } from "./ui/Checkbox";
 import { CodeBlock } from "./ui/CodeBlock";
 import { CustomSelect } from "./ui/CustomSelect";
 import { Dialog } from "./ui/Dialog";
@@ -180,20 +181,18 @@ export function ApprovalDialog({
             placeholder={t("approval.feedbackPlaceholder")}
             onChange={(event) => setFeedback(event.target.value)}
           />
-          <label className="mc-approval__remember">
-            <input
-              type="checkbox"
-              checked={remember}
-              onChange={(event) => setRemember(event.target.checked)}
-            />
-            <span>
-              {tool === "run_command"
+          <Checkbox
+            className="mc-approval__remember"
+            checked={remember}
+            onChange={setRemember}
+            label={
+              tool === "run_command"
                 ? t("approval.rememberCommand")
                 : tool === "write_file" || tool === "edit_file" || tool === "multi_edit"
                   ? t("approval.rememberPath")
-                  : t("approval.rememberTool")}
-            </span>
-          </label>
+                  : t("approval.rememberTool")
+            }
+          />
           {remember && tool === "run_command" ? (
             <CustomSelect
               className="mc-approval__scope"

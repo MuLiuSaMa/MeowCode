@@ -23,6 +23,13 @@ describe("truncateToTokens", () => {
     expect(estimateTokens(result.text)).toBeLessThanOrEqual(110);
   });
 
+  it("韩文也按 CJK 字计预算", () => {
+    const text = "한".repeat(1_000);
+    const result = truncateToTokens(text, 100);
+    expect(result.truncated).toBe(true);
+    expect(estimateTokens(result.text)).toBeLessThanOrEqual(110);
+  });
+
   it("中文按字计预算，不会像字符口径那样放大四倍", () => {
     const text = "中".repeat(1_000);
     const result = truncateToTokens(text, 100);

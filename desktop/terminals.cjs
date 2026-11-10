@@ -8,7 +8,9 @@
  * 2026-11 起终端同时是 agent 后台任务的宿主（job-host.cjs）：
  *  - 会话带 256KB 环形缓冲，网页/agent 可按 offset 增量读；
  *  - 退出后条目保留 5 分钟，供读取退出码与最后输出；
- *  - 可通过 command 自动输入首条命令（后台任务），用户随后可直接接管输入。
+ *  - 带 command 的会话是任务终端：命令作为 shell 的一次性脚本执行，
+ *    命令结束（跑完或被 Ctrl+C 中断）即进程退出，不保留交互 shell，
+ *    这样「运行中」完全等价于进程活着，概览里的条目随进程消失。
  */
 const fs = require("node:fs");
 const path = require("node:path");
@@ -76,6 +78,24 @@ function shellArgs(shell) {
   return name === "pwsh" || name === "powershell" ? ["-NoLogo"] : [];
 }
 
+/**
+ * 任务终端的启动参数：把命令当成 shell 的一次性脚本跑，跑完进程就退出。
+ * 比「往交互式 shell 里输入命令」更准：任务结束（含 Ctrl+C）不再留下空转的 shell，
+ * 上层只看进程存活与否就能判定任务是否还在跑。
+ * PowerShell 走 -EncodedCommand（base64 UTF-16LE）：引号、换行、中文都不参与
+ * Win32 命令行解析，多行命令也不会被逐行拆开执行。
+ */
+function jobShellArgv(shell, command) {
+  const name = path.win32.basename(shell).toLowerCase().replace(/\.exe$/, "");
+  if (name === "pwsh" || name === "powershell") {
+    const encoded = Buffer.from(command, "utf16le").toString("base64");
+    return ["-NoLogo", "-EncodedCommand", encoded];
+  }
+  if (name === "cmd") return ["/d", "/s", "/c", command];
+  // POSIX shell：-l 以便加载登录 profile，PATH 与用户终端一致
+  return ["-lc", command];
+}
+
 function resolveShell(env = process.env) {
   if (process.platform !== "win32") return env.SHELL || "bash";
   return shellCandidates(env).find(isSpawnableCandidate) ?? "cmd.exe";
@@ -100,7 +120,7 @@ function flushPending(entry) {
   if (chunk) emit("meow:term-data", { id: entry.id, data: chunk });
 }
 
-/** 创建一个 PTY 会话；command 存在时自动输入首条命令（后台任务），shell 保持可交互。 */
+/** 创建一个 PTY 会话；command 存在时以任务模式启动，命令结束进程即退出。 */
 function createSession(options = {}) {
   const pty = loadPty();
   const requestedCwd = typeof options.cwd === "string" ? options.cwd : "";
@@ -128,7 +148,11 @@ function createSession(options = {}) {
   let lastError;
   for (const candidate of candidates) {
     try {
-      proc = pty.spawn(candidate, shellArgs(candidate), spawnOptions);
+      proc = pty.spawn(
+        candidate,
+        command ? jobShellArgv(candidate, command) : shellArgs(candidate),
+        spawnOptions,
+      );
       shell = candidate;
       break;
     } catch (error) {
@@ -181,18 +205,6 @@ function createSession(options = {}) {
     }, EXIT_RETENTION_MS);
     entry.cleanupTimer.unref?.();
   });
-
-  if (command) {
-    // 直接输入到交互式 shell，不替换 shell：任务结束后用户仍可在同一终端接管
-    setTimeout(() => {
-      if (entry.exited) return;
-      try {
-        proc.write(`${command}\r`);
-      } catch {
-        // 进程已退出
-      }
-    }, 80);
-  }
 
   return { id, shell };
 }
@@ -308,6 +320,7 @@ function registerTerminalIpc(ipcMain, getWindow) {
   ipcMain.handle("meow:term-kill", (_event, id) => killSession(id));
   ipcMain.handle("meow:term-attach", (_event, id) => attachSession(id));
   ipcMain.handle("meow:term-read", (_event, id, offset) => readSession(id, offset));
+  ipcMain.handle("meow:term-list", () => listSessions());
 
   /** 窗口关闭 / 应用退出前杀掉全部 pty，避免 conpty 残留阻塞退出 */
   const disposeAll = () => {
@@ -339,6 +352,7 @@ module.exports = {
   registerTerminalIpc,
   resolveShell,
   shellArgs,
+  jobShellArgv,
   shellCandidates,
   createSession,
   readSession,
