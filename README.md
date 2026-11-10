@@ -23,7 +23,7 @@ Electron + React 负责界面，Agent 内核跑在本地 HTTP/SSE 服务里，UI
 -   **内核与界面彻底解耦**：`pnpm dev:server` 就能脱离 Electron 单独跑，任何 HTTP 客户端都能接入。
 -   **不是黑盒**：工具调用、审批、压缩、缓存策略全是 `src/agent/` 里的普通 TypeScript，改完即生效，没有打包魔法。
 -   **认真对待 Token**：服务端原生压缩 + 本地摘要 + 工具输出三层治理 + 输出预算预检，长会话不容易崩。
--   **桌面不是壳**：终端、浏览器、文件预览、Git、Diff 审阅、悬浮岛都在同一个窗口，不用在编辑器和终端之间来回切。
+-   **桌面不是壳**：终端、浏览器、邮件、文件预览、Git、Diff 审阅、悬浮岛都在同一个窗口，不用在编辑器和终端之间来回切。
 -   **本地优先**：会话、密钥、日志都留在本机；密钥进内存即从环境变量抹除，不落盘。
 
 ## 功能特性
@@ -38,7 +38,7 @@ Electron + React 负责界面，Agent 内核跑在本地 HTTP/SSE 服务里，UI
 **工具与审批**
 
 -   文件与搜索：`list_dir` / `read_file` / `glob` / `grep`（内置 ripgrep）/ `write_file` / `edit_file` / `multi_edit`。
--   命令执行：`run_command` 运行 PowerShell，长输出自动截断，高危命令给出风险提示。
+-   命令执行：`run_command` 运行 PowerShell（5.1 与 7 的行为对齐）；退出码如实上报，失败不再被当成成功；没有 stdin 通道，交互式命令直接失败而不是空等超时；彩色码与进度噪音在采集层清掉，超长输出保留头 + 尾，报错不会随尾部一起被截掉；高危命令给出风险提示。
 -   浏览器：`browser_navigate` / `browser_click` / `browser_type` / `browser_screenshot` / `browser_snapshot` / `browser_back` / `browser_reload`；直接驱动内嵌页签的 guest webContents，快照只收可见可交互元素（最多 200 个）。
 -   网络与文档：`web_search` / `web_fetch`；PDF 直接解析（pdfjs-dist）；视频走 ffprobe + 9 帧 storyboard（约 1.5k token），长视频不硬塞上下文。
 -   电脑控制（内置插件，Windows）：`computer_screenshot` / `click` / `drag` / `scroll` / `key` / `type` / `wait` / `window_list` / `window_activate` / `clipboard`；截图走 desktopCapturer，输入走 PowerShell SendInput。
@@ -61,6 +61,13 @@ Electron + React 负责界面，Agent 内核跑在本地 HTTP/SSE 服务里，UI
 -   导出：会话可导出为 HTML 或 Markdown。
 -   项目指令：自动读取工作区根目录与 `.meowcode/AGENTS.md` 作为项目级指引。
 
+**邮件**
+
+-   侧栏内置邮件客户端：多账号 IMAP 收件 / SMTP 发件，文件夹、HTML 正文与附件。
+-   发件箱独立排队：发送失败留在发件箱由你手动重试，重启不会自动重发，避免重复投递。
+-   AI 起草正文：说出要点即可生成邮件，区分新写 / 回复 / 转发三种语境；只产出正文，不带主题行和客套模板。
+-   复用已配置的模型与代理，不需要为邮件单独填一套密钥。
+
 **Token 效率**
 
 -   服务端原生压缩（Anthropic `compact_20260112` / OpenAI `/responses/compact`）。
@@ -69,7 +76,8 @@ Electron + React 负责界面，Agent 内核跑在本地 HTTP/SSE 服务里，UI
 -   逐请求输出预算预检，按真实用量锚点收紧 `max_tokens`。
 -   PTC `run_code`：写操作与命令仍走宿主审批。
 -   MCP schema 瘦身与 8k 预算（保名字、按档砍描述）。
--   读区间并集短路与跨回合结果去重。
+-   读区间并集短路与跨回合结果去重；已读区间随回合落盘，重启后仍能短路「已读过且未变更」的重读。
+-   压缩后回填「改过哪些文件」并带净增删行数，减少压缩之后的重新探索。
 -   摘要失败时的零模型兜底与连续失败熔断。
 -   实时用量：输入 / 输出 / 缓存读 / 缓存写 / 命中率分开统计，同一轮多次上报按 roundId 替换而不是累加。
 
@@ -77,6 +85,7 @@ Electron + React 负责界面，Agent 内核跑在本地 HTTP/SSE 服务里，UI
 
 -   内置终端（node-pty）、浏览器面板、文件预览、插件页面板、计划面板、子 Agent 面板，右侧栏按需切换。
 -   多项目工作区切换；设置页覆盖模型与服务商、审批、沙箱、Hooks、项目规则、记忆、自我学习、Worktree、外观、快捷键、数据位置与归档。
+-   标题栏公告：更新动态显示在 Logo 右侧，点开看全文；关闭状态按公告 id 记录，换新公告才会再提示。
 -   AI 悬浮岛：屏幕顶部胶囊聚合所有运行中会话，待审批亮琥珀点，悬停展开迷你聊天窗，空闲时鼠标穿透。
 -   外观：6 套配色（经典色 / 熔岩橙 / 蜜蜂黄 / 薄荷绿 / 羊皮纸 / 和谐蓝）× 明暗 / 跟随系统；11 种界面语言。
 -   托盘会话、系统通知、自动更新检查与下载。
