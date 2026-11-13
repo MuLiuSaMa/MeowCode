@@ -1,0 +1,12 @@
+/* 设置 → 网页搜索与获取：DeepSeek 独立密钥行 */
+
+.mc-webkey {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.mc-webkey__input {
+  width: 240px;
+  font-family: inherit;
+}

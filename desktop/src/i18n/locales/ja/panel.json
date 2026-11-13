@@ -184,7 +184,16 @@
     "resizeAria": "ファイル一覧の幅を調整",
     "filterPlaceholder": "ファイルを絞り込む…",
     "searching": "検索中…",
-    "noMatch": "一致するファイルがありません"
+    "noMatch": "一致するファイルがありません",
+    "menu": {
+      "open": "開く",
+      "copy": "コピー",
+      "copySuffix": "コピー",
+      "paste": "貼り付け",
+      "copyPath": "パスをコピー",
+      "reveal": "エクスプローラーで表示",
+      "delete": "削除"
+    }
   },
   "terminal": {
     "exited": "[プロセスは終了しました]",

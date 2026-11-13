@@ -184,7 +184,16 @@
     "resizeAria": "파일 목록 너비 조정",
     "filterPlaceholder": "파일 필터…",
     "searching": "검색 중…",
-    "noMatch": "일치하는 파일 없음"
+    "noMatch": "일치하는 파일 없음",
+    "menu": {
+      "open": "열기",
+      "copy": "복사",
+      "copySuffix": "복사본",
+      "paste": "붙여넣기",
+      "copyPath": "경로 복사",
+      "reveal": "탐색기에서 보기",
+      "delete": "삭제"
+    }
   },
   "terminal": {
     "exited": "[프로세스가 종료되었습니다]",

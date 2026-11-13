@@ -110,6 +110,10 @@ export function toolSummary(
       const names = parseToolSearchOutput(output).items.map((tool) => tool.name);
       return names.length ? names.join(" · ").slice(0, 160) : undefined;
     }
+    case "session_search": {
+      const query = textArg(args, "query").replace(/\s+/g, " ").trim();
+      return query ? query.slice(0, 160) : undefined;
+    }
     case "ask_user": {
       const answer = parseAskAnswers(output).find((value) => value.trim());
       return answer ? answer.trim().slice(0, 160) : undefined;

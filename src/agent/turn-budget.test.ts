@@ -63,6 +63,32 @@ describe("TurnBudget token cap", () => {
     budget.recordUsage({ inputTokens: 50_000_000, outputTokens: 1 });
     expect(budget.beginRound().stop).toBeUndefined();
   });
+
+  it("缓存命中的输入按计费当量折算，不按全量烧预算", () => {
+    const budget = new TurnBudget({ maxRounds: 100, maxTokens: 20_000 });
+    // 10 万输入里 9.5 万是缓存命中：计费当量约 1.45 万，不该当场判死
+    budget.recordUsage({ inputTokens: 100_000, cacheReadTokens: 95_000 });
+    expect(budget.usedTokens).toBeCloseTo(14_500, 3);
+    expect(budget.beginRound().stop).toBeUndefined();
+  });
+
+  it("命中数异常大于总量时按全命中处理，不倒扣", () => {
+    const budget = new TurnBudget({ maxRounds: 100 });
+    budget.recordUsage({ inputTokens: 1_000, cacheReadTokens: 5_000 });
+    expect(budget.usedTokens).toBeCloseTo(100, 3);
+  });
+
+  it("压缩回血：账降到当前上下文，且只降不升", () => {
+    const budget = new TurnBudget({ maxRounds: 100, maxTokens: 10_000 });
+    budget.recordUsage({ inputTokens: 9_500 });
+    budget.rebase(2_000);
+    budget.recordUsage({ inputTokens: 6_000 });
+    // 不回血的话这里是 15_500，下一轮就会被砍
+    expect(budget.usedTokens).toBe(8_000);
+    expect(budget.beginRound().stop).toBeUndefined();
+    budget.rebase(99_999);
+    expect(budget.usedTokens).toBe(8_000);
+  });
 });
 
 describe("TurnBudget alternating loop detection", () => {

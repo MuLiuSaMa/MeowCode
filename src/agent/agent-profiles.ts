@@ -55,7 +55,7 @@ Rules that outrank speed:
 - After two failed attempts, stop and report what blocks you.
 
 Reply in the user's language: a few sentences or \u22646 bullets, citing path:line; no whole-file or before/after dumps. Put "path" first in write/edit calls.
-Delegate broad independent work to subagents (task); starts are capped per turn, so do the rest yourself. In goal mode call admit first and close each lane through your graph's gates.`;
+Delegate broad independent work to subagents (task); parallel starts are capped, so wait for a slot. In goal mode call admit first and close each lane through your graph's gates.`;
 
 /**
  * 极简档：两个干活工具，一切读写都走 PowerShell。
@@ -167,4 +167,29 @@ export function profileAllowsTool(
 ): boolean {
   if (profile.tools === null) return true;
   return PROFILE_ALWAYS_ALLOWED_TOOLS.has(tool) || profile.tools.has(tool);
+}
+
+/** 设置页可调的「每个主 Agent 并行数量」覆盖；缺省用档位内置值。 */
+export type SubagentLimits = Partial<Record<AgentProfileId, number>>;
+
+/** 归一化并行上限：只保留三个档位的 1..10 整数。 */
+export function normalizeSubagentLimits(value: unknown): SubagentLimits {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  const limits: SubagentLimits = {};
+  for (const id of AGENT_PROFILE_IDS) {
+    const raw = (value as Record<string, unknown>)[id];
+    if (typeof raw === "number" && Number.isFinite(raw)) {
+      limits[id] = Math.max(1, Math.min(10, Math.floor(raw)));
+    }
+  }
+  return limits;
+}
+
+/** env 给初值（桌面端把设置注入 server）；解析失败按未设置处理。 */
+export function readSubagentLimitsFromEnv(): SubagentLimits {
+  try {
+    return normalizeSubagentLimits(JSON.parse(process.env.MEOWCODE_AGENT_LIMITS ?? "{}"));
+  } catch {
+    return {};
+  }
 }

@@ -1,0 +1,52 @@
+/* 设置 → 连接：SSH 列表与编辑表单 */
+
+.mc-conn__empty {
+  margin: 0;
+  padding: 18px 16px;
+  text-align: center;
+  font-size: var(--fs-caption);
+  color: var(--fg-subtlest);
+}
+
+.mc-conn__actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.mc-conn__form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 4px 0 2px;
+}
+
+.mc-conn__grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 110px;
+  gap: 12px;
+}
+
+.mc-conn__keyrow {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.mc-conn__keyrow .mc-field {
+  flex: 1;
+  min-width: 0;
+}
+
+.mc-conn__note {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  font-size: var(--fs-caption);
+  color: var(--fg-subtlest);
+}
+
+.mc-conn__note > svg {
+  flex-shrink: 0;
+}

@@ -16,6 +16,13 @@ export const MAX_TURN_ROUNDS = 60;
 export const TURN_WRAPUP_ROUNDS = 50;
 /** 交替循环窗口：只看最近这么多次只读调用。 */
 export const ALTERNATING_WINDOW = 12;
+/**
+ * 缓存命中的输入按这个权重计入预算（与计费同口径：命中部分约 1/10 价）。
+ *
+ * 不折的后果很直观：预热过的长会话每轮 95%+ 输入都是缓存命中，按全量计的
+ * 话预算烧得比账单快 5~10 倍，一次正常的二十轮任务就能把「三倍窗口」耗尽。
+ */
+export const CACHE_READ_WEIGHT = 0.1;
 /** 同一签名在窗口内出现 3 次 → 提醒；4 次 → 拒绝执行。 */
 export const ALTERNATING_REPEAT_REMIND = 3;
 export const ALTERNATING_REPEAT_BLOCK = 4;
@@ -115,13 +122,38 @@ export class TurnBudget {
     return {};
   }
 
-  /** 记账本轮用量（输入 + 输出）。 */
-  recordUsage(usage: { inputTokens?: number; outputTokens?: number } | undefined): void {
+  /** 记账本轮用量（输入 + 输出），缓存命中的输入按计费当量折算。 */
+  recordUsage(
+    usage:
+      | { inputTokens?: number; outputTokens?: number; cacheReadTokens?: number }
+      | undefined,
+  ): void {
     if (!usage) return;
     const input = Number(usage.inputTokens ?? 0);
     const output = Number(usage.outputTokens ?? 0);
-    if (Number.isFinite(input)) this.tokens += Math.max(0, input);
     if (Number.isFinite(output)) this.tokens += Math.max(0, output);
+    if (!Number.isFinite(input) || input <= 0) return;
+    // 各协议对 inputTokens 是否含缓存命中不一致（anthropic 适配器折进去了，
+    // chat completions 用 prompt_tokens 也含），统一按「总量 - 命中」拆：
+    // clamp 兜住"命中数大于总量"的异常上报，宁可少折不倒扣。
+    const cacheRead = Math.min(
+      Math.max(0, Number(usage.cacheReadTokens ?? 0) || 0),
+      Math.max(0, input),
+    );
+    this.tokens += (input - cacheRead) + cacheRead * CACHE_READ_WEIGHT;
+  }
+
+  /**
+   * 上下文被收缩/压缩之后回血：账降到当前上下文的规模。
+   *
+   * 回合内的预算按「每轮重发整段历史」累计，压缩把历史折叠掉之后，那部分
+   * 已经付过的 token 不该继续压着新的一轮——否则越压越早停，压缩等于白做。
+   * 只降不升：估算偏小时不能凭空发额度。
+   */
+  rebase(usedTokens: number): void {
+    const target = Number(usedTokens);
+    if (!Number.isFinite(target) || target < 0) return;
+    if (target < this.tokens) this.tokens = Math.floor(target);
   }
 
   /**

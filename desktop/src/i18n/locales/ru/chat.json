@@ -271,6 +271,7 @@
     "computerWait": "Ожидание",
     "computerAction": "Управление ПК",
     "toolSearch": "Поиск инструментов",
+    "sessionSearch": "Поиск прошлых сессий",
     "webSearch": "Веб-поиск",
     "webFetch": "Загрузка страницы",
     "deleteFile": "Удалить файл",

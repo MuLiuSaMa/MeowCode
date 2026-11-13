@@ -3,6 +3,7 @@ import { persistToolOutput } from "./tool-output.js";
 import { createHash, randomUUID } from "node:crypto";
 import os from "node:os";
 import path from "node:path";
+import { normalizeAskQuestions } from "./ask-questions.js";
 import { assessCommandRisk, isFileDeletionCommand } from "./command-risk.js";
 import {
   COMPACTION_KEEP_RECENT_TOKENS,
@@ -39,7 +40,13 @@ import { LearningController, type LearningSnapshot } from "./learning/index.js";
 import { formatLearningNotice } from "./learning/recall.js";
 import { createTurnTrace, recordToolCall, type TurnTrace } from "./learning/signals.js";
 import { canReplayNativeCompaction, nativeCompactionMode, requestNativeCompaction } from "./native-compaction.js";
-import { createWebSearchBackend, WEB_SEARCH_MAX_RESULTS, type WebSearchResult } from "./web-search.js";
+import {
+  createWebSearchBackend,
+  readWebConfigFromEnv,
+  WEB_SEARCH_MAX_RESULTS,
+  type WebConfig,
+  type WebSearchResult,
+} from "./web-search.js";
 import { fetchWebPage, type WebFetchOutcome } from "./web-fetch.js";
 import { multiEditPaths, readMultiEditGroups } from "./multi-edit.js";
 import {
@@ -105,11 +112,17 @@ import {
   classifyCache,
   diffPrefix,
   prefixChangeSegments,
+  resolveMinCacheableTokens,
   TTL_MS,
   type CacheState,
   type PrefixSnapshot,
 } from "./cache-diagnostics.js";
-import { createToolCatalog, reconcileToolCatalog, type ToolCatalog } from "./tool-catalog.js";
+import {
+  createToolCatalog,
+  fingerprintTools,
+  reconcileToolCatalog,
+  type ToolCatalog,
+} from "./tool-catalog.js";
 import { FAILOVER_WALL_CLOCK_MS, failoverReason, planFallbacks } from "./provider-fallback.js";
 import { boostEffort } from "./thinking-budget.js";
 import { projectForMainPath, projectForRequest } from "./request-projection.js";
@@ -151,6 +164,8 @@ import {
   agentProfileFor,
   normalizeAgentProfile,
   profileAllowsTool,
+  readSubagentLimitsFromEnv,
+  type SubagentLimits,
 } from "./agent-profiles.js";
 import {
   buildChildResult,
@@ -174,6 +189,7 @@ import {
   type ApprovalModeInput,
   type ApprovalDecision,
   type ApprovalRememberScope,
+  type AskUserQuestion,
   type ChatMessage,
   type ContextEditing,
   type CommandRisk,
@@ -299,6 +315,8 @@ export const MAX_WORKFLOW_CONTINUATIONS = 2;
 /** 子 Agent 运行中插话：队列上限与单条长度上限（防刷屏/注入超长文本）。 */
 export const MAX_PENDING_STEERS = 8;
 const MAX_STEER_CHARS = 4000;
+/** 根 Agent 每回合的子 Agent 启动总预算（含嵌套）；并行上限另算，预算每回合重置。 */
+const SUBAGENT_BUDGET_PER_TURN = 8;
 
 /**
  * 计划模式指令：走 in-history 尾注（ensureModeContext），会话中途切换模式只追加
@@ -698,6 +716,15 @@ const CACHE_KEEPALIVE_DELAY_MS = 290_000;
  */
 const CACHE_KEEPALIVE_MAX_PINGS = 4;
 
+/**
+ * 前缀诊断元数据的保留条数。
+ *
+ * 缓存分片是「会话 × provider」粒度，所以诊断基线也必须按这个粒度存 —— 按 provider
+ * 单键会让切会话后的第一笔请求必然被判成 prefix_changed（两个会话的前缀本来就不同）。
+ * 长驻进程里会话会越开越多，保留最近 16 条足够覆盖「来回切几个会话」的常用场景。
+ */
+const PREFIX_META_LIMIT = 16;
+
 /** 下一句建议：单次请求输出预算（含思考 token）；失败不重试 */
 const SUGGESTION_MAX_TOKENS = 1_200;
 
@@ -945,6 +972,8 @@ export class AgentRuntime {
   private providers: ProviderConfig[];
   private providerId: string;
   private sessionsDir: string;
+  /** 主会话目录：子 Agent 的 sessionsDir 在 subagents/ 下，跨会话检索仍指回根目录 */
+  private rootSessionsDir: string;
   /** 用户主目录：全局技能索引扫描根（~/.meowcode/skills）；测试注入临时目录隔离真实环境 */
   private homeDir: string;
   /**
@@ -1035,7 +1064,7 @@ export class AgentRuntime {
   private pendingAskDetails: {
     callId: string;
     sessionId: string;
-    questions: Array<{ question: string; options: string[] }>;
+    questions: AskUserQuestion[];
   } | null = null;
   /** 最近一次回合失败原因（按 runtime/会话保留，切回时展示） */
   private lastErrorMessage: string | null = null;
@@ -1217,6 +1246,16 @@ export class AgentRuntime {
   speechStyle: SpeechStyle = "normal";
   /** 供应商故障转移：默认关闭；server 的 /config/provider-fallback 可实时切换 */
   providerFallbackEnabled = false;
+  /** 设置 → 网页搜索与获取：搜索/抓取分别选提供方；env 给初值，PUT /config/web-options 热切换。 */
+  webConfig: WebConfig = readWebConfigFromEnv();
+  /** 每个主 Agent 的并行子 Agent 上限覆盖；env 给初值，PUT /config/agent-limits 热切换。 */
+  subagentLimitOverrides: SubagentLimits = readSubagentLimitsFromEnv();
+
+  /** 当前档位的并行上限：设置覆盖优先，否则用档位内置值。 */
+  private effectiveSubagentLimit(): number {
+    const override = this.subagentLimitOverrides[this.activeProfile.id];
+    return typeof override === "number" ? override : this.activeProfile.maxSubagents;
+  }
   /** 蒸馏一次只跑一个：请求在途时的新增量并入下回合（游标已推进到当次快照末尾） */
   private memoryExtractionBusy = false;
   /** 蒸馏成功后的下回合通知（绑定会话：切换会话即丢弃，避免跨会话误注入） */
@@ -1268,13 +1307,14 @@ export class AgentRuntime {
   private toolCatalog: ToolCatalog | null = null;
   /** 原始工具表缓存：只有目录输入（动态版本 / 档位 / provider 等）变化才重建 */
   private rawToolsCache: { key: string; tools: ToolDefinition[] } | null = null;
-  /** 每个 provider 上一次请求的前缀指纹与时间：缓存诊断用 */
+  /** 每个会话+provider 上一次请求的前缀指纹与时间：缓存诊断用 */
   private providerRequestMeta = new Map<
     string,
     { key: string; at: number; snapshot: PrefixSnapshot }
   >();
   /** 本次请求的前缀信息（stream 前置记录，recordUsage 消费） */
   private currentRequest: {
+    sessionId: string;
     providerId: string;
     key: string;
     samePrefix: boolean;
@@ -1285,6 +1325,13 @@ export class AgentRuntime {
   } | null = null;
   /** 每个会话+provider 已提示过的缓存状态，避免重复提醒 */
   private emittedCacheStates = new Map<string, CacheState>();
+  /**
+   * 「会话 × provider」是否真的报过缓存命中。
+   *
+   * 保活要把 `cacheReadTokens === 0` 当成「前缀读不回来」的证据，前提是对方确实
+   * 会报这个字段。不报字段的兼容网关 read 恒为 0，拿它当证据会让保活永久失效。
+   */
+  private cacheReadEvidence = new Map<string, boolean>();
   /** 最近一次前缀变化原因（工具追加 / instructions 变化） */
   private lastPrefixChangeReason: string | null = null;
 
@@ -1292,6 +1339,8 @@ export class AgentRuntime {
     providers: ProviderConfig[];
     providerId?: string;
     sessionsDir: string;
+    /** 主会话目录覆盖（子 Agent 持有 subagents/ 子目录时仍指回根）；缺省同 sessionsDir */
+    rootSessionsDir?: string;
     /** 全局技能目录扫描根（缺省 os.homedir()）；测试注入临时目录隔离真实 ~/.meowcode */
     homeDir?: string;
     workspace?: string;
@@ -1369,6 +1418,7 @@ export class AgentRuntime {
     this.providers = options.providers;
     this.providerId = options.providerId ?? options.providers[0]?.id ?? "";
     this.sessionsDir = options.sessionsDir;
+    this.rootSessionsDir = options.rootSessionsDir ?? options.sessionsDir;
     this.homeDir = options.homeDir ?? os.homedir();
     // 路径守卫和应用保持一致的可信根：user 记忆/技能/插件都在 <home>/.meowcode
     setAppDataRoot(path.join(this.homeDir, ".meowcode"));
@@ -1413,7 +1463,7 @@ export class AgentRuntime {
       options.traceSink ? { sink: options.traceSink } : {},
     );
     this.subagentDepth = options.subagentDepth ?? 0;
-    this.subagentBudget = options.subagentBudget ?? 8;
+    this.subagentBudget = options.subagentBudget ?? SUBAGENT_BUDGET_PER_TURN;
   }
 
   /**
@@ -2158,17 +2208,17 @@ export class AgentRuntime {
   }
 
   /**
-   * 把本档的每回合子 Agent 预算写进 task 描述：模型要按整个回合规划派发，
-   * 而不是看到上限数字后再按“每批”理解。
+   * 把本档的并行子 Agent 上限写进 task 描述：这是“同时运行”的上限，
+   * 空出名额可以继续派，不限制整个回合/会话的累计数量。
    */
   private withSubagentBudgetHint(definition: ToolDefinition): ToolDefinition {
-    const max = this.activeProfile.maxSubagents;
-    const unit = max === 1 ? "subagent start" : "subagent starts";
+    const max = this.effectiveSubagentLimit();
+    const unit = max === 1 ? "subagent" : "subagents";
     return {
       ...definition,
       function: {
         ...definition.function,
-        description: `${definition.function.description} This session allows at most ${max} ${unit} per user turn, counted across the whole turn (background: at most ${MAX_BACKGROUND_SUBAGENTS} at once). Calls over the cap are rejected — do not exceed it.`,
+        description: `${definition.function.description} At most ${max} foreground ${unit} may run at once; finished slots can be reused in the same turn (background: at most ${MAX_BACKGROUND_SUBAGENTS} at once). Calls over the concurrency cap are rejected — wait for a slot instead of dropping work.`,
       },
     };
   }
@@ -2371,7 +2421,8 @@ export class AgentRuntime {
     this.toolCatalog = null;
     this.rawToolsCache = null;
     this.emittedCacheStates.clear();
-    this.providerRequestMeta.clear();
+    // 前缀基线按「会话 × provider」分开存，切会话/新建会话不能整体清 ——
+    // 清了会让切回来的第一次请求又误报 prefix_changed。条数由 PREFIX_META_LIMIT 兜住。
     this.currentRequest = null;
     this.lastPrefixChangeReason = null;
     this.cancelWarmupCompaction();
@@ -2454,7 +2505,8 @@ export class AgentRuntime {
     this.toolCatalog = null;
     this.rawToolsCache = null;
     this.emittedCacheStates.clear();
-    this.providerRequestMeta.clear();
+    // 前缀基线按「会话 × provider」分开存，切会话/新建会话不能整体清 ——
+    // 清了会让切回来的第一次请求又误报 prefix_changed。条数由 PREFIX_META_LIMIT 兜住。
     this.currentRequest = null;
     this.lastPrefixChangeReason = null;
     this.cancelWarmupCompaction();
@@ -2613,7 +2665,7 @@ export class AgentRuntime {
   get pendingAsk(): {
     callId: string;
     sessionId: string;
-    questions: Array<{ question: string; options: string[] }>;
+    questions: AskUserQuestion[];
   } | null {
     return this.pendingAskDetails;
   }
@@ -2632,7 +2684,7 @@ export class AgentRuntime {
   private async awaitUserAnswer(
     session: SessionStore,
     callId: string,
-    questions: Array<{ question: string; options: string[] }>,
+    questions: AskUserQuestion[],
   ): Promise<string[]> {
     this.pendingAskDetails = { callId, sessionId: session.id, questions };
     this.emit({ type: "ask_user", sessionId: session.id, callId, questions });
@@ -3438,6 +3490,8 @@ export class AgentRuntime {
     this.partialRound = 0;
     this.partialDraft = null;
     this.subagentsStartedThisTurn = 0;
+    // 子 Agent 总预算只按回合重置；子 runtime 的预算由父级扣减后传入，不在这里重置
+    if (this.subagentDepth === 0) this.subagentBudget = SUBAGENT_BUDGET_PER_TURN;
     this.verifyFailuresThisTurn = 0;
     this.lspFeedbackThisTurn = 0;
     this.turnFileChanges.clear();
@@ -3748,8 +3802,10 @@ export class AgentRuntime {
       this.scheduleMemoryExtraction(session, status);
       // 回合结束 = 学习时机：先落 outcome + 归因，再判断值不值得调用学习器
       this.finishLearningTurn(session, status);
-      // 回合结束 = 前缀刚写入缓存：安排保活（5m TTL 空档）与空闲压缩（1h TTL 长空档）
-      this.scheduleCacheKeepalive(session);
+      // 回合结束 = 前缀刚写入缓存：安排保活（5m TTL 空档）与空闲压缩（1h TTL 长空档）。
+      // 只在中止/报错之外的正常结束时保活：异常收尾的历史可能停在半截工具调用上，
+      // 下一条消息前会被 repairToolPairs 改写，保活写进去的条目读不回来。
+      if (status === "completed") this.scheduleCacheKeepalive(session);
       // 已读区间随回合落盘：重启后仍能短路「已读过且未变更」的整段重读
       this.persistReadCoverage(session);
       this.scheduleIdleCompaction(session);
@@ -3843,7 +3899,7 @@ export class AgentRuntime {
     if ((provider.protocol ?? "openai-chat-completions") !== "anthropic-messages") return;
     const plan = resolveCachePlan(provider);
     if (!plan.enabled) return;
-    const meta = this.providerRequestMeta.get(provider.id);
+    const meta = this.readRequestMeta(session.id, provider.id);
     // 首次请求没有「上次触缓存」的时间点；保活成功的 ping 会刷新 meta.at，
     // 所以被保热的缓存不会在这里误判为已过期。
     if (!meta || Date.now() - meta.at <= TTL_MS[plan.ttl]) return;
@@ -4328,20 +4384,54 @@ export class AgentRuntime {
   }
 
   /**
+   * 前缀诊断的存储键。
+   *
+   * 缓存分片本来就是「会话 × provider」粒度（亲和键按会话生成），按 provider 单键
+   * 存会让切会话后的第一笔请求必然与上一个会话的前缀比对 → 恒判 prefix_changed，
+   * 而用户恰恰是在切会话时看命中率。
+   */
+  private requestMetaKey(sessionId: string, providerId: string): string {
+    return `${sessionId}:${providerId}`;
+  }
+
+  private readRequestMeta(sessionId: string, providerId: string) {
+    return this.providerRequestMeta.get(this.requestMetaKey(sessionId, providerId));
+  }
+
+  /** 写入基线；按插入顺序淘汰最旧的一条（写入即视为最近使用）。 */
+  private writeRequestMeta(
+    sessionId: string,
+    providerId: string,
+    meta: { key: string; at: number; snapshot: PrefixSnapshot },
+  ): void {
+    const key = this.requestMetaKey(sessionId, providerId);
+    this.providerRequestMeta.delete(key);
+    this.providerRequestMeta.set(key, meta);
+    while (this.providerRequestMeta.size > PREFIX_META_LIMIT) {
+      const oldest = this.providerRequestMeta.keys().next().value;
+      if (oldest === undefined) break;
+      this.providerRequestMeta.delete(oldest);
+    }
+  }
+
+  /**
    * 请求前置记录：工具 + system 的分段前缀指纹、是否与上一次相同、距上次请求的空闲。
    * 只记主循环请求；标题/压缩等辅助请求不走这里，不会污染诊断。
    *
    * 分段而不是整段拼接：掉缓存时要说得出是「工具块换了」还是「第几条 system 换了」，
    * 否则 MCP 上线、AGENTS.md 重载、语色切换在日志里长得一模一样。
+   *
+   * 指纹取**实际发送的** `options.tools`，不是目录快照 —— `before_provider_request`
+   * 这类 hook 可以改写 tools，拿目录版本会让装了插件的用户诊断基线永远对不上。
    */
-  private noteRequestStart(options: AgentStreamOptions): void {
+  private noteRequestStart(options: AgentStreamOptions, sessionId: string): PrefixSnapshot {
     const systemTexts: string[] = [];
     for (const message of options.messages) {
       if (message.role !== "system" || !message.content) continue;
       systemTexts.push(message.content);
     }
     const hash = (text: string) => createHash("sha1").update(text).digest("hex").slice(0, 16);
-    const toolsFingerprint = this.ensureToolCatalog().fingerprint;
+    const toolsFingerprint = fingerprintTools(options.tools);
     const snapshot: PrefixSnapshot = {
       tools: toolsFingerprint,
       system: systemTexts.map(hash),
@@ -4349,10 +4439,11 @@ export class AgentRuntime {
     // 整段拼接的 key 保留：samePrefix 的判定口径必须与历史一致
     const key = `${toolsFingerprint}|${hash(systemTexts.join("\n"))}`;
     const providerId = options.provider.id;
-    const previous = this.providerRequestMeta.get(providerId);
+    const previous = this.readRequestMeta(sessionId, providerId);
     const now = Date.now();
     const diff = diffPrefix(previous?.snapshot, snapshot);
     this.currentRequest = {
+      sessionId,
       providerId,
       key,
       samePrefix: previous?.key === key,
@@ -4360,7 +4451,42 @@ export class AgentRuntime {
       idleMs: previous ? now - previous.at : 0,
       changedSegments: previous && previous.key !== key ? prefixChangeSegments(diff) : [],
     };
-    this.providerRequestMeta.set(providerId, { key, at: now, snapshot });
+    this.writeRequestMeta(sessionId, providerId, { key, at: now, snapshot });
+    return snapshot;
+  }
+
+  /**
+   * hook 改写之后把基线换成真正发出去的字节。
+   *
+   * 不这么做的话，被插件改写的 tools/messages 在诊断里不可见：既漏报「插件改了工具」
+   * 造成的失效，也会让下一次比较一直对着错误基线。段名记 `plugin_rewrite` 便于分桶。
+   */
+  private rebaseRequestMeta(
+    sessionId: string,
+    providerId: string,
+    before: PrefixSnapshot,
+    messages: readonly ChatMessage[],
+    tools: readonly ToolDefinition[],
+  ): void {
+    const systemTexts: string[] = [];
+    for (const message of messages) {
+      if (message.role !== "system" || !message.content) continue;
+      systemTexts.push(message.content);
+    }
+    const hash = (text: string) => createHash("sha1").update(text).digest("hex").slice(0, 16);
+    const toolsFingerprint = fingerprintTools(tools);
+    const after: PrefixSnapshot = { tools: toolsFingerprint, system: systemTexts.map(hash) };
+    const key = `${toolsFingerprint}|${hash(systemTexts.join("\n"))}`;
+    const changed =
+      before.tools !== after.tools ||
+      before.system.length !== after.system.length ||
+      before.system.some((value, index) => value !== after.system[index]);
+    if (!changed) return;
+    this.writeRequestMeta(sessionId, providerId, { key, at: Date.now(), snapshot: after });
+    if (this.currentRequest) {
+      this.currentRequest.key = key;
+      this.currentRequest.changedSegments = ["plugin_rewrite"];
+    }
   }
 
   /**
@@ -4562,7 +4688,7 @@ export class AgentRuntime {
       // 流中提前执行（实验开关 midstreamToolExec）：startEarlyToolRun 内部自检开关
       onToolCallComplete: (call, messages) => this.startEarlyToolRun(session, call, messages),
       stream: async (options) => {
-        this.noteRequestStart(options);
+        const requestBaseline = this.noteRequestStart(options, session.id);
         // 新一轮模型调用：上一轮没等到 recordUsage 的样本作废（agent-loop 内部重试会走到这里）
         this.retractPendingUsage(session);
         const roundId = randomUUID();
@@ -4605,6 +4731,16 @@ export class AgentRuntime {
           } catch {
             // 改写失败按原请求走，宁可少一个 hook 也不能打断请求
           }
+        }
+        // 插件改写了请求体：诊断基线换成真正发出去的字节
+        if (requestOptions !== options) {
+          this.rebaseRequestMeta(
+            session.id,
+            options.provider.id,
+            requestBaseline,
+            requestOptions.messages,
+            requestOptions.tools,
+          );
         }
         const llmSpan = this.traceRecorder.startSpan({
           traceId: session.traceId,
@@ -4664,6 +4800,7 @@ export class AgentRuntime {
               .appendUsage({
                 ...lastUsage,
                 source: "chat",
+                roundId,
                 ...(this.currentTurnId ? { turnId: this.currentTurnId } : {}),
                 providerId: requestOptions.provider.id,
                 model: requestOptions.provider.model,
@@ -4729,6 +4866,11 @@ export class AgentRuntime {
       },
 
       recordUsage: async (usage, meta) => {
+        // 该「会话 × provider」确实会报缓存命中：只有确认过这一点，保活才敢把
+        // read=0 当成「前缀读不回来了」的证据 —— 不报字段的网关 read 恒为 0。
+        if ((usage.cacheReadTokens ?? 0) > 0) {
+          this.cacheReadEvidence.set(this.requestMetaKey(session.id, turnProvider.id), true);
+        }
         // 回合级汇总：只累计主对话（本回调仅处理 chat 源），turn_complete 带给前端
         if (usage.inputTokens) this.turnUsageTotals.input += usage.inputTokens;
         if (usage.outputTokens) this.turnUsageTotals.output += usage.outputTokens;
@@ -4753,6 +4895,8 @@ export class AgentRuntime {
             ...usage,
             source: "chat",
             ...(meta?.tokensPerSecond != null ? { tokensPerSecond: meta.tokensPerSecond } : {}),
+            // 同一轮的流中断记账与成功记账靠它去重（后写覆盖先写）
+            ...(this.pendingUsageRoundId ? { roundId: this.pendingUsageRoundId } : {}),
             ...(this.currentTurnId ? { turnId: this.currentTurnId } : {}),
             // 用量记在实际应答的那一家头上（切链后与用户配置的 provider 可能不同）
             providerId: turnProvider.id,
@@ -4763,26 +4907,36 @@ export class AgentRuntime {
         let cacheState: CacheState | undefined;
         let cacheReason: string | undefined;
         const request = this.currentRequest;
-        if (request && request.providerId === turnProvider.id && usage.inputTokens !== undefined) {
+        if (
+          request &&
+          // 后台会话的请求不能拿去给前台会话算诊断（基线本来就是按会话分开的）
+          request.sessionId === session.id &&
+          request.providerId === turnProvider.id &&
+          usage.inputTokens !== undefined
+        ) {
           const plan = resolveCachePlan(turnProvider);
-          const result = classifyCache({
-            protocol: plan.protocol,
-            // 用解析后的实际 TTL（auto 已按节奏与端点白名单定档），而不是用户配置原文
-            ...(plan.enabled ? { cacheTtl: plan.ttl } : {}),
-            ...(usage.cacheReadTokens !== undefined
-              ? { cacheReadTokens: usage.cacheReadTokens }
-              : {}),
-            ...(usage.cacheWriteTokens !== undefined
-              ? { cacheWriteTokens: usage.cacheWriteTokens }
-              : {}),
-            inputTokens: usage.inputTokens,
-            prefixChanged: request.hadPrevious && !request.samePrefix,
-            ...(request.changedSegments.length
-              ? { changedSegments: request.changedSegments }
-              : {}),
-            hadSamePrefixBefore: request.samePrefix,
-            idleMs: request.idleMs,
-          });
+          const result = classifyCache(
+            {
+              protocol: plan.protocol,
+              // 用解析后的实际 TTL（auto 已按节奏与端点白名单定档），而不是用户配置原文
+              ...(plan.enabled ? { cacheTtl: plan.ttl } : {}),
+              ...(usage.cacheReadTokens !== undefined
+                ? { cacheReadTokens: usage.cacheReadTokens }
+                : {}),
+              ...(usage.cacheWriteTokens !== undefined
+                ? { cacheWriteTokens: usage.cacheWriteTokens }
+                : {}),
+              inputTokens: usage.inputTokens,
+              prefixChanged: request.hadPrevious && !request.samePrefix,
+              ...(request.changedSegments.length
+                ? { changedSegments: request.changedSegments }
+                : {}),
+              hadSamePrefixBefore: request.samePrefix,
+              idleMs: request.idleMs,
+            },
+            // 最小可缓存长度按模型分档：固定 2048 在低档模型上漏报、在高档模型上虚警
+            { minCacheableTokens: resolveMinCacheableTokens(plan.protocol, turnProvider.model) },
+          );
           cacheState = result.state;
           if (request.hadPrevious && !request.samePrefix) {
             cacheReason = this.lastPrefixChangeReason ?? result.reason;
@@ -4933,7 +5087,8 @@ export class AgentRuntime {
    * 治理 hooks（根 runtime 还额外注册治理门禁；子 Agent 始终注册 turn_stop 与 steer）：
    * - beforeToolCall：admit 之前拦截变更类工具（含 task 派发）
    * - afterToolCall：根侧文件改动即 T1 G4 证据；计数未更新清单的变更
-   * - prepareNextTurn：run 活跃注入 frontier；连续 8 次变更没 update_plan 则 nudge；送达插话
+   * - prepareNextTurn：run 活跃注入 frontier；连续 4 次变更没 update_plan 则 nudge（无清单时提醒建清单）；送达插话
+   * - beforeTurnEnd：插件 turn_stop 之后，清单未同步则收尾前拦一次
    * - takeSteer：模型准备收尾时优先注入用户插话
    */
   private createLoopHooks(session: SessionStore): AgentLoopHooks | undefined {
@@ -4956,7 +5111,23 @@ export class AgentRuntime {
         },
         this.hookContext(session, this.turnAbort?.signal),
       );
-      return verdict?.block ? { block: true, reason: verdict.reason } : undefined;
+      if (verdict?.block) return { block: true, reason: verdict.reason };
+      // 收尾同步闸：改过文件但清单还有未完成步骤 → 拦一次让模型把完成状态写进去。
+      // 否则回合结束后 todolist 停在旧的 in_progress；stopHookActive 保证每回合最多拦一次。
+      if (this.enableTaskTool && !stopHookActive) {
+        const plan = session.currentPlan;
+        const hasOpenSteps = Boolean(
+          plan?.steps.some((step) => step.status !== "completed" && step.status !== "cancelled"),
+        );
+        if (hasOpenSteps && this.mutationsSincePlanCheck > 0) {
+          return {
+            block: true,
+            reason:
+              "[plan] The turn is ending with unfinished checklist steps after recent file changes. Call update_plan once: mark the steps you actually finished as completed and keep only genuinely unfinished steps open.",
+          };
+        }
+      }
+      return undefined;
     };
     const prepareNextTurn: NonNullable<AgentLoopHooks["prepareNextTurn"]> = async (
       messages,
@@ -4972,13 +5143,22 @@ export class AgentRuntime {
         const due =
           this.mutationsSincePlanCheck >= PLAN_NUDGE_STEP &&
           this.mutationsSincePlanCheck - this.planNudgeAt >= PLAN_NUDGE_STEP;
-        if (hasOpenSteps && due) {
+        if (due) {
           this.planNudgeAt = this.mutationsSincePlanCheck;
-          injections.push({
-            role: "user",
-            content:
-              "[plan] You have made several file changes since the checklist was last updated. Call update_plan now: mark finished steps completed, mark the step you are working on in_progress, and keep titles current. Do not batch several finished steps into a later update.",
-          });
+          if (hasOpenSteps) {
+            injections.push({
+              role: "user",
+              content:
+                "[plan] You have made several file changes since the checklist was last updated. Call update_plan now: mark finished steps completed, mark the step you are working on in_progress, and keep titles current. Do not batch several finished steps into a later update.",
+            });
+          } else if (!plan?.steps.length) {
+            // 还没有清单但变更已经不少：轻推一次建清单（马上做完可以跳过）。
+            injections.push({
+              role: "user",
+              content:
+                "[plan] No checklist exists yet and this turn already spans several file changes. Call update_plan once to list the remaining steps (finished work can be one completed entry); skip it if you are about to finish.",
+            });
+          }
         }
       }
       if (this.enableTaskTool && this.workflow.active && this.governanceApplies()) {
@@ -5283,6 +5463,7 @@ export class AgentRuntime {
       vision: this.toolVisionEnabled(),
       shrinkImage: this.imageShrinker(),
       jobs: this.jobManager,
+      sessionSearch: this.sessionSearchScope(session),
       // 批量读复用已读区间：整份读过的文件只回一行占位
       readCoverage: (target) =>
         this.loopGuard.fullyCovered(session.cwd, messages, target, allowOutsideWorkspace),
@@ -5526,6 +5707,18 @@ export class AgentRuntime {
     return { providers, providerId: chosen?.id ?? this.providerId };
   }
 
+  /** 跨会话检索：子 Agent 也搜主会话目录，但排除当前父对话。 */
+  private sessionSearchScope(session: SessionStore): {
+    sessionsDir: string;
+    excludeSessionId: string;
+  } {
+    return {
+      sessionsDir: this.rootSessionsDir,
+      excludeSessionId:
+        this.subagentDepth > 0 ? this.hookScope?.rootSessionId ?? session.id : session.id,
+    };
+  }
+
   private createSubagentRuntime(params: {
     session: SessionStore;
     agentId: string;
@@ -5572,6 +5765,7 @@ export class AgentRuntime {
       providers: params.providers,
       providerId: params.providerId,
       sessionsDir: path.join(this.sessionsDir, "subagents", params.parentSessionId),
+      rootSessionsDir: this.rootSessionsDir,
       workspace: params.cwd,
       // 与父 Agent 同一 home：记忆/技能索引与路径守卫的可信根必须一致
       homeDir: this.homeDir,
@@ -5692,7 +5886,7 @@ export class AgentRuntime {
     const startedAt = new Date().toISOString();
     const startedAtMs = Date.now();
     const approvalMode = this.turnApprovalMode ?? this.approvalMode;
-    const maxSubagents = this.activeProfile.maxSubagents;
+    const maxSubagents = this.effectiveSubagentLimit();
     // 后台子 Agent 活过回合边界：上一回合起的后台任务不能占掉这一回合的准入名额，
     // 否则用户看到的是「并发上限」却数不出是哪一个在挡路。前台/后台分开计数。
     const liveForeground = [...this.liveSubagents.values()].filter((item) => !item.background).length;
@@ -6081,33 +6275,21 @@ export class AgentRuntime {
     };
   }
 
-  /** task 结果回带本回合剩余派发数：模型能自己收手，而不是撞上限才发现。 */
+  /** task 结果回带并发占用：这是“同时运行”上限，空出名额可以继续派。 */
   private subagentStartsLeftNote(): string {
-    const max = this.activeProfile.maxSubagents;
-    const left = Math.max(0, max - this.subagentsStartedThisTurn);
-    const exhausted =
-      left === 0 ? " Further task calls this turn will be rejected — do the remaining work yourself." : "";
-    return `Subagent starts left this turn: ${left}/${max}.${exhausted}`;
+    const max = this.effectiveSubagentLimit();
+    const live = [...this.liveSubagents.values()].filter((item) => !item.background).length;
+    return `Foreground subagents running: ${live}/${max} (${this.subagentsStartedThisTurn} started this turn). This is a concurrency cap only — start more as slots free up.`;
   }
 
-  /** 本回合的派发准入：spawn / resume 共用，超限时返回模型可读的拒绝结果。 */
+  /** 本回合的派发准入：spawn / resume 共用；总预算耗尽时返回模型可读的拒绝结果。 */
   private subagentAdmissionError(): SubagentTaskResult | null {
     if (this.subagentBudget <= 0) {
       return {
-        output:
-          "Subagent budget for this task is exhausted (8 agents including nested ones). Handle the remaining work yourself.",
+        output: `Subagent budget for this turn is exhausted (${SUBAGENT_BUDGET_PER_TURN} starts including nested ones). Handle the remaining work yourself, or continue in the next turn.`,
         ok: false,
         status: "failed",
         error: "subagent budget exhausted",
-      };
-    }
-    if (this.subagentsStartedThisTurn >= this.activeProfile.maxSubagents) {
-      const limit = this.activeProfile.maxSubagents;
-      return {
-        output: `Subagent limit reached: at most ${limit} subagents per turn in ${this.activeProfile.name}. Do not retry this turn; handle the remaining work in the main conversation, or group related items into fewer tasks.`,
-        ok: false,
-        status: "failed",
-        error: "subagent limit reached",
       };
     }
     return null;
@@ -7174,6 +7356,11 @@ export class AgentRuntime {
     if ((provider.protocol ?? "openai-chat-completions") !== "anthropic-messages") return;
     const plan = resolveCachePlan(provider);
     if (!plan.enabled || plan.ttl !== "5m") return;
+    // 历史停在半截工具调用上时，下一条用户消息前会经 repairToolPairs 改写前缀，
+    // 现在 ping 写进去的条目永远读不回来 —— 白写。中止/报错回合由调用点挡掉，
+    // 这里再兜一层：末条是带 tool_calls 的 assistant 就不保活。
+    const tail = session.effectiveMessages.at(-1);
+    if (tail?.role === "assistant" && tail.tool_calls?.length) return;
     this.keepalivePingsLeft = CACHE_KEEPALIVE_MAX_PINGS;
     this.keepaliveTimer = setTimeout(
       () => void this.runCacheKeepalive(session),
@@ -7234,6 +7421,7 @@ export class AgentRuntime {
     if ((provider.protocol ?? "openai-chat-completions") !== "anthropic-messages") return;
     const plan = resolveCachePlan(provider);
     if (!plan.enabled || plan.ttl !== "5m") return;
+    const evidenceKey = this.requestMetaKey(session.id, provider.id);
     const tools = this.ensureToolCatalog().tools;
     const systems = this.systemMessages();
     // 与主路径同口径：不带投影的保活请求会和主请求字节不一致，保活反而写不进同一条缓存
@@ -7259,9 +7447,18 @@ export class AgentRuntime {
         // 只 log 不落盘不广播（命中率口径保持干净），但必须能验证 ping 真的读回：
         // cc-haha 实测 fork 参数差异曾让命中率 92.7%→61%，read=0 就说明保活在白写。
         onUsage: (usage) => {
+          const read = usage.cacheReadTokens ?? 0;
           console.error(
-            `[meowcode] cache keepalive: read=${usage.cacheReadTokens ?? 0} write=${usage.cacheWriteTokens ?? 0} input=${usage.inputTokens}`,
+            `[meowcode] cache keepalive: read=${read} write=${usage.cacheWriteTokens ?? 0} input=${usage.inputTokens}`,
           );
+          // read=0 且该端点确实会报命中：前缀已不在同一分片或缓存已冷，
+          // 继续按固定次数 ping 只是继续白写（每次都是真实计费输入）。立刻收手。
+          if (read <= 0 && this.cacheReadEvidence.get(evidenceKey)) {
+            this.keepalivePingsLeft = 0;
+            console.warn(
+              `[meowcode] cache keepalive stopped: prefix no longer cached (${provider.name}/${provider.model})`,
+            );
+          }
         },
       });
     } catch {
@@ -7273,9 +7470,9 @@ export class AgentRuntime {
     }
     // 成功 ping 就是一次真实触缓存：空闲诊断从它起算，
     // 否则冷 resume 判定会把 ping 保热的缓存误判为已过期。
-    const meta = this.providerRequestMeta.get(provider.id);
+    const meta = this.readRequestMeta(session.id, provider.id);
     if (meta && this.currentSession === session) {
-      this.providerRequestMeta.set(provider.id, { ...meta, at: Date.now() });
+      this.writeRequestMeta(session.id, provider.id, { ...meta, at: Date.now() });
     }
     if (this.keepalivePingsLeft > 0 && this.currentSession === session && !this.turnAbort) {
       this.keepaliveTimer = setTimeout(
@@ -7547,6 +7744,7 @@ export class AgentRuntime {
           shrinkImage: this.imageShrinker(),
           sandbox,
           jobs: this.jobManager,
+          sessionSearch: this.sessionSearchScope(session),
           // 不把宿主桥再传下去：防止 run_code → run_code 的递归
         }),
     );
@@ -7744,31 +7942,8 @@ export class AgentRuntime {
     // questions 批量问（1-4 题，一次调用），兼容旧的单题 {question, options} 格式。
     if (tool === "ask_user") {
       const askInput = input as { questions?: unknown; question?: unknown; options?: unknown };
-      type AskQuestion = { question: string; options: string[] };
-      let questions: AskQuestion[] = [];
-      if (Array.isArray(askInput.questions)) {
-        questions = askInput.questions
-          .slice(0, 4)
-          .map((item) => {
-            const record = (item ?? {}) as { question?: unknown; options?: unknown };
-            return {
-              question: String(record.question ?? "").slice(0, 500),
-              options: Array.isArray(record.options)
-                ? record.options.map((option) => String(option)).slice(0, 4)
-                : [],
-            };
-          })
-          .filter((item) => item.question.trim());
-      } else if (typeof askInput.question === "string" && askInput.question.trim()) {
-        questions = [
-          {
-            question: askInput.question.slice(0, 500),
-            options: Array.isArray(askInput.options)
-              ? askInput.options.map((option) => String(option)).slice(0, 4)
-              : [],
-          },
-        ];
-      }
+      // 选项归一化（模型常把 options 写成 {label, description} 对象，见 ask-questions.ts）
+      let questions = normalizeAskQuestions(askInput);
       if (!questions.length) {
         questions = [{ question: "请补充说明你的需求", options: [] }];
       }
@@ -8390,6 +8565,7 @@ export class AgentRuntime {
           pdfDocuments: this.toolPdfEnabled(),
           shrinkImage: this.imageShrinker(),
           jobs: this.jobManager,
+          sessionSearch: this.sessionSearchScope(session),
           // 批量读复用已读区间：整份读过的文件只回一行占位
           readCoverage: (target) =>
             this.loopGuard.fullyCovered(session.cwd, messages, target, allowOutsideWorkspace),
@@ -8975,7 +9151,10 @@ export class AgentRuntime {
   /** 当前 provider 是否有自己的搜索后端（决定 web_search 是否出现在工具表）。 */
   private webSearchSupported(): boolean {
     const provider = this.activeProviderOrNull();
-    return provider !== null && createWebSearchBackend(provider) !== null;
+    return (
+      provider !== null &&
+      createWebSearchBackend(provider, this.webConfig.searchProvider) !== null
+    );
   }
 
   /** 按当前 provider 构造本轮网页工具；web_fetch 本地始终可用。 */
@@ -8985,8 +9164,14 @@ export class AgentRuntime {
   } {
     const provider = this.activeProviderOrNull();
     if (!provider) return {};
-    const backend = createWebSearchBackend(provider);
-    const originalQuestion = this.lastUserQuestion(session);
+    const backend = createWebSearchBackend(
+      provider,
+      this.webConfig.searchProvider,
+      this.webConfig.deepseekApiKey,
+    );
+    const originalQuestion = this.webConfig.sendOriginalQuestion
+      ? this.lastUserQuestion(session)
+      : undefined;
     return {
       ...(backend
         ? {
@@ -8994,7 +9179,14 @@ export class AgentRuntime {
               backend.search(query, { originalQuestion, maxResults: WEB_SEARCH_MAX_RESULTS }, signal),
           }
         : {}),
-      fetch: (url: string, signal?: AbortSignal) => fetchWebPage(provider, url, signal),
+      fetch: (url: string, signal?: AbortSignal) =>
+        fetchWebPage(
+          provider,
+          url,
+          signal,
+          this.webConfig.fetchProvider,
+          this.webConfig.deepseekApiKey,
+        ),
     };
   }
 

@@ -706,6 +706,8 @@ export async function streamAnthropicMessages(options: {  url: string;
     if (!hasUsage) return undefined;
     return {
       inputTokens: (inputTokens ?? 0) + (cachedInputTokens ?? 0) + (cacheCreationInputTokens ?? 0),
+      // Anthropic 的 input_tokens 本身就是「没命中也没写入」的那部分
+      ...(inputTokens !== undefined ? { uncachedInputTokens: inputTokens } : {}),
       outputTokens,
       ...(cachedInputTokens !== undefined ? { cacheReadTokens: cachedInputTokens } : {}),
       ...(cacheCreationInputTokens !== undefined

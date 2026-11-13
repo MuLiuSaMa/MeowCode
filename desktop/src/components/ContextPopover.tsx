@@ -21,7 +21,12 @@ const CACHE_REASON_LABEL_KEYS: Record<string, string> = {
   idle_exceeded_ttl: "ctx.cache.reasonIdleExceededTtl",
   not_reported: "ctx.cache.reasonNotReported",
   below_cache_granularity: "ctx.cache.reasonBelowGranularity",
-  cache_miss: "ctx.cache.reasonCacheMiss",
+  // 前缀稳定但服务商一次都没报缓存：自动前缀缓存没生效
+  stable_prefix_no_cached_tokens: "ctx.cache.reasonCacheMiss",
+  // 写了没读回：网关丢字段 / 换分片 / 请求参数漂移
+  write_no_readback: "ctx.cache.reasonWriteNoReadback",
+  // 连写都没发生：断点没生效
+  no_cache_write: "ctx.cache.reasonNoCacheWrite",
 };
 
 /** 来源顺序 = 分段条与列表顺序，颜色在 CSS 里按 data-key 配（文案在组件内查表） */

@@ -38,11 +38,17 @@ export function AskUserView({ item, status, t }: ToolViewProps) {
             <p className="mc-tv__question">{question.question}</p>
             {!answer && question.options.length ? (
               <div className="mc-tv__options">
-                {question.options.map((option) => (
-                  <span className="mc-tv__option" key={option}>
-                    {option}
-                  </span>
-                ))}
+                {question.options.map((option, optionIndex) => {
+                  const description = question.descriptions?.[optionIndex]?.trim() ?? "";
+                  return (
+                    <span className="mc-tv__option" key={option}>
+                      <span>{option}</span>
+                      {description ? (
+                        <span className="mc-tv__optiondesc">{description}</span>
+                      ) : null}
+                    </span>
+                  );
+                })}
               </div>
             ) : null}
             <p className="mc-tv__answer" data-empty={!answer || undefined}>
@@ -198,6 +204,30 @@ export function ContextStatusView({ item }: ToolViewProps) {
   return (
     <div className="mc-tv">
       <OutputText text={item.output ?? ""} />
+    </div>
+  );
+}
+
+export function SessionSearchView({ item, status, t }: ToolViewProps) {
+  const args = asRecord(item.input);
+  const query = textArg(args, "query").trim();
+  const limit = textArg(args, "limit").trim();
+  const output = item.output ?? "";
+  return (
+    <div className="mc-tv">
+      {query ? (
+        <div className="mc-tv__pathrow">
+          <span className="mc-tv__path">{query}</span>
+          {limit ? <ToolBadge tone="muted">{limit}</ToolBadge> : null}
+        </div>
+      ) : null}
+      {status === "failed" ? (
+        <OutputText text={output} error />
+      ) : output ? (
+        <OutputText text={output} />
+      ) : (
+        <ToolNote>{status === "running" ? t("tool.waitingOutput") : t("tool.emptyOutput")}</ToolNote>
+      )}
     </div>
   );
 }

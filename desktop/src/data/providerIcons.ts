@@ -28,6 +28,7 @@ import opencodeLight from "../assets/provider-icons/model-provider-opencode-ligh
 import openrouterDark from "../assets/provider-icons/model-provider-openrouter-dark.svg";
 import openrouterLight from "../assets/provider-icons/model-provider-openrouter-light.svg";
 import xai from "../assets/provider-icons/model-provider-xai.png";
+import grok from "../assets/provider-icons/model-provider-grok.png";
 import xiaomiMimo from "../assets/provider-icons/model-provider-xiaomi-mimo.png";
 import zai from "../assets/provider-icons/model-provider-zai.png";
 import aihubmix from "../assets/provider-icons/model-provider-aihubmix.png";
@@ -143,6 +144,8 @@ const ICONS: Record<string, IconSpec> = {
   zai: { kind: "single", src: zai, invertOnDark: true },
   "moonshot-kimi": { kind: "single", src: moonshotKimi, invertOnDark: true },
   xai: { kind: "single", src: xai, invertOnDark: true },
+  // Grok 品牌标（白字黑底），模型列表用；服务商仍用 xai 的企业标
+  grok: { kind: "single", src: grok },
   "xiaomi-mimo": { kind: "single", src: xiaomiMimo, invertOnDark: true },
   anthropic: { kind: "single", src: anthropic, invertOnDark: true },
   openai: { kind: "single", src: openai, invertOnDark: true },
@@ -228,7 +231,7 @@ const MODEL_ICON_RULES: Array<readonly [readonly string[], string, (readonly str
   [["claude"], "claude", ["claude"]],
   [["gpt", "chatgpt", "codex", "o1", "o2", "o3", "o4"], "openai", ["gpt", "chatgpt", "codex"]],
   [["gemini", "gemma"], "google-gemini", ["gemini", "gemma"]],
-  [["grok"], "xai", ["grok"]],
+  [["grok"], "grok", ["grok"]],
   [
     ["mistral", "mixtral", "codestral", "devstral", "magistral"],
     "mistral",
@@ -236,7 +239,8 @@ const MODEL_ICON_RULES: Array<readonly [readonly string[], string, (readonly str
   ],
   [["llama"], "meta", ["llama"]],
   [["doubao", "seed"], "doubao", ["doubao"]],
-  [["hunyuan"], "hunyuan", ["hunyuan"]],
+  // Hy4 是腾讯混元的别名（WorkBuddy 等路由用它），中文名也可能直接写成「混元」
+  [["hunyuan", "hy4", "混元"], "hunyuan", ["hunyuan", "hy4", "混元"]],
   [["spark", "xinghuo"], "spark", ["spark", "xinghuo"]],
   [["ernie", "wenxin"], "wenxin", ["ernie", "wenxin"]],
   [["minimax", "abab"], "minimax", ["minimax", "abab"]],
@@ -249,14 +253,15 @@ const MODEL_ICON_RULES: Array<readonly [readonly string[], string, (readonly str
   [["baichuan"], "baichuan", ["baichuan"]],
   [["nova"], "aws"],
   [["cloudflare"], "cloudflare", ["cloudflare"]],
-  // 小众 / 国产模型：带连字符的前缀是为了不误伤（yi- 不会命中 yiyan，ling- 不会命中 kling），
-  // 因此这两条也刻意没有 anywhere 兜底
+  // 小众 / 国产模型：带连字符的前缀是为了不误伤（yi- 不会命中 yiyan），
+  // 因此这两条也刻意没有 anywhere 兜底。Ling 同时接受整名（自定义服务商常写 "Ling"），
+  // kling 仍然不会被命中：bare 不以 ling 开头、整词也不等于 ling。
   [["longcat"], "longcat", ["longcat"]],
   [["yi-"], "yi"],
   [["internlm"], "internlm", ["internlm"]],
   [["skywork"], "skywork", ["skywork"]],
   [["tiangong"], "tiangong", ["tiangong"]],
-  [["ling-"], "ling"],
+  [["ling-", "ling"], "ling"],
   [["rwkv"], "rwkv", ["rwkv"]],
   [["aquila", "emu3"], "baai", ["aquila", "emu3"]],
   [["jamba", "jurassic"], "ai21", ["jamba", "jurassic"]],
@@ -309,4 +314,16 @@ export function modelIconKey(model: string): string | undefined {
     if (anywhere?.some((needle) => trimmed.includes(needle))) return iconKey;
   }
   return undefined;
+}
+
+/**
+ * 模型行图标：模型 ID 优先（真实品牌），用户设置的显示名兜底。
+ * 路由组/聚合器常把模型 ID 换成别名，此时 ID 认不出品牌，但显示名通常还写着
+ * "DeepSeek-Flash"；反过来 ID 准确时不被用户随手改的显示名带偏。
+ */
+export function providerModelIconKey(provider: {
+  model: string;
+  displayName?: string | null;
+}): string {
+  return modelIconKey(provider.model) ?? modelIconKey(provider.displayName ?? "") ?? "meow";
 }

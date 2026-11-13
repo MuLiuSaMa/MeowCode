@@ -5,6 +5,7 @@ import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { estimateTokens } from "./context";
 import { previewEditDiff } from "./diff";
+import { flushSearchIndexWrites } from "./session-search";
 import {
   commandEnv,
   decodeCommandOutput,
@@ -1337,6 +1338,162 @@ describe("memory tools", () => {
       execute: async () => ({ output: "ok", ok: true }),
     };
     expect(registerDynamicTool("memory_write", stub).ok).toBe(false);
+  });
+});
+
+describe("session_search tool", () => {
+  type SessionMessage = { role: "user" | "assistant"; content: string };
+
+  async function writeSessionFile(
+    dir: string,
+    fileName: string,
+    options: {
+      id: string;
+      cwd: string;
+      createdAt: string;
+      title: string;
+      messages: SessionMessage[];
+    },
+  ): Promise<void> {
+    const header = {
+      type: "session",
+      version: 2,
+      id: options.id,
+      cwd: options.cwd,
+      createdAt: options.createdAt,
+    };
+    const lines = [JSON.stringify(header)];
+    options.messages.forEach((message, index) => {
+      lines.push(
+        JSON.stringify({
+          type: "message",
+          id: `m${index + 1}`,
+          parentId: null,
+          timestamp: options.createdAt,
+          message,
+        }),
+      );
+    });
+    lines.push(
+      JSON.stringify({
+        type: "title",
+        id: "title",
+        parentId: null,
+        timestamp: options.createdAt,
+        title: options.title,
+      }),
+    );
+    await writeFile(path.join(dir, fileName), `${lines.join("\n")}\n`, "utf8");
+  }
+
+  it("searches the workspace, excludes the current session and hydrates context", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "meowcode-tools-session-"));
+    const sessionsDir = path.join(root, "sessions");
+    await mkdir(sessionsDir, { recursive: true });
+    try {
+      await writeSessionFile(sessionsDir, "a.jsonl", {
+        id: "s-a".padEnd(36, "0"),
+        cwd: root,
+        createdAt: "2026-11-01T00:00:00.000Z",
+        title: "当前会话标题",
+        messages: [
+          { role: "user", content: "esbuild 重启循环怎么修" },
+          { role: "assistant", content: "当前会话的答案" },
+        ],
+      });
+      await writeSessionFile(sessionsDir, "b.jsonl", {
+        id: "s-b".padEnd(36, "0"),
+        cwd: root,
+        createdAt: "2026-11-02T00:00:00.000Z",
+        title: "旧修复标题",
+        messages: [
+          { role: "user", content: "esbuild 重启循环怎么修" },
+          { role: "assistant", content: "把 watcher 的 debounce 调到 300ms 并跳过 dist" },
+        ],
+      });
+      await writeSessionFile(sessionsDir, "c.jsonl", {
+        id: "s-c".padEnd(36, "0"),
+        cwd: path.join(root, "other-project"),
+        createdAt: "2026-11-03T00:00:00.000Z",
+        title: "别的项目标题",
+        messages: [
+          { role: "user", content: "esbuild 重启循环怎么修" },
+          { role: "assistant", content: "别的项目的答案" },
+        ],
+      });
+
+      const result = await executeTool("session_search", { query: "esbuild" }, root, {
+        sessionSearch: { sessionsDir, excludeSessionId: "s-a".padEnd(36, "0") },
+      });
+      expect(result.ok).toBe(true);
+      expect(result.output).toContain("旧修复标题");
+      expect(result.output).toContain("[assistant]");
+      expect(result.output).toContain("debounce");
+      expect(result.output).not.toContain("当前会话标题");
+      expect(result.output).not.toContain("别的项目标题");
+    } finally {
+      await flushSearchIndexWrites();
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("validates the query and runtime availability", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "meowcode-tools-session-"));
+    const sessionsDir = path.join(root, "sessions");
+    await mkdir(sessionsDir, { recursive: true });
+    try {
+      const empty = await executeTool("session_search", { query: "   " }, root, {
+        sessionSearch: { sessionsDir },
+      });
+      expect(empty.ok).toBe(false);
+      expect(empty.output).toContain("non-empty");
+
+      const unavailable = await executeTool("session_search", { query: "esbuild" }, root);
+      expect(unavailable.ok).toBe(false);
+      expect(unavailable.output).toContain("not available");
+
+      const none = await executeTool("session_search", { query: "没有这个词" }, root, {
+        sessionSearch: { sessionsDir },
+      });
+      expect(none.ok).toBe(true);
+      expect(none.output).toContain("No past sessions");
+    } finally {
+      await flushSearchIndexWrites();
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("caps the limit and the total output size", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "meowcode-tools-session-"));
+    const sessionsDir = path.join(root, "sessions");
+    await mkdir(sessionsDir, { recursive: true });
+    try {
+      const filler = "上下文".repeat(300);
+      for (let index = 0; index < 12; index += 1) {
+        await writeSessionFile(sessionsDir, `s${index}.jsonl`, {
+          id: `s-${index}`.padEnd(36, "0"),
+          cwd: root,
+          createdAt: `2026-11-${String(index + 1).padStart(2, "0")}T00:00:00.000Z`,
+          title: `批量标题 ${index}`,
+          messages: [
+            { role: "user", content: `${filler} 批量关键词` },
+            { role: "assistant", content: `${filler} 批量答案` },
+            { role: "user", content: `${filler} 后续问题` },
+          ],
+        });
+      }
+
+      const result = await executeTool("session_search", { query: "批量关键词", limit: 999 }, root, {
+        sessionSearch: { sessionsDir },
+      });
+      expect(result.ok).toBe(true);
+      expect(result.output).toContain("Found 10 session(s)");
+      expect(result.output.length).toBeLessThanOrEqual(4_000);
+      expect(result.output).toContain("capped");
+    } finally {
+      await flushSearchIndexWrites();
+      await rm(root, { recursive: true, force: true });
+    }
   });
 });
 

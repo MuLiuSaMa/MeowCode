@@ -131,4 +131,128 @@ describe("计划清单新鲜度提醒", () => {
     expect(sawPlanReminder(rounds)).toBe(false);
     await runtime.closeSession();
   }, 60_000);
+
+  it("还没建清单时，连续 4 次文件变更 → 提醒建一次清单", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "meowcode-plan-"));
+    const workspace = await mkdtemp(path.join(tmpdir(), "meowcode-planws-"));
+    const runtime = makeRuntime(dir);
+    await runtime.newSession(workspace);
+    await runtime.setApprovalMode("full");
+
+    const rounds: ChatMessage[][] = [];
+    streamMock.mockImplementation(async ({ messages }: { messages: ChatMessage[] }) => {
+      rounds.push([...messages]);
+      const round = rounds.length;
+      if (round === 1) {
+        return assistantCalls(
+          call("w1", "write_file", { path: "a.txt", content: "1" }),
+          call("w2", "write_file", { path: "b.txt", content: "2" }),
+        );
+      }
+      if (round === 2) {
+        return assistantCalls(
+          call("w3", "write_file", { path: "c.txt", content: "3" }),
+          call("w4", "write_file", { path: "d.txt", content: "4" }),
+        );
+      }
+      if (round === 3) {
+        return assistantCalls(
+          call("p1", "update_plan", {
+            steps: [
+              { title: "step one", status: "completed" },
+              { title: "step two", status: "in_progress" },
+            ],
+          }),
+        );
+      }
+      return assistantText("done");
+    });
+
+    await runtime.prompt("do the work");
+
+    // 第 3 轮请求前注入建清单提醒；建完后不再重复
+    expect(rounds[2].some((message) => String(message.content ?? "").startsWith("[plan] No checklist"))).toBe(true);
+    expect(rounds.length).toBe(4);
+    await runtime.closeSession();
+  }, 60_000);
+
+  it("回合收尾时清单未同步且改过文件 → 拦一次让模型补状态", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "meowcode-plan-"));
+    const workspace = await mkdtemp(path.join(tmpdir(), "meowcode-planws-"));
+    const runtime = makeRuntime(dir);
+    await runtime.newSession(workspace);
+    await runtime.setApprovalMode("full");
+
+    const rounds: ChatMessage[][] = [];
+    streamMock.mockImplementation(async ({ messages }: { messages: ChatMessage[] }) => {
+      rounds.push([...messages]);
+      const round = rounds.length;
+      if (round === 1) {
+        return assistantCalls(
+          call("p1", "update_plan", {
+            steps: [
+              { title: "step one", status: "in_progress" },
+              { title: "step two", status: "pending" },
+            ],
+          }),
+        );
+      }
+      if (round === 2) {
+        return assistantCalls(
+          call("w1", "write_file", { path: "a.txt", content: "1" }),
+          call("w2", "write_file", { path: "b.txt", content: "2" }),
+        );
+      }
+      if (round === 3) {
+        return assistantText("done");
+      }
+      if (round === 4) {
+        return assistantCalls(
+          call("p2", "update_plan", {
+            steps: [
+              { title: "step one", status: "completed" },
+              { title: "step two", status: "completed" },
+            ],
+          }),
+        );
+      }
+      return assistantText("done");
+    });
+
+    await runtime.prompt("do the work");
+
+    expect(rounds.length).toBe(5);
+    expect(rounds[3].some((message) => String(message.content ?? "").startsWith("[plan] The turn is ending"))).toBe(true);
+    await runtime.closeSession();
+  }, 60_000);
+
+  it("收尾提醒每回合最多拦一次：模型不照做也不再硬拦", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "meowcode-plan-"));
+    const workspace = await mkdtemp(path.join(tmpdir(), "meowcode-planws-"));
+    const runtime = makeRuntime(dir);
+    await runtime.newSession(workspace);
+    await runtime.setApprovalMode("full");
+
+    const rounds: ChatMessage[][] = [];
+    streamMock.mockImplementation(async ({ messages }: { messages: ChatMessage[] }) => {
+      rounds.push([...messages]);
+      const round = rounds.length;
+      if (round === 1) {
+        return assistantCalls(
+          call("p1", "update_plan", {
+            steps: [{ title: "step one", status: "in_progress" }],
+          }),
+        );
+      }
+      if (round === 2) {
+        return assistantCalls(call("w1", "write_file", { path: "a.txt", content: "1" }));
+      }
+      return assistantText("done");
+    });
+
+    await runtime.prompt("do the work");
+
+    expect(rounds.length).toBe(4);
+    await runtime.closeSession();
+  }, 60_000);
 });

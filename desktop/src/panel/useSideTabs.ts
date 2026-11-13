@@ -166,7 +166,9 @@ export function useSideTabs() {
         setActiveId(pluginTab.id);
         return;
       }
-      const existing = tabs.find((tab) => tab.kind === request.kind);
+      // 终端不复用：每次新建都开一个全新终端（SSH 页签不能被「新建终端」占用）
+      const existing =
+        request.kind === "terminal" ? undefined : tabs.find((tab) => tab.kind === request.kind);
       if (existing) {
         setActiveId(existing.id);
         return;
@@ -292,9 +294,9 @@ export function useSideTabs() {
   );
 
   /** 后台任务终端：按 termId 去重；已存在时只激活并刷新标题（不抢用户手动开的终端）。 */
-  const openJobTerminal = useCallback((termId: string, command: string) => {
+  const openJobTerminal = useCallback((termId: string, command: string, titleOverride?: string) => {
     const id = `terminal-${termId}`;
-    const title = command.length > 64 ? `${command.slice(0, 61)}…` : command;
+    const title = titleOverride ?? (command.length > 64 ? `${command.slice(0, 61)}…` : command);
     setTabs((current) => {
       if (current.some((tab) => tab.id === id)) {
         return current.map((tab) =>

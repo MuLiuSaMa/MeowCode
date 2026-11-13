@@ -45,7 +45,12 @@
     "learning": "自己学習",
     "rewind": "セッション巻き戻し",
     "sandbox": "サンドボックス",
-    "approvals": "承認ルール"
+    "approvals": "承認ルール",
+    "storage": "ストレージ",
+    "connections": "接続",
+    "usage": "使用統計",
+    "webSearch": "ウェブ検索",
+    "agents": "サブエージェント"
   },
   "close": {
     "section": "ウィンドウを閉じるときの動作",
@@ -204,6 +209,8 @@
     "count_many": "設定済みのモデル {{count}} 件",
     "add": "モデルを追加",
     "empty": "まだモデルが設定されていません。「モデルを追加」から始めましょう。",
+    "managedBadge": "magpie により管理",
+    "managedHint": "これらのモデルは magpie から提供されます。magpie の接続・切断後は MeowCode を再起動すると反映されます。有効状態と推論強度は保持されます。",
     "deleteTitle": "プロバイダーを削除",
     "deleteMessage": "「{{name}}」を削除しますか？削除後、再度設定しないと使用できません。",
     "deleteGroupAria": "プロバイダー {{name}} を削除",
@@ -473,18 +480,37 @@
     "deleted": "ルール「{{name}}」を削除しました"
   },
   "worktree": {
-    "section": "Worktrees",
+    "create": {
+      "section": "作成とクリーンアップ"
+    },
+    "root": {
+      "label": "ワークツリーのルートディレクトリ",
+      "hint": "空の場合は既定の場所を使用します。変更はアプリの再起動後に反映されます。",
+      "open": "フォルダーを開く"
+    },
     "fetch": {
-      "label": "作成前に upstream を取得",
-      "hint": "worktree を作成する前に upstream の更新を取得します。"
+      "label": "ワークツリー作成前に常に上流を取得",
+      "hint": "作成時に上流を取得します。オフラインまたはリモートがない場合はスキップされます。"
     },
     "cleanup": {
-      "label": "古い worktree を自動削除",
-      "hint": "ほとんどのユーザーに推奨。古い worktree とディスク容量を自分で管理する場合のみオフにしてください。"
+      "label": "古いワークツリーを自動削除",
+      "hint": "先に復元スナップショットを保存します。"
     },
     "maxKeep": {
-      "label": "Worktree の上限",
-      "hint": "上限を超えると古い worktree から自動的に整理されます。削除前に Git バックアップが作成されるため、削除した worktree は復元できます。"
+      "label": "保持するワークツリー数",
+      "hint": "古いワークツリーは自動的に削除されます。ピン留めまたは実行中のチャットで使用中のワークツリーは保持されます。"
+    },
+    "confirmDelete": {
+      "label": "ワークツリー削除前に確認"
+    },
+    "managed": {
+      "title": "管理中のワークツリー",
+      "refresh": "更新",
+      "loading": "読み込み中…",
+      "empty": "ワークツリーはまだありません",
+      "inUse": "使用中",
+      "delete": "削除",
+      "confirm": "削除を確定"
     }
   },
   "learning": {
@@ -653,5 +679,168 @@
       "command-prefix": "コマンド前方一致"
     },
     "loading": "読み込み中…"
+  },
+  "storage": {
+    "device": "このデバイス",
+    "deviceDesc": "このコンピューターに保存されているチャットとワークツリーを管理します",
+    "used": "MeowCode の使用量: {{size}}",
+    "refresh": "更新",
+    "barAria": "ストレージ使用量の内訳",
+    "categories": {
+      "chats": "チャット",
+      "subagents": "サブエージェント",
+      "archived": "アーカイブ済みチャット",
+      "worktrees": "ワークツリー",
+      "other": "その他"
+    },
+    "clean": {
+      "title": "古いチャットを整理",
+      "hint": "完全に削除する前に、チャットとそのサブエージェントを確認してください",
+      "action": "確認",
+      "dialogTitle": "古いチャットを整理",
+      "dialogDesc": "削除するとセッションファイルとサブエージェントが完全に削除されます。古い順に表示しています。",
+      "empty": "整理できるチャットはありません",
+      "untitled": "無題のチャット",
+      "delete": "削除",
+      "confirm": "削除を確定",
+      "close": "閉じる"
+    },
+    "worktrees": {
+      "title": "ワークツリーの管理",
+      "hint": "作業コピーを確認し、保持する古いワークツリーの数を選択します",
+      "action": "管理"
+    },
+    "archived": {
+      "title": "アーカイブ済みチャット",
+      "hint": "アーカイブ済みチャットを個別に復元または削除します",
+      "action": "管理"
+    }
+  },
+  "connections": {
+    "section": "SSH 接続",
+    "desc": "リモートサーバーへの SSH 設定を管理します。パスワードは保存されず、接続時にターミナルで入力します。",
+    "create": "新規接続",
+    "empty": "SSH 接続はまだありません",
+    "connect": "接続",
+    "test": "テスト",
+    "testing": "テスト中…",
+    "testSuccess": "接続しました",
+    "testFailed": "接続に失敗しました",
+    "testPassword": "パスワード認証は自動テストできません。接続してターミナルでパスワードを入力してください。",
+    "auth": {
+      "agent": "SSH Agent / 既定のキー",
+      "key": "秘密鍵ファイル",
+      "password": "パスワード（接続時に入力）"
+    },
+    "form": {
+      "titleNew": "SSH 接続を作成",
+      "titleEdit": "SSH 接続を編集",
+      "name": "名前",
+      "namePlaceholder": "例: 本番サーバー",
+      "host": "ホスト",
+      "hostPlaceholder": "example.com または 192.168.1.10",
+      "port": "ポート",
+      "username": "ユーザー名",
+      "auth": "認証方式",
+      "privateKey": "秘密鍵",
+      "chooseKey": "秘密鍵を選択",
+      "note": "パスワードは保存されません。接続後にターミナルで入力してください。",
+      "invalid": "ホストとユーザー名を入力し、ポートが有効か確認してください",
+      "keyRequired": "秘密鍵ファイルを選択してください"
+    }
+  },
+  "usage": {
+    "section": "使用統計",
+    "badge": "アプリ使用量",
+    "refresh": "更新",
+    "loading": "集計中…",
+    "empty": "まだ使用記録がありません",
+    "metrics": {
+      "total": "累計トークン数",
+      "peak": "ピークトークン数",
+      "longestChat": "最長チャット時間",
+      "currentStreak": "現在の連続日数",
+      "maxStreak": "最長連続日数"
+    },
+    "units": {
+      "days": "日",
+      "hours": "時間",
+      "minutes": "分",
+      "tokens": "tokens"
+    },
+    "activity": {
+      "title": "トークンアクティビティ",
+      "daily": "毎日",
+      "weekly": "毎週",
+      "cumulative": "累計"
+    },
+    "range": {
+      "label": "期間",
+      "d7": "直近 7 日",
+      "d30": "直近 30 日"
+    },
+    "trend": {
+      "title": "日別トークン推移"
+    },
+    "models": {
+      "title": "モデル別使用量",
+      "other": "その他のモデル"
+    },
+    "unknownModel": "不明なモデル"
+  },
+  "webSearch": {
+    "section": "ウェブ検索と取得",
+    "desc": "検索と取得はそれぞれ提供元を選択します。「自動」は現在のモデルの機能に従い、他の提供元へ勝手に切り替えません。",
+    "search": {
+      "label": "検索提供元",
+      "hint": "オフにするとモデルは web_search ツールを受け取れません。ウェブ取得には影響しません。"
+    },
+    "searchOptions": {
+      "auto": "自動（現在のモデルに従う）",
+      "providerNative": "サービス提供元の検索",
+      "deepseek": "DeepSeek Search API",
+      "off": "ウェブ検索をオフ"
+    },
+    "fetch": {
+      "label": "取得提供元",
+      "hint": "DeepSeek Fetch API は下のキーで利用できます。キーがない場合のみ現在のモデルが DeepSeek である必要があります。"
+    },
+    "fetchOptions": {
+      "auto": "自動（DeepSeek は API、それ以外はローカル）",
+      "http": "ローカル HTTP 取得",
+      "deepseek": "DeepSeek Fetch API"
+    },
+    "originalQuestion": {
+      "label": "元の質問を送信",
+      "hint": "直近のユーザー質問（最大 128 文字）を DeepSeek 検索に添付し、精度を上げます。"
+    },
+    "deepseekKey": {
+      "label": "DeepSeek API キー",
+      "hint": "現在のモデルが DeepSeek でない場合に公式 Search / Fetch API を呼び出すキーです。この端末に暗号化して保存されます。",
+      "placeholder": "sk-…",
+      "saved": "保存済み（空のままなら変更なし）",
+      "clear": "クリア"
+    }
+  },
+  "agents": {
+    "section": "サブエージェント",
+    "desc": "メインエージェントごとのサブエージェント一覧・並列上限・プロンプト。追加したサブエージェントは対応するアーキテクチャに書き込まれ、既定でメインエージェントに接続されます。",
+    "limit": {
+      "label": "並列数"
+    },
+    "add": "サブエージェントを追加",
+    "addTitle": "サブエージェントを追加",
+    "editTitle": "サブエージェントのプロンプトを編集",
+    "name": "名前",
+    "namePlaceholder": "例: セキュリティレビュアー",
+    "roleLabel": "役割",
+    "promptLabel": "プロンプト",
+    "promptHint": "空欄にすると役割の組み込みプロンプトに戻ります。",
+    "added": "追加し、メインエージェントに接続しました",
+    "saved": "プロンプトを保存しました",
+    "editPrompt": "プロンプトを編集",
+    "customPrompt": "カスタム",
+    "loading": "読み込み中…",
+    "empty": "サブエージェントはまだありません"
   }
 }

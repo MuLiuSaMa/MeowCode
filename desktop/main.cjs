@@ -37,6 +37,14 @@ const {
   shouldNotify,
 } = require("./notifications.cjs");
 const { readJsonWithBackup, writeJsonAtomic } = require("./persist.cjs");
+const {
+  MAGPIE_FILE_NAME,
+  isMagpieProviderId,
+  loadMagpieOverlay,
+  mergeMagpieSettings,
+  resetMagpieOverlayCache,
+  stripMagpieProviders,
+} = require("./magpie-overlay.cjs");
 const { createScheduler } = require("./scheduler.cjs");
 const {
   validateManualMcpToken,
@@ -67,6 +75,8 @@ const {
 } = require("./oauth-platforms.cjs");
 const { registerCommunitySubmitIpc } = require("./community-submit.cjs");
 const { fork, execFile, execFileSync } = require("node:child_process");
+const { promisify } = require("node:util");
+const execFileAsync = promisify(execFile);
 const crypto = require("node:crypto");
 const fs = require("node:fs");
 const http = require("node:http");
@@ -317,7 +327,9 @@ let uiStateCache = null;
 let uiStateTimer = null;
 
 function ensureDirs() {
-  settingsDir = path.join(app.getPath("userData"), "agent");
+  const nextSettingsDir = path.join(app.getPath("userData"), "agent");
+  if (settingsDir !== nextSettingsDir) resetMagpieOverlayCache();
+  settingsDir = nextSettingsDir;
   settingsPath = path.join(settingsDir, "settings.json");
   sessionsDir = path.join(settingsDir, "sessions");
   windowStatePath = path.join(settingsDir, "window-state.json");
@@ -715,12 +727,36 @@ function migrateSettings(raw) {
   };
 }
 
+/**
+ * magpie 的 Agent 插件写的覆盖层：数据目录被重定向时它仍写在默认位置，
+ * 所以两处都找，取较新的那个。
+ */
+function magpieOverlayPaths() {
+  const paths = [];
+  if (settingsDir) paths.push(path.join(settingsDir, MAGPIE_FILE_NAME));
+  const fallback = path.join(app.getPath("appData"), "MeowCode", "agent", MAGPIE_FILE_NAME);
+  if (!paths.includes(fallback)) paths.push(fallback);
+  return paths;
+}
+
+/** 覆盖层只在启动时读一次：magpie 连接/断开后要重启 MeowCode 才生效，和 server 一致。 */
+function withMagpieOverlay(settings) {
+  const loaded = loadMagpieOverlay(magpieOverlayPaths());
+  return mergeMagpieSettings(settings, loaded ? loaded.overlay : null);
+}
+
 function readSettings() {
-  return migrateSettings(readJsonWithBackup(settingsPath, () => defaultSettings()));
+  return withMagpieOverlay(
+    migrateSettings(readJsonWithBackup(settingsPath, () => defaultSettings())),
+  );
 }
 
 function writeSettings(settings) {
-  writeJsonAtomic(settingsPath, migrateSettings(settings));
+  const migrated = migrateSettings(settings);
+  writeJsonAtomic(settingsPath, {
+    ...migrated,
+    providers: stripMagpieProviders(migrated.providers),
+  });
 }
 
 function encryptApiKey(value) {
@@ -874,12 +910,33 @@ function publicSettings(settings) {
       typeof settings.nextPromptSuggestions === "boolean" ? settings.nextPromptSuggestions : false,
     mailAiProviderId:
       typeof settings.mailAiProviderId === "string" ? settings.mailAiProviderId : "",
+    webSearchProvider: ["auto", "provider-native", "deepseek-search-api", "off"].includes(
+      settings.webSearchProvider,
+    )
+      ? settings.webSearchProvider
+      : "auto",
+    webFetchProvider: ["auto", "http", "deepseek-fetch-api"].includes(settings.webFetchProvider)
+      ? settings.webFetchProvider
+      : "auto",
+    webSearchSendOriginalQuestion:
+      typeof settings.webSearchSendOriginalQuestion === "boolean"
+        ? settings.webSearchSendOriginalQuestion
+        : true,
+    hasWebDeepseekApiKey: Boolean(settings.webDeepseekApiKeyEncrypted),
     worktreeFetchUpstream:
       typeof settings.worktreeFetchUpstream === "boolean" ? settings.worktreeFetchUpstream : false,
     worktreeAutoCleanup:
       typeof settings.worktreeAutoCleanup === "boolean" ? settings.worktreeAutoCleanup : true,
     worktreeMaxKeep:
       typeof settings.worktreeMaxKeep === "number" ? settings.worktreeMaxKeep : 15,
+    worktreeRoot: typeof settings.worktreeRoot === "string" ? settings.worktreeRoot : "",
+    worktreeConfirmDelete:
+      typeof settings.worktreeConfirmDelete === "boolean" ? settings.worktreeConfirmDelete : true,
+    sshConnections: Array.isArray(settings.sshConnections) ? settings.sshConnections : [],
+    agentProfileLimits:
+      settings.agentProfileLimits && typeof settings.agentProfileLimits === "object"
+        ? settings.agentProfileLimits
+        : {},
     includeAgentsMd: typeof settings.includeAgentsMd === "boolean" ? settings.includeAgentsMd : true,
     includeClaudeMd: typeof settings.includeClaudeMd === "boolean" ? settings.includeClaudeMd : true,
     hooks: {
@@ -1276,8 +1333,28 @@ function providersForServer(settings) {
   }));
 }
 
+/**
+ * server 侧的 providerPrefs 只需要思考强度（启用状态由桌面端与渲染层管），
+ * 且只认覆盖层里的模型，避免把无关 id 塞进 env。
+ */
+function magpieServerPrefs(providerPrefs) {
+  const out = {};
+  for (const [id, value] of Object.entries(providerPrefs ?? {})) {
+    if (!isMagpieProviderId(id) || !value || typeof value !== "object") continue;
+    if (typeof value.reasoningEffort === "string" && value.reasoningEffort) {
+      out[id] = { reasoningEffort: value.reasoningEffort };
+    }
+  }
+  return out;
+}
+
 function buildServerEnv(settings) {
-  const providers = providersForServer(settings);
+  // magpie 的模型走文件（MEOWCODE_MAGPIE_FILE）：上百个模型塞进 env 会撞上
+  // Windows 环境块 32767 字符的上限，直接让 server 起不来。
+  const providers = providersForServer(settings).filter(
+    (provider) => !isMagpieProviderId(provider.id),
+  );
+  const magpieOverlay = loadMagpieOverlay(magpieOverlayPaths());
   const ripgrepPath = devRepoRoot()
     ? ""
     : path.join(process.resourcesPath, "agent-server", "ripgrep", process.platform === "win32" ? "rg.exe" : "rg");
@@ -1308,10 +1385,27 @@ function buildServerEnv(settings) {
     ...(githubToken ? { [GITHUB_TOKEN_ENV]: githubToken } : {}),
     MEOWCODE_SERVER_PORT: "0",
     MEOWCODE_SESSIONS_DIR: sessionsDir,
-    MEOWCODE_WORKTREES_DIR: path.join(settingsDir, "worktrees"),
+    MEOWCODE_WORKTREES_DIR: resolveWorktreeRoot(settings),
+    // 网页搜索与获取：env 给初值，运行中由 PUT /config/web-options 热切换
+    MEOWCODE_WEB_SEARCH_PROVIDER: ["auto", "provider-native", "deepseek-search-api", "off"].includes(
+      settings.webSearchProvider,
+    )
+      ? settings.webSearchProvider
+      : "auto",
+    MEOWCODE_WEB_FETCH_PROVIDER: ["auto", "http", "deepseek-fetch-api"].includes(
+      settings.webFetchProvider,
+    )
+      ? settings.webFetchProvider
+      : "auto",
+    MEOWCODE_WEB_SEND_ORIGINAL_QUESTION:
+      settings.webSearchSendOriginalQuestion === false ? "0" : "1",
+    MEOWCODE_WEB_DEEPSEEK_API_KEY: decryptApiKey(settings.webDeepseekApiKeyEncrypted ?? "").trim(),
+    MEOWCODE_AGENT_LIMITS: JSON.stringify(settings.agentProfileLimits ?? {}),
     MEOWCODE_WORKSPACE: settings.workspace ?? "",
     MEOWCODE_PROVIDER_ID: settings.providerId ?? "",
     MEOWCODE_PROVIDERS: JSON.stringify(providers),
+    MEOWCODE_MAGPIE_FILE: magpieOverlay ? magpieOverlay.path : "",
+    MEOWCODE_PROVIDER_PREFS: JSON.stringify(magpieServerPrefs(settings.providerPrefs)),
     // 记忆总开关：server 只认 env，不读 settings 文件
     MEOWCODE_MEMORY: settings.memoryEnabled === false ? "0" : "1",
     // 自我学习开关：同上，运行中切换走 /config/learning（默认关）
@@ -2802,22 +2896,24 @@ ipcMain.handle("meow:save-settings", async (_event, nextSettings) => {
     return providerFields(provider, existing);
   });
   // 以 previous 为底：archivedSessions、项目偏好和未来新增字段都不会被这次保存丢掉
-  const settings = migrateSettings({
-    ...previous,
-    workspace: incoming.workspace ?? previous.workspace,
-    providerId:
-      incoming.providerId ||
-      providers.find((item) => item.id)?.id ||
-      providers[0]?.id ||
-      previous.providerId,
-    theme: THEME_PREFERENCES.includes(incoming.theme) ? incoming.theme : previous.theme,
-    // 重路径也接受配色：否则「保存设置」会把它回退成旧值
-    palette: PALETTES.includes(incoming.palette) ? incoming.palette : previous.palette,
-    closeAction: CLOSE_ACTIONS.includes(incoming.closeAction)
-      ? incoming.closeAction
-      : previous.closeAction,
-    providers,
-  });
+  const settings = withMagpieOverlay(
+    migrateSettings({
+      ...previous,
+      workspace: incoming.workspace ?? previous.workspace,
+      providerId:
+        incoming.providerId ||
+        providers.find((item) => item.id)?.id ||
+        providers[0]?.id ||
+        previous.providerId,
+      theme: THEME_PREFERENCES.includes(incoming.theme) ? incoming.theme : previous.theme,
+      // 重路径也接受配色：否则「保存设置」会把它回退成旧值
+      palette: PALETTES.includes(incoming.palette) ? incoming.palette : previous.palette,
+      closeAction: CLOSE_ACTIONS.includes(incoming.closeAction)
+        ? incoming.closeAction
+        : previous.closeAction,
+      providers,
+    }),
+  );
   writeSettings(settings);
   await startServer();
   return publicSettings(settings);
@@ -2858,15 +2954,17 @@ ipcMain.handle("meow:save-providers", async (_event, payload) => {
         : undefined);
     return providerFields(provider, existing);
   });
-  const settings = migrateSettings({
-    ...previous,
-    providers,
-    providerId:
-      (typeof incoming.providerId === "string" && incoming.providerId) ||
-      providers.find((item) => item.id)?.id ||
-      providers[0]?.id ||
-      previous.providerId,
-  });
+  const settings = withMagpieOverlay(
+    migrateSettings({
+      ...previous,
+      providers,
+      providerId:
+        (typeof incoming.providerId === "string" && incoming.providerId) ||
+        providers.find((item) => item.id)?.id ||
+        providers[0]?.id ||
+        previous.providerId,
+    }),
+  );
   writeSettings(settings);
   await pushProviders(providersForServer(settings), settings.providerId);
   return publicSettings(settings);
@@ -3891,6 +3989,507 @@ ipcMain.handle("meow:show-in-folder", (_event, target) => {
   return null;
 });
 
+/** 工作区相对路径 → 绝对路径；越界（..、绝对路径逃离工作区）返回 null。 */
+function resolveWorkspaceEntry(relative) {
+  if (typeof relative !== "string") return null;
+  const workspace = readSettings().workspace;
+  if (!workspace) return null;
+  const root = path.resolve(workspace);
+  const absolute = path.resolve(root, relative);
+  return absolute === root || absolute.startsWith(root + path.sep) ? absolute : null;
+}
+
+/** 文件页签右键菜单：删除到系统回收站。 */
+ipcMain.handle("meow:workspace-trash", async (_event, relative) => {
+  const absolute = resolveWorkspaceEntry(relative);
+  const workspace = readSettings().workspace;
+  if (!absolute || !workspace) return "invalid path";
+  if (absolute === path.resolve(workspace)) return "invalid path";
+  try {
+    await shell.trashItem(absolute);
+    return null;
+  } catch (error) {
+    return error instanceof Error ? error.message : String(error);
+  }
+});
+
+/** 文件页签右键菜单：把复制的文件粘贴到目标目录，重名自动加「 - 副本」后缀。 */
+ipcMain.handle("meow:workspace-paste", async (_event, sourceRelative, destDirRelative, copySuffix) => {
+  const source = resolveWorkspaceEntry(sourceRelative);
+  const destDir = resolveWorkspaceEntry(destDirRelative || "");
+  const workspace = readSettings().workspace;
+  if (!source || !destDir || !workspace) return { ok: false, error: "invalid path" };
+  try {
+    const sourceStat = await fs.promises.stat(source);
+    if (!sourceStat.isFile()) return { ok: false, error: "unsupported" };
+    const destStat = await fs.promises.stat(destDir);
+    if (!destStat.isDirectory()) return { ok: false, error: "invalid path" };
+    const suffix =
+      typeof copySuffix === "string" && copySuffix.trim() ? copySuffix.trim() : "Copy";
+    const extension = path.extname(source);
+    const stem = path.basename(source, extension);
+    let candidate = path.join(destDir, `${stem}${extension}`);
+    for (let index = 1; fs.existsSync(candidate); index += 1) {
+      const label = index === 1 ? suffix : `${suffix} (${index})`;
+      candidate = path.join(destDir, `${stem} - ${label}${extension}`);
+    }
+    await fs.promises.copyFile(source, candidate);
+    return {
+      ok: true,
+      path: path.relative(path.resolve(workspace), candidate).split(path.sep).join("/"),
+    };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : String(error) };
+  }
+});
+
+/** 递归统计目录/文件占用字节数。
+ *  并发读取目录 + 跳过符号链接：worktree 里的 node_modules 是 junction，
+ *  跟进去等于把整个依赖树数一遍，是旧版扫描慢的主因。 */
+async function diskUsage(root, skipPaths) {
+  const skip = skipPaths?.length
+    ? new Set(skipPaths.map((item) => path.resolve(item)))
+    : null;
+  let total = 0;
+  const queue = [root];
+  const workers = Array.from({ length: 8 }, async () => {
+    while (queue.length) {
+      const dir = queue.pop();
+      if (skip?.has(path.resolve(dir))) continue;
+      let entries;
+      try {
+        entries = await fs.promises.readdir(dir, { withFileTypes: true });
+      } catch {
+        continue;
+      }
+      for (const entry of entries) {
+        const full = path.join(dir, entry.name);
+        if (entry.isDirectory()) {
+          if (!skip?.has(path.resolve(full))) queue.push(full);
+        } else if (entry.isFile()) {
+          try {
+            total += (await fs.promises.stat(full)).size;
+          } catch {
+            // 读不到的文件按 0 算
+          }
+        }
+      }
+    }
+  });
+  await Promise.all(workers);
+  return total;
+}
+
+/** worktree 根目录：设置里的自定义路径优先，空 = 默认 userData/agent/worktrees。 */
+function resolveWorktreeRoot(settings = readSettings()) {
+  const custom = typeof settings.worktreeRoot === "string" ? settings.worktreeRoot.trim() : "";
+  return custom ? path.resolve(custom) : path.join(settingsDir, "worktrees");
+}
+
+const STORAGE_USAGE_TTL = 60_000;
+let storageUsageCache = null;
+
+/**
+ * 设置 → 存储：按「聊天 / 子智能体 / 已归档 / 工作树 / 其他」统计占用。
+ * 主会话文件在 sessions 根目录，子智能体在其 subagents/<父会话> 下；
+ * 归档只是 settings 里的路径列表，文件仍在原处，所以按列表归到「已归档」。
+ * 结果缓存 60 秒：设置页来回切换不重复扫盘，刷新按钮传 force 强制重扫。
+ */
+ipcMain.handle("meow:storage-usage", async (_event, force) => {
+  if (!force && storageUsageCache && Date.now() - storageUsageCache.at < STORAGE_USAGE_TTL) {
+    return storageUsageCache.data;
+  }
+  ensureDirs();
+  const dataDir = app.getPath("userData");
+  const sessionRoot = path.resolve(sessionsDir);
+  const worktreeRoot = resolveWorktreeRoot();
+  const archived = new Set(
+    (readSettings().archivedSessions ?? []).map((item) => path.resolve(item)),
+  );
+  let chats = 0;
+  let subagents = 0;
+  let archivedBytes = 0;
+  let entries = [];
+  try {
+    entries = await fs.promises.readdir(sessionRoot, { withFileTypes: true });
+  } catch {
+    entries = [];
+  }
+  for (const entry of entries) {
+    const full = path.join(sessionRoot, entry.name);
+    if (entry.isDirectory()) {
+      const size = await diskUsage(full);
+      // assets 等会话附属资源归入「聊天」，subagents 单独一类
+      if (entry.name === "subagents") subagents += size;
+      else chats += size;
+      continue;
+    }
+    if (!entry.isFile()) continue;
+    let size = 0;
+    try {
+      size = (await fs.promises.stat(full)).size;
+    } catch {
+      size = 0;
+    }
+    if (archived.has(path.resolve(full))) archivedBytes += size;
+    else chats += size;
+  }
+  const worktrees = await diskUsage(worktreeRoot);
+  const other = await diskUsage(dataDir, [sessionRoot, worktreeRoot]);
+  const total = chats + subagents + archivedBytes + worktrees + other;
+  const data = {
+    path: dataDir,
+    total,
+    categories: { chats, subagents, archived: archivedBytes, worktrees, other },
+  };
+  storageUsageCache = { at: Date.now(), data };
+  return data;
+});
+
+/** git 命令（worktree 管理用）：失败时抛错，调用方决定怎么呈现。 */
+async function worktreeGit(cwd, args) {
+  const { stdout } = await execFileAsync("git", ["-C", cwd, ...args], {
+    timeout: 30_000,
+    windowsHide: true,
+    maxBuffer: 4 * 1024 * 1024,
+  });
+  return stdout.toString("utf8").trim();
+}
+
+/** 设置 → 工作树：列出托管的工作树（自定义根目录优先）。 */
+ipcMain.handle("meow:worktrees-list", async () => {
+  ensureDirs();
+  const settings = readSettings();
+  const defaultRoot = path.join(settingsDir, "worktrees");
+  const root = resolveWorktreeRoot(settings);
+  let entries = [];
+  try {
+    entries = await fs.promises.readdir(root, { withFileTypes: true });
+  } catch {
+    entries = [];
+  }
+  const items = [];
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue;
+    const full = path.join(root, entry.name);
+    const stat = await fs.promises.stat(full).catch(() => null);
+    if (!stat) continue;
+    items.push({
+      name: entry.name,
+      path: full,
+      createdAt: new Date(stat.birthtimeMs || stat.mtimeMs).toISOString(),
+    });
+  }
+  return { root, defaultRoot, items };
+});
+
+/** 设置 → 工作树：手动删除一份托管工作树（先写备份 ref，再删目录与分支）。 */
+ipcMain.handle("meow:worktree-delete", async (_event, target, referencedPaths) => {
+  ensureDirs();
+  const root = resolveWorktreeRoot();
+  const absolute = path.resolve(String(target ?? ""));
+  if (!absolute.startsWith(root + path.sep)) return "invalid path";
+  const referenced = new Set(
+    (Array.isArray(referencedPaths) ? referencedPaths : [])
+      .filter((item) => typeof item === "string")
+      .map((item) => path.resolve(item)),
+  );
+  if (referenced.has(absolute)) return "referenced";
+  try {
+    const head = await worktreeGit(absolute, ["rev-parse", "HEAD"]);
+    const branch = await worktreeGit(absolute, ["rev-parse", "--abbrev-ref", "HEAD"]);
+    const commonDir = path.resolve(
+      await worktreeGit(absolute, ["rev-parse", "--path-format=absolute", "--git-common-dir"]),
+    );
+    const repoRoot = path.dirname(commonDir);
+    await worktreeGit(repoRoot, [
+      "update-ref",
+      `refs/meowcode-backup/${path.basename(absolute)}`,
+      head,
+    ]);
+    await worktreeGit(repoRoot, ["worktree", "remove", "--force", absolute]);
+    if (branch.startsWith("meowcode/")) {
+      await worktreeGit(repoRoot, ["branch", "-D", branch]).catch(() => undefined);
+    }
+    return null;
+  } catch (error) {
+    return error instanceof Error ? error.message : String(error);
+  }
+});
+
+/** 系统 ssh 可执行文件：优先 Win10+ 自带的 OpenSSH，其次 PATH。 */
+function resolveSshBinary() {
+  const systemRoot = process.env.SystemRoot ?? "C:\\Windows";
+  const candidates = [path.join(systemRoot, "System32", "OpenSSH", "ssh.exe")];
+  for (const entry of (process.env.PATH ?? "").split(";")) {
+    const trimmed = entry.trim().replace(/^"|"$/g, "");
+    if (trimmed) candidates.push(path.join(trimmed, "ssh.exe"));
+  }
+  for (const candidate of candidates) {
+    try {
+      if (fs.existsSync(candidate)) return candidate;
+    } catch {
+      // 继续找下一个
+    }
+  }
+  return "ssh";
+}
+
+/** 校验 SSH 连接字段；非法返回 null（防命令行注入）。 */
+function sshFields(connection) {
+  const host = typeof connection?.host === "string" ? connection.host.trim() : "";
+  const username = typeof connection?.username === "string" ? connection.username.trim() : "";
+  const port = Number(connection?.port);
+  if (!/^[A-Za-z0-9._:-]+$/.test(host)) return null;
+  if (username && !/^[A-Za-z0-9._-]+$/.test(username)) return null;
+  if (!Number.isInteger(port) || port < 1 || port > 65535) return null;
+  const key =
+    connection?.authType === "key" && typeof connection.privateKeyPath === "string"
+      ? connection.privateKeyPath.trim()
+      : "";
+  if (key && (key.includes("'") || key.includes("\n") || key.includes("\r"))) return null;
+  return { host, username, port, key, target: username ? `${username}@${host}` : host };
+}
+
+/** 拼出可直接在终端里执行的 ssh 命令行（Windows 走 PowerShell，路径用单引号）。 */
+ipcMain.handle("meow:ssh-command", (_event, connection) => {
+  const fields = sshFields(connection);
+  if (!fields) return { ok: false, error: "invalid" };
+  const binary = resolveSshBinary();
+  const parts = [binary.includes("\\") || binary.includes(" ") ? `& '${binary}'` : binary, "-p", String(fields.port)];
+  if (fields.key) parts.push("-i", `'${fields.key}'`);
+  parts.push(fields.target);
+  return { ok: true, command: parts.join(" ") };
+});
+
+/** 无交互测试（BatchMode，只对密钥/Agent 有效；密码方式请在终端里试）。 */
+ipcMain.handle("meow:ssh-test", async (_event, connection) => {
+  const fields = sshFields(connection);
+  if (!fields) return { ok: false, error: "invalid" };
+  if (connection?.authType === "password") return { ok: false, error: "password-interactive" };
+  const args = [
+    "-o",
+    "BatchMode=yes",
+    "-o",
+    "ConnectTimeout=8",
+    "-o",
+    "StrictHostKeyChecking=accept-new",
+    "-p",
+    String(fields.port),
+  ];
+  if (fields.key) args.push("-i", fields.key);
+  args.push(fields.target, "exit");
+  try {
+    await execFileAsync(resolveSshBinary(), args, { timeout: 20_000, windowsHide: true });
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : String(error) };
+  }
+});
+
+/** 选择 SSH 私钥文件。 */
+ipcMain.handle("meow:pick-private-key", async () => {
+  const result = await dialog.showOpenDialog(mainWindow, {
+    properties: ["openFile"],
+    title: "选择 SSH 私钥",
+  });
+  if (result.canceled || !result.filePaths.length) return null;
+  return result.filePaths[0];
+});
+
+/** 本地日期键（按系统时区），用于按天聚合。 */
+function localDayKey(date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+const USAGE_STATS_TTL = 60_000;
+let usageStatsCache = null;
+
+/**
+ * 设置 → 使用统计：扫描本地会话 JSONL 里的 usage 记录聚合。
+ * 只认落盘的最终 usage 条目（流中样本与 retracted 不落盘）；
+ * 结果缓存 60 秒，刷新按钮传 force 强制重扫。
+ */
+ipcMain.handle("meow:usage-stats", async (_event, force) => {
+  if (!force && usageStatsCache && Date.now() - usageStatsCache.at < USAGE_STATS_TTL) {
+    return usageStatsCache.data;
+  }
+  ensureDirs();
+  let files = [];
+  try {
+    files = await fs.promises.readdir(sessionsDir);
+  } catch {
+    files = [];
+  }
+  let inputTokens = 0;
+  let outputTokens = 0;
+  let cacheReadTokens = 0;
+  let cacheWriteTokens = 0;
+  const dayMap = new Map();
+  const modelMap = new Map();
+  /** 每天 → 每个模型的 token，用于趋势图的多条折线 */
+  const dayModelMap = new Map();
+  const sessions = [];
+  let longestChatMs = 0;
+  for (const name of files) {
+    if (!name.endsWith(".jsonl")) continue;
+    const full = path.join(sessionsDir, name);
+    let text = "";
+    try {
+      text = await fs.promises.readFile(full, "utf8");
+    } catch {
+      continue;
+    }
+    let sessionCwd = "";
+    let sessionCreatedAt = "";
+    let sessionTokens = 0;
+    let sessionLastUsageAt = 0;
+    for (const line of text.split("\n")) {
+      if (!line) continue;
+      if (!line.includes('"type":"usage"')) {
+        if (!sessionCreatedAt && line.includes('"type":"session"')) {
+          try {
+            const header = JSON.parse(line);
+            sessionCwd = typeof header.cwd === "string" ? header.cwd : "";
+            sessionCreatedAt = typeof header.createdAt === "string" ? header.createdAt : "";
+          } catch {
+            // 头部损坏时按无信息处理
+          }
+        }
+        continue;
+      }
+      let entry;
+      try {
+        entry = JSON.parse(line);
+      } catch {
+        continue;
+      }
+      if (entry.type !== "usage") continue;
+      const input = Number(entry.inputTokens) || 0;
+      const output = Number(entry.outputTokens) || 0;
+      const tokens = input + output;
+      if (tokens <= 0) continue;
+      inputTokens += input;
+      outputTokens += output;
+      cacheReadTokens += Number(entry.cacheReadTokens) || 0;
+      cacheWriteTokens += Number(entry.cacheWriteTokens) || 0;
+      sessionTokens += tokens;
+      const model =
+        typeof entry.model === "string" && entry.model.trim()
+          ? entry.model.trim()
+          : "unknown";
+      modelMap.set(model, (modelMap.get(model) || 0) + tokens);
+      const at = entry.timestamp ? new Date(entry.timestamp) : null;
+      if (at && !Number.isNaN(at.getTime())) {
+        const key = localDayKey(at);
+        dayMap.set(key, (dayMap.get(key) || 0) + tokens);
+        let dayModels = dayModelMap.get(key);
+        if (!dayModels) {
+          dayModels = new Map();
+          dayModelMap.set(key, dayModels);
+        }
+        dayModels.set(model, (dayModels.get(model) || 0) + tokens);
+        sessionLastUsageAt = Math.max(sessionLastUsageAt, at.getTime());
+      }
+    }
+    if (sessionTokens > 0) {
+      sessions.push({
+        name: path.win32.basename(sessionCwd) || name,
+        tokens: sessionTokens,
+        date: sessionCreatedAt ? localDayKey(new Date(sessionCreatedAt)) : "",
+      });
+      // 最长聊天时长 = 会话创建到最后一条 usage 记录
+      if (sessionCreatedAt) {
+        const startedAt = new Date(sessionCreatedAt).getTime();
+        if (Number.isFinite(startedAt) && sessionLastUsageAt > startedAt) {
+          longestChatMs = Math.max(longestChatMs, sessionLastUsageAt - startedAt);
+        }
+      }
+    }
+  }
+
+  // 最近 30 天（含今天）补齐零值，并带每天的模型拆分
+  const daily = [];
+  const today = new Date();
+  today.setHours(12, 0, 0, 0);
+  for (let offset = 29; offset >= 0; offset -= 1) {
+    const day = new Date(today);
+    day.setDate(day.getDate() - offset);
+    const key = localDayKey(day);
+    const dayModels = dayModelMap.get(key);
+    daily.push({
+      date: key,
+      tokens: dayMap.get(key) || 0,
+      models: dayModels
+        ? [...dayModels.entries()].map(([model, tokens]) => ({ model, tokens }))
+        : [],
+    });
+  }
+
+  // Token 活动：最近 52 周（364 天）含零值，供热力图使用
+  const activity = [];
+  for (let offset = 363; offset >= 0; offset -= 1) {
+    const day = new Date(today);
+    day.setDate(day.getDate() - offset);
+    const key = localDayKey(day);
+    activity.push({ date: key, tokens: dayMap.get(key) || 0 });
+  }
+
+  const peakDailyTokens = [...dayMap.values()].reduce((max, value) => Math.max(max, value), 0);
+
+  // 连续活跃：从今天（今天没用量则从昨天）往前数连续有记录的天数
+  let streakDays = 0;
+  const cursor = new Date(today);
+  if (!dayMap.get(localDayKey(cursor))) cursor.setDate(cursor.getDate() - 1);
+  while (dayMap.get(localDayKey(cursor))) {
+    streakDays += 1;
+    cursor.setDate(cursor.getDate() - 1);
+  }
+
+  // 历史最长连续活跃
+  let longestStreakDays = 0;
+  let streakRun = 0;
+  let previousDay = null;
+  for (const key of [...dayMap.keys()].sort()) {
+    const date = new Date(`${key}T12:00:00`);
+    if (previousDay && Math.round((date - previousDay) / 86_400_000) === 1) streakRun += 1;
+    else streakRun = 1;
+    longestStreakDays = Math.max(longestStreakDays, streakRun);
+    previousDay = date;
+  }
+
+  const models = [...modelMap.entries()]
+    .map(([model, tokens]) => ({ model, tokens }))
+    .sort((a, b) => b.tokens - a.tokens);
+  const longest = sessions.reduce(
+    (best, item) => (!best || item.tokens > best.tokens ? item : best),
+    null,
+  );
+  const data = {
+    totalTokens: inputTokens + outputTokens,
+    inputTokens,
+    outputTokens,
+    cacheReadTokens,
+    cacheWriteTokens,
+    sessions: sessions.length,
+    activeDays: dayMap.size,
+    streakDays,
+    longestStreakDays,
+    peakDailyTokens,
+    longestChatMs,
+    topModel: models[0] ?? null,
+    longestSession: longest,
+    activity,
+    daily,
+    models,
+  };
+  usageStatsCache = { at: Date.now(), data };
+  return data;
+});
+
 /** 用系统默认浏览器打开链接（聊天里的外链、内嵌浏览器的新窗口请求） */
 ipcMain.handle("meow:open-external", async (_event, url) => {
   if (typeof url !== "string" || !/^https?:\/\//i.test(url)) return "invalid url";
@@ -3985,6 +4584,21 @@ ipcMain.handle("meow:save-provider-prefs", (_event, prefs) => {
     return nextProvider;
   });
   const next = { ...settings, providers };
+  // magpie 的模型是覆盖层给的，改不了记录本身：启用状态与思考强度存进
+  // providerPrefs，读取合并时再套回去。
+  const providerPrefs = { ...(settings.providerPrefs ?? {}) };
+  for (const patch of patches) {
+    if (!isMagpieProviderId(patch?.id)) continue;
+    const entry = { ...(providerPrefs[patch.id] ?? {}) };
+    if ("reasoningEffort" in patch) {
+      if (patch.reasoningEffort) entry.reasoningEffort = patch.reasoningEffort;
+      else delete entry.reasoningEffort;
+    }
+    if (typeof patch.enabled === "boolean") entry.enabled = patch.enabled;
+    if (Object.keys(entry).length) providerPrefs[patch.id] = entry;
+    else delete providerPrefs[patch.id];
+  }
+  next.providerPrefs = providerPrefs;
   if (typeof prefs?.providerId === "string" && prefs.providerId) {
     next.providerId = prefs.providerId;
   }
@@ -4008,8 +4622,9 @@ ipcMain.handle("meow:save-provider-prefs", (_event, prefs) => {
   if (prefs?.sandbox && typeof prefs.sandbox === "object") {
     next.sandbox = normalizeSandbox({ ...next.sandbox, ...prefs.sandbox });
   }
-  writeSettings(next);
-  return publicSettings(next);
+  const merged = withMagpieOverlay(next);
+  writeSettings(merged);
+  return publicSettings(merged);
 });
 
 // ---- 轻量偏好：主题 / 关闭方式（只写盘，绝不重启 agent server）----
@@ -4044,12 +4659,33 @@ ipcMain.handle("meow:get-preferences", () => {
       typeof settings.nextPromptSuggestions === "boolean" ? settings.nextPromptSuggestions : false,
     mailAiProviderId:
       typeof settings.mailAiProviderId === "string" ? settings.mailAiProviderId : "",
+    webSearchProvider: ["auto", "provider-native", "deepseek-search-api", "off"].includes(
+      settings.webSearchProvider,
+    )
+      ? settings.webSearchProvider
+      : "auto",
+    webFetchProvider: ["auto", "http", "deepseek-fetch-api"].includes(settings.webFetchProvider)
+      ? settings.webFetchProvider
+      : "auto",
+    webSearchSendOriginalQuestion:
+      typeof settings.webSearchSendOriginalQuestion === "boolean"
+        ? settings.webSearchSendOriginalQuestion
+        : true,
+    hasWebDeepseekApiKey: Boolean(settings.webDeepseekApiKeyEncrypted),
     worktreeFetchUpstream:
       typeof settings.worktreeFetchUpstream === "boolean" ? settings.worktreeFetchUpstream : false,
     worktreeAutoCleanup:
       typeof settings.worktreeAutoCleanup === "boolean" ? settings.worktreeAutoCleanup : true,
     worktreeMaxKeep:
       typeof settings.worktreeMaxKeep === "number" ? settings.worktreeMaxKeep : 15,
+    worktreeRoot: typeof settings.worktreeRoot === "string" ? settings.worktreeRoot : "",
+    worktreeConfirmDelete:
+      typeof settings.worktreeConfirmDelete === "boolean" ? settings.worktreeConfirmDelete : true,
+    sshConnections: Array.isArray(settings.sshConnections) ? settings.sshConnections : [],
+    agentProfileLimits:
+      settings.agentProfileLimits && typeof settings.agentProfileLimits === "object"
+        ? settings.agentProfileLimits
+        : {},
     includeAgentsMd: typeof settings.includeAgentsMd === "boolean" ? settings.includeAgentsMd : true,
     includeClaudeMd: typeof settings.includeClaudeMd === "boolean" ? settings.includeClaudeMd : true,
     // 会话回滚（文件快照）：默认开启
@@ -4148,6 +4784,42 @@ ipcMain.handle("meow:save-preferences", (_event, prefs) => {
   if (typeof prefs?.mailAiProviderId === "string") {
     next.mailAiProviderId = prefs.mailAiProviderId.trim();
   }
+  // 网页搜索与获取：搜索/抓取分别选提供方；运行中经 /config/web-options 热切换
+  if (
+    typeof prefs?.webSearchProvider === "string" &&
+    ["auto", "provider-native", "deepseek-search-api", "off"].includes(prefs.webSearchProvider)
+  ) {
+    next.webSearchProvider = prefs.webSearchProvider;
+  }
+  if (
+    typeof prefs?.webFetchProvider === "string" &&
+    ["auto", "http", "deepseek-fetch-api"].includes(prefs.webFetchProvider)
+  ) {
+    next.webFetchProvider = prefs.webFetchProvider;
+  }
+  if (typeof prefs?.webSearchSendOriginalQuestion === "boolean") {
+    next.webSearchSendOriginalQuestion = prefs.webSearchSendOriginalQuestion;
+  }
+  // DeepSeek 网页工具独立密钥：加密保存；空串 = 清除
+  if (typeof prefs?.webDeepseekApiKey === "string") {
+    const value = prefs.webDeepseekApiKey.trim();
+    next.webDeepseekApiKeyEncrypted = value ? encryptApiKey(value) : "";
+  }
+  // 每个主 Agent 的并行子 Agent 上限：只保留三档的 1..10 整数
+  if (
+    prefs?.agentProfileLimits &&
+    typeof prefs.agentProfileLimits === "object" &&
+    !Array.isArray(prefs.agentProfileLimits)
+  ) {
+    const limits = {};
+    for (const id of ["standard", "minimal", "complex"]) {
+      const value = prefs.agentProfileLimits[id];
+      if (typeof value === "number" && Number.isFinite(value)) {
+        limits[id] = Math.max(1, Math.min(10, Math.round(value)));
+      }
+    }
+    next.agentProfileLimits = limits;
+  }
   // 供应商故障转移：默认关闭；实时生效走 /config/provider-fallback
   if (typeof prefs?.providerFallback === "boolean") {
     next.providerFallback = prefs.providerFallback;
@@ -4161,6 +4833,38 @@ ipcMain.handle("meow:save-preferences", (_event, prefs) => {
   }
   if (typeof prefs?.worktreeMaxKeep === "number" && Number.isFinite(prefs.worktreeMaxKeep)) {
     next.worktreeMaxKeep = Math.max(1, Math.min(100, Math.round(prefs.worktreeMaxKeep)));
+  }
+  // 工作树根目录：空串 = 默认位置；重启应用后新建的工作树才会换目录
+  if (typeof prefs?.worktreeRoot === "string") {
+    next.worktreeRoot = prefs.worktreeRoot.trim();
+  }
+  if (typeof prefs?.worktreeConfirmDelete === "boolean") {
+    next.worktreeConfirmDelete = prefs.worktreeConfirmDelete;
+  }
+  // SSH 连接：只存主机/端口/用户名/认证方式，密码永不落盘
+  if (Array.isArray(prefs?.sshConnections)) {
+    next.sshConnections = prefs.sshConnections
+      .filter(
+        (item) =>
+          item &&
+          typeof item.id === "string" &&
+          typeof item.host === "string" &&
+          item.host.trim(),
+      )
+      .map((item) => ({
+        id: item.id,
+        name: typeof item.name === "string" ? item.name : "",
+        host: item.host.trim(),
+        port:
+          Number.isInteger(item.port) && item.port > 0 && item.port <= 65535 ? item.port : 22,
+        username: typeof item.username === "string" ? item.username.trim() : "",
+        authType:
+          item.authType === "key" || item.authType === "password" ? item.authType : "agent",
+        privateKeyPath:
+          item.authType === "key" && typeof item.privateKeyPath === "string"
+            ? item.privateKeyPath
+            : undefined,
+      }));
   }
   // AGENTS.md / CLAUDE.md 导入开关
   if (typeof prefs?.includeAgentsMd === "boolean") {
@@ -4248,11 +4952,32 @@ ipcMain.handle("meow:save-preferences", (_event, prefs) => {
     floatingIsland: typeof next.floatingIsland === "boolean" ? next.floatingIsland : false,
     nextPromptSuggestions:
       typeof next.nextPromptSuggestions === "boolean" ? next.nextPromptSuggestions : false,
+    webSearchProvider: ["auto", "provider-native", "deepseek-search-api", "off"].includes(
+      next.webSearchProvider,
+    )
+      ? next.webSearchProvider
+      : "auto",
+    webFetchProvider: ["auto", "http", "deepseek-fetch-api"].includes(next.webFetchProvider)
+      ? next.webFetchProvider
+      : "auto",
+    webSearchSendOriginalQuestion:
+      typeof next.webSearchSendOriginalQuestion === "boolean"
+        ? next.webSearchSendOriginalQuestion
+        : true,
+    hasWebDeepseekApiKey: Boolean(next.webDeepseekApiKeyEncrypted),
+    agentProfileLimits:
+      next.agentProfileLimits && typeof next.agentProfileLimits === "object"
+        ? next.agentProfileLimits
+        : {},
     worktreeFetchUpstream:
       typeof next.worktreeFetchUpstream === "boolean" ? next.worktreeFetchUpstream : false,
     worktreeAutoCleanup:
       typeof next.worktreeAutoCleanup === "boolean" ? next.worktreeAutoCleanup : true,
     worktreeMaxKeep: typeof next.worktreeMaxKeep === "number" ? next.worktreeMaxKeep : 15,
+    worktreeRoot: typeof next.worktreeRoot === "string" ? next.worktreeRoot : "",
+    worktreeConfirmDelete:
+      typeof next.worktreeConfirmDelete === "boolean" ? next.worktreeConfirmDelete : true,
+    sshConnections: Array.isArray(next.sshConnections) ? next.sshConnections : [],
     includeAgentsMd: typeof next.includeAgentsMd === "boolean" ? next.includeAgentsMd : true,
     includeClaudeMd: typeof next.includeClaudeMd === "boolean" ? next.includeClaudeMd : true,
     fontFamily: typeof next.fontFamily === "string" ? next.fontFamily : "",

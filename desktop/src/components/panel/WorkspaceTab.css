@@ -180,3 +180,55 @@
 .mc-wstree__icon[data-cat="media"] {
   color: var(--accent-violet);
 }
+
+/* ---- 文件右键菜单（portal 到 body；fixed 定位不受面板 overflow 影响） ---- */
+.mc-wstree__menu {
+  position: fixed;
+  z-index: 80;
+  min-width: 180px;
+  max-width: 260px;
+  padding: 4px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  corner-shape: superellipse(1.5);
+  box-shadow: var(--shadow-lg);
+  animation: mc-fade-in var(--dur) var(--ease);
+}
+.mc-wstree__menuitem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 5px 8px;
+  border: 0;
+  border-radius: var(--radius-md);
+  corner-shape: superellipse(1.5);
+  background: transparent;
+  color: var(--fg);
+  font-family: inherit;
+  font-size: var(--fs-caption);
+  text-align: left;
+  cursor: pointer;
+  transition: background-color var(--dur) var(--ease);
+}
+.mc-wstree__menuitem:hover:not(:disabled) {
+  background: var(--surface-hover);
+}
+.mc-wstree__menuitem:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.mc-wstree__menuitem > svg {
+  flex-shrink: 0;
+  color: var(--fg-subtle);
+}
+.mc-wstree__menuitem[data-danger="true"],
+.mc-wstree__menuitem[data-danger="true"] > svg {
+  color: var(--danger);
+}
+.mc-wstree__menusep {
+  height: 1px;
+  margin: 3px 4px;
+  background: var(--border);
+}

@@ -39,6 +39,7 @@ export const READ_ONLY_PARALLEL_TOOLS = new Set([
   "context_status",
   "diagnostics",
   "memory_read",
+  "session_search",
   "web_search",
   "web_fetch",
 ]);
@@ -320,6 +321,9 @@ export async function runAgentLoop(host: AgentLoopHost): Promise<void> {
         const escalated = await host.escalateOnOverflow(messages, escalation);
         escalation = escalated.stage;
         messages = escalated.messages;
+        // 压缩把历史折叠了：回合预算回血到当前上下文规模，否则越压越早停，
+        // 压缩省下的窗口被已经付过的呆账吃掉。
+        budget.rebase(estimateMessagesTokens(messages) + toolTokens);
         continue;
       }
       // 2) 可重试的服务商故障（超时 / 429 / 5xx）：切到 fallback 链的下一跳。

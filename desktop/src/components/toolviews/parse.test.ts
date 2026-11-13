@@ -138,6 +138,34 @@ describe("ask_user 解析", () => {
     expect(answers).toEqual(["简洁", ""]);
   });
 
+  it("旧记录里的 [object Object] 答案按未回答处理", () => {
+    const answers = parseAskAnswers("1. 用哪种风格？\n   → [object Object]");
+    expect(answers).toEqual([""]);
+  });
+
+  it("模型把选项写成对象时取 label，并带上描述", () => {
+    expect(
+      parseAskQuestions({
+        questions: [
+          {
+            question: "lint 剩下的 error 处理到什么程度？",
+            options: [
+              { label: "只修工具链", description: "历史 error 只留报告" },
+              { label: "顺手修能自动修的" },
+              { description: "只有描述没有标题" },
+            ],
+          },
+        ],
+      }),
+    ).toEqual([
+      {
+        question: "lint 剩下的 error 处理到什么程度？",
+        options: ["只修工具链", "顺手修能自动修的"],
+        descriptions: ["历史 error 只留报告", ""],
+      },
+    ]);
+  });
+
   it("没有输出时返回空数组", () => {
     expect(parseAskAnswers(undefined)).toEqual([]);
   });

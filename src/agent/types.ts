@@ -205,7 +205,7 @@ export type MeowEvent = AgentEventMeta &
       type: "ask_user";
       sessionId: string;
       callId: string;
-      questions: Array<{ question: string; options: string[] }>;
+      questions: AskUserQuestion[];
     }
   | {
       type: "usage";
@@ -666,11 +666,33 @@ export type ToolDefinition = {
   };
 };
 
+/**
+ * ask_user 的一题：options 只放纯文本，descriptions 与 options 同下标（模型给的
+ * 补充说明，没有就空串），事件消费方拿到的永远是扁平字符串。
+ *
+ * 模型时常把选项写成 `{label, description}` 对象，由 runtime 归一化后再出门——
+ * 早期直接 String(option) 会把选项渲染成 `[object Object]`，用户点了之后答案
+ * 也变成这串字面量回传给模型。
+ */
+export type AskUserQuestion = {
+  question: string;
+  options: string[];
+  descriptions?: string[];
+};
+
 /** 一次模型调用的用量统计 */
 export type TokenUsage = {
   /** 总输入（含缓存读取/写入）：OpenAI/Responses 为 prompt_tokens/input_tokens，
       Anthropic 为 input + cache_read + cache_creation */
   inputTokens?: number;
+  /**
+   * 既没命中缓存、也没写入缓存的那部分输入。
+   *
+   * 命中率要靠它才能跨协议对齐：三家 `inputTokens` 语义不同（Anthropic 是三项相加、
+   * OpenAI 系本来就含 cached），只用总输入做分母时「缓存写入」在 Anthropic 计入、
+   * 在 OpenAI 系根本不存在，两个协议的数字不可比。undefined = 服务商未报告。
+   */
+  uncachedInputTokens?: number;
   outputTokens?: number;
   /** 缓存读取；undefined 表示服务商未报告（与 0 区分） */
   cacheReadTokens?: number;
@@ -1260,6 +1282,8 @@ export type SessionEntry =
       parentId: string | null;
       timestamp: string;
       inputTokens?: number;
+      /** 没命中也没写入缓存的输入（命中率分母用；旧记录没有该字段） */
+      uncachedInputTokens?: number;
       outputTokens?: number;
       cacheReadTokens?: number;
       cacheWriteTokens?: number;
@@ -1267,6 +1291,11 @@ export type SessionEntry =
       tokensPerSecond?: number;
       /** 未标记的旧记录视为主对话 */
       source?: UsageSource;
+      /**
+       * 模型调用轮次 id。流中同一轮会多次上报，落盘后按它去重（后写覆盖先写）；
+       * 旧记录没有该字段，按「一次调用只落一条」的历史纪律单独计数。
+       */
+      roundId?: string;
       turnId?: string;
       providerId?: string;
       model?: string;

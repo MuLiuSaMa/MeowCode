@@ -45,7 +45,12 @@
     "learning": "Apprentissage autonome",
     "rewind": "Restauration de session",
     "sandbox": "Sandbox",
-    "approvals": "Règles d'approbation"
+    "approvals": "Règles d'approbation",
+    "storage": "Stockage",
+    "connections": "Connexions",
+    "usage": "Utilisation",
+    "webSearch": "Recherche web",
+    "agents": "Sous-agents"
   },
   "close": {
     "section": "Fermeture de la fenêtre",
@@ -204,6 +209,8 @@
     "count_many": "{{count}} modèles configurés",
     "add": "Ajouter un modèle",
     "empty": "Aucun modèle configuré pour l’instant. Cliquez sur « Ajouter un modèle » pour commencer.",
+    "managedBadge": "Géré par magpie",
+    "managedHint": "Ces modèles proviennent de magpie. Redémarrez MeowCode après la connexion ou la déconnexion de magpie. L’activation et l’effort de raisonnement sont conservés.",
     "deleteTitle": "Supprimer le fournisseur",
     "deleteMessage": "Supprimer « {{name}} » ? Il devra être reconfiguré pour être utilisé.",
     "deleteGroupAria": "Supprimer le fournisseur {{name}}",
@@ -473,18 +480,37 @@
     "deleted": "Règle « {{name}} » supprimée"
   },
   "worktree": {
-    "section": "Worktrees",
+    "create": {
+      "section": "Création et nettoyage"
+    },
+    "root": {
+      "label": "Répertoire racine des arbres de travail",
+      "hint": "Laisser vide pour utiliser l'emplacement par défaut. Les modifications prennent effet après redémarrage de l'application.",
+      "open": "Ouvrir le dossier"
+    },
     "fetch": {
-      "label": "Récupérer l’amont avant la création",
-      "hint": "Récupérer les mises à jour de l’amont avant de créer un worktree."
+      "label": "Toujours récupérer l'upstream avant de créer un arbre de travail",
+      "hint": "Récupérer d'abord l'upstream ; ignoré hors ligne ou sans remote."
     },
     "cleanup": {
-      "label": "Supprimer automatiquement les anciens worktrees",
-      "hint": "Recommandé pour la plupart des utilisateurs. Désactivez uniquement si vous souhaitez gérer vous-même les anciens worktrees et l’espace disque."
+      "label": "Supprimer automatiquement les anciens arbres de travail",
+      "hint": "Enregistre d'abord un instantané de récupération."
     },
     "maxKeep": {
-      "label": "Limite de worktrees",
-      "hint": "Au-delà de la limite, les worktrees les plus anciens sont nettoyés automatiquement. Une sauvegarde Git est créée avant la suppression, donc les worktrees supprimés peuvent toujours être restaurés."
+      "label": "Nombre d'arbres de travail à conserver",
+      "hint": "Les plus anciens sont supprimés automatiquement. Les arbres utilisés par des discussions épinglées ou en cours sont conservés."
+    },
+    "confirmDelete": {
+      "label": "Demander avant de supprimer un arbre de travail"
+    },
+    "managed": {
+      "title": "Arbres de travail gérés",
+      "refresh": "Actualiser",
+      "loading": "Chargement…",
+      "empty": "Aucun arbre de travail",
+      "inUse": "Utilisé",
+      "delete": "Supprimer",
+      "confirm": "Confirmer la suppression"
     }
   },
   "learning": {
@@ -653,5 +679,168 @@
       "command-prefix": "Préfixe de commande"
     },
     "loading": "Chargement…"
+  },
+  "storage": {
+    "device": "Cet appareil",
+    "deviceDesc": "Gérer les discussions et les arbres de travail stockés sur cet ordinateur",
+    "used": "MeowCode utilise {{size}}",
+    "refresh": "Actualiser",
+    "barAria": "Répartition du stockage",
+    "categories": {
+      "chats": "Discussions",
+      "subagents": "Sous-agents",
+      "archived": "Discussions archivées",
+      "worktrees": "Arbres de travail",
+      "other": "Autre"
+    },
+    "clean": {
+      "title": "Nettoyer les anciennes discussions",
+      "hint": "Avant de supprimer définitivement, examinez les discussions et leurs sous-agents.",
+      "action": "Examiner",
+      "dialogTitle": "Nettoyer les anciennes discussions",
+      "dialogDesc": "La suppression efface définitivement les fichiers de session et leurs sous-agents ; les plus anciens d'abord.",
+      "empty": "Aucune discussion à nettoyer",
+      "untitled": "Discussion sans titre",
+      "delete": "Supprimer",
+      "confirm": "Confirmer la suppression",
+      "close": "Fermer"
+    },
+    "worktrees": {
+      "title": "Gérer les arbres de travail",
+      "hint": "Examiner les copies de travail et choisir le nombre d'anciens arbres à conserver.",
+      "action": "Gérer"
+    },
+    "archived": {
+      "title": "Discussions archivées",
+      "hint": "Restaurer ou supprimer des discussions archivées individuellement.",
+      "action": "Gérer"
+    }
+  },
+  "connections": {
+    "section": "Connexions SSH",
+    "desc": "Gérez les paramètres SSH des serveurs distants. Les mots de passe ne sont jamais enregistrés ; saisissez-les dans le terminal lors de la connexion.",
+    "create": "Nouvelle connexion",
+    "empty": "Aucune connexion SSH",
+    "connect": "Se connecter",
+    "test": "Tester",
+    "testing": "Test en cours…",
+    "testSuccess": "Connexion réussie",
+    "testFailed": "Échec de la connexion",
+    "testPassword": "L'authentification par mot de passe ne peut pas être testée automatiquement. Connectez-vous et saisissez le mot de passe dans le terminal.",
+    "auth": {
+      "agent": "Agent SSH / clé par défaut",
+      "key": "Fichier de clé privée",
+      "password": "Mot de passe (saisi à la connexion)"
+    },
+    "form": {
+      "titleNew": "Nouvelle connexion SSH",
+      "titleEdit": "Modifier la connexion SSH",
+      "name": "Nom",
+      "namePlaceholder": "ex. : serveur de production",
+      "host": "Hôte",
+      "hostPlaceholder": "example.com ou 192.168.1.10",
+      "port": "Port",
+      "username": "Nom d'utilisateur",
+      "auth": "Authentification",
+      "privateKey": "Clé privée",
+      "chooseKey": "Choisir la clé",
+      "note": "Les mots de passe ne sont pas enregistrés ; saisissez-les dans le terminal après connexion.",
+      "invalid": "Renseignez l'hôte et le nom d'utilisateur, et vérifiez le port",
+      "keyRequired": "Choisissez un fichier de clé privée"
+    }
+  },
+  "usage": {
+    "section": "Utilisation",
+    "badge": "Utilisation de l'app",
+    "refresh": "Actualiser",
+    "loading": "Calcul…",
+    "empty": "Aucune utilisation enregistrée",
+    "metrics": {
+      "total": "Tokens totaux",
+      "peak": "Tokens de pointe",
+      "longestChat": "Discussion la plus longue",
+      "currentStreak": "Série actuelle",
+      "maxStreak": "Plus longue série"
+    },
+    "units": {
+      "days": "jours",
+      "hours": "h",
+      "minutes": "min",
+      "tokens": "tokens"
+    },
+    "activity": {
+      "title": "Activité des tokens",
+      "daily": "Quotidien",
+      "weekly": "Hebdomadaire",
+      "cumulative": "Cumulé"
+    },
+    "range": {
+      "label": "Période",
+      "d7": "7 derniers jours",
+      "d30": "30 derniers jours"
+    },
+    "trend": {
+      "title": "Tendance quotidienne des tokens"
+    },
+    "models": {
+      "title": "Utilisation par modèle",
+      "other": "Autres modèles"
+    },
+    "unknownModel": "Modèle inconnu"
+  },
+  "webSearch": {
+    "section": "Recherche et récupération web",
+    "desc": "Choisissez des fournisseurs distincts pour la recherche et la récupération. « Auto » suit les capacités du modèle courant et ne change jamais silencieusement de fournisseur.",
+    "search": {
+      "label": "Fournisseur de recherche",
+      "hint": "Désactivé : le modèle ne voit pas l'outil web_search ; la récupération web reste disponible."
+    },
+    "searchOptions": {
+      "auto": "Auto (suivre le modèle courant)",
+      "providerNative": "Recherche intégrée du fournisseur",
+      "deepseek": "DeepSeek Search API",
+      "off": "Désactiver la recherche web"
+    },
+    "fetch": {
+      "label": "Fournisseur de récupération",
+      "hint": "DeepSeek Fetch API fonctionne avec la clé ci-dessous ; sans elle, le modèle courant doit être DeepSeek."
+    },
+    "fetchOptions": {
+      "auto": "Auto (DeepSeek via API, sinon local)",
+      "http": "Récupération HTTP locale",
+      "deepseek": "DeepSeek Fetch API"
+    },
+    "originalQuestion": {
+      "label": "Envoyer la question d'origine",
+      "hint": "Envoyer la dernière question de l'utilisateur (128 caractères max) avec les recherches DeepSeek pour de meilleurs résultats."
+    },
+    "deepseekKey": {
+      "label": "Clé API DeepSeek",
+      "hint": "Sert à appeler les API officielles Search / Fetch lorsque le modèle courant n'est pas DeepSeek. Stockée chiffrée sur cet appareil.",
+      "placeholder": "sk-…",
+      "saved": "Enregistrée ; laisser vide pour conserver",
+      "clear": "Effacer"
+    }
+  },
+  "agents": {
+    "section": "Sous-agents",
+    "desc": "Sous-agents, limite de parallélisme et prompts par agent principal. Les nouveaux sous-agents sont écrits dans l'architecture correspondante et reliés par défaut à l'agent principal.",
+    "limit": {
+      "label": "Parallèle"
+    },
+    "add": "Ajouter un sous-agent",
+    "addTitle": "Ajouter un sous-agent",
+    "editTitle": "Modifier le prompt du sous-agent",
+    "name": "Nom",
+    "namePlaceholder": "ex. : Réviseur sécurité",
+    "roleLabel": "Rôle",
+    "promptLabel": "Prompt",
+    "promptHint": "Laisser vide pour utiliser le prompt intégré du rôle.",
+    "added": "Ajouté et relié à l'agent principal",
+    "saved": "Prompt enregistré",
+    "editPrompt": "Modifier le prompt",
+    "customPrompt": "Personnalisé",
+    "loading": "Chargement…",
+    "empty": "Aucun sous-agent"
   }
 }

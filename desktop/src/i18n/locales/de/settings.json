@@ -45,7 +45,12 @@
     "learning": "Selbstlernen",
     "rewind": "Sitzungs-Zurücksetzen",
     "sandbox": "Sandbox",
-    "approvals": "Freigaberegeln"
+    "approvals": "Freigaberegeln",
+    "storage": "Speicher",
+    "connections": "Verbindungen",
+    "usage": "Nutzung",
+    "webSearch": "Websuche",
+    "agents": "Subagenten"
   },
   "close": {
     "section": "Fenster schließen",
@@ -204,6 +209,8 @@
     "count_many": "{{count}} Modelle konfiguriert",
     "add": "Modell hinzufügen",
     "empty": "Noch kein Modell konfiguriert. Beginnen Sie mit „Modell hinzufügen“.",
+    "managedBadge": "Von magpie verwaltet",
+    "managedHint": "Diese Modelle stammen von magpie. Nach Verbinden oder Trennen von magpie MeowCode neu starten. Aktivierungsstatus und Denkintensität bleiben erhalten.",
     "deleteTitle": "Anbieter löschen",
     "deleteMessage": "„{{name}}“ löschen? Danach muss es neu eingerichtet werden.",
     "deleteGroupAria": "Anbieter {{name}} löschen",
@@ -473,18 +480,37 @@
     "deleted": "Regel „{{name}}“ gelöscht"
   },
   "worktree": {
-    "section": "Worktrees",
+    "create": {
+      "section": "Erstellen & Aufräumen"
+    },
+    "root": {
+      "label": "Worktree-Stammverzeichnis",
+      "hint": "Leer lassen, um den Standardpfad zu verwenden. Änderungen gelten nach einem App-Neustart.",
+      "open": "Ordner öffnen"
+    },
     "fetch": {
-      "label": "Vor dem Erstellen Upstream abrufen",
-      "hint": "Upstream-Updates abrufen, bevor ein Worktree erstellt wird."
+      "label": "Vor dem Erstellen immer Upstream abrufen",
+      "hint": "Beim Erstellen zuerst Upstream abrufen; wird übersprungen, wenn offline oder kein Remote vorhanden ist."
     },
     "cleanup": {
-      "label": "Alte Worktrees automatisch entfernen",
-      "hint": "Für die meisten Nutzer empfohlen. Nur deaktivieren, wenn du alte Worktrees und den Speicherplatz selbst verwalten möchtest."
+      "label": "Alte Worktrees automatisch löschen",
+      "hint": "Speichert zuvor einen Wiederherstellungs-Snapshot."
     },
     "maxKeep": {
-      "label": "Worktree-Limit",
-      "hint": "Nach Überschreiten des Limits werden die ältesten Worktrees automatisch bereinigt. Vor dem Löschen wird ein Git-Backup erstellt, sodass entfernte Worktrees wiederhergestellt werden können."
+      "label": "Beizubehaltende Worktrees",
+      "hint": "Ältere Worktrees werden automatisch gelöscht. Worktrees von angehefteten oder laufenden Chats bleiben erhalten."
+    },
+    "confirmDelete": {
+      "label": "Vor dem Löschen eines Worktrees fragen"
+    },
+    "managed": {
+      "title": "Verwaltete Worktrees",
+      "refresh": "Aktualisieren",
+      "loading": "Wird geladen…",
+      "empty": "Noch keine Worktrees",
+      "inUse": "In Verwendung",
+      "delete": "Löschen",
+      "confirm": "Löschen bestätigen"
     }
   },
   "learning": {
@@ -653,5 +679,168 @@
       "command-prefix": "Befehlspräfix"
     },
     "loading": "Wird geladen…"
+  },
+  "storage": {
+    "device": "Dieses Gerät",
+    "deviceDesc": "Chats und Worktrees auf diesem Computer verwalten",
+    "used": "MeowCode belegt {{size}}",
+    "refresh": "Aktualisieren",
+    "barAria": "Speicherbelegung",
+    "categories": {
+      "chats": "Chats",
+      "subagents": "Subagenten",
+      "archived": "Archivierte Chats",
+      "worktrees": "Worktrees",
+      "other": "Sonstiges"
+    },
+    "clean": {
+      "title": "Alte Chats aufräumen",
+      "hint": "Vor dem endgültigen Löschen Chats und ihre Subagenten prüfen.",
+      "action": "Ansehen",
+      "dialogTitle": "Alte Chats aufräumen",
+      "dialogDesc": "Löschen entfernt die Sitzungsdateien und ihre Subagenten dauerhaft; älteste zuerst.",
+      "empty": "Keine Chats zum Aufräumen",
+      "untitled": "Unbenannter Chat",
+      "delete": "Löschen",
+      "confirm": "Löschen bestätigen",
+      "close": "Schließen"
+    },
+    "worktrees": {
+      "title": "Worktrees verwalten",
+      "hint": "Arbeitskopien prüfen und festlegen, wie viele alte Worktrees behalten werden.",
+      "action": "Verwalten"
+    },
+    "archived": {
+      "title": "Archivierte Chats",
+      "hint": "Einzelne archivierte Chats wiederherstellen oder löschen.",
+      "action": "Verwalten"
+    }
+  },
+  "connections": {
+    "section": "SSH-Verbindungen",
+    "desc": "SSH-Einstellungen für Remote-Server verwalten. Passwörter werden nie gespeichert; gib sie beim Verbinden im Terminal ein.",
+    "create": "Neue Verbindung",
+    "empty": "Noch keine SSH-Verbindungen",
+    "connect": "Verbinden",
+    "test": "Testen",
+    "testing": "Wird getestet…",
+    "testSuccess": "Verbindung erfolgreich",
+    "testFailed": "Verbindung fehlgeschlagen",
+    "testPassword": "Passwort-Authentifizierung kann nicht automatisch getestet werden. Verbinde dich und gib das Passwort im Terminal ein.",
+    "auth": {
+      "agent": "SSH-Agent / Standardschlüssel",
+      "key": "Private-Key-Datei",
+      "password": "Passwort (bei Verbindung eingeben)"
+    },
+    "form": {
+      "titleNew": "Neue SSH-Verbindung",
+      "titleEdit": "SSH-Verbindung bearbeiten",
+      "name": "Name",
+      "namePlaceholder": "z. B. Produktionsserver",
+      "host": "Host",
+      "hostPlaceholder": "example.com oder 192.168.1.10",
+      "port": "Port",
+      "username": "Benutzername",
+      "auth": "Authentifizierung",
+      "privateKey": "Private Key",
+      "chooseKey": "Private Key wählen",
+      "note": "Passwörter werden nicht gespeichert; gib sie nach dem Verbinden im Terminal ein.",
+      "invalid": "Host und Benutzername ausfüllen und gültigen Port prüfen",
+      "keyRequired": "Private-Key-Datei wählen"
+    }
+  },
+  "usage": {
+    "section": "Nutzung",
+    "badge": "App-Nutzung",
+    "refresh": "Aktualisieren",
+    "loading": "Wird berechnet…",
+    "empty": "Noch keine Nutzung aufgezeichnet",
+    "metrics": {
+      "total": "Token gesamt",
+      "peak": "Spitzen-Token",
+      "longestChat": "Längster Chat",
+      "currentStreak": "Aktuelle Serie",
+      "maxStreak": "Längste Serie"
+    },
+    "units": {
+      "days": "Tage",
+      "hours": "Std.",
+      "minutes": "Min.",
+      "tokens": "tokens"
+    },
+    "activity": {
+      "title": "Token-Aktivität",
+      "daily": "Täglich",
+      "weekly": "Wöchentlich",
+      "cumulative": "Kumuliert"
+    },
+    "range": {
+      "label": "Zeitraum",
+      "d7": "Letzte 7 Tage",
+      "d30": "Letzte 30 Tage"
+    },
+    "trend": {
+      "title": "Täglicher Token-Verlauf"
+    },
+    "models": {
+      "title": "Nutzung nach Modell",
+      "other": "Andere Modelle"
+    },
+    "unknownModel": "Unbekanntes Modell"
+  },
+  "webSearch": {
+    "section": "Websuche & -abruf",
+    "desc": "Such- und Abruf-Provider getrennt wählen. „Auto“ folgt den Fähigkeiten des aktuellen Modells und wechselt nie still den Provider.",
+    "search": {
+      "label": "Such-Provider",
+      "hint": "Aus: Das Modell sieht das web_search-Tool nicht; Web-Abruf bleibt verfügbar."
+    },
+    "searchOptions": {
+      "auto": "Auto (aktuelles Modell folgen)",
+      "providerNative": "Provider-eigene Suche",
+      "deepseek": "DeepSeek Search API",
+      "off": "Websuche ausschalten"
+    },
+    "fetch": {
+      "label": "Abruf-Provider",
+      "hint": "DeepSeek Fetch API nutzt den Schlüssel unten; ohne ihn muss das aktuelle Modell DeepSeek sein."
+    },
+    "fetchOptions": {
+      "auto": "Auto (DeepSeek über API, sonst lokal)",
+      "http": "Lokaler HTTP-Abruf",
+      "deepseek": "DeepSeek Fetch API"
+    },
+    "originalQuestion": {
+      "label": "Ursprüngliche Frage mitsenden",
+      "hint": "Die letzte Nutzerfrage (bis 128 Zeichen) an DeepSeek-Suchen mitsenden für bessere Ergebnisse."
+    },
+    "deepseekKey": {
+      "label": "DeepSeek-API-Key",
+      "hint": "Wird für die offiziellen Search-/Fetch-APIs genutzt, wenn das aktuelle Modell nicht DeepSeek ist. Verschlüsselt auf diesem Gerät gespeichert.",
+      "placeholder": "sk-…",
+      "saved": "Gespeichert; leer lassen zum Beibehalten",
+      "clear": "Entfernen"
+    }
+  },
+  "agents": {
+    "section": "Subagenten",
+    "desc": "Subagenten, Parallel-Limit und Prompts je Hauptagent. Neue Subagenten werden in die jeweilige Architektur geschrieben und standardmäßig mit dem Hauptagenten verbunden.",
+    "limit": {
+      "label": "Parallel"
+    },
+    "add": "Subagent hinzufügen",
+    "addTitle": "Subagent hinzufügen",
+    "editTitle": "Subagent-Prompt bearbeiten",
+    "name": "Name",
+    "namePlaceholder": "z. B. Sicherheitsprüfer",
+    "roleLabel": "Rolle",
+    "promptLabel": "Prompt",
+    "promptHint": "Leer lassen, um den eingebauten Prompt der Rolle zu verwenden.",
+    "added": "Hinzugefügt und mit dem Hauptagenten verbunden",
+    "saved": "Prompt gespeichert",
+    "editPrompt": "Prompt bearbeiten",
+    "customPrompt": "Angepasst",
+    "loading": "Wird geladen…",
+    "empty": "Noch keine Subagenten"
   }
 }

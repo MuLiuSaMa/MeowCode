@@ -88,6 +88,11 @@
   background: var(--surface);
   color: var(--fg);
 }
+.mc-models__managed {
+  flex: none;
+  display: inline-flex;
+  margin-left: auto;
+}
 .mc-models__grouplist {
   display: flex;
   flex-direction: column;

@@ -1,0 +1,93 @@
+/* 设置 → 子 Agent：顶部 Tab 切换三个主 Agent，每张卡标题行右侧放并行数量与添加入口 */
+
+.mc-agents__head {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.mc-agents__tabs {
+  display: inline-flex;
+  align-self: flex-start;
+  gap: 2px;
+  padding: 2px;
+  border-radius: var(--radius-full);
+  background: var(--surface-hover);
+}
+
+.mc-agents__tab {
+  padding: 4px 14px;
+  border: 0;
+  border-radius: var(--radius-full);
+  background: transparent;
+  color: var(--fg-subtle);
+  font-family: inherit;
+  font-size: var(--fs-caption);
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background-color var(--dur) var(--ease), color var(--dur) var(--ease);
+}
+
+.mc-agents__tab:hover {
+  color: var(--fg);
+}
+
+.mc-agents__tab[data-active="true"] {
+  background: var(--bg-elevated);
+  color: var(--fg);
+}
+
+.mc-agents__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.mc-agents__actionlabel {
+  font-size: var(--fs-caption);
+  color: var(--fg-subtle);
+  white-space: nowrap;
+}
+
+.mc-agents__actions > .mc-customselect {
+  width: 72px;
+}
+
+.mc-agents__empty {
+  margin: 0;
+  padding: 18px 16px;
+  text-align: center;
+  font-size: var(--fs-caption);
+  color: var(--fg-subtlest);
+}
+
+.mc-agents__form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 4px 0 2px;
+}
+
+.mc-agents__prompt {
+  width: 100%;
+  min-height: 200px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  color: var(--fg);
+  font-family: inherit;
+  font-size: var(--fs-sm);
+  line-height: 1.5;
+  resize: vertical;
+}
+
+.mc-agents__dialog {
+  width: min(92vw, 620px);
+  max-width: min(92vw, 620px);
+}
+
+.mc-agents__prompt:focus-visible {
+  outline: 2px solid var(--accent, currentColor);
+  outline-offset: -1px;
+}

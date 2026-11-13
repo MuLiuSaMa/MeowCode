@@ -26,3 +26,17 @@
 .mc-compaction[data-active="true"] {
   color: var(--accent);
 }
+/* 进行中的这条现在是底部唯一的指示（状态行让位），给一点呼吸表示在动 */
+.mc-compaction[data-active="true"] .mc-compaction__text {
+  animation: mc-compaction-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes mc-compaction-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.55;
+  }
+}

@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { LuPencil, LuPlus, LuTrash2 } from "react-icons/lu";
 import { findTemplate } from "../../data/providerCatalog";
-import { modelIconKey } from "../../data/providerIcons";
+import { providerModelIconKey } from "../../data/providerIcons";
 import { Badge } from "../ui/Badge";
 import { Button } from "../ui/Button";
 import { Dialog } from "../ui/Dialog";
@@ -35,6 +35,9 @@ export function ModelsSection({
   onToggleProvider: (providerId: string, enabled: boolean) => void;
 }) {
   const { t } = useTranslation("settings");
+  /** magpie 的模型来自它写的覆盖层文件：这里只读，启用开关与思考强度仍会保存 */
+  const isManagedId = (id: string) => id.startsWith("magpie/");
+  const isManagedProvider = (item: ProviderSettings) => isManagedId(item.id);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [editing, setEditing] = useState<ProviderSettings | null>(null);
   const [pendingDelete, setPendingDelete] = useState<string | null>(null);
@@ -63,7 +66,7 @@ export function ModelsSection({
   const groupIds = new Set(editingGroup.map((item) => item.id));
 
   const handleSave = (entries: ProviderSettings[]) => {
-    if (!editing) return;
+    if (!editing || isManagedProvider(editing)) return;
     let next: ProviderSettings[];
     if (editingGroup.length) {
       const index = providers.findIndex((item) => item.id === editing.id);
@@ -87,6 +90,7 @@ export function ModelsSection({
   };
 
   const handleDelete = (id: string) => {
+    if (isManagedId(id)) return;
     const next = providers.filter((item) => item.id !== id);
     const activeId =
       activeProviderId === id
@@ -101,7 +105,9 @@ export function ModelsSection({
    * 逐条点删除删一个多模型服务商要点很多次，而且中间每一次都要重启一次 agent server。
    */
   const handleDeleteGroup = (groupKey: string) => {
-    const doomed = providers.filter((item) => groupKeyOf(item) === groupKey);
+    const doomed = providers.filter(
+      (item) => groupKeyOf(item) === groupKey && !isManagedProvider(item),
+    );
     if (!doomed.length) return;
     const ids = new Set(doomed.map((item) => item.id));
     const next = providers.filter((item) => !ids.has(item.id));
@@ -148,6 +154,7 @@ export function ModelsSection({
               {groups.map((group) => {
                 const first = group.items[0];
                 const template = findTemplate(first.templateId);
+                const managed = group.items.every(isManagedProvider);
                 return (
                   <section className="mc-models__group" key={group.key}>
                     <div className="mc-models__grouphead">
@@ -158,21 +165,29 @@ export function ModelsSection({
                       >
                         {group.items.length}
                       </span>
-                      <button
-                        type="button"
-                        className="mc-models__groupedit"
-                        onClick={() => setEditing(first)}
-                      >
-                        <LuPencil size={13} />
-                        {t("models.editGroup")}
-                      </button>
-                      <IconButton
-                        label={t("models.deleteGroupAria", { name: first.name })}
-                        size="sm"
-                        onClick={() => setPendingDeleteGroup(group.key)}
-                      >
-                        <LuTrash2 size={14} />
-                      </IconButton>
+                      {managed ? (
+                        <span className="mc-models__managed" title={t("models.managedHint")}>
+                          <Badge tone="neutral">{t("models.managedBadge")}</Badge>
+                        </span>
+                      ) : (
+                        <>
+                          <button
+                            type="button"
+                            className="mc-models__groupedit"
+                            onClick={() => setEditing(first)}
+                          >
+                            <LuPencil size={13} />
+                            {t("models.editGroup")}
+                          </button>
+                          <IconButton
+                            label={t("models.deleteGroupAria", { name: first.name })}
+                            size="sm"
+                            onClick={() => setPendingDeleteGroup(group.key)}
+                          >
+                            <LuTrash2 size={14} />
+                          </IconButton>
+                        </>
+                      )}
                     </div>
                     <div className="mc-models__grouplist">
                       {group.items.map((provider) => {
@@ -181,7 +196,7 @@ export function ModelsSection({
                           <div className="mc-models__modelrow" key={provider.id}>
                             <ProviderIcon
                               template={template}
-                              iconKey={modelIconKey(provider.model) ?? "meow"}
+                              iconKey={providerModelIconKey(provider)}
                               size={18}
                             />
                             <span className="mc-models__name">
@@ -198,13 +213,15 @@ export function ModelsSection({
                                 })}
                                 onChange={(checked) => onToggleProvider(provider.id, checked)}
                               />
-                              <IconButton
-                                label={t("actions.delete")}
-                                size="sm"
-                                onClick={() => setPendingDelete(provider.id)}
-                              >
-                                <LuTrash2 size={14} />
-                              </IconButton>
+                              {managed ? null : (
+                                <IconButton
+                                  label={t("actions.delete")}
+                                  size="sm"
+                                  onClick={() => setPendingDelete(provider.id)}
+                                >
+                                  <LuTrash2 size={14} />
+                                </IconButton>
+                              )}
                             </span>
                           </div>
                         );

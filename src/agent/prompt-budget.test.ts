@@ -40,7 +40,9 @@ describe("prompt budget", () => {
     // LF 变 CRLF、-Encoding utf8 加 BOM 且中文双编码、Out-File 写 UTF-16、
     // `> 同名文件` 直接清空）。批量改文件指路 run_code / 项目自带 formatter。
     // 5200 → 5000：那段 PowerShell 讲义压成一句指路（细节进了主提示词的极简档），
-    // context_status 与 ask_user 的描述去掉重复措辞；实测 4974。
+    // context_status 与 ask_user 的描述去掉重复措辞。
+    // 4974 → 4974：新增 session_search（历史会话检索），压缩 memory_write / task /
+    // ask_user / tool_search 等描述抵消 schema 成本；实测 4974。
     // 再往上应优先走 tool_search 延迟加载，而不是继续堆常驻 schema。
     const tokens = estimateTokens(JSON.stringify(toolDefinitions));
     expect(tokens).toBeLessThan(5_000);

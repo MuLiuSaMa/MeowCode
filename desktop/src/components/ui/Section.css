@@ -1,7 +1,7 @@
 .mc-section {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
 }
 
 .mc-section__head {
@@ -50,16 +50,26 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 24px;
-  padding: 16px 18px;
+  gap: 20px;
+  padding: 13px 16px;
 }
+/* 分隔线内缩，不顶到卡片圆角两侧 */
 .mc-fieldrow + .mc-fieldrow {
-  border-top: 1px solid var(--border);
+  position: relative;
+}
+.mc-fieldrow + .mc-fieldrow::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 16px;
+  right: 16px;
+  height: 1px;
+  background: var(--border);
 }
 .mc-fieldrow__text {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 3px;
   min-width: 0;
 }
 /* 标题加粗一档、说明压暗一档：参考 WorkBuddy 的设置行，扫一眼就能分清

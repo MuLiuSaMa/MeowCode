@@ -236,3 +236,13 @@
   padding-top: 0;
   padding-bottom: 10px;
 }
+
+/*
+ * 输入框上方的悬浮胶囊（进度 / 文件改动 / 返回底部）不占文档流，会盖住消息流
+ * 最后一行——压缩分隔线沉到列表末尾后正好撞上它。有胶囊时给流底部补一段留白，
+ * 把内容整体上移一个胶囊的高度（原有 8px 留白 + 28px 胶囊 + 12px 悬浮间距）。
+ * 胶囊被关闭（dismissed）后不再渲染，留白自动消失。
+ */
+.mc-chatflow:has(.mc-sessionpill) .mc-stream__list {
+  padding-bottom: calc(8px + 28px + 12px);
+}

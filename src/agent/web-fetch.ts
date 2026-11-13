@@ -1,8 +1,8 @@
 import TurndownService from "turndown";
 import { gfm } from "@joplin/turndown-plugin-gfm";
-import { buildAuthHeaders, fetchWithRetry, mergeExtraHeaders } from "./http.js";
+import { MEOWCODE_USER_AGENT, buildAuthHeaders, fetchWithRetry, mergeExtraHeaders } from "./http.js";
 import type { ProviderConfig } from "./types.js";
-import { EXTERNAL_WEB_CONTENT_NOTICE } from "./web-search.js";
+import { EXTERNAL_WEB_CONTENT_NOTICE, type WebFetchProviderKind } from "./web-search.js";
 
 /**
  * 网页正文抓取：
@@ -18,7 +18,6 @@ const MAX_BODY_CHARS = 100_000;
 const MAX_REDIRECTS = 5;
 /** 整个抓取（重定向 + 响应头 + 正文）的硬上限：卡住的站点不能拖死整个回合。 */
 const WEB_FETCH_TIMEOUT_MS = 10_000;
-const USER_AGENT = "MeowCode/1.2.1 (+https://github.com/MuLiuSaMa/MeowCode)";
 const DEEPSEEK_FETCH_ENDPOINT = "https://api.deepseek.com/v1/tools/fetch";
 
 export type WebFetchOutcome = {
@@ -81,8 +80,30 @@ export async function fetchWebPage(
   provider: ProviderConfig | null,
   rawUrl: string,
   signal?: AbortSignal,
+  kind: WebFetchProviderKind = "auto",
+  deepseekApiKey = "",
 ): Promise<WebFetchOutcome> {
   const target = parseHttpUrl(rawUrl);
+  const providerDeepseek = Boolean(
+    provider && isDeepSeekHost(hostOf(provider.baseUrl)) && provider.apiKey,
+  );
+  const overrideKey = deepseekApiKey.trim();
+  const overrideDeepseek =
+    !providerDeepseek && Boolean(provider) && Boolean(overrideKey)
+      ? {
+          ...(provider as ProviderConfig),
+          baseUrl: "https://api.deepseek.com/v1",
+          apiKey: overrideKey,
+          authStyle: undefined,
+          extraHeaders: undefined,
+          extraBody: undefined,
+        }
+      : null;
+  if (kind === "deepseek-fetch-api" && !providerDeepseek && !overrideDeepseek) {
+    throw new Error(
+      "DeepSeek Fetch API requires a DeepSeek API key: configure one in Settings → Web search, or use a DeepSeek model.",
+    );
+  }
   const timeout = new AbortController();
   let timedOut = false;
   const timer = setTimeout(() => {
@@ -91,8 +112,15 @@ export async function fetchWebPage(
   }, WEB_FETCH_TIMEOUT_MS);
   const combined = signal ? AbortSignal.any([signal, timeout.signal]) : timeout.signal;
   try {
-    if (provider && isDeepSeekHost(hostOf(provider.baseUrl)) && provider.apiKey) {
-      return await fetchViaDeepSeek(provider, target, combined);
+    if (kind === "deepseek-fetch-api") {
+      return await fetchViaDeepSeek(
+        (overrideDeepseek ?? provider) as ProviderConfig,
+        target,
+        combined,
+      );
+    }
+    if (kind === "auto" && providerDeepseek) {
+      return await fetchViaDeepSeek(provider as ProviderConfig, target, combined);
     }
     return await fetchViaHttp(target, combined);
   } catch (error) {
@@ -177,7 +205,7 @@ async function fetchViaHttp(target: URL, signal: AbortSignal): Promise<WebFetchO
         method: "GET",
         redirect: "manual",
         headers: {
-          "user-agent": USER_AGENT,
+          "user-agent": MEOWCODE_USER_AGENT,
           accept: "text/html,application/xhtml+xml,text/*;q=0.9,application/json;q=0.8",
         },
         signal,

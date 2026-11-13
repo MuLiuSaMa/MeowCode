@@ -184,7 +184,16 @@
     "resizeAria": "Ajustar a largura da lista de arquivos",
     "filterPlaceholder": "Filtrar arquivos…",
     "searching": "Pesquisando…",
-    "noMatch": "Nenhum arquivo correspondente"
+    "noMatch": "Nenhum arquivo correspondente",
+    "menu": {
+      "open": "Abrir",
+      "copy": "Copiar",
+      "copySuffix": "cópia",
+      "paste": "Colar",
+      "copyPath": "Copiar caminho",
+      "reveal": "Mostrar no Explorador",
+      "delete": "Excluir"
+    }
   },
   "terminal": {
     "exited": "[Processo encerrado]",

@@ -10,7 +10,7 @@ import {
 } from "react";
 import { useTranslation } from "react-i18next";
 import { LuCircleAlert, LuInfo } from "react-icons/lu";
-import type { SubagentRun, TimelineItem, TimelineMessage } from "../api";
+import type { SubagentRun, TimelineCompaction, TimelineItem, TimelineMessage } from "../api";
 import logo from "../assets/icon.png";
 import { AssistantMessage, ThinkingRow } from "./AssistantMessage";
 import { AssistantStatusLine, type AssistantStatus } from "./AssistantStatusLine";
@@ -41,6 +41,35 @@ function groupIntoTurns(items: TimelineItem[]): TimelineItem[][] {
   }
   if (current.length) turns.push(current);
   return turns;
+}
+
+/**
+ * 落在流末尾的压缩提示：渲染到建议行下方，而不是夹在正文与操作行之间。
+ *
+ * 它不是「这一轮的产出」，放在正文后面会把正文和它的操作行切开。流中间的
+ * 压缩提示仍保持原位——那标记的是「压缩发生在哪一段对话之后」，后续对话就
+ * 排在它下面，语义不能挪。压缩进行中（running）的同样后置：那时它就是流末尾
+ * 的最后一项，留在原处同样会插进正文和操作行之间。
+ */
+export function pickTrailingCompactions(items: TimelineItem[]): TimelineCompaction[] {
+  let index = items.length - 1;
+  for (; index >= 0; index -= 1) {
+    const { kind } = items[index];
+    // 每轮的操作行 / 改动卡 / 检查点不算「内容」：它们后面仍算流的末尾
+    if (
+      kind === "compaction" ||
+      kind === "turn-info" ||
+      kind === "turn-changes" ||
+      kind === "checkpoint"
+    ) {
+      continue;
+    }
+    break;
+  }
+  return items.filter(
+    (item, itemIndex): item is TimelineCompaction =>
+      itemIndex > index && item.kind === "compaction",
+  );
 }
 
 /** 状态行锚点：跳过 notice / checkpoint / error，取最后一条对话项。 */
@@ -151,8 +180,10 @@ export function MessageList({
 
     const anchor = lastStatusAnchor(items);
 
+    // 压缩进行中：末尾的压缩分隔线本身就是指示（它已经后置到底部），
+    // 再叠一条状态行会出现两句「正在压缩对话历史」
     if (anchor?.kind === "compaction" && anchor.running) {
-      return { visible: true, status: { text: t("status.compacting"), busy: true } };
+      return { visible: false, status: null };
     }
 
     if (anchor?.kind === "tool" && !anchor.replayed && anchor.ok === undefined) {
@@ -188,6 +219,20 @@ export function MessageList({
 
   // 按轮分组：每轮一个 hover 容器，末尾挂运行耗时信息条
   const turns = useMemo(() => groupIntoTurns(items), [items]);
+
+  /**
+   * 落在流末尾的压缩提示：渲染到建议行下方（规则见 pickTrailingCompactions）。
+   */
+  const trailingCompactions = useMemo(() => pickTrailingCompactions(items), [items]);
+
+  /** 后置的压缩提示不再在回合内出现（避免重复 key 与重复渲染） */
+  const tailCompactionKeys = useMemo(
+    () => new Set(trailingCompactions.map((item) => item.key)),
+    [trailingCompactions],
+  );
+
+  /** 正在压缩：底部只有那条分隔线在报状态，建议不该在这时候冒出来 */
+  const compactingNow = trailingCompactions.some((item) => item.running);
 
   useLayoutEffect(() => {
     const el = scrollRef.current;
@@ -276,13 +321,15 @@ export function MessageList({
   // turn-info 不在流里平铺渲染，改由每轮末尾的 TurnInfoBar 承载
   const renderItem = (item: TimelineItem) =>
     item.kind === "compaction" ? (
-      <CompactionBanner
-        key={item.key}
-        compacting={Boolean(item.running)}
-        interrupted={Boolean(item.interrupted)}
-        failed={Boolean(item.failed)}
-        note={item.summary ?? null}
-      />
+      tailCompactionKeys.has(item.key) ? null : (
+        <CompactionBanner
+          key={item.key}
+          compacting={Boolean(item.running)}
+          interrupted={Boolean(item.interrupted)}
+          failed={Boolean(item.failed)}
+          note={item.summary ?? null}
+        />
+      )
     ) : item.kind === "checkpoint" ? (
       <CheckpointMarker
         key={item.key}
@@ -477,13 +524,22 @@ export function MessageList({
               {statusLine.visible ? (
                 <AssistantStatusLine status={statusLine.status} startedAt={turnStartedAt} />
               ) : null}
-              {!statusLine.visible && suggestion ? (
+              {!statusLine.visible && !compactingNow && suggestion ? (
                 <PromptSuggestion
                   text={suggestion}
                   onUse={(text) => onSuggestionUse?.(text)}
                   onDismiss={() => onSuggestionDismiss?.()}
                 />
               ) : null}
+              {trailingCompactions.map((item) => (
+                <CompactionBanner
+                  key={`tail:${item.key}`}
+                  compacting={Boolean(item.running)}
+                  interrupted={Boolean(item.interrupted)}
+                  failed={Boolean(item.failed)}
+                  note={item.summary ?? null}
+                />
+              ))}
             </div>
           )}
         </div>

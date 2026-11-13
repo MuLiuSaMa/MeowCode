@@ -244,6 +244,7 @@ export function presentTool(item: TimelineTool, status: ToolStatus, t: TFunction
     case "memory_read":
     case "memory_write":
     case "memory_delete":
+    case "session_search":
     case "admit":
     case "tool_search": {
       const labelKeys: Record<string, string> = {
@@ -254,6 +255,7 @@ export function presentTool(item: TimelineTool, status: ToolStatus, t: TFunction
         memory_read: "tool.memoryRead",
         memory_write: "tool.memoryWrite",
         memory_delete: "tool.memoryDelete",
+        session_search: "tool.sessionSearch",
         admit: "tool.admit",
         tool_search: "tool.toolSearch",
       };

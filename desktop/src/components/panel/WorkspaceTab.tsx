@@ -1,14 +1,21 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import {
   LuChevronRight,
+  LuClipboardPaste,
+  LuCopy,
+  LuExternalLink,
   LuFile,
   LuFileCode,
   LuFilm,
   LuFolder,
+  LuFolderOpen,
   LuImage,
+  LuLink,
   LuMusic,
   LuSearch,
+  LuTrash2,
 } from "react-icons/lu";
 import { api } from "../../api";
 import { FilePreview } from "./FilePreview";
@@ -76,6 +83,13 @@ function baseNameOf(filePath: string): string {
 function dirNameOf(filePath: string): string {
   const index = filePath.lastIndexOf("/");
   return index > 0 ? filePath.slice(0, index) : "";
+}
+
+/** 工作区根 + 相对路径 → 系统绝对路径（分隔符跟随工作区根） */
+function joinWorkspacePath(workspace: string, relative: string): string {
+  const base = workspace.replace(/[\\/]+$/, "");
+  const separator = base.includes("\\") ? "\\" : "/";
+  return `${base}${separator}${relative.replace(/[\\/]+/g, separator)}`;
 }
 
 /** 文件类型图标（图片给主题色，音视频紫色，其余中性色） */
@@ -166,6 +180,120 @@ export function WorkspaceTab({
       }
       return current;
     });
+  };
+
+  /** 右键菜单（portal 到 body + fixed 定位，避免被面板 overflow 裁剪）；entry=null 表示列表空白区域 */
+  const [menu, setMenu] = useState<{ x: number; y: number; entry: DirEntry | null } | null>(null);
+  const menuRef = useRef<HTMLDivElement | null>(null);
+  /** 应用内文件剪贴板：「复制」后可在任意目录「粘贴」出一份副本 */
+  const [clipboard, setClipboard] = useState<{ path: string; name: string } | null>(null);
+
+  // 换工作区就清掉剪贴板，避免跨项目粘贴
+  useEffect(() => {
+    setClipboard(null);
+  }, [workspace]);
+
+  // 打开时按视口回夹，菜单不越出屏幕
+  useLayoutEffect(() => {
+    if (!menu) return;
+    const node = menuRef.current;
+    if (!node) return;
+    const margin = 8;
+    const maxLeft = window.innerWidth - node.offsetWidth - margin;
+    const maxTop = window.innerHeight - node.offsetHeight - margin;
+    node.style.left = `${Math.max(margin, Math.min(menu.x, maxLeft))}px`;
+    node.style.top = `${Math.max(margin, Math.min(menu.y, maxTop))}px`;
+  }, [menu]);
+
+  useEffect(() => {
+    if (!menu) return;
+    const onPointerDown = (event: PointerEvent) => {
+      if (!menuRef.current?.contains(event.target as Node)) setMenu(null);
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setMenu(null);
+    };
+    const close = () => setMenu(null);
+    document.addEventListener("pointerdown", onPointerDown, true);
+    document.addEventListener("keydown", onKeyDown);
+    document.addEventListener("scroll", close, true);
+    window.addEventListener("resize", close);
+    window.addEventListener("blur", close);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown, true);
+      document.removeEventListener("keydown", onKeyDown);
+      document.removeEventListener("scroll", close, true);
+      window.removeEventListener("resize", close);
+      window.removeEventListener("blur", close);
+    };
+  }, [menu]);
+
+  const openMenu = (event: ReactMouseEvent, entry: DirEntry) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setMenu({ x: event.clientX, y: event.clientY, entry });
+  };
+
+  /** 列表空白区域：只提供粘贴（目标 = 工作区根目录） */
+  const openRootMenu = (event: ReactMouseEvent) => {
+    event.preventDefault();
+    setMenu({ x: event.clientX, y: event.clientY, entry: null });
+  };
+
+  const absolutePath = (relative: string): string | null =>
+    workspace ? joinWorkspacePath(workspace, relative) : null;
+
+  const runMenuAction = (action: () => void) => {
+    setMenu(null);
+    action();
+  };
+
+  const refreshDir = (dirPath: string) => {
+    void loadDir(dirPath);
+    setAllFiles(null);
+  };
+
+  const openEntry = (entry: DirEntry) => {
+    const target = absolutePath(entry.path);
+    if (target) void window.meow.openPath(target);
+  };
+
+  const revealEntry = (entry: DirEntry) => {
+    const target = absolutePath(entry.path);
+    if (target) void window.meow.showInFolder(target);
+  };
+
+  const copyEntryPath = (entry: DirEntry) => {
+    const target = absolutePath(entry.path);
+    if (target) void navigator.clipboard?.writeText(target).catch(() => undefined);
+  };
+
+  const pasteIntoDir = (dirPath: string) => {
+    if (!clipboard) return;
+    void window.meow
+      .workspacePaste(clipboard.path, dirPath, t("workspace.menu.copySuffix"))
+      .then((result) => {
+        if (result.ok) refreshDir(dirPath);
+      })
+      .catch(() => undefined);
+  };
+
+  const pasteInto = (entry: DirEntry) => {
+    pasteIntoDir(entry.path);
+  };
+
+  // const 局部变量：闭包里也能保住非空收窄
+  const menuEntry = menu?.entry ?? null;
+
+  const trashEntry = (entry: DirEntry) => {
+    void window.meow
+      .workspaceTrash(entry.path)
+      .then((error) => {
+        if (error) return;
+        refreshDir(dirNameOf(entry.path));
+        if (entry.path === file) onSelect("");
+      })
+      .catch(() => undefined);
   };
 
   const loadDir = async (dirPath: string) => {
@@ -279,6 +407,7 @@ export function WorkspaceTab({
                 title={entry.path}
                 style={{ "--wstree-indent": `${8 + depth * 12}px` } as CSSProperties}
                 onClick={() => toggleDir(entry.path)}
+                onContextMenu={(event) => openMenu(event, entry)}
               >
                 <LuChevronRight
                   size={12}
@@ -299,6 +428,7 @@ export function WorkspaceTab({
               title={entry.path}
               style={{ "--wstree-indent": `${8 + depth * 12}px` } as CSSProperties}
               onClick={() => onSelect(entry.path)}
+              onContextMenu={(event) => openMenu(event, entry)}
             >
               <span className="mc-wstree__chevron" />
               {fileIcon(entry.name)}
@@ -347,7 +477,7 @@ export function WorkspaceTab({
             onChange={(event) => setQuery(event.target.value)}
           />
         </label>
-        <div className="mc-wstree__list">
+        <div className="mc-wstree__list" onContextMenu={openRootMenu}>
           {needle ? (
             allFiles === null ? (
               <p className="mc-wstree__hint">{t("workspace.searching")}</p>
@@ -362,6 +492,9 @@ export function WorkspaceTab({
                   data-active={item === file}
                   title={item}
                   onClick={() => onSelect(item)}
+                  onContextMenu={(event) =>
+                    openMenu(event, { name: baseNameOf(item), path: item, dir: false })
+                  }
                 >
                   {fileIcon(baseNameOf(item))}
                   <span className="mc-wstree__name mc-truncate">{baseNameOf(item)}</span>
@@ -376,6 +509,99 @@ export function WorkspaceTab({
           )}
         </div>
       </aside>
+
+      {menu
+        ? createPortal(
+            <div
+              className="mc-wstree__menu"
+              role="menu"
+              ref={menuRef}
+              style={{ left: menu.x, top: menu.y }}
+              onContextMenu={(event) => event.preventDefault()}
+            >
+              {menuEntry ? (
+                <>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="mc-wstree__menuitem"
+                    onClick={() => runMenuAction(() => openEntry(menuEntry))}
+                  >
+                    <LuExternalLink size={13} />
+                    {t("workspace.menu.open")}
+                  </button>
+                  {menuEntry.dir ? (
+                    <button
+                      type="button"
+                      role="menuitem"
+                      className="mc-wstree__menuitem"
+                      disabled={!clipboard}
+                      onClick={() => runMenuAction(() => pasteInto(menuEntry))}
+                    >
+                      <LuClipboardPaste size={13} />
+                      {t("workspace.menu.paste")}
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      role="menuitem"
+                      className="mc-wstree__menuitem"
+                      onClick={() =>
+                        runMenuAction(() =>
+                          setClipboard({ path: menuEntry.path, name: menuEntry.name }),
+                        )
+                      }
+                    >
+                      <LuCopy size={13} />
+                      {t("workspace.menu.copy")}
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="mc-wstree__menuitem"
+                    onClick={() => runMenuAction(() => copyEntryPath(menuEntry))}
+                  >
+                    <LuLink size={13} />
+                    {t("workspace.menu.copyPath")}
+                  </button>
+                  <div className="mc-wstree__menusep" />
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="mc-wstree__menuitem"
+                    onClick={() => runMenuAction(() => revealEntry(menuEntry))}
+                  >
+                    <LuFolderOpen size={13} />
+                    {t("workspace.menu.reveal")}
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="mc-wstree__menuitem"
+                    data-danger="true"
+                    onClick={() => runMenuAction(() => trashEntry(menuEntry))}
+                  >
+                    <LuTrash2 size={13} />
+                    {t("workspace.menu.delete")}
+                  </button>
+                </>
+              ) : (
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="mc-wstree__menuitem"
+                  disabled={!clipboard}
+                  onClick={() => runMenuAction(() => pasteIntoDir(""))}
+                >
+                  <LuClipboardPaste size={13} />
+                  {t("workspace.menu.paste")}
+                </button>
+              )}
+            </div>,
+            document.body,
+          )
+        : null}
     </div>
   );
 }

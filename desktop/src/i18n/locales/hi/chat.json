@@ -271,6 +271,7 @@
     "computerWait": "प्रतीक्षा",
     "computerAction": "कंप्यूटर नियंत्रण",
     "toolSearch": "टूल खोजें",
+    "sessionSearch": "पिछले सत्र खोजें",
     "webSearch": "वेब खोज",
     "webFetch": "पेज लाएँ",
     "deleteFile": "फ़ाइल हटाएँ",

@@ -386,7 +386,11 @@ describe("streamChatCompletion usage", () => {
     const result = await streamChatCompletion(baseOptions);
     expect(bodies[0].stream_options).toEqual({ include_usage: true });
     expect(result.message.content).toBe("hi");
-    expect(result.usage).toEqual({ inputTokens: 111, outputTokens: 22 });
+    expect(result.usage).toEqual({
+      inputTokens: 111,
+      uncachedInputTokens: 111,
+      outputTokens: 22,
+    });
   });
 
   it("retries without stream_options when the gateway rejects it", async () => {
@@ -411,7 +415,11 @@ describe("streamChatCompletion usage", () => {
     const result = await streamChatCompletion(baseOptions);
     expect(bodies).toHaveLength(2);
     expect(bodies[1].stream_options).toBeUndefined();
-    expect(result.usage).toEqual({ inputTokens: 7, outputTokens: 1 });
+    expect(result.usage).toEqual({
+      inputTokens: 7,
+      uncachedInputTokens: 7,
+      outputTokens: 1,
+    });
   });
 
   it("does not retry for unrelated request errors", async () => {
@@ -526,6 +534,8 @@ describe("streamChatCompletion cache usage buckets", () => {
     const result = await streamChatCompletion(baseOptions);
     expect(result.usage).toEqual({
       inputTokens: 1_000,
+      // prompt_tokens 已含命中部分，减掉才是真正没走缓存的输入
+      uncachedInputTokens: 382,
       outputTokens: 12,
       cacheReadTokens: 618,
     });
@@ -547,6 +557,7 @@ describe("streamChatCompletion cache usage buckets", () => {
     const result = await streamChatCompletion(baseOptions);
     expect(result.usage).toEqual({
       inputTokens: 800,
+      uncachedInputTokens: 200,
       outputTokens: 5,
       cacheReadTokens: 600,
     });
@@ -578,6 +589,7 @@ describe("streamChatCompletion cache usage buckets", () => {
     });
     expect(result.usage).toEqual({
       inputTokens: 1_000,
+      uncachedInputTokens: 750,
       outputTokens: 5,
       cacheReadTokens: 250,
     });

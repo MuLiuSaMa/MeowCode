@@ -1,0 +1,146 @@
+/* 存储页：总览直接铺在设置列上，下方的管理入口用卡片 */
+
+.mc-storage {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.mc-storage__head {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.mc-storage__sumrow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 2px;
+}
+
+.mc-storage__total {
+  font-size: var(--fs-base);
+  font-weight: var(--fw-semibold);
+  color: var(--fg);
+}
+
+.mc-storage__bar {
+  display: flex;
+  width: 100%;
+  height: 14px;
+  margin-top: 2px;
+  border-radius: var(--radius-full);
+  background: var(--surface-hover);
+  overflow: hidden;
+}
+
+.mc-storage__seg {
+  flex-basis: 0;
+  min-width: 2px;
+  height: 100%;
+}
+
+.mc-storage__legend {
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
+  gap: 10px 14px;
+}
+
+.mc-storage__legenditem {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.mc-storage__legendlabel {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font-size: var(--fs-caption);
+  color: var(--fg-subtle);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mc-storage__dot {
+  flex-shrink: 0;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+}
+
+.mc-storage__value {
+  font-size: var(--fs-base);
+  color: var(--fg);
+}
+
+.mc-storage__path {
+  margin: 2px 0 0;
+  font-family: inherit;
+  font-size: var(--fs-caption);
+  color: var(--fg-subtlest);
+  word-break: break-all;
+}
+
+.mc-storage__card {
+  border-radius: var(--radius-lg);
+  corner-shape: superellipse(1.5);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  overflow: hidden;
+}
+
+.mc-storage__cleanlist {
+  display: flex;
+  flex-direction: column;
+  max-height: 320px;
+  overflow-y: auto;
+  margin: 2px 0 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.mc-storage__cleanrow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 9px 12px;
+}
+
+.mc-storage__cleanrow + .mc-storage__cleanrow {
+  border-top: 1px solid var(--border);
+}
+
+.mc-storage__cleantext {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.mc-storage__cleantitle {
+  font-size: var(--fs-base);
+  color: var(--fg);
+}
+
+.mc-storage__cleandate {
+  font-size: var(--fs-caption);
+  color: var(--fg-subtle);
+}
+
+.mc-storage__empty {
+  margin: 0;
+  padding: 18px 16px;
+  text-align: center;
+  font-size: var(--fs-caption);
+  color: var(--fg-subtlest);
+}

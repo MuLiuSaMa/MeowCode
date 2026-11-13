@@ -123,6 +123,8 @@ describe("streamAnthropicMessages cache usage", () => {
     // 总输入 = 200 普通输入 + 600 缓存读取 + 200 缓存写入
     expect(result.usage).toEqual({
       inputTokens: 1_000,
+      // Anthropic 的 input_tokens 就是「没命中也没写入」的那部分
+      uncachedInputTokens: 200,
       outputTokens: 12,
       cacheReadTokens: 600,
       cacheWriteTokens: 200,
@@ -191,6 +193,7 @@ describe("streamAnthropicMessages cache usage", () => {
     });
     expect(result.usage).toEqual({
       inputTokens: 700,
+      uncachedInputTokens: 100,
       outputTokens: 5,
       cacheReadTokens: 600,
       cacheWriteTokens: 0,
@@ -216,7 +219,11 @@ describe("streamAnthropicMessages cache usage", () => {
       tools: [],
       onDelta: () => undefined,
     });
-    expect(result.usage).toEqual({ inputTokens: 100, outputTokens: 3 });
+    expect(result.usage).toEqual({
+      inputTokens: 100,
+      uncachedInputTokens: 100,
+      outputTokens: 3,
+    });
   });
 });
 

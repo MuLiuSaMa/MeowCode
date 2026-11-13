@@ -99,18 +99,39 @@
   left: 3px;
   overflow: hidden;
   background: var(--accent);
-  transition: background var(--dur) var(--ease);
+  transition: width var(--dur) var(--ease);
 }
-/* 拉满时换成蓝紫渐变 */
-.mc-slider__fill[data-max="true"] {
+/* 拉满时的蓝紫渐变：颜色→渐变不可插值，直接换 background 会闪；
+   改成叠一层渐变做透明度淡入淡出 */
+.mc-slider__fill::before {
+  content: "";
+  position: absolute;
+  inset: 0;
   background: var(--accent-gradient);
+  opacity: 0;
+  transition: opacity var(--dur) var(--ease);
+  pointer-events: none;
+}
+.mc-slider__fill[data-max="true"]::before {
+  opacity: 1;
 }
 
 /*
  * 满档粒子：从右往左飞。
  * 用长手写属性（不用 animation 简写），否则会把内联的 duration / delay 重置掉。
  * 飞出左端时由 .mc-slider__fill 的 overflow: hidden 裁掉。
+ * 粒子常驻、整层淡入淡出 —— 按 atMax 挂载/卸载会整批瞬间出现或消失（闪）。
  */
+.mc-slider__particles {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  transition: opacity var(--dur) var(--ease);
+  pointer-events: none;
+}
+.mc-slider__particles[data-active="true"] {
+  opacity: 1;
+}
 .mc-slider__particle {
   position: absolute;
   border-radius: 50%;
@@ -143,6 +164,7 @@
   }
 }
 @media (prefers-reduced-motion: reduce) {
+  /* 减弱动效：粒子固定在各自位置（显隐仍由整层透明度控制） */
   .mc-slider__particle {
     animation: none;
     opacity: var(--o);
@@ -159,6 +181,7 @@
   border-radius: 50%;
   background: rgba(255 255 255 / 0.20);
   pointer-events: none;
+  transition: background-color var(--dur) var(--ease);
 }
 /* 落在已填充区域内的点提亮，才在蓝色填充上看得到 */
 .mc-slider__dot[data-in="true"] {
@@ -175,7 +198,10 @@
   background: #ffffff;
   box-shadow: 0 3px 10px rgb(0 0 0 / 0.55);
   pointer-events: none;
+  transition: left var(--dur) var(--ease);
 }
+
+/* 滑块位移与填充宽度始终带过渡：拖动/点档位都能看到滑动动画 */
 
 /* 透明的原生 range 覆盖在上面负责交互 */
 .mc-slider__input {

@@ -9,8 +9,31 @@ import type { ApiFormat, CacheState } from "./types.js";
 
 export type { CacheState } from "./types.js";
 
-/** 低于这个输入量不做命中判断：低于缓存粒度时 0 命中是正常的。 */
+/**
+ * 缺省最小可缓存输入量：低于缓存粒度时 0 命中是正常的。
+ *
+ * 官方按模型分档（Anthropic 512 / 1024 / 2048 / 4096，OpenAI 系 1024 桶），
+ * 用单一常量会在两头误判：模型实际 512 时把真实失效记成 unknown（漏报），
+ * 实际 4096 时把「本就不该缓存」记成 evicted（虚警，污染分母）。
+ * 这里只作未识别模型的保守回落，正常路径走 resolveMinCacheableTokens。
+ */
 export const CACHE_MIN_INPUT_TOKENS = 2048;
+
+/**
+ * 按协议 + 模型挑最小可缓存长度。
+ *
+ * 纪律同 MEASURED_1H_HOSTS：只在能说出依据时偏离缺省，认不出来的模型一律
+ * 回落 2048 —— 猜一个更小的值会把「本来就不写缓存」误报成失效。
+ */
+export function resolveMinCacheableTokens(protocol: ApiFormat, model: string): number {
+  // OpenAI 系（含兼容网关）官方是 1024 token 起步的自动前缀缓存
+  if (protocol !== "anthropic-messages") return 1024;
+  const name = model.toLowerCase();
+  if (/claude-(opus|sonnet|haiku)-4|claude-4/.test(name)) return 1024;
+  if (/claude-3-7|claude-3-5/.test(name)) return 2048;
+  if (/claude-3-(opus|sonnet)/.test(name)) return 4096;
+  return CACHE_MIN_INPUT_TOKENS;
+}
 
 /** 各 TTL 档的毫秒数：诊断与冷 resume 剪枝共用（超过即服务端缓存不可读回）。 */
 export const TTL_MS: Record<"5m" | "1h", number> = {
@@ -39,32 +62,51 @@ export type CacheObservation = {
   idleMs: number;
 };
 
-export function classifyCache(input: CacheObservation): { state: CacheState; reason?: string } {
-  if (input.prefixChanged) {
-    // 有分段归因就带在 reason 里（UI 的 rebuilds 计数按 reason 分桶，天然按段统计）
-    const where = input.changedSegments?.length ? `:${input.changedSegments.join("+")}` : "";
-    return { state: "cold", reason: `prefix_changed${where}` };
+export function classifyCache(
+  input: CacheObservation,
+  options?: { minCacheableTokens?: number },
+): { state: CacheState; reason?: string } {
+  const read = input.cacheReadTokens;
+  const write = input.cacheWriteTokens ?? 0;
+  const segmentSuffix = input.changedSegments?.length
+    ? `:${input.changedSegments.join("+")}`
+    : "";
+
+  // 命中优先。前缀变了不等于没命中 —— 老前缀（tools + system）通常还在服务端，
+  // 只有新增的那一小段是冷写。先判 prefixChanged 会把一次 90% 命中的请求记成
+  // cold，既吞掉真实命中，又把「写了没读回」这类真问题淹没在噪音里。
+  if (typeof read === "number" && read > 0) {
+    return input.prefixChanged && segmentSuffix
+      ? { state: "warm", reason: `prefix_changed${segmentSuffix}` }
+      : { state: "warm" };
   }
-  if (typeof input.cacheReadTokens === "number" && input.cacheReadTokens > 0) {
-    return { state: "warm" };
-  }
-  if (typeof input.cacheReadTokens !== "number") {
+  if (typeof read !== "number") {
     return { state: "unknown", reason: "not_reported" };
+  }
+  // 以下都是 0 命中：这时才需要归因「谁把缓存弄没了」
+  if (input.prefixChanged) {
+    return { state: "cold", reason: `prefix_changed${segmentSuffix}` };
   }
   // 首次请求：0 命中是写入缓存的正常结果，不当作异常。
   if (!input.hadSamePrefixBefore) return { state: "cold", reason: "first_request" };
-  if ((input.inputTokens ?? 0) < CACHE_MIN_INPUT_TOKENS) {
+  const minCacheable = options?.minCacheableTokens ?? CACHE_MIN_INPUT_TOKENS;
+  if ((input.inputTokens ?? 0) < minCacheable) {
     return { state: "unknown", reason: "below_cache_granularity" };
   }
   const ttlMs = input.cacheTtl ? TTL_MS[input.cacheTtl] : undefined;
   if (ttlMs !== undefined && input.idleMs > ttlMs) {
     return { state: "evicted", reason: "idle_exceeded_ttl" };
   }
+  // 写了却一次也没读回：前缀字节对、TTL 没过期，说明写进去的条目读不到 ——
+  // 典型是网关丢了 cache_control、路由到了不同分片、或请求参数漂移。
+  // 这与「被服务端逐出」是两种完全不同的故障，分开报。
+  if (write > 0) return { state: "evicted", reason: "write_no_readback" };
   // 没有显式断点的协议只能靠服务端自动缓存：稳定前缀仍报告 0，基本可判定为不支持/未生效。
   if (input.protocol !== "anthropic-messages") {
     return { state: "unsupported", reason: "stable_prefix_no_cached_tokens" };
   }
-  return { state: "evicted", reason: "cache_miss" };
+  // Anthropic 协议下连写都没发生：断点压根没生效（网关剥字段、或整段短于最小可缓存长度）。
+  return { state: "unsupported", reason: "no_cache_write" };
 }
 
 /**

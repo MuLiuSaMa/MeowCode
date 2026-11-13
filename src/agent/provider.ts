@@ -43,6 +43,7 @@ function sameUsage(previous: TokenUsage | undefined, next: TokenUsage): boolean 
   return (
     previous !== undefined &&
     previous.inputTokens === next.inputTokens &&
+    previous.uncachedInputTokens === next.uncachedInputTokens &&
     previous.outputTokens === next.outputTokens &&
     previous.cacheReadTokens === next.cacheReadTokens &&
     previous.cacheWriteTokens === next.cacheWriteTokens
@@ -322,6 +323,15 @@ async function streamChatCompletions(options: {
           parsed.usage.cached_tokens;
         usage = {
           inputTokens: parsed.usage.prompt_tokens,
+          // prompt_tokens 已含命中部分，减掉才是真正没走缓存的输入
+          ...(parsed.usage.prompt_tokens !== undefined
+            ? {
+                uncachedInputTokens: Math.max(
+                  0,
+                  parsed.usage.prompt_tokens - (cachedTokens ?? 0),
+                ),
+              }
+            : {}),
           outputTokens: parsed.usage.completion_tokens,
           ...(cachedTokens !== undefined ? { cacheReadTokens: cachedTokens } : {}),
         };

@@ -45,7 +45,12 @@
     "learning": "자기 학습",
     "rewind": "세션 되돌리기",
     "sandbox": "샌드박스",
-    "approvals": "승인 규칙"
+    "approvals": "승인 규칙",
+    "storage": "저장공간",
+    "connections": "연결",
+    "usage": "사용 통계",
+    "webSearch": "웹 검색",
+    "agents": "하위 에이전트"
   },
   "close": {
     "section": "창 닫기 동작",
@@ -204,6 +209,8 @@
     "count_many": "설정된 모델 {{count}}개",
     "add": "모델 추가",
     "empty": "아직 설정된 모델이 없습니다. 「모델 추가」를 눌러 시작하세요.",
+    "managedBadge": "magpie에서 관리",
+    "managedHint": "이 모델은 magpie에서 제공합니다. magpie 연결/해제 후 MeowCode를 다시 시작해야 반영됩니다. 활성화 상태와 추론 강도는 유지됩니다.",
     "deleteTitle": "공급자 삭제",
     "deleteMessage": "\"{{name}}\"을(를) 삭제할까요? 삭제 후 다시 설정해야 사용할 수 있습니다.",
     "deleteGroupAria": "공급자 {{name}} 삭제",
@@ -473,18 +480,37 @@
     "deleted": "규칙 \"{{name}}\" 삭제됨"
   },
   "worktree": {
-    "section": "Worktrees",
+    "create": {
+      "section": "생성 및 정리"
+    },
+    "root": {
+      "label": "작업 트리 루트 디렉터리",
+      "hint": "비워 두면 기본 위치를 사용합니다. 변경 사항은 앱을 다시 시작한 후 적용됩니다.",
+      "open": "폴더 열기"
+    },
     "fetch": {
-      "label": "생성 전 upstream 가져오기",
-      "hint": "worktree를 만들기 전에 upstream 업데이트를 가져옵니다."
+      "label": "작업 트리 생성 전 항상 업스트림 가져오기",
+      "hint": "생성할 때 업스트림을 먼저 가져옵니다. 오프라인이거나 원격이 없으면 건너뜁니다."
     },
     "cleanup": {
-      "label": "오래된 worktree 자동 제거",
-      "hint": "대부분의 사용자에게 권장합니다. 오래된 worktree와 디스크 공간을 직접 관리하려는 경우에만 끄세요."
+      "label": "오래된 작업 트리 자동 삭제",
+      "hint": "먼저 복구 스냅샷을 저장합니다."
     },
     "maxKeep": {
-      "label": "Worktree 한도",
-      "hint": "한도를 초과하면 가장 오래된 worktree부터 자동 정리됩니다. 삭제 전에 Git 백업이 생성되므로 제거된 worktree를 복원할 수 있습니다."
+      "label": "유지할 작업 트리 수",
+      "hint": "오래된 작업 트리는 자동으로 삭제됩니다. 고정되었거나 실행 중인 채팅에서 사용하는 작업 트리는 유지됩니다."
+    },
+    "confirmDelete": {
+      "label": "작업 트리 삭제 전 확인"
+    },
+    "managed": {
+      "title": "관리 중인 작업 트리",
+      "refresh": "새로고침",
+      "loading": "불러오는 중…",
+      "empty": "아직 작업 트리가 없습니다",
+      "inUse": "사용 중",
+      "delete": "삭제",
+      "confirm": "삭제 확인"
     }
   },
   "learning": {
@@ -653,5 +679,168 @@
       "command-prefix": "명령 접두사"
     },
     "loading": "불러오는 중…"
+  },
+  "storage": {
+    "device": "이 기기",
+    "deviceDesc": "이 컴퓨터에 저장된 채팅과 작업 트리를 관리합니다",
+    "used": "MeowCode 사용량: {{size}}",
+    "refresh": "새로고침",
+    "barAria": "저장공간 사용량 구성",
+    "categories": {
+      "chats": "채팅",
+      "subagents": "하위 에이전트",
+      "archived": "보관된 채팅",
+      "worktrees": "작업 트리",
+      "other": "기타"
+    },
+    "clean": {
+      "title": "오래된 채팅 정리",
+      "hint": "영구 삭제하기 전에 채팅과 하위 에이전트를 확인하세요",
+      "action": "보기",
+      "dialogTitle": "오래된 채팅 정리",
+      "dialogDesc": "삭제하면 세션 파일과 하위 에이전트가 영구적으로 제거됩니다. 오래된 순서로 표시됩니다.",
+      "empty": "정리할 채팅이 없습니다",
+      "untitled": "제목 없는 채팅",
+      "delete": "삭제",
+      "confirm": "삭제 확인",
+      "close": "닫기"
+    },
+    "worktrees": {
+      "title": "작업 트리 관리",
+      "hint": "작업 복사본을 확인하고 유지할 오래된 작업 트리 수를 선택합니다",
+      "action": "관리"
+    },
+    "archived": {
+      "title": "보관된 채팅",
+      "hint": "보관된 채팅을 개별적으로 복원하거나 삭제합니다",
+      "action": "관리"
+    }
+  },
+  "connections": {
+    "section": "SSH 연결",
+    "desc": "원격 서버의 SSH 설정을 관리합니다. 비밀번호는 저장되지 않으며 연결할 때 터미널에서 입력합니다.",
+    "create": "새 연결",
+    "empty": "아직 SSH 연결이 없습니다",
+    "connect": "연결",
+    "test": "테스트",
+    "testing": "테스트 중…",
+    "testSuccess": "연결되었습니다",
+    "testFailed": "연결 실패",
+    "testPassword": "비밀번호 인증은 자동 테스트할 수 없습니다. 연결 후 터미널에서 입력하세요.",
+    "auth": {
+      "agent": "SSH 에이전트 / 기본 키",
+      "key": "개인 키 파일",
+      "password": "비밀번호(연결 시 입력)"
+    },
+    "form": {
+      "titleNew": "새 SSH 연결",
+      "titleEdit": "SSH 연결 편집",
+      "name": "이름",
+      "namePlaceholder": "예: 프로덕션 서버",
+      "host": "호스트",
+      "hostPlaceholder": "example.com 또는 192.168.1.10",
+      "port": "포트",
+      "username": "사용자 이름",
+      "auth": "인증 방식",
+      "privateKey": "개인 키",
+      "chooseKey": "개인 키 선택",
+      "note": "비밀번호는 저장되지 않습니다. 연결 후 터미널에서 입력하세요.",
+      "invalid": "호스트와 사용자 이름을 입력하고 포트가 올바른지 확인하세요",
+      "keyRequired": "개인 키 파일을 선택하세요"
+    }
+  },
+  "usage": {
+    "section": "사용 통계",
+    "badge": "앱 사용량",
+    "refresh": "새로고침",
+    "loading": "집계 중…",
+    "empty": "아직 사용 기록이 없습니다",
+    "metrics": {
+      "total": "누적 토큰 수",
+      "peak": "최대 토큰 수",
+      "longestChat": "최장 채팅 시간",
+      "currentStreak": "현재 연속 일수",
+      "maxStreak": "최장 연속 일수"
+    },
+    "units": {
+      "days": "일",
+      "hours": "시간",
+      "minutes": "분",
+      "tokens": "tokens"
+    },
+    "activity": {
+      "title": "토큰 활동",
+      "daily": "일별",
+      "weekly": "주별",
+      "cumulative": "누적"
+    },
+    "range": {
+      "label": "기간",
+      "d7": "최근 7일",
+      "d30": "최근 30일"
+    },
+    "trend": {
+      "title": "일별 토큰 추이"
+    },
+    "models": {
+      "title": "모델별 사용량",
+      "other": "기타 모델"
+    },
+    "unknownModel": "알 수 없는 모델"
+  },
+  "webSearch": {
+    "section": "웹 검색 및 가져오기",
+    "desc": "검색과 가져오기의 제공자를 각각 선택합니다. \"자동\"은 현재 모델의 기능을 따르며 다른 제공자로 임의 전환하지 않습니다.",
+    "search": {
+      "label": "검색 제공자",
+      "hint": "끄면 모델에 web_search 도구가 표시되지 않습니다. 웹 가져오기는 영향받지 않습니다."
+    },
+    "searchOptions": {
+      "auto": "자동(현재 모델 따름)",
+      "providerNative": "서비스 제공자 내장 검색",
+      "deepseek": "DeepSeek Search API",
+      "off": "웹 검색 끄기"
+    },
+    "fetch": {
+      "label": "가져오기 제공자",
+      "hint": "DeepSeek Fetch API는 아래 키로 사용할 수 있습니다. 키가 없으면 현재 모델이 DeepSeek이어야 합니다."
+    },
+    "fetchOptions": {
+      "auto": "자동(DeepSeek은 API, 나머지는 로컬)",
+      "http": "로컬 HTTP 가져오기",
+      "deepseek": "DeepSeek Fetch API"
+    },
+    "originalQuestion": {
+      "label": "원래 질문 포함",
+      "hint": "최근 사용자 질문(최대 128자)을 DeepSeek 검색에 함께 보내 정확도를 높입니다."
+    },
+    "deepseekKey": {
+      "label": "DeepSeek API 키",
+      "hint": "현재 모델이 DeepSeek이 아닐 때 공식 Search / Fetch API를 호출하는 키입니다. 이 기기에 암호화되어 저장됩니다.",
+      "placeholder": "sk-…",
+      "saved": "저장됨(비워 두면 유지)",
+      "clear": "지우기"
+    }
+  },
+  "agents": {
+    "section": "하위 에이전트",
+    "desc": "메인 에이전트별 하위 에이전트 목록, 병렬 한도, 프롬프트. 새로 추가한 하위 에이전트는 해당 아키텍처에 기록되고 기본으로 메인 에이전트에 연결됩니다.",
+    "limit": {
+      "label": "병렬 수"
+    },
+    "add": "하위 에이전트 추가",
+    "addTitle": "하위 에이전트 추가",
+    "editTitle": "하위 에이전트 프롬프트 편집",
+    "name": "이름",
+    "namePlaceholder": "예: 보안 검토자",
+    "roleLabel": "역할",
+    "promptLabel": "프롬프트",
+    "promptHint": "비워 두면 역할의 기본 프롬프트를 사용합니다.",
+    "added": "추가하고 메인 에이전트에 연결했습니다",
+    "saved": "프롬프트를 저장했습니다",
+    "editPrompt": "프롬프트 편집",
+    "customPrompt": "사용자 지정",
+    "loading": "불러오는 중…",
+    "empty": "아직 하위 에이전트가 없습니다"
   }
 }

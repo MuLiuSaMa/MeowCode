@@ -271,6 +271,7 @@
     "computerWait": "Esperar",
     "computerAction": "Control del equipo",
     "toolSearch": "Buscar herramientas",
+    "sessionSearch": "Buscar sesiones anteriores",
     "webSearch": "Búsqueda web",
     "webFetch": "Obtener página",
     "deleteFile": "Eliminar archivo",

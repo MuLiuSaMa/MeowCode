@@ -374,11 +374,18 @@ button.mc-tv__path:hover {
   gap: 4px;
 }
 .mc-tv__option {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
   padding: 1px 7px;
   border: 1px solid var(--border);
   border-radius: var(--radius-xs);
   font-size: var(--fs-xs);
   color: var(--fg-subtlest);
+}
+.mc-tv__optiondesc {
+  line-height: 1.35;
+  opacity: 0.75;
 }
 .mc-tv__answer {
   margin: 0;

@@ -2,7 +2,7 @@ import http from "node:http";
 import path from "node:path";
 import { pathToFileURL, fileURLToPath } from "node:url";
 import os from "node:os";
-import { mkdirSync, existsSync, statSync, realpathSync } from "node:fs";
+import { mkdirSync, existsSync, readFileSync, statSync, realpathSync } from "node:fs";
 import { readFile, readdir, rm, stat, unlink, writeFile, cp } from "node:fs/promises";
 import { randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import { AgentRuntime, isApprovalMode, isSessionMode } from "../agent/runtime.js";
@@ -18,6 +18,8 @@ import {
 import { toolDefinitions } from "../agent/tools.js";
 import { readPdfPageCount } from "../agent/pdf.js";
 import { isSpeechStyle, readSpeechStyleFromEnv } from "../agent/speech-style.js";
+import { normalizeWebConfig } from "../agent/web-search.js";
+import { normalizeSubagentLimits } from "../agent/agent-profiles.js";
 import { createAgentLogger, pruneAgentLogs } from "../agent/logging.js";
 import type { TraceSpan } from "../agent/trace.js";
 import {
@@ -233,15 +235,99 @@ type BufferedSseEvent = {
 const SSE_REPLAY_MAX_EVENTS = 5_000;
 const SSE_REPLAY_MAX_CHARS = 4_000_000;
 
-function readProvidersFromEnv(): ProviderConfig[] {
-  const raw = process.env.MEOWCODE_PROVIDERS;
-  if (!raw) return [];
+const MAGPIE_PROVIDER_PREFIX = "magpie/";
+/** 覆盖层本地可写，只认本机网关，别让伪造的条目把请求带去外网。 */
+const MAGPIE_LOOPBACK_URL = /^https?:\/\/(127\.0\.0\.1|localhost|\[::1\])(:\d+)?(\/|$)/i;
+
+function magpieHeaders(raw: unknown): Record<string, string> | undefined {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
+  const out: Record<string, string> = {};
+  for (const [key, value] of Object.entries(raw)) {
+    if (!key || typeof value !== "string") continue;
+    out[key] = value.replace(/[\r\n]+/g, " ").trim();
+  }
+  return Object.keys(out).length ? out : undefined;
+}
+
+/**
+ * magpie 的 Agent 插件写的覆盖层（`agent/magpie.json`）：模型多时塞不进 env
+ * （Windows 环境块 32767 字符上限），所以由桌面端给路径、这里启动时读一次。
+ */
+export function readMagpieProviders(): ProviderConfig[] {
+  const file = process.env.MEOWCODE_MAGPIE_FILE;
+  if (!file) return [];
+  let raw: unknown;
   try {
-    const parsed = JSON.parse(raw) as ProviderConfig[];
-    return Array.isArray(parsed) ? parsed : [];
+    raw = JSON.parse(readFileSync(file, "utf8"));
   } catch {
     return [];
   }
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return [];
+  const list = (raw as { providers?: unknown }).providers;
+  if (!Array.isArray(list)) return [];
+  let prefs: Record<string, { reasoningEffort?: string }> = {};
+  try {
+    const parsed = JSON.parse(process.env.MEOWCODE_PROVIDER_PREFS ?? "{}");
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) prefs = parsed;
+  } catch {
+    prefs = {};
+  }
+  const out: ProviderConfig[] = [];
+  const seen = new Set<string>();
+  for (const item of list) {
+    if (!item || typeof item !== "object" || Array.isArray(item)) continue;
+    const record = item as Record<string, unknown>;
+    const id = typeof record.id === "string" ? record.id.trim() : "";
+    const model = typeof record.model === "string" ? record.model.trim() : "";
+    const baseUrl = typeof record.baseUrl === "string" ? record.baseUrl.trim() : "";
+    if (
+      !id.startsWith(MAGPIE_PROVIDER_PREFIX) ||
+      seen.has(id) ||
+      !model ||
+      !MAGPIE_LOOPBACK_URL.test(baseUrl)
+    ) {
+      continue;
+    }
+    seen.add(id);
+    const positive = (value: unknown) =>
+      typeof value === "number" && Number.isFinite(value) && value > 0 ? value : undefined;
+    const modalities = Array.isArray(record.inputModalities)
+      ? record.inputModalities.filter((m) => m === "text" || m === "image" || m === "pdf")
+      : [];
+    out.push({
+      id,
+      name: typeof record.name === "string" && record.name ? record.name : "Magpie",
+      baseUrl,
+      model,
+      displayName: typeof record.displayName === "string" ? record.displayName : undefined,
+      protocol: "openai-chat-completions",
+      contextWindow: positive(record.contextWindow),
+      maxTokens: positive(record.maxTokens),
+      inputModalities: modalities.length ? (modalities as ProviderConfig["inputModalities"]) : undefined,
+      authStyle: "none",
+      extraHeaders: magpieHeaders(record.extraHeaders),
+      enabled: record.enabled !== false,
+      reasoningEffort: prefs[id]?.reasoningEffort || undefined,
+    });
+  }
+  return out;
+}
+
+function readProvidersFromEnv(): ProviderConfig[] {
+  const raw = process.env.MEOWCODE_PROVIDERS;
+  let providers: ProviderConfig[] = [];
+  if (raw) {
+    try {
+      const parsed = JSON.parse(raw) as ProviderConfig[];
+      providers = Array.isArray(parsed) ? parsed : [];
+    } catch {
+      providers = [];
+    }
+  }
+  const magpie = readMagpieProviders();
+  if (!magpie.length) return providers;
+  const ids = new Set(magpie.map((provider) => provider.id));
+  return [...providers.filter((provider) => !ids.has(provider.id)), ...magpie];
 }
 
 /** 实验开关（MEOWCODE_EXPERIMENTAL，JSON）：未设置/解析失败一律全关。 */
@@ -333,6 +419,22 @@ function sendJson(response: http.ServerResponse, status: number, body: unknown):
 
 function sendError(response: http.ServerResponse, status: number, code: string, message: string): void {
   sendJson(response, status, { error: { code, message } });
+}
+
+/**
+ * ask_user 答案归一成文本：前端偶尔把整条选项对象回传（`{label, description}`），
+ * 直接 String() 会让模型和界面都收到 `[object Object]`。
+ */
+function answerText(raw: unknown): string {
+  if (typeof raw === "string") return raw;
+  if (typeof raw === "number" || typeof raw === "boolean") return String(raw);
+  if (!raw || typeof raw !== "object") return "";
+  const record = raw as Record<string, unknown>;
+  for (const key of ["label", "text", "value", "answer", "option"] as const) {
+    const value = record[key];
+    if (typeof value === "string" && value.trim()) return value;
+  }
+  return "";
 }
 
 /** /memory 路由的 scope 参数：不合法值一律 400，不猜测默认层。 */
@@ -559,6 +661,8 @@ export async function startServer(options: { port?: number; token?: string } = {
   let providers = readProvidersFromEnv();
   // 密钥只留在内存：删掉环境变量后，模型通过 run_command 读 env 也拿不到。
   delete process.env.MEOWCODE_PROVIDERS;
+  delete process.env.MEOWCODE_MAGPIE_FILE;
+  delete process.env.MEOWCODE_PROVIDER_PREFS;
   const sessionsDir = process.env.MEOWCODE_SESSIONS_DIR ?? DEFAULT_SESSIONS_DIR;
   /** 诊断日志与 sessions 同级：<agent>/logs，随数据目录迁移一起搬走 */
   const agentLogDir = process.env.MEOWCODE_LOG_DIR ?? path.join(path.dirname(sessionsDir), "logs");
@@ -1741,6 +1845,7 @@ export async function startServer(options: { port?: number; token?: string } = {
             query: "",
             hits: [],
             scanned: 0,
+            skipped: 0,
             reindexed: 0,
             truncated: false,
           });
@@ -3052,8 +3157,8 @@ export async function startServer(options: { port?: number; token?: string } = {
           return;
         }
         const answers = Array.isArray(body.answers)
-          ? body.answers.map((item) => String(item ?? ""))
-          : [String(body.answer ?? "")];
+          ? body.answers.map((item) => answerText(item))
+          : [answerText(body.answer)];
         let handled = false;
         for (const instance of [runtime, ...backgroundRuntimes.values()]) {
           if (instance.respondToAsk(body.callId, answers)) {
@@ -4452,6 +4557,41 @@ export async function startServer(options: { port?: number; token?: string } = {
           instance.providerFallbackEnabled = body.enabled;
         }
         sendJson(response, 200, { enabled: providerFallbackEnabled });
+        return;
+      }
+      // 每个主 Agent 的并行子 Agent 上限：设置页可调，运行中热切换。
+      if (pathname === "/config/agent-limits" && request.method === "PUT") {
+        const body = await readJsonBody<{ limits?: unknown }>(request);
+        const limits = normalizeSubagentLimits(body.limits);
+        runtime.subagentLimitOverrides = limits;
+        if (sideRuntime) sideRuntime.subagentLimitOverrides = limits;
+        for (const instance of backgroundRuntimes.values()) {
+          instance.subagentLimitOverrides = limits;
+        }
+        sendJson(response, 200, { limits });
+        return;
+      }
+      // 网页搜索与获取：搜索/抓取提供方与附带原问题开关，运行中热切换。
+      if (pathname === "/config/web-options" && request.method === "PUT") {
+        const body = await readJsonBody<{
+          searchProvider?: unknown;
+          fetchProvider?: unknown;
+          sendOriginalQuestion?: unknown;
+          deepseekApiKey?: unknown;
+        }>(request);
+        const next = normalizeWebConfig(runtime.webConfig, body);
+        runtime.webConfig = next;
+        if (sideRuntime) sideRuntime.webConfig = next;
+        for (const instance of backgroundRuntimes.values()) {
+          instance.webConfig = next;
+        }
+        // 密钥只留在 server 内存里，不回显给渲染层
+        sendJson(response, 200, {
+          searchProvider: next.searchProvider,
+          fetchProvider: next.fetchProvider,
+          sendOriginalQuestion: next.sendOriginalQuestion,
+          hasDeepseekApiKey: Boolean(next.deepseekApiKey),
+        });
         return;
       }
       // 网络代理：GET 查询；PUT 实时切换（下一次对外请求即生效，无需重启）。

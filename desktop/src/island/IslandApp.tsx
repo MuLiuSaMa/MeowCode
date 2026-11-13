@@ -1,15 +1,16 @@
-import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useReducer, useRef, useState, type ReactNode } from "react";
 import type {
   DragEvent as ReactDragEvent,
   KeyboardEvent as ReactKeyboardEvent,
   WheelEvent as ReactWheelEvent,
 } from "react";
 import { useTranslation } from "react-i18next";
-import { LuArrowUp, LuBrain, LuChevronDown, LuFileText, LuPaperclip, LuSquare, LuX } from "react-icons/lu";
+import { LuArrowUp, LuCircleAlert, LuFileText, LuPaperclip, LuSquare, LuX } from "react-icons/lu";
 import { applyLanguage } from "../i18n";
-import { api, type ChatMessage, type MeowEvent, type TimelineTool } from "../api";
+import { api, type ChatMessage, type MeowEvent, type TimelineItem } from "../api";
 import { timelineFromHistory } from "../timeline";
-import { Markdown } from "../components/ui/Markdown";
+import { AssistantMessage, ThinkingRow } from "../components/AssistantMessage";
+import { ToolGroup } from "../components/ToolGroup";
 import { ToolRow, presentTool } from "../components/ToolRow";
 import { UserBubble } from "../components/UserBubble";
 import appIcon from "../assets/icon.png";
@@ -921,43 +922,7 @@ export default function IslandApp() {
             {!selected || selected.feed.length === 0 ? (
               <div className="island-empty">{t("island.empty")}</div>
             ) : (
-              selected.feed.map((item) => {
-                if (item.kind === "user") {
-                  // 完整复用主窗口的 UserBubble：【附件】协议行会解析成附件 chip，视觉一致
-                  return <UserBubble key={item.key} content={item.text} />;
-                }
-                if (item.kind === "assistant") {
-                  return (
-                    <article key={item.key} className="mc-assistant">
-                      <div className="mc-assistant__body">
-                        {item.thinking ? (
-                          <IslandThinking text={item.thinking} streaming={item.streaming && !item.text} />
-                        ) : null}
-                        {item.text ? <Markdown content={item.text} /> : null}
-                      </div>
-                    </article>
-                  );
-                }
-                if (item.kind === "tool") {
-                  // 直接复用主窗口的 ToolRow：人话标签 / 同款图标 / chip / 可展开的输入输出全部一致。
-                  // 运行中不传 ok，ToolRow 自己判成 running（转圈）。
-                  const toolItem: TimelineTool = {
-                    kind: "tool",
-                    key: item.key,
-                    callId: item.callId,
-                    tool: item.tool,
-                    input: item.input,
-                    ...(item.output !== undefined ? { output: item.output } : {}),
-                    ...(item.run ? {} : { ok: item.ok }),
-                  };
-                  return <ToolRow key={item.key} item={toolItem} />;
-                }
-                return (
-                  <div key={item.key} className="island-error">
-                    {item.text}
-                  </div>
-                );
-              })
+              <IslandFeed feed={selected.feed} running={selected.running} />
             )}
           </div>
 
@@ -1076,25 +1041,132 @@ export default function IslandApp() {
 }
 
 
-/** 思考过程折叠块：结构与主窗口 AssistantMessage 的 mc-thinking 完全一致 */
-function IslandThinking({ text, streaming }: { text: string; streaming: boolean }) {
-  const { t } = useTranslation("chat");
-  const [open, setOpen] = useState(false);
+/**
+ * 尾流渲染：与主窗口 MessageList 同一套结构——
+ * 按 user 消息切轮，思考/工具行归入 ToolGroup（运行中默认展开、可手动收起，回合结束折叠），
+ * 正文单独成段；组件与间距规则全部复用主窗口，保证视觉一致。
+ */
+function IslandFeed({ feed, running }: { feed: FeedItem[]; running: boolean }) {
+  const turns = useMemo(() => {
+    const items: TimelineItem[] = feed.map((item) => {
+      if (item.kind === "user") {
+        return { kind: "message", role: "user", key: item.key, content: item.text };
+      }
+      if (item.kind === "assistant") {
+        return {
+          kind: "message",
+          role: "assistant",
+          key: item.key,
+          content: item.text,
+          ...(item.thinking ? { thinking: item.thinking } : {}),
+          streaming: item.streaming,
+        };
+      }
+      if (item.kind === "tool") {
+        // 运行中不传 ok，ToolRow 自己判成 running（转圈）
+        return {
+          kind: "tool",
+          key: item.key,
+          callId: item.callId,
+          tool: item.tool,
+          input: item.input,
+          ...(item.output !== undefined ? { output: item.output } : {}),
+          ...(item.run ? {} : { ok: item.ok }),
+        };
+      }
+      return { kind: "error", key: item.key, message: item.text };
+    });
+    const groups: TimelineItem[][] = [];
+    let current: TimelineItem[] = [];
+    for (const item of items) {
+      if (item.kind === "message" && item.role === "user") {
+        if (current.length) groups.push(current);
+        current = [item];
+      } else {
+        current.push(item);
+      }
+    }
+    if (current.length) groups.push(current);
+    return groups;
+  }, [feed]);
+
+  const renderItem = (item: TimelineItem): ReactNode => {
+    if (item.kind === "tool") {
+      return <ToolRow key={item.key} item={item} />;
+    }
+    if (item.kind === "error") {
+      return (
+        <div key={item.key} className="mc-erritem" role="alert">
+          <LuCircleAlert size={15} className="mc-erritem__icon" />
+          <span className="mc-erritem__text">{item.message}</span>
+        </div>
+      );
+    }
+    if (item.kind === "message" && item.role === "user") {
+      // 完整复用主窗口的 UserBubble：【附件】协议行会解析成附件 chip，视觉一致
+      return <UserBubble key={item.key} content={item.content} />;
+    }
+    if (item.kind === "message") {
+      return (
+        <Fragment key={item.key}>
+          {item.thinking ? (
+            <ThinkingRow thinking={item.thinking} streaming={item.streaming} />
+          ) : null}
+          {item.content ? (
+            <AssistantMessage content={item.content} streaming={item.streaming} />
+          ) : null}
+        </Fragment>
+      );
+    }
+    return null;
+  };
+
   return (
-    <details className="mc-thinking" open={open}>
-      <summary
-        className="mc-thinking__summary"
-        onClick={(event) => {
-          event.preventDefault(); // 自己接管 open 状态（与主窗口同款）
-          setOpen((value) => !value);
-        }}
-      >
-        <LuBrain size={12} className="mc-thinking__icon" />
-        <span>{streaming ? t("assistant.thinkingInProgress") : t("assistant.thinking")}</span>
-        <LuChevronDown size={12} className="mc-thinking__chevron" data-open={open} />
-      </summary>
-      <div className="mc-thinking__body">{text}</div>
-    </details>
+    <>
+      {turns.map((turn, turnIndex) => {
+        const isLast = turnIndex === turns.length - 1;
+        // 与 MessageList 同款分组算法：正文之前的思考/工具行归入同一组，正文作为轮边界
+        const nodes: ReactNode[] = [];
+        let buffer: TimelineItem[] = [];
+        const flush = () => {
+          if (!buffer.length) return;
+          nodes.push(
+            <ToolGroup
+              key={`group:${buffer[0].key}`}
+              items={buffer}
+              renderItem={renderItem}
+              turnRunning={isLast && running}
+            />,
+          );
+          buffer = [];
+        };
+        for (const item of turn) {
+          const isText =
+            item.kind === "message" &&
+            item.role === "assistant" &&
+            item.content.trim().length > 0;
+          if (isText) {
+            if (item.thinking) buffer.push({ ...item, content: "" });
+            flush();
+            nodes.push(renderItem(item.thinking ? { ...item, thinking: undefined } : item));
+          } else if (
+            item.kind === "tool" ||
+            (item.kind === "message" && item.role === "assistant")
+          ) {
+            buffer.push(item);
+          } else {
+            flush();
+            nodes.push(renderItem(item));
+          }
+        }
+        flush();
+        return (
+          <div className="mc-turn" key={turn[0]?.key ?? `turn-${turnIndex}`}>
+            <div className="mc-turn__body">{nodes}</div>
+          </div>
+        );
+      })}
+    </>
   );
 }
 

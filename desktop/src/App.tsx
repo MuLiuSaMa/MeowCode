@@ -24,6 +24,8 @@ import {
   onUpdateProgress,
   renameHarnessArchitecture,
   setSpeechStyle,
+  setAgentLimits,
+  setWebOptions,
   type AppInfo,
   type ChatMessage,
   type CompactionPoint,
@@ -47,6 +49,7 @@ import {
   type SessionSearchHit,
   type SessionSearchSnippet,
   type AgentProfileId,
+  type AskUserQuestion,
   type Settings,
   type SubagentRun,
   type SubagentSummary,
@@ -59,9 +62,11 @@ import {
   type TimelineTool,
   type TurnMetrics,
   type SpeedSample,
+  type SshConnection,
   type UiState,
   type UpdateInfo,
   type UsageSummary,
+  type WebOptionsPatch,
   type WorkflowRoadmap,
   shouldRecommendCompaction,
 } from "./api";
@@ -984,15 +989,9 @@ export default function App() {
       }
       if (event.code === "Backquote" && !event.altKey) {
         event.preventDefault();
-        const terminalTab = sideTabs.tabs.find((tab) => tab.kind === "terminal");
-        if (terminalTab && sideTabs.activeId === terminalTab.id) {
-          sideTabs.close(terminalTab.id);
-        } else if (terminalTab) {
-          setShowInspector(true);
-          sideTabs.activate(terminalTab.id);
-        } else {
-          openSideTab({ kind: "terminal" });
-        }
+        // 新建终端 = 全新页签：已有 SSH 终端时也不复用、不切换过去
+        openSideTab({ kind: "terminal" });
+        return;
       }
     };
     window.addEventListener("keydown", onKeyDown);
@@ -1066,7 +1065,7 @@ export default function App() {
   /** ask_user 澄清问题卡片（模型调用 ask_user 虚拟工具时挂起等待） */
   const [pendingAsk, setPendingAsk] = useState<{
     callId: string;
-    questions: Array<{ question: string; options: string[] }>;
+    questions: AskUserQuestion[];
   } | null>(null);
   const approvalsRef = useRef<Record<string, PendingApproval>>({});
   const replaceApprovals = useCallback((items: PendingApproval[]) => {
@@ -1321,6 +1320,11 @@ export default function App() {
       worktreeFetchUpstream: settings?.worktreeFetchUpstream ?? false,
       worktreeAutoCleanup: settings?.worktreeAutoCleanup ?? true,
       worktreeMaxKeep: settings?.worktreeMaxKeep ?? 15,
+      worktreeRoot: settings?.worktreeRoot ?? "",
+      worktreeConfirmDelete: settings?.worktreeConfirmDelete ?? true,
+      webSearchProvider: settings?.webSearchProvider ?? "auto",
+      webFetchProvider: settings?.webFetchProvider ?? "auto",
+      webSearchSendOriginalQuestion: settings?.webSearchSendOriginalQuestion ?? true,
       includeAgentsMd: settings?.includeAgentsMd ?? true,
       includeClaudeMd: settings?.includeClaudeMd ?? true,
       fontFamily: settings?.fontFamily ?? "",
@@ -1342,6 +1346,11 @@ export default function App() {
       settings?.worktreeFetchUpstream,
       settings?.worktreeAutoCleanup,
       settings?.worktreeMaxKeep,
+      settings?.worktreeRoot,
+      settings?.worktreeConfirmDelete,
+      settings?.webSearchProvider,
+      settings?.webFetchProvider,
+      settings?.webSearchSendOriginalQuestion,
       settings?.includeAgentsMd,
       settings?.includeClaudeMd,
       settings?.fontFamily,
@@ -1452,7 +1461,7 @@ export default function App() {
         plan?: PlanState | null;
         runningSessionIds?: string[];
         pendingApprovals?: PendingApproval[];
-        pendingAsk?: { callId: string; questions: Array<{ question: string; options: string[] }> } | null;
+        pendingAsk?: { callId: string; questions: AskUserQuestion[] } | null;
         queuedPrompts?: QueuedPrompt[];
         recoveredPrompts?: QueuedPrompt[];
         /** 旧会话可能存的是 "default"（语义等于 ask） */
@@ -1645,6 +1654,35 @@ export default function App() {
     if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current);
     toastTimerRef.current = window.setTimeout(() => setToast(null), 2600);
   }, []);
+
+  /** 设置 → 连接：开一个跑 ssh 的终端页签（密码在终端里交互输入，不落盘）。 */
+  const connectSsh = useCallback(
+    (connection: SshConnection) => {
+      void window.meow.sshCommand(connection).then(async (prepared) => {
+        if (!prepared.ok) {
+          showToast(prepared.error);
+          return;
+        }
+        try {
+          const { id } = await window.meow.termCreate({
+            cols: 120,
+            rows: 32,
+            command: prepared.command,
+          });
+          setView("chat");
+          setShowInspector(true);
+          sideTabs.openJobTerminal(
+            id,
+            prepared.command,
+            `SSH · ${connection.name || connection.host}`,
+          );
+        } catch (error) {
+          showToast(error instanceof Error ? error.message : String(error));
+        }
+      });
+    },
+    [sideTabs, showToast],
+  );
 
   /**
    * Git 管理：状态放在 App —— 切到对话/设置时 GitBody 会卸载，
@@ -2535,7 +2573,7 @@ export default function App() {
         id?: string;
         runningSessionIds?: string[];
         pendingApprovals?: PendingApproval[];
-        pendingAsk?: { callId: string; questions: Array<{ question: string; options: string[] }> } | null;
+        pendingAsk?: { callId: string; questions: AskUserQuestion[] } | null;
         queuedPrompts?: QueuedPrompt[];
         compactingSessionIds?: string[];
         subagents?: SubagentSummary[];
@@ -3498,6 +3536,27 @@ export default function App() {
         prev ? { ...prev, mailAiProviderId: nextMailAiProviderId } : prev,
       );
     }
+    // 网页搜索/抓取：下拉/开关立即反映，落盘失败再回滚
+    const nextWebSearchProvider = prefs.webSearchProvider;
+    const previousWebSearchProvider = settings?.webSearchProvider ?? "auto";
+    const nextWebFetchProvider = prefs.webFetchProvider;
+    const previousWebFetchProvider = settings?.webFetchProvider ?? "auto";
+    const nextWebSendOriginalQuestion = prefs.webSearchSendOriginalQuestion;
+    const previousWebSendOriginalQuestion =
+      settings?.webSearchSendOriginalQuestion ?? true;
+    if (nextWebSearchProvider !== undefined) {
+      setSettings((prev) =>
+        prev ? { ...prev, webSearchProvider: nextWebSearchProvider } : prev,
+      );
+    }
+    if (nextWebFetchProvider !== undefined) {
+      setSettings((prev) => (prev ? { ...prev, webFetchProvider: nextWebFetchProvider } : prev));
+    }
+    if (nextWebSendOriginalQuestion !== undefined) {
+      setSettings((prev) =>
+        prev ? { ...prev, webSearchSendOriginalQuestion: nextWebSendOriginalQuestion } : prev,
+      );
+    }
     try {
       const saved = await window.meow.savePreferences(prefs);
       setSettings((prev) =>
@@ -3538,6 +3597,12 @@ export default function App() {
                 typeof saved?.worktreeMaxKeep === "number"
                   ? saved.worktreeMaxKeep
                   : prev.worktreeMaxKeep,
+              worktreeRoot:
+                typeof saved?.worktreeRoot === "string" ? saved.worktreeRoot : prev.worktreeRoot,
+              worktreeConfirmDelete:
+                typeof saved?.worktreeConfirmDelete === "boolean"
+                  ? saved.worktreeConfirmDelete
+                  : prev.worktreeConfirmDelete,
               includeAgentsMd:
                 typeof saved?.includeAgentsMd === "boolean"
                   ? saved.includeAgentsMd
@@ -3552,6 +3617,20 @@ export default function App() {
               projectNames: saved?.projectNames ?? prev.projectNames,
               pinnedProjects: saved?.pinnedProjects ?? prev.pinnedProjects,
               removedProjects: saved?.removedProjects ?? prev.removedProjects,
+              sshConnections: Array.isArray(saved?.sshConnections)
+                ? saved.sshConnections
+                : prev.sshConnections,
+              webSearchProvider: saved?.webSearchProvider ?? prev.webSearchProvider,
+              webFetchProvider: saved?.webFetchProvider ?? prev.webFetchProvider,
+              webSearchSendOriginalQuestion:
+                typeof saved?.webSearchSendOriginalQuestion === "boolean"
+                  ? saved.webSearchSendOriginalQuestion
+                  : prev.webSearchSendOriginalQuestion,
+              hasWebDeepseekApiKey:
+                typeof saved?.hasWebDeepseekApiKey === "boolean"
+                  ? saved.hasWebDeepseekApiKey
+                  : prev.hasWebDeepseekApiKey,
+              agentProfileLimits: saved?.agentProfileLimits ?? prev.agentProfileLimits,
               ...(Array.isArray(saved?.archivedSessions)
                 ? { archivedSessions: saved.archivedSessions }
                 : Array.isArray(prefs.archivedSessions)
@@ -3567,6 +3646,40 @@ export default function App() {
         } catch (err) {
           pushError(
             `语色已保存，重启 MeowCode 后生效：${err instanceof Error ? err.message : String(err)}`,
+          );
+        }
+      }
+      // 网页搜索/抓取：运行中热切换；失败不回滚偏好（下次启动仍会生效）
+      const webPatch: WebOptionsPatch = {
+        ...(nextWebSearchProvider !== undefined
+          ? { searchProvider: nextWebSearchProvider }
+          : {}),
+        ...(nextWebFetchProvider !== undefined
+          ? { fetchProvider: nextWebFetchProvider }
+          : {}),
+        ...(nextWebSendOriginalQuestion !== undefined
+          ? { sendOriginalQuestion: nextWebSendOriginalQuestion }
+          : {}),
+        ...(typeof prefs.webDeepseekApiKey === "string"
+          ? { deepseekApiKey: prefs.webDeepseekApiKey }
+          : {}),
+      };
+      if (Object.keys(webPatch).length) {
+        try {
+          await setWebOptions(webPatch);
+        } catch (err) {
+          pushError(
+            `网页设置已保存，重启 MeowCode 后生效：${err instanceof Error ? err.message : String(err)}`,
+          );
+        }
+      }
+      // 子 Agent 并行上限：运行中热切换；失败不回滚偏好（下次启动仍会生效）
+      if (prefs.agentProfileLimits && typeof prefs.agentProfileLimits === "object") {
+        try {
+          await setAgentLimits(prefs.agentProfileLimits);
+        } catch (err) {
+          pushError(
+            `并行数量已保存，重启 MeowCode 后生效：${err instanceof Error ? err.message : String(err)}`,
           );
         }
       }
@@ -3586,6 +3699,21 @@ export default function App() {
           prev ? { ...prev, mailAiProviderId: previousMailAiProviderId } : prev,
         );
       }
+      if (nextWebSearchProvider !== undefined) {
+        setSettings((prev) =>
+          prev ? { ...prev, webSearchProvider: previousWebSearchProvider } : prev,
+        );
+      }
+      if (nextWebFetchProvider !== undefined) {
+        setSettings((prev) =>
+          prev ? { ...prev, webFetchProvider: previousWebFetchProvider } : prev,
+        );
+      }
+      if (nextWebSendOriginalQuestion !== undefined) {
+        setSettings((prev) =>
+          prev ? { ...prev, webSearchSendOriginalQuestion: previousWebSendOriginalQuestion } : prev,
+        );
+      }
       if (prefs.palette !== undefined) setThemePalette(previousPalette);
       pushError(err instanceof Error ? err.message : String(err));
       return false;
@@ -3597,6 +3725,9 @@ export default function App() {
     settings?.announcements,
     settings?.palette,
     settings?.mailAiProviderId,
+    settings?.webSearchProvider,
+    settings?.webFetchProvider,
+    settings?.webSearchSendOriginalQuestion,
   ]);
 
   // ---- 界面字体（外观设置）：导入的自定义字体注册成 @font-face，选中字体写进 --font-app ----
@@ -4419,7 +4550,7 @@ export default function App() {
       const current = await api<{
         runningSessionIds?: string[];
         pendingApprovals?: PendingApproval[];
-        pendingAsk?: { callId: string; questions: Array<{ question: string; options: string[] }> } | null;
+        pendingAsk?: { callId: string; questions: AskUserQuestion[] } | null;
         queuedPrompts?: QueuedPrompt[];
         compactingSessionIds?: string[];
       }>("/session");
@@ -5328,6 +5459,9 @@ export default function App() {
             onRemoveProject={removeProject}
             onUnarchiveSession={unarchiveSession}
             onDeleteArchivedSession={(filePath) => void deleteArchivedSessions([filePath])}
+            onDeleteSessions={deleteSessionsByPath}
+            onOpenSection={setSettingsSection}
+            onConnectSsh={connectSsh}
             onDeleteAllArchived={() =>
               void deleteArchivedSessions(settings?.archivedSessions ?? [])
             }

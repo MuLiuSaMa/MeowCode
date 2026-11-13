@@ -37,6 +37,97 @@ export type WebSearchOptions = {
   originalQuestion?: string;
 };
 
+export type WebSearchProviderKind = "auto" | "provider-native" | "deepseek-search-api" | "off";
+export type WebFetchProviderKind = "auto" | "http" | "deepseek-fetch-api";
+
+/** 设置 → 网页搜索与获取：搜索/抓取分别选择，运行中可热切换。 */
+export type WebConfig = {
+  searchProvider: WebSearchProviderKind;
+  fetchProvider: WebFetchProviderKind;
+  /** DeepSeek Search API 是否附带最近一条用户提问（ori_question） */
+  sendOriginalQuestion: boolean;
+  /** 显式选择 DeepSeek 后端时可用的独立 API Key（当前模型不是 DeepSeek 时） */
+  deepseekApiKey: string;
+};
+
+const SEARCH_KINDS: WebSearchProviderKind[] = [
+  "auto",
+  "provider-native",
+  "deepseek-search-api",
+  "off",
+];
+const FETCH_KINDS: WebFetchProviderKind[] = ["auto", "http", "deepseek-fetch-api"];
+
+export function normalizeWebConfig(
+  current: WebConfig,
+  patch?: {
+    searchProvider?: unknown;
+    fetchProvider?: unknown;
+    sendOriginalQuestion?: unknown;
+    deepseekApiKey?: unknown;
+  } | null,
+): WebConfig {
+  const search = patch?.searchProvider;
+  const fetch = patch?.fetchProvider;
+  return {
+    searchProvider: SEARCH_KINDS.includes(search as WebSearchProviderKind)
+      ? (search as WebSearchProviderKind)
+      : current.searchProvider,
+    fetchProvider: FETCH_KINDS.includes(fetch as WebFetchProviderKind)
+      ? (fetch as WebFetchProviderKind)
+      : current.fetchProvider,
+    sendOriginalQuestion:
+      typeof patch?.sendOriginalQuestion === "boolean"
+        ? patch.sendOriginalQuestion
+        : current.sendOriginalQuestion,
+    deepseekApiKey:
+      typeof patch?.deepseekApiKey === "string"
+        ? patch.deepseekApiKey.trim()
+        : current.deepseekApiKey,
+  };
+}
+
+/** env 给初值（桌面端把设置注入 server）；缺省 = 全自动 + 附带原问题。 */
+export function readWebConfigFromEnv(): WebConfig {
+  return normalizeWebConfig(
+    {
+      searchProvider: "auto",
+      fetchProvider: "auto",
+      sendOriginalQuestion: true,
+      deepseekApiKey: "",
+    },
+    {
+      searchProvider: process.env.MEOWCODE_WEB_SEARCH_PROVIDER,
+      fetchProvider: process.env.MEOWCODE_WEB_FETCH_PROVIDER,
+      sendOriginalQuestion:
+        process.env.MEOWCODE_WEB_SEND_ORIGINAL_QUESTION === "0" ? false : true,
+      deepseekApiKey: process.env.MEOWCODE_WEB_DEEPSEEK_API_KEY ?? "",
+    },
+  );
+}
+
+/**
+ * DeepSeek 后端的凭据：当前 provider 本身是 DeepSeek 且带 key 时直接沿用；
+ * 显式选择 DeepSeek 时可用设置里的独立 API Key（固定官方端点，不透传网关额外头）。
+ */
+function deepseekCredential(
+  provider: ProviderConfig,
+  overrideKey: string,
+): ProviderConfig | null {
+  const host = hostOf(provider.baseUrl);
+  if (isDeepSeekHost(host) && provider.apiKey) return provider;
+  const key = overrideKey.trim();
+  if (!key) return null;
+  return {
+    ...provider,
+    baseUrl: "https://api.deepseek.com/v1",
+    apiKey: key,
+    authStyle: undefined,
+    extraHeaders: undefined,
+    extraBody: undefined,
+  };
+}
+
 export type WebSearchBackend = {
   id: "deepseek-search-api" | "anthropic-native" | "openai-native";
   search(query: string, options: WebSearchOptions, signal?: AbortSignal): Promise<WebSearchResult>;
@@ -99,21 +190,35 @@ function isOpenAIHost(host: string): boolean {
 /**
  * 把服务商解析成可用的搜索后端；返回 null 表示该模型没有自己的搜索能力，
  * runtime 应撤下 web_search（web_fetch 不受影响）。
+ * kind 来自设置：auto 跟随模型能力；provider-native / deepseek-search-api 强制某类后端；
+ * off 关闭。选择与当前模型不匹配时返回 null（不悄悄换别的后端，避免把查询发到未选的端点）。
  */
-export function createWebSearchBackend(provider: ProviderConfig): WebSearchBackend | null {
+export function createWebSearchBackend(
+  provider: ProviderConfig,
+  kind: WebSearchProviderKind = "auto",
+  deepseekApiKey = "",
+): WebSearchBackend | null {
+  if (kind === "off") return null;
   const host = hostOf(provider.baseUrl);
   const protocol = provider.protocol ?? "openai-chat-completions";
+  const deepseekAvailable = isDeepSeekHost(host) && Boolean(provider.apiKey);
   // DeepSeek 直连 Search API 与聊天协议无关，只要 host 和 key 对得上就走，
   // 省掉一次旁路模型请求（旁路请求的 token 也是真金白银）。
-  if (isDeepSeekHost(host) && provider.apiKey) {
-    return deepSeekSearchBackend(provider);
+  if (kind === "deepseek-search-api") {
+    const credential = deepseekCredential(provider, deepseekApiKey);
+    return credential ? deepSeekSearchBackend(credential) : null;
   }
-  if (protocol === "anthropic-messages" && (isAnthropicHost(host) || isZaiHost(host))) {
-    return anthropicNativeSearchBackend(provider, isZaiHost(host));
+  const anthropicNative =
+    protocol === "anthropic-messages" && (isAnthropicHost(host) || isZaiHost(host));
+  const openaiNative = protocol === "openai-responses" && isOpenAIHost(host);
+  if (kind === "provider-native") {
+    if (anthropicNative) return anthropicNativeSearchBackend(provider, isZaiHost(host));
+    if (openaiNative) return openAINativeSearchBackend(provider);
+    return null;
   }
-  if (protocol === "openai-responses" && isOpenAIHost(host)) {
-    return openAINativeSearchBackend(provider);
-  }
+  if (deepseekAvailable) return deepSeekSearchBackend(provider);
+  if (anthropicNative) return anthropicNativeSearchBackend(provider, isZaiHost(host));
+  if (openaiNative) return openAINativeSearchBackend(provider);
   return null;
 }
 

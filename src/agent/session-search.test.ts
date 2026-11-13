@@ -294,4 +294,108 @@ describe("searchSessions", () => {
     // 未抛错即通过
     expect(true).toBe(true);
   });
+
+  it("filters by workspace and counts unreadable sessions", async () => {
+    const dir = await makeSessionsDir();
+    await writeSession(
+      dir,
+      "a.jsonl",
+      [messageEntry({ role: "user", content: "共享关键词" })],
+      {
+        type: "session",
+        version: 2,
+        id: "s-a".padEnd(36, "0"),
+        cwd: "D:\\work",
+        createdAt: "2026-11-01T00:00:00.000Z",
+      },
+    );
+    await writeSession(
+      dir,
+      "b.jsonl",
+      [messageEntry({ role: "user", content: "共享关键词" })],
+      {
+        type: "session",
+        version: 2,
+        id: "s-b".padEnd(36, "0"),
+        cwd: "D:\\other",
+        createdAt: "2026-11-02T00:00:00.000Z",
+      },
+    );
+    await writeFile(path.join(dir, "broken.jsonl"), "not-json-at-all\n", "utf8");
+
+    const result = await searchSessions(dir, "共享关键词", { workspace: "D:\\work" });
+    expect(result.hits.map((hit) => hit.sessionId)).toEqual(["s-a".padEnd(36, "0")]);
+    expect(result.skipped).toBe(1);
+  });
+
+  it("excludes the current session before applying the limit", async () => {
+    const dir = await makeSessionsDir();
+    await writeSession(
+      dir,
+      "a.jsonl",
+      [messageEntry({ role: "user", content: "重试关键词" })],
+      {
+        type: "session",
+        version: 2,
+        id: "s-a".padEnd(36, "0"),
+        cwd: "D:\\work",
+        createdAt: "2026-11-01T00:00:00.000Z",
+      },
+    );
+    await writeSession(
+      dir,
+      "b.jsonl",
+      [messageEntry({ role: "user", content: "重试关键词" })],
+      {
+        type: "session",
+        version: 2,
+        id: "s-b".padEnd(36, "0"),
+        cwd: "D:\\work",
+        createdAt: "2026-11-02T00:00:00.000Z",
+      },
+    );
+
+    const first = await searchSessions(dir, "重试关键词", { limit: 1 });
+    expect(first.hits).toHaveLength(1);
+    const excludedId = first.hits[0].sessionId;
+    const next = await searchSessions(dir, "重试关键词", {
+      limit: 1,
+      excludeSessionId: excludedId,
+    });
+    expect(next.hits).toHaveLength(1);
+    expect(next.hits[0].sessionId).not.toBe(excludedId);
+  });
+
+  it("hydrates top hits with a bounded context window", async () => {
+    const dir = await makeSessionsDir();
+    const long = "前".repeat(500);
+    await writeSession(dir, "a.jsonl", [
+      messageEntry({ role: "user", content: "第一句" }),
+      messageEntry({ role: "assistant", content: "第二句" }),
+      messageEntry({ role: "user", content: `关键修复：${long}` }),
+      messageEntry({ role: "assistant", content: "已修复" }),
+      messageEntry({ role: "user", content: "第五句" }),
+      messageEntry({ role: "assistant", content: "第六句" }),
+    ]);
+
+    const result = await searchSessions(dir, "关键修复", { hydrate: 1 });
+    const context = result.hits[0].context;
+    expect(context).toBeDefined();
+    expect(context!.length).toBeLessThanOrEqual(5);
+    expect(context!.some((message) => message.matched && message.messageIndex === 2)).toBe(true);
+    expect(context!.some((message) => message.truncated)).toBe(true);
+    expect(context!.every((message) => message.text.length <= 480)).toBe(true);
+  });
+
+  it("does not hydrate title-only hits", async () => {
+    const dir = await makeSessionsDir();
+    await writeSession(dir, "a.jsonl", [
+      messageEntry({ role: "user", content: "正文没有这个词" }),
+      { type: "title", id: "t", parentId: null, timestamp: "x", title: "专门标题" },
+    ]);
+
+    const result = await searchSessions(dir, "专门标题", { hydrate: 1 });
+    expect(result.hits).toHaveLength(1);
+    expect(result.hits[0].context).toBeUndefined();
+  });
 });

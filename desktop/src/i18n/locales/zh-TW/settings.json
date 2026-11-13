@@ -45,7 +45,12 @@
     "learning": "自我學習",
     "rewind": "會話回滾",
     "sandbox": "沙箱",
-    "approvals": "審批規則"
+    "approvals": "審批規則",
+    "storage": "儲存空間",
+    "connections": "連線",
+    "usage": "使用統計",
+    "webSearch": "網頁搜尋",
+    "agents": "子 Agent"
   },
   "close": {
     "section": "關閉方式",
@@ -204,6 +209,8 @@
     "count_many": "已設定 {{count}} 個模型",
     "add": "新增模型",
     "empty": "還沒有設定任何模型。點「新增模型」開始。",
+    "managedBadge": "由 magpie 管理",
+    "managedHint": "這些模型由 magpie 提供。magpie 連線或中斷後需重新啟動 MeowCode 才會重新整理。啟用狀態與思考強度會保留。",
     "deleteTitle": "刪除服務商",
     "deleteMessage": "確定刪除「{{name}}」嗎？刪除後需要重新設定才能使用。",
     "deleteGroupAria": "刪除服務商 {{name}}",
@@ -473,18 +480,37 @@
     "deleted": "已刪除規則「{{name}}」"
   },
   "worktree": {
-    "section": "Worktrees",
+    "create": {
+      "section": "建立與清理"
+    },
+    "root": {
+      "label": "工作樹根目錄",
+      "hint": "留空以使用預設位置；修改後重新啟動應用程式生效。",
+      "open": "開啟資料夾"
+    },
     "fetch": {
-      "label": "建立前先取得 upstream",
-      "hint": "建立 worktree 前先取得 upstream 更新。"
+      "label": "建立工作樹前一律取得上游更新",
+      "hint": "建立時先取得上游；離線或沒有遠端時自動略過。"
     },
     "cleanup": {
-      "label": "自動移除舊 worktree",
-      "hint": "建議大多數使用者開啟。只有在你想自行管理舊 worktree 與磁碟空間時才關閉。"
+      "label": "自動刪除舊工作樹",
+      "hint": "先儲存一份復原快照。"
     },
     "maxKeep": {
-      "label": "Worktree 上限",
-      "hint": "超過上限後會自動清理最舊的 worktree。刪除前會建立 Git 備份，因此移除的 worktree 仍可還原。"
+      "label": "保留的工作樹數量",
+      "hint": "較舊的工作樹會自動刪除。已置頂或進行中的聊天所用的工作樹會保留。"
+    },
+    "confirmDelete": {
+      "label": "刪除工作樹前詢問"
+    },
+    "managed": {
+      "title": "託管的工作樹",
+      "refresh": "重新整理",
+      "loading": "載入中…",
+      "empty": "尚無工作樹",
+      "inUse": "使用中",
+      "delete": "刪除",
+      "confirm": "確認刪除"
     }
   },
   "learning": {
@@ -653,5 +679,168 @@
       "command-prefix": "命令前綴"
     },
     "loading": "讀取中…"
+  },
+  "storage": {
+    "device": "此裝置",
+    "deviceDesc": "管理儲存在此電腦上的聊天與工作樹",
+    "used": "MeowCode 已佔用 {{size}}",
+    "refresh": "重新整理",
+    "barAria": "儲存佔用構成",
+    "categories": {
+      "chats": "聊天",
+      "subagents": "子智能體",
+      "archived": "已封存的聊天",
+      "worktrees": "工作樹",
+      "other": "其他"
+    },
+    "clean": {
+      "title": "清理舊聊天",
+      "hint": "永久刪除前，請先檢視聊天及其子智能體",
+      "action": "檢視",
+      "dialogTitle": "清理舊聊天",
+      "dialogDesc": "刪除會永久移除會話檔案及其子智能體；依建立時間由舊到新排列。",
+      "empty": "沒有可清理的聊天",
+      "untitled": "未命名對話",
+      "delete": "刪除",
+      "confirm": "確認刪除",
+      "close": "關閉"
+    },
+    "worktrees": {
+      "title": "管理工作樹",
+      "hint": "檢視工作副本，並選擇要保留的舊工作樹數量",
+      "action": "管理"
+    },
+    "archived": {
+      "title": "已封存的聊天",
+      "hint": "還原或刪除單一已封存的聊天",
+      "action": "管理"
+    }
+  },
+  "connections": {
+    "section": "SSH 連線",
+    "desc": "管理遠端伺服器的 SSH 設定。密碼不會儲存，連線時在終端機輸入。",
+    "create": "新增連線",
+    "empty": "尚無 SSH 連線",
+    "connect": "連線",
+    "test": "測試",
+    "testing": "測試中…",
+    "testSuccess": "連線成功",
+    "testFailed": "連線失敗",
+    "testPassword": "密碼方式無法自動測試，請直接連線後在終端機輸入密碼",
+    "auth": {
+      "agent": "SSH Agent / 預設金鑰",
+      "key": "指定私密金鑰檔案",
+      "password": "密碼（連線時輸入）"
+    },
+    "form": {
+      "titleNew": "新增 SSH 連線",
+      "titleEdit": "編輯 SSH 連線",
+      "name": "名稱",
+      "namePlaceholder": "例如：生產伺服器",
+      "host": "主機",
+      "hostPlaceholder": "example.com 或 192.168.1.10",
+      "port": "連接埠",
+      "username": "使用者名稱",
+      "auth": "驗證方式",
+      "privateKey": "私密金鑰檔案",
+      "chooseKey": "選擇金鑰",
+      "note": "密碼不會儲存；連線後在終端機依提示輸入。",
+      "invalid": "請填寫主機、使用者名稱，並確認連接埠有效",
+      "keyRequired": "請選擇私密金鑰檔案"
+    }
+  },
+  "usage": {
+    "section": "使用統計",
+    "badge": "應用用量",
+    "refresh": "重新整理",
+    "loading": "統計中…",
+    "empty": "尚無用量記錄",
+    "metrics": {
+      "total": "累計 Token 數",
+      "peak": "峰值 Token 數",
+      "longestChat": "最長聊天時長",
+      "currentStreak": "目前連續天數",
+      "maxStreak": "最長連續天數"
+    },
+    "units": {
+      "days": "天",
+      "hours": "小時",
+      "minutes": "分",
+      "tokens": "tokens"
+    },
+    "activity": {
+      "title": "Token 活動",
+      "daily": "每日",
+      "weekly": "每週",
+      "cumulative": "累計"
+    },
+    "range": {
+      "label": "時間範圍",
+      "d7": "近 7 日",
+      "d30": "近 30 日"
+    },
+    "trend": {
+      "title": "每日 Token 趨勢圖"
+    },
+    "models": {
+      "title": "模型用量",
+      "other": "其他模型"
+    },
+    "unknownModel": "未知模型"
+  },
+  "webSearch": {
+    "section": "網頁搜尋與取得",
+    "desc": "搜尋與擷取分別選擇提供者；「自動」跟隨目前模型的能力，不會擅自換到其他提供者。",
+    "search": {
+      "label": "搜尋提供者",
+      "hint": "關閉後模型看不到 web_search 工具；網頁擷取不受影響。"
+    },
+    "searchOptions": {
+      "auto": "自動（跟隨目前模型）",
+      "providerNative": "服務商內建搜尋",
+      "deepseek": "DeepSeek Search API",
+      "off": "關閉網頁搜尋"
+    },
+    "fetch": {
+      "label": "擷取提供者",
+      "hint": "選擇 DeepSeek Fetch API 時，可用下方金鑰直接呼叫官方介面；未設定金鑰則需目前模型使用 DeepSeek。"
+    },
+    "fetchOptions": {
+      "auto": "自動（DeepSeek 走 API，其餘本機）",
+      "http": "本機 HTTP 擷取",
+      "deepseek": "DeepSeek Fetch API"
+    },
+    "originalQuestion": {
+      "label": "搜尋附帶原問題",
+      "hint": "將最近一則使用者提問（最多 128 字元）隨搜尋請求傳給 DeepSeek，結果通常更準確。"
+    },
+    "deepseekKey": {
+      "label": "DeepSeek API Key",
+      "hint": "目前模型不是 DeepSeek 時，用這把金鑰呼叫官方 Search / Fetch API；僅本機加密儲存。",
+      "placeholder": "sk-…",
+      "saved": "已儲存；留空保持不變",
+      "clear": "清除"
+    }
+  },
+  "agents": {
+    "section": "子 Agent",
+    "desc": "每個主 Agent 的子 Agent 名單、並行上限與提示詞；新增的子 Agent 會寫進對應架構圖並預設連到主 Agent。",
+    "limit": {
+      "label": "並行數量"
+    },
+    "add": "新增子 Agent",
+    "addTitle": "新增子 Agent",
+    "editTitle": "編輯子 Agent 提示詞",
+    "name": "名稱",
+    "namePlaceholder": "例如：安全審查員",
+    "roleLabel": "角色",
+    "promptLabel": "提示詞",
+    "promptHint": "留空還原該角色的內建提示詞。",
+    "added": "已新增，並連接到架構圖的主 Agent",
+    "saved": "提示詞已儲存",
+    "editPrompt": "編輯提示詞",
+    "customPrompt": "已自訂",
+    "loading": "載入中…",
+    "empty": "尚無子 Agent"
   }
 }

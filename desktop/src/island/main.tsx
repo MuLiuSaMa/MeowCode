@@ -11,6 +11,8 @@ import "../components/UserBubble.css";
 import "../components/AssistantMessage.css";
 import "../components/ToolRow.css";
 import "../components/Composer.css";
+// 轮间距 / 思考工具分组 / 报错面板与主窗口消息流同一份规则（ToolGroup.css 由组件自带）
+import "../components/MessageList.css";
 import "./island.css";
 
 const root = document.getElementById("root");

@@ -92,7 +92,7 @@ describe("AgentRuntime agent profiles", () => {
     expect(captured).toHaveLength(1);
     expect(captured[0].tools.sort()).toEqual(["admit", "read_file", "run_command", "task"]);
     expect(captured[0].system).toContain("minimal mode");
-    expect(captured[0].taskDescription).toContain("at most 1 subagent start per user turn");
+    expect(captured[0].taskDescription).toContain("At most 1 foreground subagent may run at once");
   });
 
   it("standard keeps the full tool set and every subagent role", async () => {
@@ -106,7 +106,7 @@ describe("AgentRuntime agent profiles", () => {
     expect(captured[0].tools).toContain("write_file");
     expect(captured[0].tools).toContain("multi_edit");
     expect(captured[0].system).toContain("You are MeowCode, a local coding agent");
-    expect(captured[0].taskDescription).toContain("at most 3 subagent starts per user turn");
+    expect(captured[0].taskDescription).toContain("At most 3 foreground subagents may run at once");
   });
 
   it("complex keeps every tool and adds the orchestration prompt", async () => {
@@ -120,7 +120,7 @@ describe("AgentRuntime agent profiles", () => {
 
     expect(captured[0].tools).toContain("write_file");
     expect(captured[0].system).toContain("Complex mode is active");
-    expect(captured[0].taskDescription).toContain("at most 5 subagent starts per user turn");
+    expect(captured[0].taskDescription).toContain("At most 5 foreground subagents may run at once");
   });
 
   it("minimal narrows task.agent_type to general / explore", async () => {
@@ -227,7 +227,7 @@ describe("AgentRuntime agent profiles", () => {
     expect(childTools[0].sort()).toEqual(["read_file", "run_command"]);
   });
 
-  it("applies the profile concurrency budget per turn", async () => {
+  it("mentions the profile concurrency cap in the task description", async () => {
     const dir = await mkdtemp(path.join(tmpdir(), "meowcode-profile-"));
     const runtime = makeRuntime(dir);
     await runtime.newSession(await mkdtemp(path.join(tmpdir(), "meowcode-ws-")));
@@ -272,8 +272,12 @@ describe("AgentRuntime agent profiles", () => {
     );
     await runtime.prompt("delegate");
 
-    const results = toolResults(captured[captured.length - 1].messages).join("\n");
-    expect(results).toContain("at most 1 subagents per turn in 极简 Agent");
+    expect(captured[captured.length - 1].taskDescription).toContain(
+      "At most 1 foreground subagent may run at once",
+    );
+    expect(captured[captured.length - 1].taskDescription).toContain(
+      "finished slots can be reused in the same turn",
+    );
   });
 
   it("persists the profile in the session and restores it on switch", async () => {

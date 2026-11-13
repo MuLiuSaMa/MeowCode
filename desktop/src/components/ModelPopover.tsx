@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperti
 import { useTranslation } from "react-i18next";
 import { LuCheck, LuChevronRight, LuSettings2 } from "react-icons/lu";
 import { findTemplate } from "../data/providerCatalog";
-import { modelIconKey } from "../data/providerIcons";
+import { providerModelIconKey } from "../data/providerIcons";
 import { effortFromIndex, effortIndex, effortLabel, effortLevelsForModel, effortLevelsFromValues, type EffortLevel } from "../effort";
 import type { ProviderSettings } from "../api";
 import { ProviderIcon } from "./ui/ProviderIcon";
@@ -47,8 +47,8 @@ export function levelsFor(provider: ProviderSettings | undefined): EffortLevel[]
 
 /**
  * 模型弹层，两视图：
- *  1. 模型列表（默认）—— 点某个模型即切为当前模型，并跳到强度滑杆
- *  2. 思考强度滑杆 —— 点中间的档位名 / 模型名返回列表
+ *  1. 思考强度滑杆（默认）—— 点模型名按钮直接进来调档
+ *  2. 模型列表 —— 点滑杆标题里的模型名进入，选中模型后回到滑杆
  */
 export function ModelPopover({
   providers,
@@ -78,7 +78,9 @@ export function ModelPopover({
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const { t } = useTranslation("shell");
-  const [showList, setShowList] = useState(true);
+  // 点模型名按钮直接进思考强度滑杆（模型名在滑杆标题里，可再点回列表）；
+  // 一个可用模型都没有时才从列表开始，避免停在无意义的滑杆上
+  const [showList, setShowList] = useState(providers.length === 0);
   /** 相对触发按钮（模型 chip）水平居中、底部贴 chip 上沿；超宽时夹紧在视口内。 */
   const [fixedStyle, setFixedStyle] = useState<CSSProperties>({});
   const index = effortIndex(effort, levels);
@@ -157,7 +159,7 @@ export function ModelPopover({
                   >
                     <ProviderIcon
                       template={findTemplate(provider.templateId)}
-                      iconKey={modelIconKey(provider.model) ?? "meow"}
+                      iconKey={providerModelIconKey(provider)}
                       size={20}
                     />
                     <span className="mc-popover__itemname">
@@ -221,26 +223,27 @@ export function ModelPopover({
                 width: `calc(${THUMB_HALF - TRACK_INSET}px + ${fraction} * (100% - ${THUMB}px))`,
               }}
             >
-              {atMax
-                ? PARTICLES.map((particle, i) => (
-                    <span
-                      key={i}
-                      className="mc-slider__particle"
-                      style={
-                        {
-                          left: `${particle.left}%`,
-                          top: `${particle.top}%`,
-                          width: `${particle.size}px`,
-                          height: `${particle.size}px`,
-                          // 基色透明度交给 CSS 变量，这样关键帧里可以用 calc 做闪烁
-                          "--o": particle.opacity,
-                          animationDuration: `${particle.duration}s`,
-                          animationDelay: `${particle.delay}s`,
-                        } as CSSProperties
-                      }
-                    />
-                  ))
-                : null}
+              {/* 粒子常驻，满档时只做整层淡入淡出：挂载/卸载会整批突然出现或消失 */}
+              <span className="mc-slider__particles" data-active={atMax}>
+                {PARTICLES.map((particle, i) => (
+                  <span
+                    key={i}
+                    className="mc-slider__particle"
+                    style={
+                      {
+                        left: `${particle.left}%`,
+                        top: `${particle.top}%`,
+                        width: `${particle.size}px`,
+                        height: `${particle.size}px`,
+                        // 基色透明度交给 CSS 变量，这样关键帧里可以用 calc 做闪烁
+                        "--o": particle.opacity,
+                        animationDuration: `${particle.duration}s`,
+                        animationDelay: `${particle.delay}s`,
+                      } as CSSProperties
+                    }
+                  />
+                ))}
+              </span>
             </div>
             {levels.map((level, i) => (
               <span

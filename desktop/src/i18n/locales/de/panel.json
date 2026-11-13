@@ -184,7 +184,16 @@
     "resizeAria": "Breite der Dateiliste ändern",
     "filterPlaceholder": "Dateien filtern…",
     "searching": "Suche…",
-    "noMatch": "Keine passenden Dateien"
+    "noMatch": "Keine passenden Dateien",
+    "menu": {
+      "open": "Öffnen",
+      "copy": "Kopieren",
+      "copySuffix": "Kopie",
+      "paste": "Einfügen",
+      "copyPath": "Pfad kopieren",
+      "reveal": "Im Explorer anzeigen",
+      "delete": "Löschen"
+    }
   },
   "terminal": {
     "exited": "[Prozess beendet]",

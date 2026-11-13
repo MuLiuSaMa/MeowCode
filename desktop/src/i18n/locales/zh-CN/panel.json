@@ -184,7 +184,16 @@
     "resizeAria": "调整文件列表宽度",
     "filterPlaceholder": "筛选文件…",
     "searching": "搜索中…",
-    "noMatch": "没有匹配的文件"
+    "noMatch": "没有匹配的文件",
+    "menu": {
+      "open": "打开",
+      "copy": "复制",
+      "copySuffix": "副本",
+      "paste": "粘贴",
+      "copyPath": "复制路径",
+      "reveal": "在资源管理器中显示",
+      "delete": "删除"
+    }
   },
   "terminal": {
     "exited": "[进程已退出]",

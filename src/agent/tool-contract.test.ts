@@ -52,6 +52,7 @@ describe("工具契约", () => {
   it("只读且并发安全的工具才允许并发", () => {
     expect(isToolParallelSafe("read_file")).toBe(true);
     expect(isToolParallelSafe("grep")).toBe(true);
+    expect(isToolParallelSafe("session_search")).toBe(true);
     expect(isToolParallelSafe("web_fetch")).toBe(true);
     expect(isToolParallelSafe("write_file")).toBe(false);
     // run_code 的 meow 桥可以写文件，历史并行是隐患，契约收紧为串行

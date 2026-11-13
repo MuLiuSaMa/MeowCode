@@ -184,7 +184,16 @@
     "resizeAria": "Resize the file list",
     "filterPlaceholder": "Filter files…",
     "searching": "Searching…",
-    "noMatch": "No matching files"
+    "noMatch": "No matching files",
+    "menu": {
+      "open": "Open",
+      "copy": "Copy",
+      "copySuffix": "Copy",
+      "paste": "Paste",
+      "copyPath": "Copy path",
+      "reveal": "Show in Explorer",
+      "delete": "Delete"
+    }
   },
   "terminal": {
     "exited": "[Process exited]",

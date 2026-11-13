@@ -1451,10 +1451,11 @@ describe("AgentRuntime browser tools", () => {
     expect(plainTools.map((tool) => tool.function.name)).toContain("task");
     // 治理默认 goal：根 runtime 多挂 admit 控制面工具
     expect(plainTools.map((tool) => tool.function.name)).toContain("admit");
+    expect(plainTools.map((tool) => tool.function.name)).toContain("session_search");
     // 14 个内置工具 + admit + read_video + diagnostics + memory 三件 + tool_search
     // + web_fetch（localhost 没有搜索后端，web_search 被撤下）
-    // + job / git / delete_file / move_file / apply_patch
-    expect(plainTools).toHaveLength(27);
+    // + job / git / delete_file / move_file / apply_patch + session_search
+    expect(plainTools).toHaveLength(28);
   });
 
   it("dispatches browser tool calls to the host without approval and emits tool events", async () => {
@@ -4005,6 +4006,23 @@ describe("cold resume pre-shrink (cache TTL expired)", () => {
     ).providerRequestMeta;
   }
 
+  /** 基线按「会话 × provider」存，按 provider 后缀取当前会话那一条。 */
+  function metaKeyOf(runtime: InstanceType<typeof AgentRuntime>, providerId: string) {
+    for (const key of metaMapOf(runtime).keys()) {
+      if (key.endsWith(`:${providerId}`)) return key;
+    }
+    throw new Error(`no prefix meta for provider ${providerId}`);
+  }
+
+  /** 把「上次触缓存」的时间点推到 TTL 之外，模拟冷恢复。 */
+  function ageMeta(runtime: InstanceType<typeof AgentRuntime>, providerId: string, ms: number) {
+    const map = metaMapOf(runtime);
+    const key = metaKeyOf(runtime, providerId);
+    const meta = map.get(key);
+    if (!meta) throw new Error(`no prefix meta for provider ${providerId}`);
+    map.set(key, { key: meta.key, at: Date.now() - ms });
+  }
+
   /**
    * 三个大文件读取。返回每次请求时的消息快照——mock 记录的是同一个数组引用，
    * agent loop 会在响应后把 assistant/tool 消息原地追加进去。
@@ -4076,8 +4094,7 @@ describe("cold resume pre-shrink (cache TTL expired)", () => {
   it("shrinks old tool outputs after the TTL and persists the digests", async () => {
     const { runtime, workspace } = await makeColdRuntime([anthropicProvider]);
     const snapshots = await seedThreeReads(runtime, workspace);
-    const meta = metaMapOf(runtime).get("p");
-    metaMapOf(runtime).set("p", { key: meta!.key, at: Date.now() - 10 * 60_000 });
+    ageMeta(runtime, "p", 10 * 60_000);
 
     await runtime.prompt("continue");
 
@@ -4100,8 +4117,7 @@ describe("cold resume pre-shrink (cache TTL expired)", () => {
     const before = (
       await readFile(runtime.current!.filePath, "utf8")
     ).split('"type":"tool_digest"').length;
-    const freshMeta = metaMapOf(runtime).get("p");
-    metaMapOf(runtime).set("p", { key: freshMeta!.key, at: Date.now() - 10 * 60_000 });
+    ageMeta(runtime, "p", 10 * 60_000);
     await runtime.prompt("third");
     const after = (
       await readFile(runtime.current!.filePath, "utf8")
@@ -4132,8 +4148,7 @@ describe("cold resume pre-shrink (cache TTL expired)", () => {
       },
     ]);
     const snapshots = await seedThreeReads(runtime, workspace);
-    const meta = metaMapOf(runtime).get("p");
-    metaMapOf(runtime).set("p", { key: meta!.key, at: Date.now() - 10 * 60_000 });
+    ageMeta(runtime, "p", 10 * 60_000);
 
     await runtime.prompt("continue");
 

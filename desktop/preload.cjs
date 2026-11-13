@@ -233,6 +233,24 @@ contextBridge.exposeInMainWorld("meow", {
   openWithIcons: (exes) => ipcRenderer.invoke("meow:open-with-icons", exes),
   openWithApp: (exe, target) => ipcRenderer.invoke("meow:open-with-app", exe, target),
   showInFolder: (target) => ipcRenderer.invoke("meow:show-in-folder", target),
+  /** 文件页签右键菜单：删除到回收站；返回错误信息或 null */
+  workspaceTrash: (relative) => ipcRenderer.invoke("meow:workspace-trash", relative),
+  /** 文件页签右键菜单：把复制过的文件粘贴到目标目录 */
+  workspacePaste: (sourceRelative, destDirRelative, copySuffix) =>
+    ipcRenderer.invoke("meow:workspace-paste", sourceRelative, destDirRelative, copySuffix),
+  /** 设置 → 存储：磁盘占用统计（force = 跳过快取缓存重新扫描） */
+  storageUsage: (force) => ipcRenderer.invoke("meow:storage-usage", force === true),
+  /** 设置 → 工作树：列出托管的工作树 */
+  worktreesList: () => ipcRenderer.invoke("meow:worktrees-list"),
+  /** 设置 → 工作树：手动删除一份托管工作树 */
+  worktreeDelete: (target, referencedPaths) =>
+    ipcRenderer.invoke("meow:worktree-delete", target, referencedPaths),
+  /** 设置 → 连接：拼 ssh 命令行 / 无交互测试 / 选择私钥 */
+  sshCommand: (connection) => ipcRenderer.invoke("meow:ssh-command", connection),
+  sshTest: (connection) => ipcRenderer.invoke("meow:ssh-test", connection),
+  pickPrivateKey: () => ipcRenderer.invoke("meow:pick-private-key"),
+  /** 设置 → 使用统计：本地会话 usage 聚合（force = 跳过快取缓存） */
+  usageStats: (force) => ipcRenderer.invoke("meow:usage-stats", force === true),
 
   /** 用系统默认浏览器打开 http/https 链接，返回错误信息或 null */
   openExternal: (url) => ipcRenderer.invoke("meow:open-external", url),

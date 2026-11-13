@@ -271,6 +271,7 @@
     "computerWait": "대기",
     "computerAction": "PC 제어",
     "toolSearch": "도구 검색",
+    "sessionSearch": "지난 세션 검색",
     "webSearch": "웹 검색",
     "webFetch": "웹 페이지 가져오기",
     "deleteFile": "파일 삭제",

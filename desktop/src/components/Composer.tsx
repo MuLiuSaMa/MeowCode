@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 import { LuArrowDown, LuArrowRight, LuArrowUp, LuCheck, LuChevronDown, LuChevronLeft, LuChevronRight, LuCircleAlert, LuEye, LuFileText, LuFolder, LuGitBranch, LuGitFork, LuListChecks, LuLoaderCircle, LuPaperclip, LuPlus, LuPuzzle, LuRotateCw, LuSearch, LuShield, LuShieldCheck, LuSparkles, LuSquare, LuTarget, LuWandSparkles, LuX } from "react-icons/lu";
@@ -17,6 +17,7 @@ import {
   type PluginsOverview,
   type ProviderSettings,
   type AgentProfileId,
+  type AskUserQuestion,
   type HarnessArchitectureSummary,
   type QueuedPrompt,
   type SessionChangeSummary,
@@ -45,7 +46,7 @@ import { ContextPopover } from "./ContextPopover";
 import { AgentProfilePopover } from "./AgentProfilePopover";
 import { ModelPopover, levelsFor } from "./ModelPopover";
 import { findTemplate } from "../data/providerCatalog";
-import { modelIconKey } from "../data/providerIcons";
+import { providerModelIconKey } from "../data/providerIcons";
 import { ProviderIcon } from "./ui/ProviderIcon";
 import { SessionProgressPill } from "./SessionProgressPill";
 import { queuedPreview } from "../user-references";
@@ -443,7 +444,7 @@ export function Composer({
   /** ask_user 澄清问题卡片：模型反问时整个输入框换成引导式点选（可批量多题） */
   askCard?: {
     callId: string;
-    questions: Array<{ question: string; options: string[] }>;
+    questions: AskUserQuestion[];
   } | null;
   onAnswerAsk?: (callId: string, answers: string[]) => void;
   /** 发送：附带当前输入框里的图片（没有图片时不传第二个参数） */
@@ -723,6 +724,43 @@ export function Composer({
   );
   const AgentProfileIcon = agentProfileInfo.icon;
   const activeEffort = isEffortValid(effort, levels) ? effort ?? "" : "";
+  /**
+   * 滑杆拖动缓冲：每个 tick 只更新本地值，停手 160ms 后再提交。
+   * 直接每格调 onChangeEffort 会「PUT /session/model + 落盘 + 整个 App 重渲染」，
+   * 拖动时明显卡顿。
+   */
+  const [effortDraft, setEffortDraft] = useState<string | null>(null);
+  const effortCommitTimer = useRef<number | null>(null);
+  const displayEffort = effortDraft ?? activeEffort;
+  const handleEffortChange = useCallback(
+    (value: string) => {
+      if (!isEffortValid(value, levels)) return;
+      setEffortDraft(value);
+      if (effortCommitTimer.current) window.clearTimeout(effortCommitTimer.current);
+      effortCommitTimer.current = window.setTimeout(() => {
+        effortCommitTimer.current = null;
+        onChangeEffort(value);
+      }, 160);
+    },
+    [levels, onChangeEffort],
+  );
+  // 全局值追上草稿后清掉缓冲；切模型/服务商时丢弃草稿，避免把旧档位带过去
+  useEffect(() => {
+    if (effortDraft !== null && effortDraft === effort) setEffortDraft(null);
+  }, [effort, effortDraft]);
+  useEffect(() => {
+    setEffortDraft(null);
+    if (effortCommitTimer.current) {
+      window.clearTimeout(effortCommitTimer.current);
+      effortCommitTimer.current = null;
+    }
+  }, [activeProviderId, model]);
+  useEffect(
+    () => () => {
+      if (effortCommitTimer.current) window.clearTimeout(effortCommitTimer.current);
+    },
+    [],
+  );
   const enabledProviders = useMemo(() => providers.filter((item) => item.enabled !== false), [providers]);
   /** 审批模式菜单项：表里只有 key，文案在这里随语言重建 */
   const permissionOptions = useMemo(
@@ -1372,21 +1410,33 @@ export function Composer({
               ) : (
                 <p className="mc-planconfirm__sub">{t("plan.answerSub")}</p>
               )}
-              {current.options.map((option, oIndex) => (
-                <button
-                  key={`${oIndex}-${option}`}
-                  type="button"
-                  className="mc-planconfirm__option"
-                  data-primary={oIndex === 0}
-                  onClick={() => next(option)}
-                >
-                  <span className="mc-planconfirm__num">
-                    {String.fromCharCode(65 + oIndex)}
-                  </span>
-                  <span className="mc-planconfirm__label">{option}</span>
-                  <LuArrowRight size={15} className="mc-planconfirm__arrow" />
-                </button>
-              ))}
+              {current.options.map((option, oIndex) => {
+                // 模型给的补充说明跟选项按同下标对齐；没有就只显示标题
+                const description = current.descriptions?.[oIndex]?.trim() ?? "";
+                return (
+                  <button
+                    key={`${oIndex}-${option}`}
+                    type="button"
+                    className="mc-planconfirm__option"
+                    data-primary={oIndex === 0}
+                    onClick={() => next(option)}
+                  >
+                    <span className="mc-planconfirm__num">
+                      {String.fromCharCode(65 + oIndex)}
+                    </span>
+                    <span
+                      className="mc-planconfirm__label"
+                      data-stacked={description ? "true" : undefined}
+                    >
+                      <span>{option}</span>
+                      {description ? (
+                        <span className="mc-planconfirm__desc">{description}</span>
+                      ) : null}
+                    </span>
+                    <LuArrowRight size={15} className="mc-planconfirm__arrow" />
+                  </button>
+                );
+              })}
               <div
                 className="mc-planconfirm__option"
                 data-field="true"
@@ -2400,20 +2450,20 @@ export function Composer({
                   className="mc-composer__model"
                   aria-haspopup="dialog"
                   aria-expanded={menuOpen}
-                  aria-label={`${model}${activeEffort ? ` · ${effortLabel(activeEffort, levels)}` : ""}`}
-                  title={`${model}${activeEffort ? ` · ${effortLabel(activeEffort, levels)}` : ""}`}
+                  aria-label={`${model}${displayEffort ? ` · ${effortLabel(displayEffort, levels)}` : ""}`}
+                  title={`${model}${displayEffort ? ` · ${effortLabel(displayEffort, levels)}` : ""}`}
                   onClick={() => setMenuOpen((open) => !open)}
                 >
                   {/* 模型品牌 Logo：与模型弹层列表同一套图标（iconKey 优先于服务商模板图标） */}
                   {activeProvider ? (
                     <ProviderIcon
                       template={findTemplate(activeProvider.templateId)}
-                      iconKey={modelIconKey(activeProvider.model) ?? "meow"}
+                      iconKey={providerModelIconKey(activeProvider)}
                       size={18}
                     />
                   ) : null}
                   <span className="mc-truncate mc-composer__modelname">{model}</span>
-                  <span className="mc-composer__effort">{effortLabel(activeEffort, levels)}</span>
+                  <span className="mc-composer__effort">{effortLabel(displayEffort, levels)}</span>
                   <LuChevronDown size={13} className="mc-composer__modelchev" />
                 </button>
                 {menuOpen ? (
@@ -2422,9 +2472,9 @@ export function Composer({
                     activeProviderId={activeProviderId}
                     model={model}
                     levels={levels}
-                    effort={activeEffort}
+                    effort={displayEffort}
                     anchorRef={modelButtonRef}
-                    onChange={onChangeEffort}
+                    onChange={handleEffortChange}
                     onChangeActive={onChangeActiveProvider}
                     onManageModels={() => {
                       setMenuOpen(false);

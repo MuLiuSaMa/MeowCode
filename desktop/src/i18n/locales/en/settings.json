@@ -45,7 +45,12 @@
     "learning": "Self-learning",
     "rewind": "Session rewind",
     "sandbox": "Sandbox",
-    "approvals": "Approval rules"
+    "approvals": "Approval rules",
+    "storage": "Storage",
+    "connections": "Connections",
+    "usage": "Usage",
+    "webSearch": "Web search",
+    "agents": "Subagents"
   },
   "island": {
     "section": "AI Floating Island",
@@ -68,18 +73,37 @@
     "desc": "New versions download quietly in the background; when ready, a restart button appears in the lower-left corner of the sidebar to install."
   },
   "worktree": {
-    "section": "Worktrees",
+    "create": {
+      "section": "Create & clean up"
+    },
+    "root": {
+      "label": "Worktree root directory",
+      "hint": "Leave empty to use the default location. Restart the app for changes to take effect.",
+      "open": "Open folder"
+    },
     "fetch": {
-      "label": "Fetch upstream before creating",
-      "hint": "Fetch upstream updates before creating a worktree."
+      "label": "Always fetch upstream before creating a worktree",
+      "hint": "Fetch upstream first when creating; skipped when offline or no remote is configured."
     },
     "cleanup": {
-      "label": "Automatically remove old worktrees",
-      "hint": "Recommended for most users. Turn off only if you want to manage old worktrees and disk usage yourself."
+      "label": "Automatically delete old worktrees",
+      "hint": "Saves a recovery snapshot first."
     },
     "maxKeep": {
-      "label": "Worktree limit",
-      "hint": "Once the limit is exceeded, the oldest worktrees are cleaned up automatically. A Git backup is created before deletion, so removed worktrees can always be restored."
+      "label": "Worktrees to keep",
+      "hint": "Older worktrees are deleted automatically. Worktrees used by pinned or running chats are kept."
+    },
+    "confirmDelete": {
+      "label": "Ask before deleting a worktree"
+    },
+    "managed": {
+      "title": "Managed worktrees",
+      "refresh": "Refresh",
+      "loading": "Loading…",
+      "empty": "No worktrees yet",
+      "inUse": "In use",
+      "delete": "Delete",
+      "confirm": "Confirm delete"
     }
   },
   "rules": {
@@ -261,6 +285,8 @@
     "count_many": "{{count}} models configured",
     "add": "Add Model",
     "empty": "No models configured yet. Click “Add Model” to get started.",
+    "managedBadge": "Managed by magpie",
+    "managedHint": "These models come from magpie. Restart MeowCode after magpie connects or disconnects to refresh. The enabled state and reasoning effort are kept.",
     "deleteTitle": "Delete provider",
     "deleteMessage": "Delete \"{{name}}\"? You will need to set it up again before it can be used.",
     "restartTitle": "Saving restarts the local service",
@@ -653,5 +679,168 @@
       "command-prefix": "Command prefix"
     },
     "loading": "Loading…"
+  },
+  "storage": {
+    "device": "This device",
+    "deviceDesc": "Manage chats and worktrees stored on this computer.",
+    "used": "MeowCode is using {{size}}",
+    "refresh": "Refresh",
+    "barAria": "Storage usage breakdown",
+    "categories": {
+      "chats": "Chats",
+      "subagents": "Subagents",
+      "archived": "Archived chats",
+      "worktrees": "Worktrees",
+      "other": "Other"
+    },
+    "clean": {
+      "title": "Clean old chats",
+      "hint": "Review chats and their subagents before deleting them permanently.",
+      "action": "Review",
+      "dialogTitle": "Clean old chats",
+      "dialogDesc": "Deleting permanently removes the session files and their subagents; oldest first.",
+      "empty": "Nothing to clean up",
+      "untitled": "Untitled chat",
+      "delete": "Delete",
+      "confirm": "Confirm delete",
+      "close": "Close"
+    },
+    "worktrees": {
+      "title": "Manage worktrees",
+      "hint": "Review working copies and choose how many old worktrees to keep.",
+      "action": "Manage"
+    },
+    "archived": {
+      "title": "Archived chats",
+      "hint": "Restore or delete individual archived chats.",
+      "action": "Manage"
+    }
+  },
+  "connections": {
+    "section": "SSH connections",
+    "desc": "Manage SSH settings for remote servers. Passwords are never saved; enter them in the terminal when connecting.",
+    "create": "New connection",
+    "empty": "No SSH connections yet",
+    "connect": "Connect",
+    "test": "Test",
+    "testing": "Testing…",
+    "testSuccess": "Connected",
+    "testFailed": "Connection failed",
+    "testPassword": "Password auth can't be tested automatically. Connect and enter the password in the terminal.",
+    "auth": {
+      "agent": "SSH agent / default key",
+      "key": "Private key file",
+      "password": "Password (entered on connect)"
+    },
+    "form": {
+      "titleNew": "New SSH connection",
+      "titleEdit": "Edit SSH connection",
+      "name": "Name",
+      "namePlaceholder": "e.g. Production server",
+      "host": "Host",
+      "hostPlaceholder": "example.com or 192.168.1.10",
+      "port": "Port",
+      "username": "Username",
+      "auth": "Authentication",
+      "privateKey": "Private key",
+      "chooseKey": "Choose private key",
+      "note": "Passwords are not saved; enter them in the terminal after connecting.",
+      "invalid": "Fill in host and username, and make sure the port is valid",
+      "keyRequired": "Choose a private key file"
+    }
+  },
+  "usage": {
+    "section": "Usage",
+    "badge": "App usage",
+    "refresh": "Refresh",
+    "loading": "Counting…",
+    "empty": "No usage recorded yet",
+    "metrics": {
+      "total": "Total tokens",
+      "peak": "Peak tokens",
+      "longestChat": "Longest chat",
+      "currentStreak": "Current streak",
+      "maxStreak": "Longest streak"
+    },
+    "units": {
+      "days": "days",
+      "hours": "h",
+      "minutes": "min",
+      "tokens": "tokens"
+    },
+    "activity": {
+      "title": "Token activity",
+      "daily": "Daily",
+      "weekly": "Weekly",
+      "cumulative": "Cumulative"
+    },
+    "range": {
+      "label": "Range",
+      "d7": "Last 7 days",
+      "d30": "Last 30 days"
+    },
+    "trend": {
+      "title": "Daily token trend"
+    },
+    "models": {
+      "title": "Usage by model",
+      "other": "Other models"
+    },
+    "unknownModel": "Unknown model"
+  },
+  "webSearch": {
+    "section": "Web search & fetch",
+    "desc": "Choose separate providers for search and fetch. \"Auto\" follows the current model's capabilities and never silently switches providers.",
+    "search": {
+      "label": "Search provider",
+      "hint": "When off, the model doesn't see the web_search tool; web fetching is unaffected."
+    },
+    "searchOptions": {
+      "auto": "Auto (follow current model)",
+      "providerNative": "Provider-native search",
+      "deepseek": "DeepSeek Search API",
+      "off": "Turn off web search"
+    },
+    "fetch": {
+      "label": "Fetch provider",
+      "hint": "DeepSeek Fetch API uses the key below; without a key, the current model must be DeepSeek."
+    },
+    "fetchOptions": {
+      "auto": "Auto (DeepSeek uses API, otherwise local)",
+      "http": "Local HTTP fetch",
+      "deepseek": "DeepSeek Fetch API"
+    },
+    "originalQuestion": {
+      "label": "Send original question",
+      "hint": "Send the latest user question (up to 128 characters) with DeepSeek searches for better results."
+    },
+    "deepseekKey": {
+      "label": "DeepSeek API key",
+      "hint": "Used to call the official Search / Fetch API when the current model isn't DeepSeek. Stored encrypted on this device.",
+      "placeholder": "sk-…",
+      "saved": "Saved; leave empty to keep it",
+      "clear": "Clear"
+    }
+  },
+  "agents": {
+    "section": "Subagents",
+    "desc": "Subagents, parallel limits and prompts per main agent. New subagents are written into that architecture and connected to the main agent by default.",
+    "limit": {
+      "label": "Parallel"
+    },
+    "add": "Add subagent",
+    "addTitle": "Add subagent",
+    "editTitle": "Edit subagent prompt",
+    "name": "Name",
+    "namePlaceholder": "e.g. Security reviewer",
+    "roleLabel": "Role",
+    "promptLabel": "Prompt",
+    "promptHint": "Leave empty to use the role's built-in prompt.",
+    "added": "Added and connected to the main agent",
+    "saved": "Prompt saved",
+    "editPrompt": "Edit prompt",
+    "customPrompt": "Customized",
+    "loading": "Loading…",
+    "empty": "No subagents yet"
   }
 }

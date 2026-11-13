@@ -37,7 +37,13 @@ function definitionKey(definition: ToolDefinition): string {
   });
 }
 
-function fingerprintTools(tools: ToolDefinition[]): string {
+/**
+ * 工具块字节指纹（sha1）：name + description + parameters。
+ *
+ * 导出给缓存诊断用 —— 诊断必须对**实际发出去的**工具表取指纹（`before_provider_request`
+ * 这类 hook 可以改写 tools），不能拿目录里我们自己认为的版本。
+ */
+export function fingerprintTools(tools: readonly ToolDefinition[]): string {
   const hash = createHash("sha1");
   for (const tool of tools) {
     hash.update(tool.function.name).update("\0").update(definitionKey(tool)).update("\0");

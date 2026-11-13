@@ -255,6 +255,7 @@ describe("SessionStore", () => {
     expect(loaded.effectiveMessages).toHaveLength(1);
     expect(loaded.usageTotals).toEqual({
       inputTokens: 150,
+      uncachedInputTokens: 0,
       outputTokens: 30,
       cacheReadTokens: 60,
       cacheWriteTokens: 0,
@@ -263,6 +264,47 @@ describe("SessionStore", () => {
       hasUsage: true,
     });
     expect((await listSessions(dir))[0].messageCount).toBe(1);
+  });
+
+  it("counts only the main conversation and dedupes a round's repeated reports", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "meowcode-sessions-"));
+    const filePath = path.join(dir, "session.jsonl");
+    const session = await SessionStore.create(filePath, "D:/work");
+    await session.appendMessage({ role: "user", content: "hi" });
+    // 同一轮先落一次流中断快照，成功后再落一次最终值：只算后者
+    await session.appendUsage({
+      inputTokens: 900,
+      outputTokens: 0,
+      cacheReadTokens: 800,
+      roundId: "r1",
+    });
+    await session.appendUsage({
+      inputTokens: 1_000,
+      outputTokens: 20,
+      cacheReadTokens: 800,
+      uncachedInputTokens: 200,
+      roundId: "r1",
+    });
+    // 旁路调用（标题/压缩/记忆）不进对话口径，否则切会话后数字会跳变
+    await session.appendUsage({ inputTokens: 5_000, outputTokens: 300, source: "title" });
+    await session.appendUsage({
+      inputTokens: 2_000,
+      outputTokens: 100,
+      cacheReadTokens: 2_000,
+      source: "compaction",
+    });
+
+    const loaded = await SessionStore.load(filePath);
+    expect(loaded.usageTotals).toEqual({
+      inputTokens: 1_000,
+      uncachedInputTokens: 200,
+      outputTokens: 20,
+      cacheReadTokens: 800,
+      cacheWriteTokens: 0,
+      cacheInputTokens: 1_000,
+      cacheReported: true,
+      hasUsage: true,
+    });
   });
 
   it("exposes per-call usage samples for the live hit-rate curve", async () => {

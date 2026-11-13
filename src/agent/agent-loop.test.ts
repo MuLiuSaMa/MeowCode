@@ -21,7 +21,14 @@ function assistant(text: string, calls: ToolCall[] = []): ChatMessage {
   } as ChatMessage;
 }
 
-type ScriptItem = { message: ChatMessage; responseId?: string; finishReason?: string } | Error;
+type ScriptItem =
+  | {
+      message: ChatMessage;
+      responseId?: string;
+      finishReason?: string;
+      usage?: { inputTokens?: number; outputTokens?: number; cacheReadTokens?: number };
+    }
+  | Error;
 
 /** 可断言的循环观测记录：宿主各回调的调用轨迹。 */
 type LoopTrace = {
@@ -45,6 +52,7 @@ function createMockHost(options?: {
   script?: ScriptItem[];
   hooks?: AgentLoopHooks;
   isParallelSafe?: (toolName: string) => boolean;
+  turnBudget?: () => { maxRounds?: number; maxTokens?: number | null };
 }): AgentLoopHost & { trace: LoopTrace } {
   const script = [...(options?.script ?? [])];
   const trace: LoopTrace = {
@@ -86,8 +94,10 @@ function createMockHost(options?: {
         message: next.message,
         ...(next.responseId ? { responseId: next.responseId } : {}),
         ...(next.finishReason ? { finishReason: next.finishReason } : {}),
+        ...(next.usage ? { usage: next.usage } : {}),
       });
     },
+    ...(options?.turnBudget ? { turnBudget: options.turnBudget } : {}),
     persistAssistantMessage: async () => {},
     recordUsage: async () => {},
     onMessageComplete: (result) => trace.completed.push(result.message.content ?? ""),
@@ -308,6 +318,24 @@ describe("runAgentLoop 薄循环", () => {
       host.trace.streams[1].some((m) => m.role === "user" && m.content === "[compacted]"),
     ).toBe(true);
     expect(host.trace.completed).toEqual(["recovered"]);
+  });
+
+  it("溢出压缩后回合预算回血：已经花掉的账不再压着后续轮次", async () => {
+    const host = createMockHost({
+      turnBudget: () => ({ maxRounds: 20, maxTokens: 50_000 }),
+      script: [
+        // 首轮就攒掉大半预算
+        { message: assistant("", [toolCall("c1", "read_file")]), usage: { inputTokens: 40_000 } },
+        new ProviderRequestError(413, "payload too large"),
+        // 压缩后的重试轮再记 4 万：不回血就是 8 万，下一轮轮首会被 token 预算硬停
+        { message: assistant("", [toolCall("c2", "read_file")]), usage: { inputTokens: 40_000 } },
+        { message: assistant("recovered"), usage: { inputTokens: 40_000 } },
+      ],
+    });
+    await runAgentLoop(host);
+    expect(host.trace.escalateCalls).toEqual([0]);
+    expect(host.trace.completed).toEqual(["recovered"]);
+    expect(host.trace.errors).toEqual([]);
   });
 
   it("截断的工具调用：不执行，补配对结果并报错结束", async () => {

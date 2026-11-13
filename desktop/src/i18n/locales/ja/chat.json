@@ -271,6 +271,7 @@
     "computerWait": "待機",
     "computerAction": "PC 操作",
     "toolSearch": "ツールを検索",
+    "sessionSearch": "過去のセッションを検索",
     "webSearch": "ウェブ検索",
     "webFetch": "ページ取得",
     "deleteFile": "ファイル削除",

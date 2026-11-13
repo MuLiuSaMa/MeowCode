@@ -1,0 +1,417 @@
+/* 设置 → 使用统计：指标卡 + 52 周热力图 + 多模型趋势 + 环形模型分布 */
+
+.mc-usage__pagehead {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.mc-usage__title {
+  margin: 0;
+  font-size: var(--fs-xl, 20px);
+  font-weight: var(--fw-semibold);
+  letter-spacing: -0.01em;
+  color: var(--fg);
+}
+
+.mc-usage__badge {
+  padding: 2px 10px;
+  border-radius: var(--radius-full);
+  background: var(--surface-hover);
+  color: var(--fg-subtle);
+  font-size: var(--fs-caption);
+  white-space: nowrap;
+}
+
+.mc-usage__refresh {
+  margin-left: auto;
+}
+
+.mc-usage__empty {
+  margin: 0;
+  padding: 28px 16px;
+  text-align: center;
+  font-size: var(--fs-caption);
+  color: var(--fg-subtlest);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+}
+
+/* ---- 五项指标：单卡、竖线分隔 ---- */
+.mc-usage__metrics {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  padding: 16px 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  corner-shape: superellipse(1.5);
+  background: var(--surface);
+}
+
+.mc-usage__metric {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 0 10px;
+  text-align: center;
+}
+
+.mc-usage__metric + .mc-usage__metric {
+  border-left: 1px solid var(--border);
+}
+
+.mc-usage__metricvalue {
+  font-size: 18px;
+  font-weight: var(--fw-semibold);
+  color: var(--fg);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+  font-variant-numeric: tabular-nums;
+}
+
+.mc-usage__metriclabel {
+  font-size: var(--fs-caption);
+  color: var(--fg-subtle);
+  white-space: nowrap;
+}
+
+/* ---- 通用面板 ---- */
+.mc-usage__panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 16px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  corner-shape: superellipse(1.5);
+  background: var(--surface);
+}
+
+.mc-usage__panelhead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.mc-usage__paneltitle {
+  margin: 0;
+  font-size: var(--fs-base);
+  font-weight: var(--fw-semibold);
+  color: var(--fg);
+}
+
+/* ---- 胶囊页签（每日/每周/累计、近 7 日/近 30 日） ---- */
+.mc-usage__tabs {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  border-radius: var(--radius-full);
+  background: var(--surface-hover);
+}
+
+.mc-usage__tab {
+  padding: 3px 12px;
+  border: 0;
+  border-radius: var(--radius-full);
+  background: transparent;
+  color: var(--fg-subtle);
+  font-family: inherit;
+  font-size: var(--fs-caption);
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background-color var(--dur) var(--ease), color var(--dur) var(--ease);
+}
+
+.mc-usage__tab:hover {
+  color: var(--fg);
+}
+
+.mc-usage__tab[data-active="true"] {
+  background: var(--bg-elevated);
+  color: var(--fg);
+}
+
+/* ---- Token 活动热力图 ---- */
+.mc-usage__heat {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  gap: 3px;
+}
+
+.mc-usage__heatcol {
+  display: grid;
+  grid-template-rows: repeat(7, 1fr);
+  gap: 3px;
+  min-width: 0;
+}
+
+.mc-usage__heatcell {
+  aspect-ratio: 1;
+  border-radius: 3px;
+  background: var(--surface-hover);
+  transition: background-color var(--dur) var(--ease);
+}
+
+.mc-usage__heatcell[data-level="1"] {
+  background: color-mix(in srgb, var(--accent) 28%, transparent);
+}
+
+.mc-usage__heatcell[data-level="2"] {
+  background: color-mix(in srgb, var(--accent) 48%, transparent);
+}
+
+.mc-usage__heatcell[data-level="3"] {
+  background: color-mix(in srgb, var(--accent) 72%, transparent);
+}
+
+.mc-usage__heatcell[data-level="4"] {
+  background: var(--accent);
+}
+
+.mc-usage__heatcell[data-future="true"] {
+  opacity: 0.45;
+}
+
+/* 每日模式只高亮当前格；每周/累计按整列高亮 */
+.mc-usage__heat[data-mode="daily"] .mc-usage__heatcell:hover {
+  outline: 1px solid var(--fg-subtlest);
+  outline-offset: 1px;
+}
+
+.mc-usage__heat[data-mode="weekly"] .mc-usage__heatcol:hover .mc-usage__heatcell,
+.mc-usage__heat[data-mode="cumulative"] .mc-usage__heatcol:hover .mc-usage__heatcell {
+  outline: 1px solid var(--fg-subtlest);
+  outline-offset: 1px;
+}
+
+.mc-usage__months {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  gap: 3px;
+  margin-top: 2px;
+  font-size: var(--fs-caption);
+  color: var(--fg-subtlest);
+}
+
+.mc-usage__months > span {
+  overflow: visible;
+  white-space: nowrap;
+}
+
+/* ---- 时间范围行 ---- */
+.mc-usage__rangebar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 4px;
+}
+
+.mc-usage__rangelabel {
+  font-size: var(--fs-base);
+  font-weight: var(--fw-semibold);
+  color: var(--fg);
+}
+
+/* ---- 趋势图 ---- */
+.mc-usage__legend {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+  font-size: var(--fs-caption);
+  color: var(--fg-subtle);
+}
+
+.mc-usage__legendtag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  max-width: 200px;
+}
+
+.mc-usage__dot {
+  flex-shrink: 0;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.mc-usage__chart {
+  position: relative;
+  height: 180px;
+  padding-top: 6px;
+  cursor: crosshair;
+}
+
+.mc-usage__trendbody {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  animation: mc-usage-switch var(--dur) var(--ease);
+}
+
+@keyframes mc-usage-switch {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.mc-usage__hoverline {
+  position: absolute;
+  top: 6px;
+  bottom: 0;
+  width: 0;
+  border-left: 1px dashed var(--border);
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+.mc-usage__hoverdot {
+  position: absolute;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  box-shadow: 0 0 0 2px var(--surface);
+  pointer-events: none;
+}
+
+.mc-usage__tooltip {
+  position: absolute;
+  z-index: 5;
+  min-width: 170px;
+  max-width: 280px;
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  corner-shape: superellipse(1.5);
+  background: var(--bg-elevated);
+  box-shadow: var(--shadow-lg);
+  pointer-events: none;
+}
+
+.mc-usage__tooltipdate {
+  font-size: var(--fs-caption);
+  color: var(--fg-subtle);
+}
+
+.mc-usage__tooltiprow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  font-size: var(--fs-caption);
+}
+
+.mc-usage__tooltipname {
+  flex: 1;
+  min-width: 0;
+  color: var(--fg);
+}
+
+.mc-usage__tooltipvalue {
+  color: var(--fg);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.mc-usage__chart > svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.mc-usage__xaxis {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: var(--fs-caption);
+  color: var(--fg-subtlest);
+}
+
+/* ---- 模型用量环形图 ---- */
+.mc-usage__donutwrap {
+  display: flex;
+  align-items: center;
+  gap: 32px;
+  padding: 4px 0 2px;
+}
+
+.mc-usage__donut {
+  flex-shrink: 0;
+  width: 240px;
+  height: 240px;
+}
+
+.mc-usage__donutvalue {
+  fill: var(--fg);
+  font-size: 20px;
+  font-weight: var(--fw-semibold);
+}
+
+.mc-usage__donutunit {
+  fill: var(--fg-subtle);
+  font-size: 11px;
+}
+
+.mc-usage__modellist {
+  list-style: none;
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+}
+
+.mc-usage__modelrow {
+  padding: 9px 0;
+}
+
+.mc-usage__modelrow + .mc-usage__modelrow {
+  border-top: 1px solid var(--border);
+}
+
+.mc-usage__modelmain {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  font-size: var(--fs-base);
+}
+
+.mc-usage__modelname {
+  flex: 1;
+  min-width: 0;
+  color: var(--fg);
+}
+
+.mc-usage__percent {
+  flex-shrink: 0;
+  color: var(--fg);
+  font-variant-numeric: tabular-nums;
+}
+
+.mc-usage__modeltokens {
+  display: block;
+  margin: 2px 0 0 16px;
+  font-size: var(--fs-caption);
+  color: var(--fg-subtle);
+  font-variant-numeric: tabular-nums;
+}

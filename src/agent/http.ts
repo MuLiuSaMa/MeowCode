@@ -5,6 +5,9 @@ import { applyProxy } from "./proxy.js";
 const RETRYABLE_STATUS = new Set([408, 429, 500, 502, 503, 504, 529]);
 const DEFAULT_RESPONSE_TIMEOUT_MS = 45_000;
 
+/** 网关（如 magpie）按 User-Agent 认 agent，用量统计要能认成 MeowCode。 */
+export const MEOWCODE_USER_AGENT = "MeowCode/1.2.1 (+https://github.com/MuLiuSaMa/MeowCode)";
+
 /**
  * 鉴权头风格。缺省（undefined）按协议传统：Anthropic 系用 x-api-key，
  * OpenAI 系用 Authorization: Bearer。少数服务商不认这两样：
@@ -128,6 +131,9 @@ export async function fetchWithRetry(
       const headers = { ...(init.headers as Record<string, string> | undefined) };
       if (!Object.keys(headers).some((key) => key.toLowerCase() === "x-request-id")) {
         headers["x-request-id"] = randomUUID();
+      }
+      if (!Object.keys(headers).some((key) => key.toLowerCase() === "user-agent")) {
+        headers["user-agent"] = MEOWCODE_USER_AGENT;
       }
       // 代理按当前设置决定（直连时原样返回 init，无额外开销）
       response = await fetch(input, applyProxy({ ...init, headers, signal }, String(input)));

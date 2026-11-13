@@ -54,6 +54,17 @@ export type SearchSnippet = {
   role: "user" | "assistant";
 };
 
+/** 命中前后的上下文消息：给 agent 工具用，UI 搜索默认不生成。 */
+export type SearchContextMessage = {
+  role: "user" | "assistant";
+  text: string;
+  messageIndex: number;
+  /** 是否为命中的那条消息 */
+  matched?: boolean;
+  /** 原文超过截断上限 */
+  truncated?: boolean;
+};
+
 export type SessionSearchHit = {
   sessionId: string;
   filePath: string;
@@ -63,12 +74,16 @@ export type SessionSearchHit = {
   titleMatch: boolean;
   totalMatches: number;
   snippets: SearchSnippet[];
+  /** 仅当调用方要求 hydrate 且该命中在前 N 条内时提供 */
+  context?: SearchContextMessage[];
 };
 
 export type SearchResult = {
   query: string;
   hits: SessionSearchHit[];
   scanned: number;
+  /** 无法解析 header 的会话文件数 */
+  skipped: number;
   reindexed: number;
   truncated: boolean;
 };
@@ -309,6 +324,30 @@ function buildDocSnippets(doc: SearchDoc, query: string): { snippets: SearchSnip
   return { snippets, matches: positions.length };
 }
 
+/** 命中前后的上下文窗口：只取影子索引里已有的 user/assistant 正文。 */
+const CONTEXT_RADIUS = 2;
+const CONTEXT_MAX_MESSAGES = 5;
+const CONTEXT_MESSAGE_CHARS = 480;
+
+function buildHitContext(docs: SearchDoc[], hit: SessionSearchHit): SearchContextMessage[] | undefined {
+  const anchorIndex = hit.snippets[0]?.messageIndex;
+  if (anchorIndex === undefined) return undefined;
+  const anchorPosition = docs.findIndex((doc) => doc.messageIndex === anchorIndex);
+  if (anchorPosition < 0) return undefined;
+  const start = Math.max(0, anchorPosition - CONTEXT_RADIUS);
+  const end = Math.min(docs.length, anchorPosition + CONTEXT_RADIUS + 1);
+  return docs.slice(start, end).slice(0, CONTEXT_MAX_MESSAGES).map((doc) => {
+    const text = doc.text.slice(0, CONTEXT_MESSAGE_CHARS);
+    return {
+      role: doc.role,
+      text,
+      messageIndex: doc.messageIndex,
+      ...(doc.messageIndex === anchorIndex ? { matched: true } : {}),
+      ...(doc.text.length > CONTEXT_MESSAGE_CHARS ? { truncated: true } : {}),
+    };
+  });
+}
+
 function matchTitle(title: string | null, query: string): boolean {
   if (!title) return false;
   const { haystack, needle } = foldPair(title, query);
@@ -452,10 +491,23 @@ function pruneOrphanShadows(sessionsDir: string, liveFiles: Set<string>): void {
 export async function searchSessions(
   sessionsDir: string,
   query: string,
-  options: { limit?: number; workspace?: string | null } = {},
+  options: {
+    limit?: number;
+    workspace?: string | null;
+    excludeSessionId?: string | null;
+    /** 为前 N 条命中附上前后各 2 条消息的上下文窗口 */
+    hydrate?: number;
+  } = {},
 ): Promise<SearchResult> {
   const trimmed = query.trim().slice(0, MAX_QUERY_CHARS);
-  const empty: SearchResult = { query: trimmed, hits: [], scanned: 0, reindexed: 0, truncated: false };
+  const empty: SearchResult = {
+    query: trimmed,
+    hits: [],
+    scanned: 0,
+    skipped: 0,
+    reindexed: 0,
+    truncated: false,
+  };
   if (!trimmed) return empty;
 
   let names: string[] = [];
@@ -486,11 +538,19 @@ export async function searchSessions(
 
   const limit = options.limit && options.limit > 0 ? Math.min(Math.floor(options.limit), MAX_LIMIT) : DEFAULT_LIMIT;
   const workspace = options.workspace?.trim() || null;
+  const excludeSessionId = options.excludeSessionId?.trim() || null;
+  const hydrate = Math.max(0, Math.floor(options.hydrate ?? 0));
   let truncated = false;
+  let skipped = 0;
   const hits: SessionSearchHit[] = [];
+  const entriesBySession = new Map<string, CachedIndex>();
 
   for (const { file, entry } of entries) {
-    if (!entry || !entry.sessionId) continue;
+    if (!entry || !entry.sessionId) {
+      skipped += 1;
+      continue;
+    }
+    if (excludeSessionId && entry.sessionId === excludeSessionId) continue;
     if (workspace && !samePath(entry.cwd, workspace)) continue;
     if (entry.truncatedDocs > 0) truncated = true;
 
@@ -518,6 +578,7 @@ export async function searchSessions(
       totalMatches,
       snippets,
     });
+    entriesBySession.set(entry.sessionId, entry);
   }
 
   hits.sort((a, b) => {
@@ -529,10 +590,20 @@ export async function searchSessions(
 
   pruneOrphanShadows(sessionsDir, new Set(files.map((file) => file.name)));
 
+  const topHits = hits.slice(0, limit);
+  if (hydrate > 0) {
+    for (const hit of topHits.slice(0, hydrate)) {
+      const entry = entriesBySession.get(hit.sessionId);
+      const context = entry ? buildHitContext(entry.docs, hit) : undefined;
+      if (context) hit.context = context;
+    }
+  }
+
   return {
     query: trimmed,
-    hits: hits.slice(0, limit),
+    hits: topHits,
     scanned: files.length,
+    skipped,
     reindexed,
     truncated,
   };

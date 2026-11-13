@@ -62,7 +62,11 @@ describe("streamResponses", () => {
 
     expect(result.message.content).toBe("partial");
     expect(result.finishReason).toBe("length");
-    expect(result.usage).toEqual({ inputTokens: 3, outputTokens: 2 });
+    expect(result.usage).toEqual({
+      inputTokens: 3,
+      uncachedInputTokens: 3,
+      outputTokens: 2,
+    });
   });
 
   it("parses cache read and write tokens from input_tokens_details", async () => {
@@ -96,6 +100,8 @@ describe("streamResponses", () => {
     });
     expect(result.usage).toEqual({
       inputTokens: 100,
+      // 全部输入要么命中要么写入，没有真正未缓存的输入
+      uncachedInputTokens: 0,
       outputTokens: 5,
       cacheReadTokens: 80,
       cacheWriteTokens: 20,
@@ -174,7 +180,12 @@ describe("streamResponses", () => {
       tools: [],
       onDelta: () => undefined,
     });
-    expect(result.usage).toEqual({ inputTokens: 100, outputTokens: 5, cacheReadTokens: 80 });
+    expect(result.usage).toEqual({
+      inputTokens: 100,
+      uncachedInputTokens: 20,
+      outputTokens: 5,
+      cacheReadTokens: 80,
+    });
   });
 
   it("rejects response.failed", async () => {

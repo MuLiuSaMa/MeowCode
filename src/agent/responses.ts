@@ -394,6 +394,15 @@ export async function streamResponses(options: {
         const cacheWriteTokens = reported.input_tokens_details?.cache_write_tokens;
         usage = {
           inputTokens: reported.input_tokens,
+          // input_tokens 已含命中部分；扣掉 cached 与 write 才是真正没走缓存的输入
+          ...(reported.input_tokens !== undefined
+            ? {
+                uncachedInputTokens: Math.max(
+                  0,
+                  reported.input_tokens - (cachedTokens ?? 0) - (cacheWriteTokens ?? 0),
+                ),
+              }
+            : {}),
           outputTokens: reported.output_tokens,
           ...(cachedTokens !== undefined ? { cacheReadTokens: cachedTokens } : {}),
           ...(cacheWriteTokens !== undefined ? { cacheWriteTokens } : {}),
@@ -401,6 +410,7 @@ export async function streamResponses(options: {
         if (
           reportedUsage === undefined ||
           reportedUsage.inputTokens !== usage.inputTokens ||
+          reportedUsage.uncachedInputTokens !== usage.uncachedInputTokens ||
           reportedUsage.outputTokens !== usage.outputTokens ||
           reportedUsage.cacheReadTokens !== usage.cacheReadTokens ||
           reportedUsage.cacheWriteTokens !== usage.cacheWriteTokens

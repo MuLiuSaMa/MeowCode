@@ -1013,12 +1013,15 @@ export class SessionStore {
   /** 落一条模型调用用量；用于切换会话/重启后恢复右侧 token 与缓存统计。 */
   async appendUsage(usage: {
     inputTokens?: number;
+    uncachedInputTokens?: number;
     outputTokens?: number;
     cacheReadTokens?: number;
     cacheWriteTokens?: number;
     /** 本轮生成速度（output token / 秒）；实时速度曲线回放用 */
     tokensPerSecond?: number;
     source?: UsageSource;
+    /** 模型调用轮次 id：同一轮多次上报靠它去重 */
+    roundId?: string;
     turnId?: string;
     providerId?: string;
     model?: string;
@@ -1375,11 +1378,16 @@ export class SessionStore {
   }
 
   /**
-   * 会话累计用量。缓存命中率分母只累计"服务商报告了缓存读取"的调用，
-   * 与前端实时口径一致，避免部分网关不上报时被稀释。
+   * 会话累计用量。只统计主对话（source === "chat"）。
+   *
+   * 两个口径必须与前端实时链路一致，否则切会话/重载后数字会跳变：
+   *  - 排除标题 / 压缩 / 记忆 / 学习 / 建议这些旁路调用（实时链路本来就不累计它们）；
+   *  - 同一轮 `roundId` 有多条时后写覆盖先写（流中断记一笔、重试成功再记一笔）。
+   * 旧记录没有 roundId，按「一次调用只落一条 final」的历史纪律逐条累加。
    */
   get usageTotals(): {
     inputTokens: number;
+    uncachedInputTokens: number;
     outputTokens: number;
     cacheReadTokens: number;
     cacheWriteTokens: number;
@@ -1387,17 +1395,27 @@ export class SessionStore {
     cacheReported: boolean;
     hasUsage: boolean;
   } {
+    const merged = new Map<string, Extract<SessionEntry, { type: "usage" }>>();
+    let legacy = 0;
+    for (const entry of this.entries) {
+      if (entry.type !== "usage") continue;
+      if ((entry.source ?? "chat") !== "chat") continue;
+      merged.set(entry.roundId ?? `legacy:${legacy++}`, entry);
+    }
     let inputTokens = 0;
+    let uncachedInputTokens = 0;
     let outputTokens = 0;
     let cacheReadTokens = 0;
     let cacheWriteTokens = 0;
     let cacheInputTokens = 0;
     let cacheReported = false;
     let hasUsage = false;
-    for (const entry of this.entries) {
-      if (entry.type !== "usage") continue;
+    for (const entry of merged.values()) {
       hasUsage = true;
       if (typeof entry.inputTokens === "number") inputTokens += entry.inputTokens;
+      if (typeof entry.uncachedInputTokens === "number") {
+        uncachedInputTokens += entry.uncachedInputTokens;
+      }
       if (typeof entry.outputTokens === "number") outputTokens += entry.outputTokens;
       if (typeof entry.cacheReadTokens === "number") {
         cacheReported = true;
@@ -1410,6 +1428,7 @@ export class SessionStore {
     }
     return {
       inputTokens,
+      uncachedInputTokens,
       outputTokens,
       cacheReadTokens,
       cacheWriteTokens,

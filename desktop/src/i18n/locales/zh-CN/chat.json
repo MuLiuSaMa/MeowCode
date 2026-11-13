@@ -271,6 +271,7 @@
     "computerWait": "等待",
     "computerAction": "电脑控制",
     "toolSearch": "搜索工具",
+    "sessionSearch": "搜索历史会话",
     "webSearch": "联网搜索",
     "webFetch": "抓取网页",
     "deleteFile": "删除文件",

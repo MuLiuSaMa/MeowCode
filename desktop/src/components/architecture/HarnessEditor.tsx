@@ -199,6 +199,7 @@ function roleTypeOf(node: HarnessNode): string {
 const NodeCard = memo(
   function NodeCard({
     node,
+    position,
     selected,
     connecting,
     roleOrdinalNum,
@@ -207,6 +208,8 @@ const NodeCard = memo(
     displayName,
   }: {
     node: HarnessNode;
+    /** 未在画布上定位过的节点用兜底坐标显示（不入文档） */
+    position?: { x: number; y: number };
     selected: boolean;
     connecting: boolean;
     /** 同类型子 Agent 的第几个（原始值，便于 memo 比较） */
@@ -232,7 +235,7 @@ const NodeCard = memo(
         data-connecting={connecting}
         style={{
           // 用 transform 定位：移动时只走合成，不触发 layout/重排
-          transform: `translate(${node.position?.x ?? 0}px, ${node.position?.y ?? 0}px)`,
+          transform: `translate(${(position ?? node.position)?.x ?? 0}px, ${(position ?? node.position)?.y ?? 0}px)`,
           width: NODE_W,
           height: NODE_H,
         }}
@@ -775,22 +778,29 @@ export function HarnessEditor({
     onRoleSelect?.(id);
   };
 
+  /**
+   * 删除立即落盘：设置页等其他视图读的是磁盘文档，
+   * 只在画布上删而不保存会出现「架构图里没了、设置里还在」。
+   */
   const deleteSelection = () => {
     if (!selection || !doc) return;
-    if (selection.kind === "node") {
-      mutate((current) => ({
-        ...current,
-        nodes: current.nodes.filter((node) => node.id !== selection.id),
-        edges: current.edges.filter((edge) => edge.source !== selection.id && edge.target !== selection.id),
-      }));
-    } else {
-      mutate((current) => ({
-        ...current,
-        edges: current.edges.filter((edge) => edge.id !== selection.id),
-      }));
-    }
+    const next: HarnessDocument =
+      selection.kind === "node"
+        ? {
+            ...doc,
+            nodes: doc.nodes.filter((node) => node.id !== selection.id),
+            edges: doc.edges.filter(
+              (edge) => edge.source !== selection.id && edge.target !== selection.id,
+            ),
+          }
+        : {
+            ...doc,
+            edges: doc.edges.filter((edge) => edge.id !== selection.id),
+          };
+    mutate(() => next);
     setSelection(null);
     onRoleSelect?.(null);
+    saveDocument(next);
   };
 
   /** 选中一条边（EdgeLine 的回调，保持引用稳定以便 memo 生效） */
@@ -1009,12 +1019,13 @@ export function HarnessEditor({
     if (drag.moved) setViewport(viewportRef.current);
   };
 
-  const save = () => {
-    if (!doc) return;
+  /** 统一落盘（保存按钮与删除等自动保存共用）。 */
+  const saveDocument = (target: HarnessDocument | null) => {
+    if (!target) return;
     setSaving(true);
     setError("");
     setStatusKey("status.saving");
-    void saveHarness(workspace, profile, doc)
+    void saveHarness(workspace, profile, target)
       .then(() => {
         setDirty(false);
         setStatusKey("status.saved");
@@ -1025,6 +1036,8 @@ export function HarnessEditor({
       })
       .finally(() => setSaving(false));
   };
+
+  const save = () => saveDocument(doc);
 
   const reset = useCallback(() => {
     setStatusKey("");
@@ -1047,6 +1060,29 @@ export function HarnessEditor({
   }, [workspace, profile, fitToNodes, onRoleSelect]);
 
   const nodeById = useMemo(() => new Map((doc?.nodes ?? []).map((node) => [node.id, node])), [doc]);
+
+  /**
+   * 没有 position 的节点（例如设置页新建、尚未在画布上拖过）也要能看到连线：
+   * 给它们派一个只用于显示的兜底坐标，排在角色列最下方；拖动后会写回文档。
+   */
+  const fallbackPositions = useMemo(() => {
+    const map = new Map<string, { x: number; y: number }>();
+    if (!doc) return map;
+    const missing = doc.nodes.filter((node) => !node.position);
+    if (!missing.length) return map;
+    const positioned = doc.nodes.filter((node) => node.position);
+    const roleX =
+      positioned.find((node) => node.type === "role")?.position?.x ??
+      (positioned.find((node) => node.type === "agent")?.position?.x ?? 40) + 320;
+    const maxY = positioned.reduce(
+      (value, node) => Math.max(value, node.position?.y ?? 0),
+      NODE_H,
+    );
+    missing.forEach((node, index) => {
+      map.set(node.id, { x: roleX, y: maxY + 140 + index * (NODE_H + 28) });
+    });
+    return map;
+  }, [doc]);
 
   /** 左栏点选 Agent 后，打开画布中对应节点的设置抽屉；编辑节点时不重复覆盖当前选择。 */
   const appliedAgentRef = useRef<string | null>(null);
@@ -1491,15 +1527,17 @@ export function HarnessEditor({
                 {doc.edges.map((edge) => {
                   const from = nodeById.get(edge.source);
                   const to = nodeById.get(edge.target);
-                  if (!from?.position || !to?.position) return null;
+                  const fromPos = from?.position ?? (from ? fallbackPositions.get(from.id) : undefined);
+                  const toPos = to?.position ?? (to ? fallbackPositions.get(to.id) : undefined);
+                  if (!fromPos || !toPos) return null;
                   return (
                     <EdgeLine
                       key={edge.id}
                       edge={edge}
-                      x1={from.position.x + NODE_W}
-                      y1={from.position.y + NODE_H / 2}
-                      x2={to.position.x}
-                      y2={to.position.y + NODE_H / 2}
+                      x1={fromPos.x + NODE_W}
+                      y1={fromPos.y + NODE_H / 2}
+                      x2={toPos.x}
+                      y2={toPos.y + NODE_H / 2}
                       selected={selection?.kind === "edge" && selection.id === edge.id}
                       onSelect={selectEdge}
                     />
@@ -1521,6 +1559,7 @@ export function HarnessEditor({
                   <NodeCard
                     key={node.id}
                     node={node}
+                    position={node.position ?? fallbackPositions.get(node.id)}
                     selected={selection?.kind === "node" && selection.id === node.id}
                     connecting={connectFrom === node.id}
                     roleOrdinalNum={roleOrdinal?.ordinal}

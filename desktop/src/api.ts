@@ -147,7 +147,7 @@ export type MeowEvent = {
   steps?: PlanStep[];
   explanation?: string;
   /** ask_user 事件：模型提出的澄清问题（可批量多题）与每题候选选项 */
-  questions?: Array<{ question: string; options: string[] }>;
+  questions?: AskUserQuestion[];
   /** usage 事件：本轮模型调用的稳定 id（实时样本与最终真值共用，前端按 id 替换） */
   roundId?: string;
   /** usage 事件：true = 该轮最终真值 */
@@ -275,8 +275,14 @@ export type PendingApproval = ApprovalRequest & {
   agentDescription?: string;
 };
 
-export type PlanStepStatus = "pending" | "in_progress" | "completed" | "cancelled";
+/** ask_user 的一题：options 为纯文本，descriptions 与 options 同下标（可为空串） */
+export type AskUserQuestion = {
+  question: string;
+  options: string[];
+  descriptions?: string[];
+};
 
+export type PlanStepStatus = "pending" | "in_progress" | "completed" | "cancelled";
 export type PlanStep = {
   title: string;
   status: PlanStepStatus;
@@ -658,6 +664,35 @@ export type LanguagePreference =
   | "pt";
 
 /** 不重启 agent server 的轻量偏好（外观 / 关闭方式 / 语言 / 工作区 / 归档列表 / 侧栏项目）。 */
+export type SshAuthType = "agent" | "key" | "password";
+
+/** 设置 → 网页搜索与获取：搜索/抓取提供方选择（与 DSH 同口径，分别选择）。 */
+export type WebSearchProviderPreference =
+  | "auto"
+  | "provider-native"
+  | "deepseek-search-api"
+  | "off";
+export type WebFetchProviderPreference = "auto" | "http" | "deepseek-fetch-api";
+
+export type WebOptionsPatch = {
+  searchProvider?: WebSearchProviderPreference;
+  fetchProvider?: WebFetchProviderPreference;
+  sendOriginalQuestion?: boolean;
+  /** 显式选择 DeepSeek 后端时可用；空串 = 清除 */
+  deepseekApiKey?: string;
+};
+
+/** 设置 → 连接：一条 SSH 连接配置（密码不落盘，连接时在终端输入）。 */
+export type SshConnection = {
+  id: string;
+  name: string;
+  host: string;
+  port: number;
+  username: string;
+  authType: SshAuthType;
+  privateKeyPath?: string;
+};
+
 export type Preferences = {
   theme: ThemePreference;
   /** 配色方案：缺省视为 classic（轻量通道，不重启 server） */
@@ -697,6 +732,24 @@ export type Preferences = {
   worktreeAutoCleanup?: boolean;
   /** Worktrees：自动清理的数量上限（默认 15） */
   worktreeMaxKeep?: number;
+  /** Worktrees：自定义根目录；空串 = 默认 userData/agent/worktrees */
+  worktreeRoot?: string;
+  /** Worktrees：手动删除托管工作树前先确认（默认开） */
+  worktreeConfirmDelete?: boolean;
+  /** 设置 → 连接：SSH 连接列表 */
+  sshConnections?: SshConnection[];
+  /** 设置 → 网页搜索与获取：搜索提供方（auto = 跟随当前模型） */
+  webSearchProvider?: WebSearchProviderPreference;
+  /** 设置 → 网页搜索与获取：抓取提供方 */
+  webFetchProvider?: WebFetchProviderPreference;
+  /** DeepSeek Search API 是否附带最近一条用户提问（默认开） */
+  webSearchSendOriginalQuestion?: boolean;
+  /** DeepSeek Search / Fetch API 的独立密钥（写入时加密；空串 = 清除） */
+  webDeepseekApiKey?: string;
+  /** 是否已保存 DeepSeek 网页工具密钥（只读回执） */
+  hasWebDeepseekApiKey?: boolean;
+  /** 每个主 Agent 档位的并行子 Agent 上限（1..10；缺省用档位内置值） */
+  agentProfileLimits?: Partial<Record<"standard" | "minimal" | "complex", number>>;
   /** 会话回滚：文件快照开关（默认开；改后重启应用生效） */
   rewindSnapshots?: boolean;
   /** 会话回滚：每会话保留的快照索引数滑窗（默认 120） */
@@ -990,6 +1043,22 @@ export type Settings = {
   worktreeAutoCleanup?: boolean;
   /** Worktrees：自动清理的数量上限（默认 15） */
   worktreeMaxKeep?: number;
+  /** Worktrees：自定义根目录；空串 = 默认位置 */
+  worktreeRoot?: string;
+  /** Worktrees：手动删除托管工作树前先确认（默认开） */
+  worktreeConfirmDelete?: boolean;
+  /** 设置 → 连接：SSH 连接列表 */
+  sshConnections?: SshConnection[];
+  /** 设置 → 网页搜索与获取：搜索提供方 */
+  webSearchProvider?: WebSearchProviderPreference;
+  /** 设置 → 网页搜索与获取：抓取提供方 */
+  webFetchProvider?: WebFetchProviderPreference;
+  /** DeepSeek Search API 是否附带原问题 */
+  webSearchSendOriginalQuestion?: boolean;
+  /** 是否已保存 DeepSeek 网页工具密钥（不回显明文） */
+  hasWebDeepseekApiKey?: boolean;
+  /** 每个主 Agent 档位的并行子 Agent 上限 */
+  agentProfileLimits?: Partial<Record<"standard" | "minimal" | "complex", number>>;
   /** 将 AGENTS.md 包含在上下文中（默认开） */
   includeAgentsMd?: boolean;
   /** 将 CLAUDE.md / CLAUDE.local.md 包含在上下文中（默认开） */
@@ -1427,6 +1496,31 @@ export async function setProviderFallback(enabled: boolean): Promise<{ enabled: 
     method: "PUT",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ enabled }),
+  });
+}
+
+/** 每个主 Agent 的并行子 Agent 上限：运行中实时切换。 */
+export async function setAgentLimits(
+  limits: Partial<Record<"standard" | "minimal" | "complex", number>>,
+): Promise<{ limits: Record<string, number> }> {
+  return api("/config/agent-limits", {
+    method: "PUT",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ limits }),
+  });
+}
+
+/** 网页搜索与获取：运行中实时切换（搜索/抓取分别选择）。 */
+export async function setWebOptions(patch: WebOptionsPatch): Promise<{
+  searchProvider: WebSearchProviderPreference;
+  fetchProvider: WebFetchProviderPreference;
+  sendOriginalQuestion: boolean;
+  hasDeepseekApiKey: boolean;
+}> {
+  return api("/config/web-options", {
+    method: "PUT",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(patch),
   });
 }
 

@@ -955,6 +955,17 @@
   min-width: 0;
   line-height: 1.45;
 }
+/* 选项带模型给的补充说明时，标题与说明分两行 */
+.mc-planconfirm__label[data-stacked="true"] {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.mc-planconfirm__desc {
+  color: var(--fg-subtle);
+  font-size: var(--fs-xs);
+  line-height: 1.4;
+}
 .mc-planconfirm__arrow {
   flex-shrink: 0;
   color: var(--fg-subtle);

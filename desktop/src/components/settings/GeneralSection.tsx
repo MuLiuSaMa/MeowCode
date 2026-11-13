@@ -4,7 +4,6 @@ import { CustomSelect, type CustomSelectOption } from "../ui/CustomSelect";
 import { Button } from "../ui/Button";
 import { Dialog } from "../ui/Dialog";
 import { FieldRow, Section } from "../ui/Section";
-import { SegmentedControl } from "../ui/SegmentedControl";
 import { Toggle } from "../ui/Toggle";
 import {
   getProviderFallback,
@@ -140,11 +139,11 @@ export function GeneralSection({
           />
         </FieldRow>
         <FieldRow label={t("close.field")} hint={t("close.desc")}>
-          <SegmentedControl
+          <CustomSelect
             value={closeAction}
             options={closeOptions}
             onChange={onCloseAction}
-            ariaLabel={t("close.section")}
+            ariaLabel={t("close.field")}
           />
         </FieldRow>
         <FieldRow label={t("update.field")} hint={t("update.desc")}>

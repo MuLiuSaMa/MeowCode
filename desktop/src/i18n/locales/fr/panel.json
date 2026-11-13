@@ -184,7 +184,16 @@
     "resizeAria": "Redimensionner la liste des fichiers",
     "filterPlaceholder": "Filtrer les fichiers…",
     "searching": "Recherche…",
-    "noMatch": "Aucun fichier correspondant"
+    "noMatch": "Aucun fichier correspondant",
+    "menu": {
+      "open": "Ouvrir",
+      "copy": "Copier",
+      "copySuffix": "copie",
+      "paste": "Coller",
+      "copyPath": "Copier le chemin",
+      "reveal": "Afficher dans l’Explorateur",
+      "delete": "Supprimer"
+    }
   },
   "terminal": {
     "exited": "[Processus terminé]",

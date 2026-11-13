@@ -184,7 +184,16 @@
     "resizeAria": "調整檔案清單寬度",
     "filterPlaceholder": "篩選檔案…",
     "searching": "搜尋中…",
-    "noMatch": "沒有符合的檔案"
+    "noMatch": "沒有符合的檔案",
+    "menu": {
+      "open": "開啟",
+      "copy": "複製",
+      "copySuffix": "副本",
+      "paste": "貼上",
+      "copyPath": "複製路徑",
+      "reveal": "在檔案總管中顯示",
+      "delete": "刪除"
+    }
   },
   "terminal": {
     "exited": "[行程已結束]",

@@ -25,7 +25,36 @@ export type WebSearchOutput = { results: WebSearchHit[]; notes: string[] };
 
 export type WebFetchOutput = { url?: string; status?: number; body: string; truncated: boolean };
 
-export type AskQuestion = { question: string; options: string[] };
+export type AskQuestion = { question: string; options: string[]; descriptions?: string[] };
+
+/** 旧记录里模型写过「选项即对象」：有 label 取 label，绝不退化成 [object Object] */
+const ASK_OPTION_LABEL_KEYS = ["label", "text", "title", "value", "option", "name"] as const;
+const ASK_OPTION_DESC_KEYS = ["description", "detail", "hint", "desc", "note"] as const;
+
+function optionFieldText(
+  record: Record<string, unknown>,
+  keys: readonly string[],
+  limit: number,
+): string {
+  for (const key of keys) {
+    const value = record[key];
+    if (typeof value === "string" && value.trim()) return value.trim().slice(0, limit);
+    if (typeof value === "number") return String(value);
+  }
+  return "";
+}
+
+function optionLabel(raw: unknown, limit = 120): string {
+  if (typeof raw === "string") return raw.trim().slice(0, limit);
+  if (typeof raw === "number" || typeof raw === "boolean") return String(raw);
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return "";
+  return optionFieldText(raw as Record<string, unknown>, ASK_OPTION_LABEL_KEYS, limit);
+}
+
+function optionDescription(raw: unknown, limit = 200): string {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return "";
+  return optionFieldText(raw as Record<string, unknown>, ASK_OPTION_DESC_KEYS, limit);
+}
 
 export type MultiEditInput = {
   path: string;
@@ -214,10 +243,15 @@ export function parseAskQuestions(input: unknown): AskQuestion[] {
     const record = asRecord(item);
     const question = typeof record.question === "string" ? record.question.trim() : "";
     if (!question) return [];
-    const options = Array.isArray(record.options)
-      ? record.options.map((option) => String(option)).filter(Boolean)
-      : [];
-    return [{ question, options }];
+    const options: string[] = [];
+    const descriptions: string[] = [];
+    for (const option of Array.isArray(record.options) ? record.options : []) {
+      const label = optionLabel(option);
+      if (!label) continue;
+      options.push(label);
+      descriptions.push(optionDescription(option));
+    }
+    return [{ question, options, ...(descriptions.some(Boolean) ? { descriptions } : {}) }];
   });
 }
 
@@ -235,7 +269,10 @@ export function parseAskAnswers(text: string | undefined): string[] {
     const match = ASK_ANSWER_LINE.exec(line);
     if (match && current >= 0) {
       const answer = match[1].trim();
-      answers[current] = answer === "（未回答）" ? "" : answer;
+      // 中占位归一为空串；`[object Object]` 是旧版本把选项对象 String() 后的坏数据，
+      // 按「未回答」处理，别把占位符当成用户的回答展示
+      answers[current] =
+        answer === "（未回答）" || answer === "[object Object]" ? "" : answer;
     }
   }
   return answers;

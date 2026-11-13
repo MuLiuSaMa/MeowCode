@@ -88,11 +88,15 @@ function pingRequests(): StreamOptions[] {
   return requests().filter((request) => request.provider.maxTokens === 1);
 }
 
+/** 基线按「会话 × provider」存，取当前会话那一条（测试里每个 runtime 只有一个会话）。 */
 function metaOf(runtime: InstanceType<typeof AgentRuntime>, providerId: string) {
   const map = (
     runtime as unknown as { providerRequestMeta: Map<string, { key: string; at: number }> }
   ).providerRequestMeta;
-  return map.get(providerId);
+  for (const [key, value] of map) {
+    if (key.endsWith(`:${providerId}`)) return value;
+  }
+  return undefined;
 }
 
 beforeEach(() => {
@@ -225,5 +229,60 @@ describe("cache keepalive", () => {
     expect(errorSpy).toHaveBeenCalledWith(
       expect.stringContaining("cache keepalive: read=4800 write=0 input=5000"),
     );
+  });
+
+  it("stops pinging once the prefix no longer reads back", async () => {
+    const { runtime } = await makeRuntime({ ...anthropic, cacheTtl: "5m" });
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    streamMock.mockImplementation(async (options: StreamOptions) => {
+      if (options.provider.maxTokens === 1) {
+        // 前缀已不在同一分片：read=0。继续 ping 只是继续白写
+        options.onUsage?.({ inputTokens: 5_000, cacheReadTokens: 0, cacheWriteTokens: 5_000 });
+        return { message: { role: "assistant", content: "ok" } };
+      }
+      return {
+        message: { role: "assistant", content: "hello" },
+        usage: { inputTokens: 5_000, outputTokens: 10, cacheReadTokens: 4_000 },
+      };
+    });
+
+    await runtime.prompt("first question");
+    for (let index = 0; index < 6; index += 1) {
+      await vi.advanceTimersByTimeAsync(KEEPALIVE_DELAY_MS);
+    }
+    // 主请求证明过该端点会报缓存，所以第一发 ping 的 read=0 可信 → 立刻收手
+    expect(pingRequests()).toHaveLength(1);
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("prefix no longer cached"));
+  });
+
+  it("keeps pinging when the endpoint never reports cache reads", async () => {
+    const { runtime } = await makeRuntime({ ...anthropic, cacheTtl: "5m" });
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    // 兼容网关的典型行为：压根不报 cache_read_input_tokens
+    streamMock.mockImplementation(async (options: StreamOptions) => {
+      if (options.provider.maxTokens === 1) {
+        options.onUsage?.({ inputTokens: 5_000 });
+        return { message: { role: "assistant", content: "ok" } };
+      }
+      return { message: { role: "assistant", content: "hello" } };
+    });
+
+    await runtime.prompt("first question");
+    for (let index = 0; index < 6; index += 1) {
+      await vi.advanceTimersByTimeAsync(KEEPALIVE_DELAY_MS);
+    }
+    // 没有「该端点会报字段」的证据，read=0 不能当失效证据
+    expect(pingRequests()).toHaveLength(4);
+  });
+
+  it("never pings after a failed turn", async () => {
+    const { runtime } = await makeRuntime({ ...anthropic, cacheTtl: "5m" });
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    streamMock.mockRejectedValue(new Error("boom"));
+
+    await runtime.prompt("first question").catch(() => undefined);
+    await vi.advanceTimersByTimeAsync(KEEPALIVE_DELAY_MS * 3);
+    expect(pingRequests()).toHaveLength(0);
   });
 });

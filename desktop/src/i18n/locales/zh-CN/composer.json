@@ -192,7 +192,9 @@
       "reasonIdleExceededTtl": "空闲超过缓存 TTL",
       "reasonNotReported": "服务商未报告缓存明细",
       "reasonBelowGranularity": "输入低于最小可缓存长度",
-      "reasonCacheMiss": "缓存未命中"
+      "reasonCacheMiss": "缓存未命中",
+      "reasonWriteNoReadback": "写入缓存但没读回（网关丢字段或换了分片）",
+      "reasonNoCacheWrite": "缓存断点未生效（没有任何写入）"
     },
     "hint": "压缩会把早期对话折叠成摘要，界面上的历史和会话文件都完整保留。",
     "compacting": "正在压缩…",

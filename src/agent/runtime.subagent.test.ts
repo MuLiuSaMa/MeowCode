@@ -412,7 +412,7 @@ describe("AgentRuntime subagents", () => {
     await runtime.closeSession();
   });
 
-  it("caps subagent dispatches per turn to control token cost", async () => {
+  it("limits concurrent subagents, not total starts in a turn", async () => {
     const dir = await mkdtemp(path.join(tmpdir(), "meowcode-subagents-"));
     const workspace = await mkdtemp(path.join(tmpdir(), "meowcode-subws-"));
     const runtime = makeRuntime(dir);
@@ -420,9 +420,15 @@ describe("AgentRuntime subagents", () => {
     await runtime.setApprovalMode("full");
     const events = collectEvents(runtime);
     let parentCalls = 0;
+    let releaseChildren = () => {};
+    const gate = new Promise<void>((resolve) => {
+      releaseChildren = resolve;
+    });
 
     streamMock.mockImplementation(async ({ messages }: { messages: ChatMessage[] }) => {
       if (isChildRequest(messages)) {
+        // 子 Agent 挂住：让同一批的前几个一直占着并发名额
+        await gate;
         return { message: { role: "assistant", content: "child done" } };
       }
       parentCalls += 1;
@@ -437,36 +443,44 @@ describe("AgentRuntime subagents", () => {
           },
         };
       }
+      if (parentCalls === 2) {
+        // 名额空出来后继续派：累计已超过并发数，证明不是按回合总数封顶
+        return {
+          message: {
+            role: "assistant",
+            content: null,
+            tool_calls: [taskCall("task-5", "Task 5", "Prompt 5")],
+          },
+        };
+      }
       return { message: { role: "assistant", content: "parent done" } };
     });
 
-    await runtime.prompt("delegate too much");
+    setTimeout(() => releaseChildren(), 50);
+    await runtime.prompt("delegate in waves");
 
     const started = events.filter((event) => event.type === "subagent_started");
-    expect(started).toHaveLength(MAX_SUBAGENTS_PER_TURN);
-    expect(runtime.current?.subagents).toHaveLength(MAX_SUBAGENTS_PER_TURN);
+    expect(started).toHaveLength(MAX_SUBAGENTS_PER_TURN + 1);
     const taskResults = runtime.current?.messages.filter(
       (message) => message.role === "tool" && message.name === "task",
     );
-    expect(taskResults).toHaveLength(MAX_SUBAGENTS_PER_TURN + 1);
     expect(
-      taskResults?.filter((message) => message.content.includes("Subagent limit reached")),
+      taskResults?.filter((message) => message.content.includes("Subagent concurrency limit reached")),
     ).toHaveLength(1);
     expect(
-      taskResults?.filter((message) =>
-        message.content.includes(
-          `Subagent starts left this turn: 0/${MAX_SUBAGENTS_PER_TURN}.`,
-        ),
-      ),
-    ).toHaveLength(MAX_SUBAGENTS_PER_TURN);
+      taskResults?.find((message) => message.content.includes("concurrency limit reached"))?.content,
+    ).toContain(`at most ${MAX_SUBAGENTS_PER_TURN} foreground agents may run at once`);
     expect(
-      taskResults?.find((message) => message.content.includes("Subagent limit reached"))?.content,
-    ).toContain("Do not retry this turn");
+      taskResults?.some((message) => message.content.includes("Subagent limit reached")),
+    ).toBe(false);
+    expect(
+      taskResults?.some((message) => message.content.includes("concurrency cap only")),
+    ).toBe(true);
 
     await runtime.closeSession();
   });
 
-  it("counts model-initiated resume against the per-turn budget", async () => {
+  it("allows a model-initiated resume once the previous child finished", async () => {
     const dir = await mkdtemp(path.join(tmpdir(), "meowcode-subagents-"));
     const workspace = await mkdtemp(path.join(tmpdir(), "meowcode-subws-"));
     const runtime = makeRuntime(dir);
@@ -518,8 +532,8 @@ describe("AgentRuntime subagents", () => {
       .filter((message) => message.role === "tool" && message.name === "task")
       .map((message) => (typeof message.content === "string" ? message.content : ""))
       .join("\n");
-    expect(results).toContain("Subagent limit reached");
-    expect(events.some((event) => event.type === "subagent_resumed")).toBe(false);
+    expect(results).not.toContain("Subagent limit reached");
+    expect(events.some((event) => event.type === "subagent_resumed")).toBe(true);
     expect(runtime.current?.subagents).toHaveLength(1);
 
     await runtime.closeSession();

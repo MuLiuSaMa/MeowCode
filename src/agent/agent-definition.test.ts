@@ -38,6 +38,7 @@ const KNOWN_TOOLS = new Set([
   "memory_read",
   "memory_write",
   "memory_delete",
+  "session_search",
   "admit",
 ]);
 
@@ -84,6 +85,8 @@ describe("agent-definition 角色注册表", () => {
         expect(tools.has(write), `${name} 不应有 ${write}`).toBe(false);
       }
     }
+    // 跨会话检索只给主 Agent / general 子 Agent；explore 等只读角色的白名单不含它
+    expect(BUILTIN_AGENTS.explore.tools!.has("session_search")).toBe(false);
     const implementer = BUILTIN_AGENTS.implementer.tools!;
     expect(implementer.has("write_file")).toBe(true);
     expect(implementer.has("edit_file")).toBe(true);

@@ -271,6 +271,7 @@
     "computerWait": "Attendre",
     "computerAction": "Contrôle de l’ordinateur",
     "toolSearch": "Rechercher des outils",
+    "sessionSearch": "Rechercher les sessions passées",
     "webSearch": "Recherche web",
     "webFetch": "Récupérer la page",
     "deleteFile": "Supprimer le fichier",

@@ -35,6 +35,11 @@ import {
   type MemoryScope,
 } from "./memory.js";
 import type { ToolDefinition, ToolResult } from "./types.js";
+import {
+  MAX_QUERY_CHARS,
+  searchSessions,
+  type SessionSearchHit,
+} from "./session-search.js";
 import { formatWebSearchResult, type WebSearchResult } from "./web-search.js";
 import type { WebFetchOutcome } from "./web-fetch.js";
 import { classifySandboxDenial } from "./sandbox/denial.js";
@@ -76,6 +81,10 @@ const MAX_LIST_ENTRIES = 500;
 const MAX_LIST_DIR_TOKENS = 1_000;
 const MAX_READ_TOKENS = 4_000;
 const MAX_READ_MANY_TOKENS = 4_000;
+const SESSION_SEARCH_DEFAULT_LIMIT = 3;
+const SESSION_SEARCH_MAX_LIMIT = 10;
+const SESSION_SEARCH_MAX_CHARS = 4_000;
+const SESSION_SEARCH_HYDRATE = 3;
 
 export function truncateOutput(
   text: string,
@@ -513,7 +522,7 @@ export const toolDefinitions: ToolDefinition[] = [
     function: {
       name: "task",
       description:
-        "Spawn a subagent for one self-contained task; only its report returns. Use it for broad independent work only; handle quick searches and coupled edits yourself. It gets the current user request and plan itself — give a short description plus scope constraints; pick the role via agent_type. background=true returns immediately and notifies later. mode=resume continues an earlier subagent by agent_id (its history is kept); mode=fork copies this conversation prefix for prompt-cache reuse. Starts are budgeted per user turn (spawn/resume/fork/background all count); each result reports what is left — plan the whole turn and do the rest yourself. Writes follow the approval mode.",
+        "Spawn a subagent for one self-contained task; only its report returns. Use for broad independent work; handle quick searches and coupled edits yourself. It sees the current request and plan — give a short description and scope; pick the role via agent_type. background=true returns immediately and notifies later. mode=resume continues an earlier subagent by agent_id (its history is kept); mode=fork copies this conversation prefix for prompt-cache reuse. Concurrent agents are capped; finished slots can be reused this turn.",
       parameters: {
         type: "object",
         properties: {
@@ -524,7 +533,7 @@ export const toolDefinitions: ToolDefinition[] = [
           prompt: {
             type: "string",
             description:
-              "Initial instruction (spawn) or follow-up message (resume). Omit on spawn to derive it from the current request and plan.",
+              "Initial instruction (spawn) or follow-up (resume). Omit on spawn to derive it from the current request and plan.",
           },
           mode: {
             type: "string",
@@ -540,7 +549,7 @@ export const toolDefinitions: ToolDefinition[] = [
             type: "string",
             enum: [...DEFAULT_AGENT_TYPES],
             description:
-              "general = full tools (default); explore = read-only, cheapest; planner = plan; implementer = write+verify; reviewer = review findings; verifier = run checks; custom = user-defined (architecture graph).",
+              "general = full tools (default); explore = read-only cheapest; planner = plan; implementer = write+verify; reviewer = findings; verifier = run checks; custom = user-defined (architecture graph).",
           },
           lane_id: {
             type: "string",
@@ -569,10 +578,10 @@ export const toolDefinitions: ToolDefinition[] = [
     function: {
       name: "update_plan",
       description:
-        "Replace the task checklist with short, current steps for multi-step work. Keep it live: when you start a " +
-        "step set it in_progress; the moment its work is done mark it completed in the same update that starts the " +
-        "next step. Never leave finished work as pending/in_progress and never batch several finished steps into a " +
-        "later update — the checklist is the user's only progress view.",
+        "Set the checklist to short, current steps. Create it early when the work needs 3+ steps or touches " +
+        "several files; skip quick fixes. Keep it live: when you start a step set it in_progress; once done mark " +
+        "it completed and start the next step in the same update. Never leave finished work open or batch " +
+        "updates — the checklist is the user's only progress view.",
       parameters: {
         type: "object",
         properties: {
@@ -604,7 +613,7 @@ export const toolDefinitions: ToolDefinition[] = [
     function: {
       name: "context_status",
       description:
-        "Context-window usage: tokens used, window size, remaining headroom, compaction advice. Zero side effects. Call before large explorations or when a session nears its limit.",
+        "Context-window usage: tokens used, window size, headroom, compaction advice. Call before large explorations or near the limit.",
       parameters: {
         type: "object",
         properties: {},
@@ -639,7 +648,7 @@ export const toolDefinitions: ToolDefinition[] = [
     function: {
       name: "ask_user",
       description:
-        "Ask the user and wait for answers. Ask when a decision would significantly change the outcome and cannot be safely inferred. Batch ALL questions into ONE call (up to 4). Each: 2-4 mutually exclusive short options; the user may also type a custom answer.",
+        "Ask the user and wait. Ask only when the answer would change the outcome. Batch ALL questions into ONE call (up to 4); each has 2-4 exclusive short options, plus free text.",
       parameters: {
         type: "object",
         properties: {
@@ -670,15 +679,14 @@ export const toolDefinitions: ToolDefinition[] = [
     type: "function",
     function: {
       name: "memory_read",
-      description:
-        "Read one long-term memory file in full. The Memory index in the system instructions lists the saved entries with one-line summaries.",
+      description: "Read one long-term memory file in full; the Memory index lists saved entries.",
       parameters: {
         type: "object",
         properties: {
           scope: {
             type: "string",
             enum: ["user", "project"],
-            description: '"user" = cross-project memories, "project" = this workspace.',
+            description: '"user" = cross-project, "project" = workspace.',
           },
           name: {
             type: "string",
@@ -695,26 +703,26 @@ export const toolDefinitions: ToolDefinition[] = [
     function: {
       name: "memory_write",
       description:
-        'Save or update a long-term memory that persists across sessions. Use proactively when you learn a reusable fact (user preference, workflow convention, project decision): one fact per file, check the Memory index for duplicates, never store secrets or what the code/git shows, no need to ask first. scope: user = cross-project, project = this workspace.',
+        "Save or update a long-term memory across sessions. Use proactively for reusable facts (preferences, conventions, decisions): one fact per file, check the index first, never store secrets or what code/git shows.",
       parameters: {
         type: "object",
         properties: {
           scope: {
             type: "string",
             enum: ["user", "project"],
-            description: '"user" = cross-project, "project" = this workspace.',
+            description: '"user" = cross-project, "project" = workspace.',
           },
           name: {
             type: "string",
-            description: "Kebab-case slug for the fact, e.g. docker-cli.",
+            description: "Kebab-case slug, e.g. docker-cli.",
           },
           description: {
             type: "string",
-            description: "One-line summary shown in the memory index.",
+            description: "One-line summary for the index.",
           },
           content: {
             type: "string",
-            description: "Full memory body with the context needed later.",
+            description: "Full body with the context needed later.",
           },
         },
         required: ["scope", "name", "description", "content"],
@@ -726,15 +734,14 @@ export const toolDefinitions: ToolDefinition[] = [
     type: "function",
     function: {
       name: "memory_delete",
-      description:
-        "Delete an outdated or wrong long-term memory file and remove it from the index.",
+      description: "Delete an outdated or wrong memory and remove it from the index.",
       parameters: {
         type: "object",
         properties: {
           scope: {
             type: "string",
             enum: ["user", "project"],
-            description: '"user" = cross-project memories, "project" = this workspace.',
+            description: '"user" = cross-project, "project" = workspace.',
           },
           name: {
             type: "string",
@@ -749,9 +756,32 @@ export const toolDefinitions: ToolDefinition[] = [
   {
     type: "function",
     function: {
+      name: "session_search",
+      description:
+        "Search this workspace's earlier sessions for past decisions, fixes, and reasons. Use when the user refers to earlier work (\"last time\", \"before\", \"remember\") or before asking again. Indexes user/assistant text only.",
+      parameters: {
+        type: "object",
+        properties: {
+          query: {
+            type: "string",
+            description: "Keywords or a short phrase (1-200 chars).",
+          },
+          limit: {
+            type: "integer",
+            description: "Max sessions to return (1-10, default 3).",
+          },
+        },
+        required: ["query"],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
       name: "tool_search",
       description:
-        "Search registered MCP/plugin tools by keyword. When many tools are deferred to keep the context small, a match surfaces them: the tool becomes callable from your next turn. Use it before assuming a capability is missing.",
+        "Search registered MCP/plugin tools by keyword. A match surfaces deferred tools so they become callable next turn; use it before assuming a capability is missing.",
       parameters: {
         type: "object",
         properties: {
@@ -1211,6 +1241,8 @@ export type ToolRunOptions = {
   webFetch?: (url: string, signal?: AbortSignal) => Promise<WebFetchOutcome>;
   /** 后台任务管理器（桌面端走 job-host，CLI/测试走本地子进程） */
   jobs?: JobManager;
+  /** 跨会话检索：root 会话目录与要排除的当前会话 id（runtime 注入）。 */
+  sessionSearch?: { sessionsDir: string; excludeSessionId?: string };
 };
 
 /**
@@ -1256,6 +1288,90 @@ async function executeDynamicTool(
     if (timer) clearTimeout(timer);
     parent?.removeEventListener("abort", onParentAbort);
   }
+}
+
+function sessionSearchLimit(value: unknown): number {
+  const numeric = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(numeric)) return SESSION_SEARCH_DEFAULT_LIMIT;
+  return Math.max(1, Math.min(SESSION_SEARCH_MAX_LIMIT, Math.floor(numeric)));
+}
+
+function formatSessionSearchHit(hit: SessionSearchHit, index: number): string {
+  const date = hit.createdAt ? hit.createdAt.slice(0, 10) : "unknown date";
+  const title = hit.title?.trim() || "(untitled session)";
+  const lines = [`${index}. ${date} | ${title} | ${hit.sessionId.slice(0, 8)}`];
+  if (hit.context?.length) {
+    for (const message of hit.context) {
+      const suffix = message.matched ? " (matched)" : "";
+      const ellipsis = message.truncated ? "…" : "";
+      lines.push(`   [${message.role}] ${message.text}${ellipsis}${suffix}`);
+    }
+    return lines.join("\n");
+  }
+  if (hit.snippets.length) {
+    for (const snippet of hit.snippets) {
+      lines.push(`   [${snippet.role}] ${snippet.text}`);
+    }
+    return lines.join("\n");
+  }
+  lines.push("   (title match only)");
+  return lines.join("\n");
+}
+
+async function runSessionSearchTool(
+  args: Record<string, unknown>,
+  workspace: string,
+  options: ToolRunOptions["sessionSearch"],
+): Promise<ToolResult> {
+  if (!options) {
+    return { ok: false, output: "Session search is not available in this runtime." };
+  }
+  if (!workspace.trim()) {
+    return { ok: false, output: "Session search needs a workspace folder, but this session has none." };
+  }
+  const query = typeof args.query === "string" ? args.query.trim() : "";
+  if (!query) {
+    return { ok: false, output: 'session_search requires a non-empty "query".' };
+  }
+  if (query.length > MAX_QUERY_CHARS) {
+    return { ok: false, output: `session_search query must be at most ${MAX_QUERY_CHARS} characters.` };
+  }
+  const result = await searchSessions(options.sessionsDir, query, {
+    limit: sessionSearchLimit(args.limit),
+    workspace,
+    ...(options.excludeSessionId ? { excludeSessionId: options.excludeSessionId } : {}),
+    hydrate: SESSION_SEARCH_HYDRATE,
+  });
+  const skippedNote =
+    result.skipped > 0 ? ` ${result.skipped} unreadable session file(s) were skipped.` : "";
+  if (!result.hits.length) {
+    return {
+      ok: true,
+      output: `No past sessions in this workspace matched "${query}" (scanned ${result.scanned}). Try broader keywords; only user and assistant text is indexed.${skippedNote}`,
+    };
+  }
+  const header = `Found ${result.hits.length} session(s) matching "${query}" (scanned ${result.scanned}).`;
+  const lines = [header];
+  let used = header.length;
+  let capped = false;
+  for (let index = 0; index < result.hits.length; index += 1) {
+    const block = formatSessionSearchHit(result.hits[index], index + 1);
+    const remaining = SESSION_SEARCH_MAX_CHARS - used - 1;
+    if (block.length > remaining) {
+      if (remaining > 200) lines.push(`${block.slice(0, remaining - 1)}…`);
+      capped = true;
+      break;
+    }
+    lines.push(block);
+    used += block.length + 1;
+  }
+  if (capped) lines.push("... output capped; narrow the query or lower the limit.");
+  if (result.skipped > 0) lines.push(`${result.skipped} unreadable session file(s) were skipped.`);
+  let output = lines.join("\n");
+  if (output.length > SESSION_SEARCH_MAX_CHARS) {
+    output = `${output.slice(0, SESSION_SEARCH_MAX_CHARS - 20)}\n... [capped]`;
+  }
+  return { ok: true, output };
 }
 
 export async function executeTool(
@@ -1611,6 +1727,8 @@ export async function executeTool(
         }
         return toolResult(`Deleted ${scope} memory "${name}".`);
       }
+      case "session_search":
+        return await runSessionSearchTool(args, workspace, options.sessionSearch);
       default:
         return { output: `Unknown tool: ${name}`, ok: false };
     }

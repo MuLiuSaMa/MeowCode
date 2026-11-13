@@ -184,7 +184,16 @@
     "resizeAria": "Ajustar el ancho de la lista de archivos",
     "filterPlaceholder": "Filtrar archivos…",
     "searching": "Buscando…",
-    "noMatch": "Ningún archivo coincide"
+    "noMatch": "Ningún archivo coincide",
+    "menu": {
+      "open": "Abrir",
+      "copy": "Copiar",
+      "copySuffix": "copia",
+      "paste": "Pegar",
+      "copyPath": "Copiar ruta",
+      "reveal": "Mostrar en el Explorador",
+      "delete": "Eliminar"
+    }
   },
   "terminal": {
     "exited": "[Proceso finalizado]",

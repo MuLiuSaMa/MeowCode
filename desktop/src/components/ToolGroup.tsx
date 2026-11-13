@@ -8,8 +8,8 @@ import "./ToolGroup.css";
  * 一轮里的思考 / 工具行分组。
  *
  * - 只有模型输出正文才结束一轮；正文之前的思考、工具行归入同一组；
- * - 回合运行期间强制展开（中途不收起、不闪），整个回合结束后默认折叠；
- * - 结束后可手动展开查看明细。
+ * - 回合运行期间默认展开，但随时可手动收起（流式更新不会把收起的组拽开）；
+ * - 整个回合结束后回到默认折叠，可手动展开查看明细。
  */
 export function ToolGroup({
   items,
@@ -18,7 +18,7 @@ export function ToolGroup({
 }: {
   items: TimelineItem[];
   renderItem: (item: TimelineItem) => ReactNode;
-  /** 整个回合是否仍在运行：true 时保持展开，转为 false 时折叠 */
+  /** 整个回合是否仍在运行：true 时默认展开，转为 false 时清除手动状态回到默认折叠 */
   turnRunning: boolean;
 }) {
   const { t } = useTranslation("chat");
@@ -32,12 +32,13 @@ export function ToolGroup({
     (item): item is Extract<TimelineItem, { kind: "message" }> =>
       item.kind === "message" && Boolean(item.thinking),
   ).length;
-  const [userOpen, setUserOpen] = useState(false);
+  // null = 跟随默认（运行中展开 / 结束折叠）；布尔 = 用户手动选择，回合内不被流式更新覆盖
+  const [userOpen, setUserOpen] = useState<boolean | null>(null);
   useEffect(() => {
-    // 回合结束 → 默认折叠；运行中始终展开
-    if (!turnRunning) setUserOpen(false);
+    // 回合结束 → 清掉手动状态，回到默认折叠
+    if (!turnRunning) setUserOpen(null);
   }, [turnRunning]);
-  const open = turnRunning || userOpen;
+  const open = userOpen ?? turnRunning;
   const summary =
     tools.length > 0
       ? `${t("tool.groupRan", { n: tools.length })}${
@@ -52,9 +53,7 @@ export function ToolGroup({
         className="mc-toolgroup__head"
         aria-expanded={open}
         aria-controls={id}
-        onClick={() => {
-          if (!turnRunning) setUserOpen((value) => !value);
-        }}
+        onClick={() => setUserOpen(!open)}
       >
         <span className="mc-toolgroup__chevcard" aria-hidden="true">
           <LuChevronRight size={12} className="mc-toolgroup__chev" data-open={open} />

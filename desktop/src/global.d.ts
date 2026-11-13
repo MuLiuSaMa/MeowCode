@@ -47,6 +47,7 @@ import type {
   UiState,
   Automation,
   AutomationInput,
+  SshConnection,
 } from "./api";
 
 type UiStatePatch = Omit<Partial<UiState>, "drafts"> & {
@@ -313,6 +314,65 @@ declare global {
       openWithApp(exe: string, target: string): Promise<string | null>;
       /** 在系统文件管理器中定位文件 */
       showInFolder(target: string): Promise<string | null>;
+      /** 文件页签右键菜单：删除到回收站；返回错误信息或 null */
+      workspaceTrash(relative: string): Promise<string | null>;
+      /** 文件页签右键菜单：把复制过的文件粘贴到目标目录 */
+      workspacePaste(
+        sourceRelative: string,
+        destDirRelative: string,
+        copySuffix: string,
+      ): Promise<{ ok: true; path: string } | { ok: false; error: string }>;
+      /** 设置 → 存储：磁盘占用统计（字节；force 跳过快取缓存） */
+      storageUsage(force?: boolean): Promise<{
+        path: string;
+        total: number;
+        categories: {
+          chats: number;
+          subagents: number;
+          archived: number;
+          worktrees: number;
+          other: number;
+        };
+      }>;
+      /** 设置 → 工作树：托管的工作树列表 */
+      worktreesList(): Promise<{
+        root: string;
+        defaultRoot: string;
+        items: Array<{ name: string; path: string; createdAt: string }>;
+      }>;
+      /** 设置 → 工作树：删除一份托管工作树；返回错误信息或 null */
+      worktreeDelete(target: string, referencedPaths: string[]): Promise<string | null>;
+      /** 设置 → 连接：拼出可执行的 ssh 命令行 */
+      sshCommand(
+        connection: SshConnection,
+      ): Promise<{ ok: true; command: string } | { ok: false; error: string }>;
+      /** 设置 → 连接：无交互测试（BatchMode，仅密钥/Agent） */
+      sshTest(connection: SshConnection): Promise<{ ok: boolean; error?: string }>;
+      /** 设置 → 连接：选择私钥文件 */
+      pickPrivateKey(): Promise<string | null>;
+      /** 设置 → 使用统计：本地会话 usage 聚合（force 跳过快取缓存） */
+      usageStats(force?: boolean): Promise<{
+        totalTokens: number;
+        inputTokens: number;
+        outputTokens: number;
+        cacheReadTokens: number;
+        cacheWriteTokens: number;
+        sessions: number;
+        activeDays: number;
+        streakDays: number;
+        longestStreakDays: number;
+        peakDailyTokens: number;
+        longestChatMs: number;
+        topModel: { model: string; tokens: number } | null;
+        longestSession: { name: string; tokens: number; date: string } | null;
+        activity: Array<{ date: string; tokens: number }>;
+        daily: Array<{
+          date: string;
+          tokens: number;
+          models: Array<{ model: string; tokens: number }>;
+        }>;
+        models: Array<{ model: string; tokens: number }>;
+      }>;
       /** 用系统默认浏览器打开 http/https 链接 */
       openExternal(url: string): Promise<string | null>;
 

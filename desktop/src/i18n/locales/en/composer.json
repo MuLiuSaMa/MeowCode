@@ -192,7 +192,9 @@
       "reasonIdleExceededTtl": "Idle beyond cache TTL",
       "reasonNotReported": "Provider did not report cache details",
       "reasonBelowGranularity": "Input below minimum cacheable length",
-      "reasonCacheMiss": "Cache miss"
+      "reasonCacheMiss": "Cache miss",
+      "reasonWriteNoReadback": "Written to cache but never read back (gateway dropped fields or switched shard)",
+      "reasonNoCacheWrite": "Cache breakpoints not applied (no write happened)"
     },
     "hint": "Compacting folds earlier turns into a summary; the history here and the session file stay complete.",
     "compacting": "Compacting…",

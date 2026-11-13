@@ -271,6 +271,7 @@
     "computerWait": "Wait",
     "computerAction": "Computer control",
     "toolSearch": "Search tools",
+    "sessionSearch": "Search past sessions",
     "webSearch": "Web search",
     "webFetch": "Fetch page",
     "deleteFile": "Delete file",

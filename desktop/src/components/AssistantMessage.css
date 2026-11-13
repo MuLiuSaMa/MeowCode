@@ -27,7 +27,7 @@
   font-size: var(--fs-base);
 }
 
-/* ---- 思考过程（主聊天）：外观与工具行一致（复用 mc-toolrow），这里只保留正文排版 ---- */
+/* ---- 思考过程（主聊天与悬浮岛共用 ThinkingRow）：外观与工具行一致（复用 mc-toolrow），这里只保留正文排版 ---- */
 /* 思考正文：比工具结果的展开体更紧凑，上下留白收一收 */
 .mc-thinking__bodywrap {
   padding-top: 0;
@@ -36,48 +36,6 @@
 .mc-thinking__text {
   font-size: var(--fs-sm);
   line-height: 1.6;
-  color: var(--fg-subtlest);
-  white-space: pre-wrap;
-  word-break: break-word;
-}
-
-/* ---- 旧式折叠块（悬浮岛 IslandThinking 复用这套结构） ---- */
-.mc-thinking {
-  margin-bottom: 10px;
-  border-left: 2px solid var(--border);
-  padding-left: 10px;
-}
-.mc-thinking__summary {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  list-style: none;
-  cursor: pointer;
-  user-select: none;
-  font-size: var(--fs-xs);
-  color: var(--fg-subtlest);
-  transition: color var(--dur) var(--ease);
-}
-.mc-thinking__summary::-webkit-details-marker {
-  display: none;
-}
-.mc-thinking__summary:hover {
-  color: var(--fg-subtle);
-}
-.mc-thinking__icon {
-  flex-shrink: 0;
-}
-.mc-thinking__chevron {
-  flex-shrink: 0;
-  transition: transform var(--dur) var(--ease);
-}
-.mc-thinking__chevron[data-open="true"] {
-  transform: rotate(180deg);
-}
-.mc-thinking__body {
-  margin-top: 6px;
-  font-size: var(--fs-sm);
-  line-height: var(--lh-normal);
   color: var(--fg-subtlest);
   white-space: pre-wrap;
   word-break: break-word;

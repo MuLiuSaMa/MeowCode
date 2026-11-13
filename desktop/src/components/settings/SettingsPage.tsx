@@ -3,8 +3,12 @@ import { useTranslation } from "react-i18next";
 import {
   LuArchive,
   LuBrain,
+  LuCable,
+  LuChartColumn,
   LuFolder,
   LuGitFork,
+  LuGlobe,
+  LuHardDrive,
   LuHistory,
   LuImport,
   LuInfo,
@@ -17,6 +21,7 @@ import {
   LuShield,
   LuShieldCheck,
   LuSparkles,
+  LuUsers,
   LuWebhook,
 } from "react-icons/lu";
 import {
@@ -26,13 +31,16 @@ import {
   type ProviderSettings,
   type SessionSummary,
   type Settings,
+  type SshConnection,
   type ThemePalette,
   type UpdateInfo,
 } from "../../api";
 import { AboutSection } from "./AboutSection";
+import { AgentSettingsSection } from "./AgentSettingsSection";
 import { AppearanceSection } from "./AppearanceSection";
 import { ApprovalsSection } from "./ApprovalsSection";
 import { ArchiveSection } from "./ArchiveSection";
+import { ConnectionsSection } from "./ConnectionsSection";
 import { DataImportSection } from "./DataImportSection";
 import { GeneralSection } from "./GeneralSection";
 import { HooksSection } from "./HooksSection";
@@ -45,6 +53,9 @@ import { RewindSection } from "./RewindSection";
 import { RulesSection } from "./RulesSection";
 import { SandboxSection } from "./SandboxSection";
 import { ShortcutsSection } from "./ShortcutsSection";
+import { StorageSection } from "./StorageSection";
+import { UsageStatsSection } from "./UsageStatsSection";
+import { WebSearchSection } from "./WebSearchSection";
 import { WorktreeSection } from "./WorktreeSection";
 import "./SettingsPage.css";
 
@@ -65,6 +76,11 @@ export type CoreSettingsSectionId =
   | "hooks"
   | "sandbox"
   | "dataImport"
+  | "storage"
+  | "connections"
+  | "usage"
+  | "agents"
+  | "webSearch"
   | "models"
   | "memory"
   | "learning"
@@ -88,7 +104,12 @@ const SECTIONS: Array<{
   { id: "shortcuts", labelKey: "sections.shortcuts", icon: LuKeyboard },
   { id: "island", labelKey: "sections.island", icon: LuPanelTop },
   { id: "projects", labelKey: "sections.projects", icon: LuFolder },
+  { id: "storage", labelKey: "sections.storage", icon: LuHardDrive },
+  { id: "connections", labelKey: "sections.connections", icon: LuCable },
+  { id: "usage", labelKey: "sections.usage", icon: LuChartColumn },
+  { id: "agents", labelKey: "sections.agents", icon: LuUsers },
   { id: "models", labelKey: "sections.models", icon: LuBoxes, divider: true },
+  { id: "webSearch", labelKey: "sections.webSearch", icon: LuGlobe },
   { id: "memory", labelKey: "sections.memory", icon: LuBrain },
   { id: "learning", labelKey: "sections.learning", icon: LuSparkles, beta: true },
   { id: "archive", labelKey: "sections.archive", icon: LuArchive },
@@ -184,6 +205,9 @@ export function SettingsBody({
   onUnarchiveSession,
   onDeleteArchivedSession,
   onDeleteAllArchived,
+  onDeleteSessions,
+  onOpenSection,
+  onConnectSsh,
   onSavePreferences,
   onSaveProviders,
   onToggleProvider,
@@ -239,6 +263,12 @@ export function SettingsBody({
   onDeleteArchivedSession: (filePath: string) => void;
   /** 删除全部归档会话（文件一起删） */
   onDeleteAllArchived: () => void;
+  /** 删除任意会话文件（存储页的「清理旧聊天」用，返回真正删掉的路径） */
+  onDeleteSessions: (filePaths: string[]) => Promise<string[]>;
+  /** 设置分区内跳转（存储页的管理入口跳到工作树 / 归档） */
+  onOpenSection: (section: SettingsSectionId) => void;
+  /** 设置 → 连接：打开一条 SSH 终端 */
+  onConnectSsh: (connection: SshConnection) => void;
   onSavePreferences: (prefs: Partial<Preferences>) => void;
   onSaveProviders: (providers: ProviderSettings[], activeId?: string) => void;
   /** 启用/停用单个模型：轻量保存，不重启 agent server */
@@ -350,6 +380,14 @@ export function SettingsBody({
         }
         maxKeep={preferences.worktreeMaxKeep ?? 15}
         onMaxKeepChange={(value) => onSavePreferences({ worktreeMaxKeep: value })}
+        root={preferences.worktreeRoot ?? ""}
+        onRootChange={(value) => onSavePreferences({ worktreeRoot: value })}
+        confirmDelete={preferences.worktreeConfirmDelete ?? true}
+        onConfirmDeleteChange={(value) =>
+          onSavePreferences({ worktreeConfirmDelete: value })
+        }
+        sessions={sessions}
+        onToast={onToast}
       />
     ),
     rewind: (
@@ -402,6 +440,47 @@ export function SettingsBody({
         onUnarchive={onUnarchiveSession}
         onDelete={onDeleteArchivedSession}
         onDeleteAll={onDeleteAllArchived}
+      />
+    ),
+    storage: (
+      <StorageSection
+        sessions={sessions}
+        archivedSessions={archivedSessions}
+        onDeleteSessions={onDeleteSessions}
+        onOpenSection={onOpenSection}
+      />
+    ),
+    connections: (
+      <ConnectionsSection
+        connections={_settings?.sshConnections ?? []}
+        onChange={(list) => onSavePreferences({ sshConnections: list })}
+        onConnect={onConnectSsh}
+        onToast={onToast}
+      />
+    ),
+    usage: <UsageStatsSection />,
+    agents: (
+      <AgentSettingsSection
+        workspace={workspace ?? undefined}
+        limits={preferences.agentProfileLimits ?? {}}
+        onLimitsChange={(limits) => onSavePreferences({ agentProfileLimits: limits })}
+        onToast={onToast}
+      />
+    ),
+    webSearch: (
+      <WebSearchSection
+        searchProvider={preferences.webSearchProvider ?? "auto"}
+        onSearchProviderChange={(value) => onSavePreferences({ webSearchProvider: value })}
+        fetchProvider={preferences.webFetchProvider ?? "auto"}
+        onFetchProviderChange={(value) => onSavePreferences({ webFetchProvider: value })}
+        sendOriginalQuestion={preferences.webSearchSendOriginalQuestion ?? true}
+        onSendOriginalQuestionChange={(value) =>
+          onSavePreferences({ webSearchSendOriginalQuestion: value })
+        }
+        hasDeepseekApiKey={_settings?.hasWebDeepseekApiKey ?? false}
+        onSaveDeepseekApiKey={(value) =>
+          onSavePreferences({ webDeepseekApiKey: value })
+        }
       />
     ),
     about: (

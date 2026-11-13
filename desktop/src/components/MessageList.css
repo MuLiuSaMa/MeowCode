@@ -48,6 +48,12 @@
 .mc-stream__list > .mc-statusline + .mc-suggestion {
   margin-top: 18px;
 }
+/* 末尾后置的压缩提示（见 pickTrailingCompactions）：跟在建议/落款后面，留出呼吸 */
+.mc-stream__list > .mc-turn + .mc-compaction,
+.mc-stream__list > .mc-statusline + .mc-compaction,
+.mc-stream__list > .mc-suggestion + .mc-compaction {
+  margin-top: 12px;
+}
 .mc-turn__body {
   display: flex;
   flex-direction: column;

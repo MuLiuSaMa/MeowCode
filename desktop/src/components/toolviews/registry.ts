@@ -21,6 +21,7 @@ import {
   ContextStatusView,
   MemoryView,
   PlanView,
+  SessionSearchView,
   TaskView,
   ToolSearchView,
 } from "./SessionViews";
@@ -54,6 +55,7 @@ export const TOOL_VIEWS: Record<string, ComponentType<ToolViewProps>> = {
   memory_read: MemoryView,
   memory_write: MemoryView,
   memory_delete: MemoryView,
+  session_search: SessionSearchView,
   tool_search: ToolSearchView,
   context_status: ContextStatusView,
   admit: AdmitView,
@@ -74,6 +76,7 @@ const RESULT_ONLY = new Set([
   "diagnostics",
   "memory_read",
   "context_status",
+  "session_search",
   "tool_search",
 ]);
 

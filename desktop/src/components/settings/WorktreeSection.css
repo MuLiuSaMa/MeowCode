@@ -1,0 +1,50 @@
+/* 托管工作树列表：卡片内逐行，分隔线沿用设置行的内缩风格 */
+
+/* 根目录输入 + 打开文件夹：路径按界面字体显示，不再用等宽字体 */
+.mc-wtroot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.mc-wtroot .mc-fieldrow__input {
+  font-family: inherit;
+}
+
+.mc-wtlist__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 10px 16px;
+}
+
+.mc-wtlist__row + .mc-wtlist__row {
+  border-top: 1px solid var(--border);
+  margin-top: 0;
+}
+
+.mc-wtlist__text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.mc-wtlist__name {
+  font-size: var(--fs-base);
+  color: var(--fg);
+}
+
+.mc-wtlist__meta {
+  font-size: var(--fs-caption);
+  color: var(--fg-subtle);
+}
+
+.mc-wtlist__empty {
+  margin: 0;
+  padding: 18px 16px;
+  text-align: center;
+  font-size: var(--fs-caption);
+  color: var(--fg-subtlest);
+}

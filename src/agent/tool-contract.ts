@@ -62,6 +62,7 @@ export const BUILTIN_TOOL_CONTRACTS: Record<string, ToolContract> = {
   context_status: READ_ONLY,
   diagnostics: READ_ONLY,
   memory_read: READ_ONLY,
+  session_search: READ_ONLY,
   web_search: READ_ONLY_NETWORK,
   web_fetch: READ_ONLY_NETWORK,
   // run_code 不是只读：vm 里的 meow 桥可以 write/edit/multiEdit/run。

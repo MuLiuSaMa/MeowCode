@@ -45,7 +45,12 @@
     "learning": "自我学习",
     "rewind": "会话回滚",
     "sandbox": "沙箱",
-    "approvals": "审批规则"
+    "approvals": "审批规则",
+    "storage": "存储",
+    "connections": "连接",
+    "usage": "使用统计",
+    "webSearch": "网页搜索",
+    "agents": "子 Agent"
   },
   "island": {
     "section": "AI 悬浮岛",
@@ -68,18 +73,37 @@
     "desc": "检查到新版本时在后台静默下载，完成后导航栏左下角出现重启按钮，点击即可安装。"
   },
   "worktree": {
-    "section": "Worktrees",
+    "create": {
+      "section": "创建与清理"
+    },
+    "root": {
+      "label": "工作树根目录",
+      "hint": "留空以使用默认位置；修改后重启应用生效。",
+      "open": "打开文件夹"
+    },
     "fetch": {
-      "label": "创建前获取上游更新",
-      "hint": "创建 Worktree 时，先获取上游更新。"
+      "label": "创建工作树前始终获取上游更新",
+      "hint": "创建时先获取上游；离线或没有远端时自动跳过。"
     },
     "cleanup": {
-      "label": "自动删除旧 Worktree",
-      "hint": "建议大多数用户启用。仅当你希望自行管理旧 Worktree 和磁盘用量时关闭。"
+      "label": "自动删除旧工作树",
+      "hint": "先保存一份恢复快照。"
     },
     "maxKeep": {
-      "label": "自动删除数量限制",
-      "hint": "超过数量后，会从最旧的 Worktree 开始自动清理。删除前会创建 Git 备份，因此被清理的 Worktree 应始终可以恢复。"
+      "label": "保留的工作树数量",
+      "hint": "较旧的工作树会自动删除。已置顶或进行中的聊天所用的工作树会保留。"
+    },
+    "confirmDelete": {
+      "label": "删除工作树前询问"
+    },
+    "managed": {
+      "title": "托管的工作树",
+      "refresh": "刷新",
+      "loading": "加载中…",
+      "empty": "尚无工作树",
+      "inUse": "使用中",
+      "delete": "删除",
+      "confirm": "确认删除"
     }
   },
   "rules": {
@@ -261,6 +285,8 @@
     "count_many": "已配置 {{count}} 个模型",
     "add": "添加模型",
     "empty": "还没有配置任何模型。点击「添加模型」开始。",
+    "managedBadge": "由 magpie 管理",
+    "managedHint": "这些模型由 magpie 提供。magpie 连接或断开后需重启 MeowCode 才会刷新。启用状态与思考强度会保留。",
     "deleteTitle": "删除服务商",
     "deleteMessage": "确定删除「{{name}}」吗？删除后需要重新配置才能使用。",
     "restartTitle": "保存会重启本地服务",
@@ -653,5 +679,168 @@
       "command-prefix": "命令前缀"
     },
     "loading": "读取中…"
+  },
+  "storage": {
+    "device": "此设备",
+    "deviceDesc": "管理存储在此电脑上的聊天和工作树",
+    "used": "MeowCode 已占用 {{size}}",
+    "refresh": "刷新",
+    "barAria": "存储占用构成",
+    "categories": {
+      "chats": "聊天",
+      "subagents": "子智能体",
+      "archived": "已归档的聊天",
+      "worktrees": "工作树",
+      "other": "其他"
+    },
+    "clean": {
+      "title": "清理旧聊天",
+      "hint": "永久删除前，请先查看聊天及其子智能体",
+      "action": "查看",
+      "dialogTitle": "清理旧聊天",
+      "dialogDesc": "删除会永久移除会话文件及其子智能体；按创建时间从旧到新排列。",
+      "empty": "没有可清理的聊天",
+      "untitled": "未命名对话",
+      "delete": "删除",
+      "confirm": "确认删除",
+      "close": "关闭"
+    },
+    "worktrees": {
+      "title": "管理工作树",
+      "hint": "查看工作副本，并选择要保留的旧工作树数量",
+      "action": "管理"
+    },
+    "archived": {
+      "title": "已归档的聊天",
+      "hint": "恢复或删除单个已归档的聊天",
+      "action": "管理"
+    }
+  },
+  "connections": {
+    "section": "SSH 连接",
+    "desc": "管理远程服务器的 SSH 配置。密码不会保存，连接时在终端里输入。",
+    "create": "新建连接",
+    "empty": "还没有 SSH 连接",
+    "connect": "连接",
+    "test": "测试",
+    "testing": "测试中…",
+    "testSuccess": "连接成功",
+    "testFailed": "连接失败",
+    "testPassword": "密码方式无法自动测试，请直接连接后在终端输入密码",
+    "auth": {
+      "agent": "SSH Agent / 默认密钥",
+      "key": "指定私钥文件",
+      "password": "密码（连接时输入）"
+    },
+    "form": {
+      "titleNew": "新建 SSH 连接",
+      "titleEdit": "编辑 SSH 连接",
+      "name": "名称",
+      "namePlaceholder": "例如：生产服务器",
+      "host": "主机",
+      "hostPlaceholder": "example.com 或 192.168.1.10",
+      "port": "端口",
+      "username": "用户名",
+      "auth": "认证方式",
+      "privateKey": "私钥文件",
+      "chooseKey": "选择私钥",
+      "note": "密码不会保存；连接后在终端里按提示输入。",
+      "invalid": "请填写主机、用户名，并确认端口有效",
+      "keyRequired": "请选择私钥文件"
+    }
+  },
+  "usage": {
+    "section": "使用统计",
+    "badge": "应用用量",
+    "refresh": "刷新",
+    "loading": "统计中…",
+    "empty": "还没有用量记录",
+    "metrics": {
+      "total": "累计 Token 数",
+      "peak": "峰值 Token 数",
+      "longestChat": "最长聊天时长",
+      "currentStreak": "当前连续天数",
+      "maxStreak": "最长连续天数"
+    },
+    "units": {
+      "days": "天",
+      "hours": "小时",
+      "minutes": "分",
+      "tokens": "tokens"
+    },
+    "activity": {
+      "title": "Token 活动",
+      "daily": "每日",
+      "weekly": "每周",
+      "cumulative": "累计"
+    },
+    "range": {
+      "label": "时间范围",
+      "d7": "近 7 日",
+      "d30": "近 30 日"
+    },
+    "trend": {
+      "title": "每日 Token 趋势图"
+    },
+    "models": {
+      "title": "模型用量",
+      "other": "其他模型"
+    },
+    "unknownModel": "未知模型"
+  },
+  "webSearch": {
+    "section": "网页搜索与获取",
+    "desc": "搜索与抓取分别选择提供方；“自动”跟随当前模型的能力，不会擅自换到其他提供方。",
+    "search": {
+      "label": "搜索提供方",
+      "hint": "关闭后模型看不到 web_search 工具；网页抓取不受影响。"
+    },
+    "searchOptions": {
+      "auto": "自动（跟随当前模型）",
+      "providerNative": "服务商内置搜索",
+      "deepseek": "DeepSeek Search API",
+      "off": "关闭网页搜索"
+    },
+    "fetch": {
+      "label": "抓取提供方",
+      "hint": "选择 DeepSeek Fetch API 时，可用下方密钥直接调用官方接口；未配置密钥则需当前模型使用 DeepSeek。"
+    },
+    "fetchOptions": {
+      "auto": "自动（DeepSeek 走 API，其余本地）",
+      "http": "本地 HTTP 抓取",
+      "deepseek": "DeepSeek Fetch API"
+    },
+    "originalQuestion": {
+      "label": "搜索附带原问题",
+      "hint": "将最近一条用户提问（最多 128 字符）随搜索请求发给 DeepSeek，结果通常更准。"
+    },
+    "deepseekKey": {
+      "label": "DeepSeek API Key",
+      "hint": "当前模型不是 DeepSeek 时，用这把密钥调用官方 Search / Fetch API；仅本机加密保存。",
+      "placeholder": "sk-…",
+      "saved": "已保存；留空保持不变",
+      "clear": "清除"
+    }
+  },
+  "agents": {
+    "section": "子 Agent",
+    "desc": "每个主 Agent 的子 Agent 名单、并行上限与提示词；新增的子 Agent 会写进对应架构图并默认连到主 Agent。",
+    "limit": {
+      "label": "并行数量"
+    },
+    "add": "添加子 Agent",
+    "addTitle": "添加子 Agent",
+    "editTitle": "编辑子 Agent 提示词",
+    "name": "名称",
+    "namePlaceholder": "例如：安全审查员",
+    "roleLabel": "角色",
+    "promptLabel": "提示词",
+    "promptHint": "留空恢复该角色的内置提示词。",
+    "added": "已添加，并连接到架构图的主 Agent",
+    "saved": "提示词已保存",
+    "editPrompt": "编辑提示词",
+    "customPrompt": "已自定义",
+    "loading": "加载中…",
+    "empty": "还没有子 Agent"
   }
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { modelIconKey } from "./providerIcons";
+import { modelIconKey, providerModelIconKey } from "./providerIcons";
 
 describe("modelIconKey", () => {
   it("Claude 用 Claude 自己的标，而不是 Anthropic 的企业标", () => {
@@ -14,8 +14,18 @@ describe("modelIconKey", () => {
     expect(modelIconKey("skywork-13b")).toBe("skywork");
     expect(modelIconKey("tiangong-3")).toBe("tiangong");
     expect(modelIconKey("ling-flash-2.0")).toBe("ling");
+    expect(modelIconKey("Ling")).toBe("ling");
+    expect(modelIconKey("Ling 2.0")).toBe("ling");
     expect(modelIconKey("rwkv-7")).toBe("rwkv");
     expect(modelIconKey("codegeex4")).toBe("codegeex");
+  });
+
+  it("混元的别名 Hy4 / 中文名也能识别", () => {
+    expect(modelIconKey("Hy4 · WorkBuddy")).toBe("hunyuan");
+    expect(modelIconKey("混元-T1")).toBe("hunyuan");
+    expect(
+      providerModelIconKey({ model: "alias-unknown", displayName: "Hy4 · WorkBuddy" }),
+    ).toBe("hunyuan");
   });
 
   it("带连字符的前缀不会误伤别的模型", () => {
@@ -57,6 +67,25 @@ describe("modelIconKey", () => {
     expect(modelIconKey("")).toBeUndefined();
   });
 
+  it("模型 ID 是别名时用显示名兜底品牌标", () => {
+    expect(
+      providerModelIconKey({ model: "routing/auto", displayName: "DeepSeek-Flash · Qoder" }),
+    ).toBe("deepseek");
+    expect(
+      providerModelIconKey({ model: "alias-unknown", displayName: "DeepSeek-V4.1-Flash" }),
+    ).toBe("deepseek");
+    // 模型 ID 能认出品牌时，不被随手写的显示名带偏
+    expect(
+      providerModelIconKey({ model: "deepseek-v4.1-flash", displayName: "随便写的名字" }),
+    ).toBe("deepseek");
+    expect(
+      providerModelIconKey({ model: "qwen3.5-flash", displayName: "DeepSeek-Flash" }),
+    ).toBe("qwen");
+    expect(
+      providerModelIconKey({ model: "some-unknown-model", displayName: "WorkBuddy Custom" }),
+    ).toBe("meow");
+  });
+
   it("真实聚合平台的 model id 都能认出品牌", () => {
     expect(modelIconKey("deepseek-ai/DeepSeek-V3.2")).toBe("deepseek");
     expect(modelIconKey("Pro/deepseek-ai/DeepSeek-R1")).toBe("deepseek");
@@ -72,7 +101,7 @@ describe("modelIconKey", () => {
     expect(modelIconKey("meta-llama/Llama-4-Scout")).toBe("meta");
     expect(modelIconKey("mistralai/Mistral-Large")).toBe("mistral");
     expect(modelIconKey("anthropic/claude-opus-4")).toBe("claude");
-    expect(modelIconKey("x-ai/grok-4")).toBe("xai");
+    expect(modelIconKey("x-ai/grok-4")).toBe("grok");
     expect(modelIconKey("01-ai/Yi-34B")).toBe("yi");
     expect(modelIconKey("internlm/internlm2_5-7b")).toBe("internlm");
   });
