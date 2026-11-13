@@ -195,7 +195,9 @@
       "reasonIdleExceededTtl": "कैश TTL से अधिक निष्क्रिय",
       "reasonNotReported": "प्रोवाइडर ने कैश विवरण रिपोर्ट नहीं किया",
       "reasonBelowGranularity": "इनपुट न्यूनतम कैश करने योग्य लंबाई से कम",
-      "reasonCacheMiss": "कैश मिस"
+      "reasonCacheMiss": "कैश मिस",
+      "reasonWriteNoReadback": "कैश में लिखा गया पर कभी वापस नहीं पढ़ा गया (गेटवे ने फ़ील्ड छोड़े या शार्ड बदला)",
+      "reasonNoCacheWrite": "कैश ब्रेकपॉइंट लागू नहीं हुए (कोई लेखन नहीं हुआ)"
     }
   },
   "effort": {

@@ -195,7 +195,9 @@
       "reasonIdleExceededTtl": "Inactivo más allá del TTL de caché",
       "reasonNotReported": "El proveedor no reportó detalles de caché",
       "reasonBelowGranularity": "Entrada por debajo de la longitud mínima almacenable en caché",
-      "reasonCacheMiss": "Fallo de caché"
+      "reasonCacheMiss": "Fallo de caché",
+      "reasonWriteNoReadback": "Escrito en caché pero nunca releído (la puerta de enlace descartó campos o cambió de fragmento)",
+      "reasonNoCacheWrite": "Puntos de caché no aplicados (no se produjo ninguna escritura)"
     }
   },
   "effort": {

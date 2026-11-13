@@ -195,7 +195,9 @@
       "reasonIdleExceededTtl": "閒置超過快取 TTL",
       "reasonNotReported": "服務商未報告快取明細",
       "reasonBelowGranularity": "輸入低於最小可快取長度",
-      "reasonCacheMiss": "快取未命中"
+      "reasonCacheMiss": "快取未命中",
+      "reasonWriteNoReadback": "寫入快取但沒讀回（閘道丟欄位或換了分片）",
+      "reasonNoCacheWrite": "快取斷點未生效（沒有寫入）"
     }
   },
   "effort": {

@@ -195,7 +195,9 @@
       "reasonIdleExceededTtl": "Inactif au-delà du TTL du cache",
       "reasonNotReported": "Le fournisseur n'a pas rapporté de détails de cache",
       "reasonBelowGranularity": "Entrée inférieure à la longueur minimale cachable",
-      "reasonCacheMiss": "Échec du cache"
+      "reasonCacheMiss": "Échec du cache",
+      "reasonWriteNoReadback": "Écrit dans le cache mais jamais relu (la passerelle a perdu des champs ou changé de shard)",
+      "reasonNoCacheWrite": "Points de cache non appliqués (aucune écriture effectuée)"
     }
   },
   "effort": {

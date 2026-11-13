@@ -195,7 +195,9 @@
       "reasonIdleExceededTtl": "캐시 TTL 초과 유휴",
       "reasonNotReported": "공급자가 캐시 상세를 보고하지 않음",
       "reasonBelowGranularity": "입력이 최소 캐시 가능 길이 미만",
-      "reasonCacheMiss": "캐시 미스"
+      "reasonCacheMiss": "캐시 미스",
+      "reasonWriteNoReadback": "캐시에 썼지만 다시 읽지 않음 (게이트웨이가 필드를 누락했거나 샤드를 변경)",
+      "reasonNoCacheWrite": "캐시 브레이크포인트 미적용 (쓰기 없음)"
     }
   },
   "effort": {

@@ -195,7 +195,9 @@
       "reasonIdleExceededTtl": "キャッシュTTLを超えるアイドル",
       "reasonNotReported": "プロバイダーはキャッシュ詳細を報告していません",
       "reasonBelowGranularity": "入力が最小キャッシュ可能長未満",
-      "reasonCacheMiss": "キャッシュミス"
+      "reasonCacheMiss": "キャッシュミス",
+      "reasonWriteNoReadback": "キャッシュに書き込んだが読み戻されず（ゲートウェイがフィールドを落としたかシャード変更）",
+      "reasonNoCacheWrite": "キャッシュブレークポイントが未適用（書き込みなし）"
     }
   },
   "effort": {

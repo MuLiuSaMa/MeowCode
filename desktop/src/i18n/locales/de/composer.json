@@ -195,7 +195,9 @@
       "reasonIdleExceededTtl": "Leerlauf über Cache-TTL",
       "reasonNotReported": "Anbieter hat Cache-Details nicht gemeldet",
       "reasonBelowGranularity": "Eingabe unter minimaler cachebarer Länge",
-      "reasonCacheMiss": "Cache-Fehlversuch"
+      "reasonCacheMiss": "Cache-Fehlversuch",
+      "reasonWriteNoReadback": "In den Cache geschrieben, aber nie zurückgelesen (Gateway hat Felder verworfen oder den Shard gewechselt)",
+      "reasonNoCacheWrite": "Cache-Breakpoints nicht wirksam (kein Schreibvorgang erfolgt)"
     }
   },
   "effort": {

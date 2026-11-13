@@ -195,7 +195,9 @@
       "reasonIdleExceededTtl": "Простой дольше TTL кэша",
       "reasonNotReported": "Провайдер не сообщил детали кэша",
       "reasonBelowGranularity": "Ввод меньше минимальной кэшируемой длины",
-      "reasonCacheMiss": "Промах кэша"
+      "reasonCacheMiss": "Промах кэша",
+      "reasonWriteNoReadback": "Записано в кэш, но не прочитано обратно (шлюз потерял поля или сменил шард)",
+      "reasonNoCacheWrite": "Точки кэша не применены (записи не было)"
     }
   },
   "effort": {

@@ -195,7 +195,9 @@
       "reasonIdleExceededTtl": "Ocioso além do TTL do cache",
       "reasonNotReported": "O provedor não relatou detalhes do cache",
       "reasonBelowGranularity": "Entrada abaixo do comprimento mínimo armazenável em cache",
-      "reasonCacheMiss": "Falha no cache"
+      "reasonCacheMiss": "Falha no cache",
+      "reasonWriteNoReadback": "Gravado no cache mas nunca relido (o gateway descartou campos ou trocou de shard)",
+      "reasonNoCacheWrite": "Pontos de cache não aplicados (nenhuma gravação ocorreu)"
     }
   },
   "effort": {
