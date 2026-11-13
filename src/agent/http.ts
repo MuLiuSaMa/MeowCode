@@ -6,7 +6,7 @@ const RETRYABLE_STATUS = new Set([408, 429, 500, 502, 503, 504, 529]);
 const DEFAULT_RESPONSE_TIMEOUT_MS = 45_000;
 
 /** 网关（如 magpie）按 User-Agent 认 agent，用量统计要能认成 MeowCode。 */
-export const MEOWCODE_USER_AGENT = "MeowCode/1.2.1 (+https://github.com/MuLiuSaMa/MeowCode)";
+export const MEOWCODE_USER_AGENT = "MeowCode/1.3.0 (+https://github.com/MuLiuSaMa/MeowCode)";
 
 /**
  * 鉴权头风格。缺省（undefined）按协议传统：Anthropic 系用 x-api-key，
