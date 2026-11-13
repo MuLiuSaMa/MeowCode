@@ -77,7 +77,7 @@ exports.afterPack = async function afterPack(context) {
   applyVersionInfo(exePath, {
     author,
     copyright,
-    version: appInfo?.version || "1.2.1",
+    version: appInfo?.version || "1.3.0",
   });
   execFileSync(process.execPath, [path.join(__dirname, "../scripts/release-smoke.mjs"), context.appOutDir], {
     stdio: "inherit",
