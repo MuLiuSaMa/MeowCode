@@ -10,10 +10,10 @@
  * 命中先注一条 wrap-up 提醒，再命中才硬停并给出可读原因。
  */
 
-/** 单回合模型请求轮次硬上限。 */
-export const MAX_TURN_ROUNDS = 60;
-/** 软阈值：到这里注入一次 wrap-up 提醒，让模型收尾而不是被打断。 */
-export const TURN_WRAPUP_ROUNDS = 50;
+/** 单回合模型请求轮次硬上限。取一个远高于真实任务量的值，等于事实不限制。 */
+export const MAX_TURN_ROUNDS = 1_000_000;
+/** 软阈值：到这里注入一次 wrap-up 提醒，让模型收尾而不是被打断。同步抬高，避免长任务被提前催促。 */
+export const TURN_WRAPUP_ROUNDS = 1_000_000;
 /** 交替循环窗口：只看最近这么多次只读调用。 */
 export const ALTERNATING_WINDOW = 12;
 /**

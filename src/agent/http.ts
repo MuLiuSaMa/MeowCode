@@ -3,7 +3,7 @@ import { ProviderTimeoutError } from "./provider-error.js";
 import { applyProxy } from "./proxy.js";
 
 const RETRYABLE_STATUS = new Set([408, 429, 500, 502, 503, 504, 529]);
-const DEFAULT_RESPONSE_TIMEOUT_MS = 45_000;
+const DEFAULT_RESPONSE_TIMEOUT_MS = 300_000;
 
 /** 网关（如 magpie）按 User-Agent 认 agent，用量统计要能认成 MeowCode。 */
 export const MEOWCODE_USER_AGENT = "MeowCode/1.4.0 (+https://github.com/MuLiuSaMa/MeowCode)";

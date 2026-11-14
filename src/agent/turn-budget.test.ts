@@ -41,11 +41,11 @@ describe("TurnBudget rounds", () => {
 
   it("默认上限远高于真实任务所需", () => {
     expect(MAX_TURN_ROUNDS).toBeGreaterThanOrEqual(40);
+    // 默认上限已是百万级，逐轮跑到上限既慢又无意义：
+    // 这里只校验取值与首轮行为，硬停语义由上一个用例（小预算）覆盖。
     const budget = new TurnBudget();
-    for (let index = 0; index < MAX_TURN_ROUNDS; index += 1) {
-      expect(budget.beginRound().stop, `round ${index + 1}`).toBeUndefined();
-    }
-    expect(budget.beginRound().stop).toBeDefined();
+    expect(budget.maxRounds).toBe(MAX_TURN_ROUNDS);
+    expect(budget.beginRound().stop).toBeUndefined();
   });
 });
 

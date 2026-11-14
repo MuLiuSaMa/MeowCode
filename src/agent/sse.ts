@@ -1,6 +1,6 @@
 import { ProviderTimeoutError } from "./provider-error.js";
 
-const DEFAULT_IDLE_TIMEOUT_MS = 90_000;
+const DEFAULT_IDLE_TIMEOUT_MS = 86_400_000;
 
 type ChunkResult = Awaited<ReturnType<ReadableStreamDefaultReader<Uint8Array>["read"]>>;
 
