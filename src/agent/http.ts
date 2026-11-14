@@ -1,9 +1,11 @@
 import { randomUUID } from "node:crypto";
 import { ProviderTimeoutError } from "./provider-error.js";
 import { applyProxy } from "./proxy.js";
+import { MAX_TIMER_MS, positiveIntFromEnv } from "./env-limits.js";
 
 const RETRYABLE_STATUS = new Set([408, 429, 500, 502, 503, 504, 529]);
-const DEFAULT_RESPONSE_TIMEOUT_MS = 45_000;
+/** 响应头超时默认 45s；慢网关首次建连超过该值时可用 MEOWCODE_RESPONSE_TIMEOUT_MS 调大。 */
+const DEFAULT_RESPONSE_TIMEOUT_MS = positiveIntFromEnv("MEOWCODE_RESPONSE_TIMEOUT_MS", 45_000, MAX_TIMER_MS);
 
 /** 网关（如 magpie）按 User-Agent 认 agent，用量统计要能认成 MeowCode。 */
 export const MEOWCODE_USER_AGENT = "MeowCode/1.4.0 (+https://github.com/MuLiuSaMa/MeowCode)";

@@ -1,6 +1,8 @@
 import { ProviderTimeoutError } from "./provider-error.js";
+import { MAX_TIMER_MS, positiveIntFromEnv } from "./env-limits.js";
 
-const DEFAULT_IDLE_TIMEOUT_MS = 90_000;
+/** 空闲超时默认 90s；服务商长时间不吐字时可调 MEOWCODE_SSE_IDLE_TIMEOUT_MS。 */
+const DEFAULT_IDLE_TIMEOUT_MS = positiveIntFromEnv("MEOWCODE_SSE_IDLE_TIMEOUT_MS", 90_000, MAX_TIMER_MS);
 
 type ChunkResult = Awaited<ReturnType<ReadableStreamDefaultReader<Uint8Array>["read"]>>;
 
