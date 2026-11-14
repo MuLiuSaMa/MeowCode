@@ -2,7 +2,7 @@ import http from "node:http";
 import path from "node:path";
 import { pathToFileURL, fileURLToPath } from "node:url";
 import os from "node:os";
-import { mkdirSync, existsSync, readFileSync, statSync, realpathSync } from "node:fs";
+import { mkdirSync, existsSync, readFileSync, statSync, realpathSync, watch, type FSWatcher } from "node:fs";
 import { readFile, readdir, rm, stat, unlink, writeFile, cp } from "node:fs/promises";
 import { randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import { AgentRuntime, isApprovalMode, isSessionMode } from "../agent/runtime.js";
@@ -335,6 +335,8 @@ function readExperimentalFromEnv(): {
   midstreamToolExec?: boolean;
   incrementalResponses?: boolean;
   nativeCompaction?: boolean;
+  promptSegments?: boolean;
+  complexityThinking?: boolean;
 } | null {
   const raw = process.env.MEOWCODE_EXPERIMENTAL;
   if (!raw) return null;
@@ -343,12 +345,16 @@ function readExperimentalFromEnv(): {
       midstreamToolExec?: boolean;
       incrementalResponses?: boolean;
       nativeCompaction?: boolean;
+      promptSegments?: boolean;
+      complexityThinking?: boolean;
     };
     if (typeof parsed !== "object" || parsed === null) return null;
     const flags: {
       midstreamToolExec?: boolean;
       incrementalResponses?: boolean;
       nativeCompaction?: boolean;
+      promptSegments?: boolean;
+      complexityThinking?: boolean;
     } = {};
     if (parsed.midstreamToolExec) flags.midstreamToolExec = true;
     // 这个开关默认是开的（官方端点），所以要接受显式 false 才能关掉
@@ -356,6 +362,11 @@ function readExperimentalFromEnv(): {
       flags.incrementalResponses = parsed.incrementalResponses;
     }
     if (parsed.nativeCompaction) flags.nativeCompaction = true;
+    // 下面两个默认开（缺省即新行为），显式 false 才回退旧行为
+    if (typeof parsed.promptSegments === "boolean") flags.promptSegments = parsed.promptSegments;
+    if (typeof parsed.complexityThinking === "boolean") {
+      flags.complexityThinking = parsed.complexityThinking;
+    }
     return Object.keys(flags).length ? flags : null;
   } catch {
     return null;
@@ -749,8 +760,11 @@ export async function startServer(options: { port?: number; token?: string } = {
   const communityMarket = createCommunitySource();
   // 第三方市场源：ClawHub + SkillHub 聚合（仅 skill）
   const thirdPartyMarket = createThirdPartySource();
+  /** 显式 reload 的时间点：文件监听忽略这之后 800ms 内的写盘，避免 create_plugin 触发双 reload */
+  let explicitPluginReloadAt = 0;
   /** plugin/mcp 安装卸载后重载插件系统与命令索引（skill 走每轮重扫，无需 reload） */
   const reloadAfterMarketChange = async (): Promise<void> => {
+    explicitPluginReloadAt = Date.now();
     await pluginSystem.reload();
     commandIndex = await loadCommandIndex({
       workspace: pluginsWorkspace,
@@ -761,6 +775,48 @@ export async function startServer(options: { port?: number; token?: string } = {
     runtime.rebuildToolCatalog("plugin_reload");
     broadcast({ type: "plugins_changed" });
   };
+
+  /**
+   * 手改插件文件（ui/client.js、index.ts、plugin.json）也自动热重载：
+   * 监听 project/user 插件根，350ms 合并写盘风暴；显式 reload 后的回声忽略。
+   */
+  const pluginWatchers: FSWatcher[] = [];
+  let pluginWatchTimer: NodeJS.Timeout | null = null;
+  const watchPluginRoots = (): void => {
+    if (process.env.VITEST || process.env.NODE_ENV === "test") return; // 测试会反复写 fixture，保持确定性
+    const roots = [
+      path.join(pluginsWorkspace, ".meowcode", "plugins"),
+      path.join(homeDir, ".meowcode", "plugins"),
+    ];
+    for (const root of roots) {
+      if (!existsSync(root)) continue;
+      try {
+        const watcher = watch(root, { recursive: true }, () => {
+          if (Date.now() - explicitPluginReloadAt < 800) return;
+          if (pluginWatchTimer) clearTimeout(pluginWatchTimer);
+          pluginWatchTimer = setTimeout(() => {
+            pluginWatchTimer = null;
+            // 显式 reload 已经覆盖了这批写盘，别再重载一次
+            if (Date.now() - explicitPluginReloadAt < 800) return;
+            void reloadAfterMarketChange().catch((error: unknown) => {
+              console.warn(
+                "[plugins] file watch reload failed:",
+                error instanceof Error ? error.message : String(error),
+              );
+            });
+          }, 350);
+          pluginWatchTimer.unref?.();
+        });
+        watcher.on("error", () => undefined);
+        watcher.unref?.();
+        pluginWatchers.push(watcher);
+      } catch {
+        // 平台不支持 recursive watch 时退回显式 reload（工具调用仍会刷新）
+      }
+    }
+  };
+  watchPluginRoots();
+
   // AI 自建插件：重载后把该 id 的加载结果（工具名 / 错误）回给宿主，让模型能修错重试
   refreshExtensionPlugins = async (id) => {
     await reloadAfterMarketChange();
@@ -1150,6 +1206,18 @@ export async function startServer(options: { port?: number; token?: string } = {
   const server = http.createServer(async (request, response) => {
     const url = new URL(request.url ?? "/", `http://127.0.0.1:${request.socket.localPort}`);
     const pathname = url.pathname;
+    // 插件界面脚本由渲染层用 fetch 取：dev 下渲染层在 Vite 源、打包后在 file://，
+    // 相对 agent server 都是跨源请求。路由本身用 query token 鉴权且只监听 127.0.0.1，
+    // 这里放行读取；否则插件 ui/client.js 会直接报 "Failed to fetch"。
+    if (pathname.startsWith("/plugin-ui/")) {
+      response.setHeader("access-control-allow-origin", "*");
+      response.setHeader("access-control-allow-methods", "GET, HEAD, OPTIONS");
+      if (request.method === "OPTIONS") {
+        response.writeHead(204);
+        response.end();
+        return;
+      }
+    }
     // /session/asset 服务于 <img> 标签、/plugin-ui 服务于插件 iframe：两者都带不了
     // Authorization 头，允许 query token 等价鉴权（token 只在本机内存里，server 只监听 127.0.0.1）
     const assetQueryToken =
@@ -3088,6 +3156,71 @@ export async function startServer(options: { port?: number; token?: string } = {
         return;
       }
 
+      // 拖动排序：把排队项移到锚点之前（beforeId 为 null 表示队尾）
+      if (pathname === "/session/queue/reorder" && request.method === "POST") {
+        const body = await readJsonBody<{
+          id?: string;
+          beforeId?: string | null;
+          sessionId?: string;
+        }>(request);
+        if (typeof body.id !== "string" || !body.id.trim()) {
+          sendError(response, 400, "invalid_request", "id must be a non-empty string");
+          return;
+        }
+        if (
+          body.beforeId !== undefined &&
+          body.beforeId !== null &&
+          (typeof body.beforeId !== "string" || !body.beforeId.trim())
+        ) {
+          sendError(response, 400, "invalid_request", "beforeId must be a string or null");
+          return;
+        }
+        if (invalidSessionId(body.sessionId)) {
+          sendError(response, 400, "invalid_request", "sessionId must be a non-empty string");
+          return;
+        }
+        const target = resolveRuntime(body.sessionId?.trim());
+        if (!target) {
+          sendError(response, 404, "session_not_found", "That session is not running.");
+          return;
+        }
+        if (!target.reorderQueuedPrompt(body.id, body.beforeId ?? null)) {
+          sendError(response, 404, "not_queued", "Queued prompt not found.");
+          return;
+        }
+        sendJson(response, 200, { reordered: true, queuedPrompts: target.queuedPrompts });
+        return;
+      }
+
+      // 编辑排队项正文：原位替换，不产生新队列项
+      if (pathname === "/session/queue/edit" && request.method === "POST") {
+        const body = await readJsonBody<{ id?: string; message?: string; sessionId?: string }>(
+          request,
+        );
+        if (typeof body.id !== "string" || !body.id.trim()) {
+          sendError(response, 400, "invalid_request", "id must be a non-empty string");
+          return;
+        }
+        if (typeof body.message !== "string" || !body.message.trim()) {
+          sendError(response, 400, "invalid_request", "message must be a non-empty string");
+          return;
+        }
+        if (invalidSessionId(body.sessionId)) {
+          sendError(response, 400, "invalid_request", "sessionId must be a non-empty string");
+          return;
+        }
+        const target = resolveRuntime(body.sessionId?.trim());
+        if (!target) {
+          sendError(response, 404, "session_not_found", "That session is not running.");
+          return;
+        }
+        if (!target.editQueuedPrompt(body.id, body.message)) {
+          sendError(response, 404, "not_queued", "Queued prompt not found.");
+          return;
+        }
+        sendJson(response, 200, { edited: true, queuedPrompts: target.queuedPrompts });
+        return;
+      }
       // 丢弃重启后恢复出来的待发送消息
       if (pathname === "/session/recovered/discard" && request.method === "POST") {
         const body = await readJsonBody<{ id?: string }>(request);
@@ -5025,6 +5158,48 @@ export async function startServer(options: { port?: number; token?: string } = {
         return;
       }
 
+      if (pathname === "/side/session/queue/reorder" && request.method === "POST") {
+        const body = await readJsonBody<{ id?: string; beforeId?: string | null }>(request);
+        if (typeof body.id !== "string" || !body.id.trim()) {
+          sendError(response, 400, "invalid_request", "id must be a non-empty string");
+          return;
+        }
+        if (
+          body.beforeId !== undefined &&
+          body.beforeId !== null &&
+          (typeof body.beforeId !== "string" || !body.beforeId.trim())
+        ) {
+          sendError(response, 400, "invalid_request", "beforeId must be a string or null");
+          return;
+        }
+        const side = ensureSideRuntime();
+        if (!side.reorderQueuedPrompt(body.id, body.beforeId ?? null)) {
+          sendError(response, 404, "not_queued", "Queued prompt not found.");
+          return;
+        }
+        sendJson(response, 200, { reordered: true, queuedPrompts: side.queuedPrompts });
+        return;
+      }
+
+      if (pathname === "/side/session/queue/edit" && request.method === "POST") {
+        const body = await readJsonBody<{ id?: string; message?: string }>(request);
+        if (typeof body.id !== "string" || !body.id.trim()) {
+          sendError(response, 400, "invalid_request", "id must be a non-empty string");
+          return;
+        }
+        if (typeof body.message !== "string" || !body.message.trim()) {
+          sendError(response, 400, "invalid_request", "message must be a non-empty string");
+          return;
+        }
+        const side = ensureSideRuntime();
+        if (!side.editQueuedPrompt(body.id, body.message)) {
+          sendError(response, 404, "not_queued", "Queued prompt not found.");
+          return;
+        }
+        sendJson(response, 200, { edited: true, queuedPrompts: side.queuedPrompts });
+        return;
+      }
+
       if (pathname === "/side/session/recovered/discard" && request.method === "POST") {
         const body = await readJsonBody<{ id?: string }>(request);
         if (typeof body.id !== "string" || !body.id.trim()) {
@@ -5344,6 +5519,15 @@ export async function startServer(options: { port?: number; token?: string } = {
   const shutdown = async (_reason = "shutdown"): Promise<void> => {
     if (shuttingDown) return;
     shuttingDown = true;
+    if (pluginWatchTimer) clearTimeout(pluginWatchTimer);
+    pluginWatchTimer = null;
+    for (const watcher of pluginWatchers.splice(0)) {
+      try {
+        watcher.close();
+      } catch {
+        // 已关闭
+      }
+    }
     for (const client of clients) {
       try {
         client.response.end();

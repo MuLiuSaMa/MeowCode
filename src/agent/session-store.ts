@@ -1142,7 +1142,7 @@ export class SessionStore {
   /** 追加一条运行时上下文（如压缩后的计划快照 / @文件引用），按位置参与后续请求。 */
   async appendContextNote(
     content: string,
-    source: "plan" | "file" | "subagent" | "workflow" | "plugin" | "style" = "plan",
+    source: "plan" | "file" | "subagent" | "workflow" | "plugin" | "style" | "job" = "plan",
   ): Promise<string> {
     const id = newEntryId();
     await this.appendEntry((parentId) => ({

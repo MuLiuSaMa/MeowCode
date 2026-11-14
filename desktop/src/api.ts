@@ -123,6 +123,9 @@ export type MeowEvent = {
   chars?: number;
   /** 子 Agent 插话事件：本次插话的 id */
   steerId?: string;
+  /** job_exited：后台任务 id 与退出码 */
+  jobId?: string;
+  code?: number | null;
   sessionId?: string;
   callId?: string;
   tool?: string;
@@ -396,12 +399,17 @@ export type UiState = {
       | "plan"
       | "subagent"
       | "subagents"
-      | "plugin";
+      | "plugin"
+      | "pluginview";
     title: string;
     url?: string;
     path?: string;
-    /** 插件页签：插件 id（iframe 走 /plugin-ui/<id>/...） */
+    /** 插件页签 / 插件组件页签：插件 id */
     pluginId?: string;
+    /** 插件组件页签：ctx.tabs.register 的 id */
+    tabId?: string;
+    /** 插件组件页签图标 */
+    icon?: string;
     /** 子 Agent 页签：按父会话分组恢复 */
     agentId?: string;
     parentSessionId?: string;
@@ -416,6 +424,8 @@ export type UiState = {
 export type TurnMetrics = {
   /** 会话累计输入 token */
   inputTokens: number | null;
+  /** 报告过缓存读取的轮次输入总量（命中率分母 / 未报告拆分用） */
+  cacheInputTokens: number | null;
   /** 会话累计命中缓存的输入 token */
   cacheReadTokens: number | null;
   /** 会话累计写入缓存的输入 token（Anthropic 类协议）；未报告时为 null */
@@ -1179,7 +1189,7 @@ export type PluginDescriptor = {
    */
   ui?: {
     panel?: { title: string; entry: string };
-    client?: { entry: string; permissions: PluginPermission[] };
+    client?: { entry: string; permissions: PluginPermission[]; rev?: string };
   };
 };
 
@@ -1839,6 +1849,8 @@ export type MarketplaceEntryLike = MarketplaceEntry & {
   updateAvailable?: boolean;
   /** 第三方条目的来源（channel = "thirdparty" 时有值） */
   upstream?: ThirdPartySource;
+  /** 合成条目：本机已安装但不在市场索引里的插件（自建 / 内置） */
+  local?: boolean;
   /** 合成条目：本机已安装但不在市场索引里的 MCP —— 手动添加 / 直接写进 mcp.json */
   localMcpSource?: "market" | "manual" | "local";
   /** 合成条目：enabled:false 的 MCP 不会被启动，运行状态里查不到 */
@@ -2833,6 +2845,37 @@ export type AutomationScheduleKind =
 
 export type AutomationHistoryStatus = "started" | "ok" | "error" | "missed";
 
+/** 三档自主：off 只记跳过，observe 只记「本该发什么」，auto 真执行 */
+export type AutomationAutonomy = "off" | "observe" | "auto";
+
+export type AutomationDecisionOutcome =
+  | "executed"
+  | "observed"
+  | "skipped"
+  | "failed"
+  | "uncertain";
+
+/** 一次触发的决策记录：做了 / 没做 / 为什么 */
+export type AutomationDecision = {
+  /** 幂等主键：定时 `${id}:${scheduledAt}`，手动 `${id}:manual:${uuid}` */
+  triggerId: string;
+  /** 本该执行的槽位时间 */
+  scheduledAt: string;
+  at: string;
+  trigger: "schedule" | "manual";
+  /** 决策瞬间的档位，事后改档不篡改历史 */
+  autonomy: AutomationAutonomy;
+  outcome: AutomationDecisionOutcome;
+  /** observed / skipped 时渲染出的完整正文（截断），审计「本该发什么」 */
+  plannedMessage?: string;
+  messageHash?: string;
+  sessionId?: string;
+  phase?: "creating" | "created" | "delivered";
+  error?: string;
+  /** 回合结束后的结算结果 */
+  result?: "ok" | "error";
+};
+
 export type AutomationHistoryEntry = {
   at: string;
   status: AutomationHistoryStatus;
@@ -2872,11 +2915,27 @@ export type Automation = {
   nextRunAt: string | null;
   /** 最新在前，封顶 20 条 */
   history: AutomationHistoryEntry[];
+  /** 执行方式：auto 直接跑，observe 只记录，off 不执行 */
+  autonomy: AutomationAutonomy;
+  /** 授权记录：谁在什么时候把档位设成这样（授权是数据，不是提示词） */
+  mandate: { mode: AutomationAutonomy; at: string; source: "user" | "legacy" };
+  /** 决策记录，最新在前，封顶 50 条 */
+  decisions: AutomationDecision[];
 };
 
 /** 新建/更新输入：id 省略=新建；运行时字段由主进程维护，传了也会被覆盖 */
 export type AutomationInput = Partial<
-  Omit<Automation, "id" | "createdAt" | "updatedAt" | "fireCount" | "nextRunAt" | "history">
+  Omit<
+    Automation,
+    | "id"
+    | "createdAt"
+    | "updatedAt"
+    | "fireCount"
+    | "nextRunAt"
+    | "history"
+    | "mandate"
+    | "decisions"
+  >
 > & { id?: string };
 
 export async function listAutomations(): Promise<Automation[]> {

@@ -64,3 +64,8 @@ Thumbs.db
 # 更新检查用的 GitCode 只读令牌（打包时随 resources 进安装包，源码与仓库里绝不出现）
 /resources/gitcode-update-token.txt
 /gitcode-update-token.txt
+
+# 参考仓库与临时文件（不入库）
+dsh-superagent-prototype-main/
+/scripts/tmp-*.ts
+desktop/slider-preview.html

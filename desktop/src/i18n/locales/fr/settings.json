@@ -198,7 +198,16 @@
     "empty": "Aucun espace de travail ajouté pour l'instant.",
     "removeTitle": "Retirer le projet",
     "removeMessage": "Retirer « {{name}} » ? Il sera seulement masqué de la liste ; les discussions et fichiers restent intacts.",
-    "removeConfirm": "Retirer"
+    "removeConfirm": "Retirer",
+    "batchManage": "Gérer",
+    "batchCancel": "Annuler",
+    "batchRemove": "Retirer la sélection",
+    "batchRemoveCount": "Retirer la sélection · {{count}}",
+    "batchSelectAll": "Tout sélectionner",
+    "batchSelected": "{{count}} sélectionné(s)",
+    "batchRemoveTitle": "Retirer les projets sélectionnés",
+    "batchRemoveMessage": "Retirer les {{count}} projets sélectionnés ? Ils sont seulement masqués de la liste ; les conversations et les fichiers restent.",
+    "batchActiveHint": "Le projet actuel ne peut pas être retiré"
   },
   "models": {
     "section": "Modèles",

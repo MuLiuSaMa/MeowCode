@@ -65,7 +65,6 @@ exports.beforePack = async function beforePack() {
     execFileSync("pnpm", args, { cwd: root, stdio: "inherit" });
   }
 };
-
 exports.afterPack = async function afterPack(context) {
   if (process.platform !== "win32") return;
   const appInfo = context.packager?.appInfo;
@@ -77,7 +76,7 @@ exports.afterPack = async function afterPack(context) {
   applyVersionInfo(exePath, {
     author,
     copyright,
-    version: appInfo?.version || "1.3.0",
+    version: appInfo?.version || "1.4.0",
   });
   execFileSync(process.execPath, [path.join(__dirname, "../scripts/release-smoke.mjs"), context.appOutDir], {
     stdio: "inherit",

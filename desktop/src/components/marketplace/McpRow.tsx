@@ -394,7 +394,7 @@ export function InstalledPluginRow({
         </p>
       </button>
       <div className="mc-mkt__badges">
-        {descriptor.ui && onOpenPanel ? (
+        {descriptor.ui?.panel && onOpenPanel ? (
           <button
             type="button"
             className="mc-mkt__ghost"

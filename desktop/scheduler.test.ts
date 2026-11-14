@@ -52,17 +52,20 @@ function writeRaw(filePath: string, list: Array<Record<string, unknown>>): void 
   writeFileSync(filePath, JSON.stringify(list), "utf8");
 }
 
-type TransportCall = { cwd: string; message: string };
-function stubTransport(
-  impl?: (call: TransportCall) => { sessionId: string } | Promise<never>,
-) {
+type TransportCall = { cwd: string; message: string; sessionId?: string };
+/** 建会话与投递分开 stub：调度器只对投递重试，建会话不重试（避免孤儿会话） */
+function stubTransport(impl?: (call: TransportCall) => void | Promise<never>) {
   const calls: TransportCall[] = [];
-  const transport = async (call: TransportCall) => {
-    calls.push(call);
-    if (impl) return (await impl(call)) as never;
-    return { sessionId: `s-${calls.length}` };
+  let created = 0;
+  const openSession = async (_call: { cwd: string }) => {
+    created += 1;
+    return { sessionId: `s-${created}` };
   };
-  return { calls, transport };
+  const deliver = async (call: TransportCall) => {
+    calls.push(call);
+    if (impl) await (impl(call) as never);
+  };
+  return { calls, openSession, deliver };
 }
 
 async function waitFor(predicate: () => boolean): Promise<void> {
@@ -191,9 +194,9 @@ describe("normalizeAutomation", () => {
 });
 
 describe("createScheduler", () => {
-  it("到点触发：transport 收到前缀+正文，历史记 started，推进下一次", async () => {
+  it("到点触发：投递收到前缀+正文，历史记 started，推进下一次", async () => {
     const filePath = tempFile();
-    const { calls, transport } = stubTransport();
+    const { calls, openSession, deliver } = stubTransport();
     const fixedNow = noonToday();
     const daily = {
       id: "auto-daily",
@@ -212,7 +215,8 @@ describe("createScheduler", () => {
     writeRaw(filePath, [daily]);
     const scheduler = createScheduler({
       filePath: () => filePath,
-      transport,
+      openSession,
+      deliver,
       getPrefix: (a: { title: string }) => `【定时任务「${a.title}」】`,
       now: () => fixedNow,
       fireRetryDelayMs: 1,
@@ -236,7 +240,7 @@ describe("createScheduler", () => {
 
   it("错过（超过容错）：只记 missed，不触发，推进到下一个未来槽位", () => {
     const filePath = tempFile();
-    const { calls, transport } = stubTransport();
+    const { calls, openSession, deliver } = stubTransport();
     const fixedNow = noonToday();
     writeRaw(filePath, [
       {
@@ -256,7 +260,8 @@ describe("createScheduler", () => {
     ]);
     const scheduler = createScheduler({
       filePath: () => filePath,
-      transport,
+      openSession,
+      deliver,
       now: () => fixedNow,
       fireRetryDelayMs: 1,
     });
@@ -271,7 +276,7 @@ describe("createScheduler", () => {
 
   it("一次性任务触发后停用；maxRuns 达到后停用", async () => {
     const filePath = tempFile();
-    const { calls, transport } = stubTransport();
+    const { calls, openSession, deliver } = stubTransport();
     const fixedNow = noonToday();
     writeRaw(filePath, [
       {
@@ -307,7 +312,8 @@ describe("createScheduler", () => {
     ]);
     const scheduler = createScheduler({
       filePath: () => filePath,
-      transport,
+      openSession,
+      deliver,
       now: () => fixedNow,
       fireRetryDelayMs: 1,
     });
@@ -321,10 +327,10 @@ describe("createScheduler", () => {
     expect(cap.fireCount).toBe(1);
   });
 
-  it("触发失败重试 3 次后记 error、发 fire-failed 事件、照常推进", async () => {
+  it("投递失败重试 2 次后记 error、发 fire-failed 事件、照常推进", async () => {
     const filePath = tempFile();
     const attempts: TransportCall[] = [];
-    const counting = async (call: TransportCall) => {
+    const failing = async (call: TransportCall) => {
       attempts.push(call);
       throw new Error("server down");
     };
@@ -348,13 +354,13 @@ describe("createScheduler", () => {
     ]);
     const scheduler = createScheduler({
       filePath: () => filePath,
-      transport: counting,
+      ...stubTransport(failing),
       now: () => fixedNow,
       fireRetryDelayMs: 1,
       onEvent: (event: Record<string, unknown>) => events.push(event),
     });
     scheduler.start();
-    await waitFor(() => attempts.length === 3);
+    await waitFor(() => attempts.length === 2);
     scheduler.stop();
     const after = scheduler.list()[0];
     expect(after.history[0].status).toBe("error");
@@ -366,7 +372,7 @@ describe("createScheduler", () => {
 
   it("runNow：手动触发不推进 fireCount 与 nextRunAt", async () => {
     const filePath = tempFile();
-    const { calls, transport } = stubTransport();
+    const { calls, openSession, deliver } = stubTransport();
     const fixedNow = noonToday();
     writeRaw(filePath, [
       {
@@ -386,7 +392,8 @@ describe("createScheduler", () => {
     ]);
     const scheduler = createScheduler({
       filePath: () => filePath,
-      transport,
+      openSession,
+      deliver,
       now: () => fixedNow,
       fireRetryDelayMs: 1,
     });
@@ -402,11 +409,12 @@ describe("createScheduler", () => {
 
   it("save：新建自动生成 id 与 nextRunAt；更新保留 createdAt/fireCount/history", () => {
     const filePath = tempFile();
-    const { transport } = stubTransport();
+    const { openSession, deliver } = stubTransport();
     const fixedNow = noonToday();
     const scheduler = createScheduler({
       filePath: () => filePath,
-      transport,
+      openSession,
+      deliver,
       now: () => fixedNow,
       fireRetryDelayMs: 1,
     });
@@ -443,7 +451,7 @@ describe("createScheduler", () => {
 
   it("setEnabled：停用清 nextRunAt，重新启用从现在重排", () => {
     const filePath = tempFile();
-    const { transport } = stubTransport();
+    const { openSession, deliver } = stubTransport();
     const fixedNow = noonToday();
     writeRaw(filePath, [
       {
@@ -463,7 +471,8 @@ describe("createScheduler", () => {
     ]);
     const scheduler = createScheduler({
       filePath: () => filePath,
-      transport,
+      openSession,
+      deliver,
       now: () => fixedNow,
       fireRetryDelayMs: 1,
     });
@@ -479,7 +488,7 @@ describe("createScheduler", () => {
 
   it("remove：删除后列表与磁盘同步", () => {
     const filePath = tempFile();
-    const { transport } = stubTransport();
+    const { openSession, deliver } = stubTransport();
     const fixedNow = noonToday();
     writeRaw(filePath, [
       {
@@ -499,7 +508,8 @@ describe("createScheduler", () => {
     ]);
     const scheduler = createScheduler({
       filePath: () => filePath,
-      transport,
+      openSession,
+      deliver,
       now: () => fixedNow,
       fireRetryDelayMs: 1,
     });
@@ -513,7 +523,7 @@ describe("createScheduler", () => {
 
   it("handleTurnComplete：started → ok/error 并落盘（runtime 原始值 completed 也算成功）", async () => {
     const filePath = tempFile();
-    const { calls, transport } = stubTransport();
+    const { calls, openSession, deliver } = stubTransport();
     const fixedNow = noonToday();
     writeRaw(filePath, [
       {
@@ -533,7 +543,8 @@ describe("createScheduler", () => {
     ]);
     const scheduler = createScheduler({
       filePath: () => filePath,
-      transport,
+      openSession,
+      deliver,
       now: () => fixedNow,
       fireRetryDelayMs: 1,
     });
@@ -548,7 +559,7 @@ describe("createScheduler", () => {
 
   it("handleTurnComplete：aborted/error 回合结算为失败", async () => {
     const filePath = tempFile();
-    const { calls, transport } = stubTransport();
+    const { calls, openSession, deliver } = stubTransport();
     const fixedNow = noonToday();
     writeRaw(filePath, [
       {
@@ -568,7 +579,8 @@ describe("createScheduler", () => {
     ]);
     const scheduler = createScheduler({
       filePath: () => filePath,
-      transport,
+      openSession,
+      deliver,
       now: () => fixedNow,
       fireRetryDelayMs: 1,
     });
@@ -577,5 +589,242 @@ describe("createScheduler", () => {
     scheduler.handleTurnComplete("s-1", "aborted");
     scheduler.stop();
     expect(scheduler.list()[0].history[0].status).toBe("error");
+  });
+
+  it("observe 档：只记决策、不发任何请求", async () => {
+    const filePath = tempFile();
+    const { calls, openSession, deliver } = stubTransport();
+    const fixedNow = noonToday();
+    writeRaw(filePath, [
+      {
+        id: "auto-observe",
+        title: "只观察",
+        prompt: "p",
+        cwd: "C:\\repo",
+        kind: "daily",
+        time: "23:59",
+        enabled: true,
+        recurring: true,
+        autonomy: "observe",
+        createdAt: new Date(fixedNow).toISOString(),
+        fireCount: 0,
+        history: [],
+        nextRunAt: new Date(fixedNow - 5_000).toISOString(),
+      },
+    ]);
+    const scheduler = createScheduler({
+      filePath: () => filePath,
+      openSession,
+      deliver,
+      now: () => fixedNow,
+      fireRetryDelayMs: 1,
+    });
+    scheduler.start();
+    await waitFor(() => (scheduler.list()[0].decisions ?? []).length === 1);
+    scheduler.stop();
+
+    expect(calls).toHaveLength(0);
+    const decision = scheduler.list()[0].decisions[0];
+    expect(decision.outcome).toBe("observed");
+    expect(decision.autonomy).toBe("observe");
+    expect(decision.plannedMessage).toContain("p");
+    expect(decision.triggerId).toBe(`auto-observe:${decision.scheduledAt}`);
+    // 观察档不推进执行计数，但仍要排下一次
+    expect(scheduler.list()[0].fireCount).toBe(0);
+    expect(Date.parse(scheduler.list()[0].nextRunAt)).toBeGreaterThan(fixedNow);
+  });
+
+  it("off 档：记 skipped，同样不发请求", async () => {
+    const filePath = tempFile();
+    const { calls, openSession, deliver } = stubTransport();
+    const fixedNow = noonToday();
+    writeRaw(filePath, [
+      {
+        id: "auto-off",
+        title: "暂停",
+        prompt: "p",
+        cwd: "C:\\repo",
+        kind: "daily",
+        time: "23:59",
+        enabled: true,
+        recurring: true,
+        autonomy: "off",
+        createdAt: new Date(fixedNow).toISOString(),
+        fireCount: 0,
+        history: [],
+        nextRunAt: new Date(fixedNow - 5_000).toISOString(),
+      },
+    ]);
+    const scheduler = createScheduler({
+      filePath: () => filePath,
+      openSession,
+      deliver,
+      now: () => fixedNow,
+      fireRetryDelayMs: 1,
+    });
+    scheduler.start();
+    await waitFor(() => (scheduler.list()[0].decisions ?? []).length === 1);
+    scheduler.stop();
+
+    expect(calls).toHaveLength(0);
+    expect(scheduler.list()[0].decisions[0].outcome).toBe("skipped");
+  });
+
+  it("auto 档：记 executed 并带上 sessionId", async () => {
+    const filePath = tempFile();
+    const { calls, openSession, deliver } = stubTransport();
+    const fixedNow = noonToday();
+    writeRaw(filePath, [
+      {
+        id: "auto-auto",
+        title: "执行",
+        prompt: "p",
+        cwd: "C:\\repo",
+        kind: "daily",
+        time: "23:59",
+        enabled: true,
+        recurring: true,
+        createdAt: new Date(fixedNow).toISOString(),
+        fireCount: 0,
+        history: [],
+        nextRunAt: new Date(fixedNow - 5_000).toISOString(),
+      },
+    ]);
+    const scheduler = createScheduler({
+      filePath: () => filePath,
+      openSession,
+      deliver,
+      now: () => fixedNow,
+      fireRetryDelayMs: 1,
+    });
+    scheduler.start();
+    await waitFor(() => calls.length === 1);
+    scheduler.stop();
+
+    const decision = scheduler.list()[0].decisions[0];
+    expect(decision.outcome).toBe("executed");
+    expect(decision.sessionId).toBe("s-1");
+    expect(decision.phase).toBe("delivered");
+    expect(scheduler.list()[0].history[0].status).toBe("started");
+  });
+
+  it("投递失败只建一个会话：不因为重试留下孤儿会话", async () => {
+    const filePath = tempFile();
+    let opens = 0;
+    const fixedNow = noonToday();
+    writeRaw(filePath, [
+      {
+        id: "auto-orphan",
+        title: "会失败",
+        prompt: "p",
+        cwd: "C:\\repo",
+        kind: "daily",
+        time: "23:59",
+        enabled: true,
+        recurring: true,
+        createdAt: new Date(fixedNow).toISOString(),
+        fireCount: 0,
+        history: [],
+        nextRunAt: new Date(fixedNow - 5_000).toISOString(),
+      },
+    ]);
+    const scheduler = createScheduler({
+      filePath: () => filePath,
+      openSession: async () => {
+        opens += 1;
+        return { sessionId: `s-${opens}` };
+      },
+      deliver: async () => {
+        throw new Error("prompt failed (503)");
+      },
+      now: () => fixedNow,
+      fireRetryDelayMs: 1,
+    });
+    scheduler.start();
+    await waitFor(() => scheduler.list()[0].history[0]?.status === "error");
+    scheduler.stop();
+
+    expect(opens).toBe(1);
+    const decisions = scheduler.list()[0].decisions;
+    expect(decisions).toHaveLength(1);
+    expect(decisions[0].outcome).toBe("failed");
+    expect(decisions[0].sessionId).toBe("s-1");
+  });
+
+  it("旧记录没有新字段：默认 auto，mandate 标 legacy", () => {
+    const result = normalizeAutomation({
+      title: "老任务",
+      prompt: "p",
+      cwd: "C:\\repo",
+      kind: "daily",
+      time: "09:00",
+      createdAt: "2026-01-01T00:00:00.000Z",
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.autonomy).toBe("auto");
+    expect(result.value.mandate.source).toBe("legacy");
+    expect(result.value.mandate.mode).toBe("auto");
+    expect(result.value.decisions).toEqual([]);
+    expect(result.value.pendingTrigger).toBeNull();
+  });
+
+  it("save 改名后不丢决策记录与授权", () => {
+    const filePath = tempFile();
+    const { openSession, deliver } = stubTransport();
+    const fixedNow = noonToday();
+    writeRaw(filePath, [
+      {
+        id: "auto-keep",
+        title: "原名",
+        prompt: "p",
+        cwd: "C:\\repo",
+        kind: "daily",
+        time: "09:00",
+        enabled: true,
+        recurring: true,
+        autonomy: "observe",
+        mandate: { mode: "observe", at: new Date(fixedNow).toISOString(), source: "user" },
+        decisions: [
+          {
+            triggerId: "auto-keep:slot-1",
+            scheduledAt: new Date(fixedNow - 60_000).toISOString(),
+            at: new Date(fixedNow - 60_000).toISOString(),
+            trigger: "schedule",
+            autonomy: "observe",
+            outcome: "observed",
+            plannedMessage: "本该发送的内容",
+          },
+        ],
+        createdAt: new Date(fixedNow).toISOString(),
+        fireCount: 0,
+        history: [],
+        nextRunAt: new Date(fixedNow + 3_600_000).toISOString(),
+      },
+    ]);
+    const scheduler = createScheduler({
+      filePath: () => filePath,
+      openSession,
+      deliver,
+      now: () => fixedNow,
+      fireRetryDelayMs: 1,
+    });
+    scheduler.start();
+    const updated = scheduler.save({
+      id: "auto-keep",
+      title: "改名",
+      prompt: "p",
+      cwd: "C:\\repo",
+      kind: "daily",
+      time: "09:00",
+      enabled: true,
+    });
+    scheduler.stop();
+
+    expect(updated.title).toBe("改名");
+    expect(updated.autonomy).toBe("observe");
+    expect(updated.mandate.source).toBe("user");
+    expect(updated.decisions).toHaveLength(1);
+    expect(updated.decisions[0].plannedMessage).toBe("本该发送的内容");
   });
 });

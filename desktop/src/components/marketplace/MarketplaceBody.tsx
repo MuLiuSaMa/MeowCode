@@ -58,8 +58,10 @@ function descriptorEntry(descriptor: PluginDescriptor): MarketplaceEntryLike {
     category: "",
     source: descriptor.source,
     tags: [],
-    version: "1.0",
+    version: descriptor.version ?? "1.0",
     installed: true,
+    // 合成条目不在市场索引里：详情页不能再走 /marketplace/detail
+    local: true,
   };
 }
 

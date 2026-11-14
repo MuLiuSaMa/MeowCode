@@ -1,34 +1,7 @@
 {
   "empty": {
     "setup": "Configure a model provider and choose a workspace to get started.",
-    "title": "Let's create something together?",
-    "suggestions": {
-      "idea": "Create a pelican riding a bicycle",
-      "readme": "Write a clear README for the project",
-      "bug": "Locate and fix this error",
-      "tests": "Add tests for the existing feature",
-      "api": "Design a clean API",
-      "refactor": "Split a long function into small modules",
-      "script": "Write a small automation script",
-      "dashboard": "Build a data visualization panel",
-      "risk": "Check recent changes for risks",
-      "steps": "Break the requirements into steps",
-      "setting": "Add a toggle to the settings page",
-      "release": "Put together a release checklist",
-      "label": "Suggestions",
-      "ideaPrompt": "Use the most suitable technology in this project to create a small “pelican riding a bicycle” piece: an SVG, Canvas animation, or web page. Decide the output format first, then implement it with convincing proportions and motion so it clearly reads as a pelican riding a bike; finish by telling me how to preview it.",
-      "readmePrompt": "Read the project structure and key configuration, then write a clear README covering what it is, the stack, setup/run steps, directory layout, common scripts, and FAQ. Keep it accurate and do not invent commands.",
-      "bugPrompt": "I hit an error. Reproduce it and find the root cause with evidence before fixing it; do not just patch the symptom. Afterward, explain the change, blast radius, and how you verified it.",
-      "testsPrompt": "Inspect the existing test setup and coverage gaps, then add meaningful tests for this feature covering the happy path and key failure paths. Run them and fix what they reveal.",
-      "apiPrompt": "Design a small, stable API: first state the resources, request/response fields, error codes, and authentication. Follow the project's existing style and provide a minimal implementation or interface draft.",
-      "refactorPrompt": "Find one overly long or mixed-responsibility function, split it into smaller modules without changing behavior, explain the boundaries first, then implement and run the relevant tests.",
-      "scriptPrompt": "Write a small script that removes repetitive work. Ask me which workflow to automate, then implement it, explain usage, and actually run it once in this environment to verify.",
-      "dashboardPrompt": "Build a data visualization panel from the project's existing data sources. Confirm the metrics and definitions first, use the smallest dependency set, and handle empty, loading, and error states.",
-      "riskPrompt": "Review the current uncommitted changes: list issues by risk (behavior regressions, edge cases, security, performance) with file/line references and fixes. Do not stop at style comments.",
-      "stepsPrompt": "Break my requirement into executable steps: goal, files touched, acceptance criteria, and dependencies for each. Give me the plan first and wait for my confirmation before changing code.",
-      "settingPrompt": "Add a persisted toggle to the settings page. Reuse the existing settings form and storage path, handle idle/disabled/save-failure states, and verify it survives a restart.",
-      "releasePrompt": "Put together a release checklist covering versioning, build, tests, migrations, rollback, and release notes. Use this project's actual commands instead of generic advice."
-    }
+    "title": "Let's create something together?"
   },
   "suggestion": {
     "label": "Suggestion",
@@ -279,6 +252,7 @@
     "applyPatch": "Apply patch",
     "git": "Git",
     "job": "Background job",
+    "jobWait": "Waiting for background job",
     "view": {
       "open": "Open",
       "unanswered": "(unanswered)",
@@ -348,6 +322,7 @@
   },
   "turnFooter": {
     "copyMarkdown": "Copy as Markdown",
+    "copyEmpty": "No assistant text to copy in this turn",
     "copyPlain": "Copy as plain text",
     "branch": "Create new branch",
     "duration": "Duration",

@@ -95,5 +95,25 @@
     "errorRequired": "Заполните обязательные поля",
     "invalidCron": "Неверное cron-выражение",
     "saveFailed": "Не удалось сохранить"
+  },
+  "autonomy": {
+    "label": "Запуск",
+    "auto": "Автоматически",
+    "observe": "Только наблюдать",
+    "off": "Не запускать"
+  },
+  "decision": {
+    "tabHistory": "История",
+    "tabDecision": "Решения",
+    "empty": "Решений пока нет.",
+    "last": "Последнее решение: {{outcome}} · {{time}}",
+    "planned": "Было бы отправлено",
+    "outcome": {
+      "executed": "Выполнено",
+      "observed": "Только наблюдение",
+      "skipped": "Пропущено",
+      "failed": "Ошибка",
+      "uncertain": "Не подтверждено"
+    }
   }
 }

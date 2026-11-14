@@ -3,6 +3,7 @@ import {
   MAX_THINKING_BUDGET,
   MIN_THINKING_BUDGET,
   boostEffort,
+  complexityBoostSteps,
   resolveThinkingBudget,
   resolveThinkingPolicy,
 } from "./thinking-budget.js";
@@ -100,5 +101,44 @@ describe("resolveThinkingPolicy", () => {
 
   it("reports no budget when the window is too small", () => {
     expect(resolveThinkingPolicy({ effort: "high", maxTokens: 1500 })).toEqual({ effort: "high" });
+  });
+});
+
+describe("complexityBoostSteps（#9 复杂度调档）", () => {
+  it("各项事实各算一档，封顶两档", () => {
+    expect(complexityBoostSteps(undefined)).toBe(0);
+    expect(complexityBoostSteps({})).toBe(0);
+    // 门禁 4 条以上 / 子 Agent 2 个以上 / T2 / 连续失败 2 次，各一档
+    expect(complexityBoostSteps({ gates: 4 })).toBe(1);
+    expect(complexityBoostSteps({ gates: 3 })).toBe(0);
+    expect(complexityBoostSteps({ subagents: 2 })).toBe(1);
+    expect(complexityBoostSteps({ tier: "T2" })).toBe(1);
+    expect(complexityBoostSteps({ recentFailures: 2 })).toBe(1);
+    expect(complexityBoostSteps({ recentFailures: 1 })).toBe(0);
+    // 四项全中也只升两档：再往上就是 max，成本翻倍收益递减
+    expect(
+      complexityBoostSteps({ gates: 9, subagents: 5, tier: "T2", recentFailures: 4 }),
+    ).toBe(2);
+  });
+
+  it("resolveThinkingPolicy：复杂度与模式取较大步数，显式预算仍然优先", () => {
+    const levels = ["low", "medium", "high", "xhigh"];
+    // 模式升 1 档 + 复杂度 2 档 → 取 2
+    const boosted = resolveThinkingPolicy({
+      effort: "low",
+      boost: true,
+      complexity: { gates: 4, tier: "T2" },
+      reasoningLevels: levels,
+    });
+    expect(boosted.effort).toBe("high");
+    // 显式预算是精确意图：不参与升档
+    const pinned = resolveThinkingPolicy({
+      effort: "low",
+      explicit: 2048,
+      complexity: { gates: 9, tier: "T2" },
+      reasoningLevels: levels,
+    });
+    expect(pinned.effort).toBe("low");
+    expect(pinned.budget).toBe(2048);
   });
 });

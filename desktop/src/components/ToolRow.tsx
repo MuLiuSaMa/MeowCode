@@ -88,6 +88,18 @@ export function presentTool(item: TimelineTool, status: ToolStatus, t: TFunction
     case "job": {
       const action = textArg(args, "action");
       const jobId = textArg(args, "job_id");
+      if (action === "wait") {
+        const raw = Number(args.timeout_ms);
+        const seconds = Number.isFinite(raw)
+          ? Math.min(60, Math.max(1, Math.round(raw / 1000)))
+          : 20;
+        return {
+          label: t("tool.jobWait"),
+          chip: jobId ? `${seconds}s · ${jobId}` : `${seconds}s`,
+          chipTitle: jobId || undefined,
+          note: failedNote,
+        };
+      }
       return {
         label: t("tool.job"),
         chip: action ? (jobId ? `${action} · ${jobId}` : action) : undefined,

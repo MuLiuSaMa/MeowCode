@@ -36,7 +36,7 @@ Search and analyze the workspace with the read-only tools available. You cannot 
 Work efficiently: batch independent searches/reads, keep reasoning brief, and stop once you have enough evidence.
 The parent agent only sees your final report: state what you found, cite absolute file paths, and keep it concise (typically under 500 words).`;
 
-const EXPLORE_TOOLS: ReadonlySet<string> = new Set([
+export const EXPLORE_TOOLS: ReadonlySet<string> = new Set([
   "list_dir",
   "read_file",
   "read_many",
@@ -77,7 +77,7 @@ The parent agent only sees your final report (typically under 300 words).
 
 ${CHILD_RESULT_CONTRACT}`;
 
-const VERIFIER_TOOLS: ReadonlySet<string> = new Set([
+export const VERIFIER_TOOLS: ReadonlySet<string> = new Set([
   "list_dir",
   "read_file",
   "read_many",

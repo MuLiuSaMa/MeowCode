@@ -70,11 +70,20 @@ type ProviderChunk = {
     prompt_tokens?: number;
     completion_tokens?: number;
     /** OpenAI / GLM 等：输入明细里的缓存命中数 */
-    prompt_tokens_details?: { cached_tokens?: number };
-    /** DeepSeek 兼容：顶层缓存命中数（prompt_tokens 已包含它） */
+    prompt_tokens_details?: {
+      cached_tokens?: number;
+      /** 部分网关把 Anthropic 的字段塞进 OpenAI 形状 */
+      cache_read_input_tokens?: number;
+      cache_creation_input_tokens?: number;
+    };
+    /** DeepSeek 兼容：顶层缓存命中/未命中数（prompt_tokens 已包含命中） */
     prompt_cache_hit_tokens?: number;
+    prompt_cache_miss_tokens?: number;
     /** 部分兼容网关只给顶层 cached_tokens */
     cached_tokens?: number;
+    /** 部分网关透传 Anthropic 用量字段 */
+    cache_read_input_tokens?: number;
+    cache_creation_input_tokens?: number;
   };
   error?: { message?: string };
 };
@@ -316,24 +325,35 @@ async function streamChatCompletions(options: {
       }
       if (parsed.error?.message) throw new Error(parsed.error.message);
       if (parsed.usage) {
-        // 缓存命中：OpenAI 走 prompt_tokens_details.cached_tokens，DeepSeek 用顶层 prompt_cache_hit_tokens
+        // 缓存命中：OpenAI 走 prompt_tokens_details.cached_tokens，DeepSeek 用顶层
+        // prompt_cache_hit_tokens；部分网关只报 miss 或透传 Anthropic 字段，一并兼容。
         const cachedTokens =
           parsed.usage.prompt_tokens_details?.cached_tokens ??
+          parsed.usage.prompt_tokens_details?.cache_read_input_tokens ??
           parsed.usage.prompt_cache_hit_tokens ??
-          parsed.usage.cached_tokens;
+          parsed.usage.cached_tokens ??
+          parsed.usage.cache_read_input_tokens ??
+          (parsed.usage.prompt_tokens !== undefined &&
+          parsed.usage.prompt_cache_miss_tokens !== undefined
+            ? Math.max(0, parsed.usage.prompt_tokens - parsed.usage.prompt_cache_miss_tokens)
+            : undefined);
+        const cacheWriteTokens =
+          parsed.usage.cache_creation_input_tokens ??
+          parsed.usage.prompt_tokens_details?.cache_creation_input_tokens;
         usage = {
           inputTokens: parsed.usage.prompt_tokens,
-          // prompt_tokens 已含命中部分，减掉才是真正没走缓存的输入
+          // prompt_tokens 已含命中/写入部分，减掉才是真正没走缓存的输入
           ...(parsed.usage.prompt_tokens !== undefined
             ? {
                 uncachedInputTokens: Math.max(
                   0,
-                  parsed.usage.prompt_tokens - (cachedTokens ?? 0),
+                  parsed.usage.prompt_tokens - (cachedTokens ?? 0) - (cacheWriteTokens ?? 0),
                 ),
               }
             : {}),
           outputTokens: parsed.usage.completion_tokens,
           ...(cachedTokens !== undefined ? { cacheReadTokens: cachedTokens } : {}),
+          ...(cacheWriteTokens !== undefined ? { cacheWriteTokens } : {}),
         };
         if (!sameUsage(reportedUsage, usage)) {
           reportedUsage = usage;

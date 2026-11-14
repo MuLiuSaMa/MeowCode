@@ -1,34 +1,7 @@
 {
   "empty": {
     "setup": "Configurez un fournisseur de modèle et choisissez un espace de travail pour commencer.",
-    "title": "Créons quelque chose ensemble ?",
-    "suggestions": {
-      "idea": "Créer un pélican à vélo",
-      "readme": "Rédiger un README clair pour le projet",
-      "bug": "Localiser et corriger cette erreur",
-      "tests": "Ajouter des tests à la fonctionnalité existante",
-      "api": "Concevoir une API simple",
-      "refactor": "Découper une longue fonction en petits modules",
-      "script": "Écrire un petit script d'automatisation",
-      "dashboard": "Créer un panneau de visualisation de données",
-      "risk": "Vérifier les risques des modifications récentes",
-      "steps": "Décomposer les besoins en étapes",
-      "setting": "Ajouter un interrupteur dans les paramètres",
-      "release": "Préparer une checklist de publication",
-      "label": "Suggestions",
-      "ideaPrompt": "Crée une petite réalisation « pélican à vélo » avec la technologie la plus adaptée au projet : SVG, animation Canvas ou page web. Choisis d'abord le format de sortie, puis implémente avec des proportions et un mouvement crédibles pour qu'on reconnaisse immédiatement un pélican sur un vélo ; indique enfin comment la prévisualiser.",
-      "readmePrompt": "Lis la structure du projet et sa configuration, puis rédige un README clair : présentation, stack, installation/lancement, arborescence, scripts courants et FAQ. N'invente pas de commandes.",
-      "bugPrompt": "J'ai une erreur. Reproduis-la et identifie la cause racine avec des preuves avant de corriger ; ne traite pas seulement le symptôme. Explique ensuite le changement, sa portée et la vérification.",
-      "testsPrompt": "Examine la structure de tests existante et les lacunes de couverture, puis ajoute des tests utiles pour cette fonctionnalité : cas nominal et principaux cas d'échec. Exécute-les et corrige ce qu'ils révèlent.",
-      "apiPrompt": "Conçois une API simple et stable : décris d'abord les ressources, les champs requête/réponse, les codes d'erreur et l'authentification. Suis le style du projet et fournis une implémentation minimale ou un brouillon d'interface.",
-      "refactorPrompt": "Trouve une fonction trop longue ou aux responsabilités mélangées, découpe-la en modules plus petits sans changer le comportement ; explique d'abord les frontières, puis modifie et exécute les tests concernés.",
-      "scriptPrompt": "Écris un petit script pour supprimer les tâches répétitives. Demande-moi d'abord le processus à automatiser, implémente-le, explique l'usage et exécute-le réellement dans cet environnement pour vérifier.",
-      "dashboardPrompt": "Construis un panneau de visualisation de données à partir des sources existantes du projet. Valide d'abord les indicateurs et définitions, utilise un minimum de dépendances et gère les états vide, chargement et erreur.",
-      "riskPrompt": "Relis les modifications non commitées : liste les problèmes par risque (régressions, cas limites, sécurité, performance) avec fichier/ligne et corrections. Ne t'arrête pas aux remarques de style.",
-      "stepsPrompt": "Découpe mon besoin en étapes exécutables : objectif, fichiers concernés, critères d'acceptation et dépendances pour chacune. Donne d'abord le plan et attends ma confirmation avant de modifier le code.",
-      "settingPrompt": "Ajoute un interrupteur persistant à la page de paramètres. Réutilise le formulaire et le stockage existants, gère les états inactif/désactivé/échec d'enregistrement et vérifie qu'il survit au redémarrage.",
-      "releasePrompt": "Prépare une checklist de release : version, build, tests, migrations, rollback et notes de version. Utilise les commandes réelles du projet plutôt que des phrases génériques."
-    }
+    "title": "Créons quelque chose ensemble ?"
   },
   "suggestion": {
     "label": "Suggestion",
@@ -279,6 +252,7 @@
     "applyPatch": "Appliquer le patch",
     "git": "Git",
     "job": "Tâche en arrière-plan",
+    "jobWait": "Attente de la tâche d’arrière-plan",
     "view": {
       "open": "Ouvrir",
       "unanswered": "(sans réponse)",
@@ -348,6 +322,7 @@
   },
   "turnFooter": {
     "copyMarkdown": "Copier en Markdown",
+    "copyEmpty": "Aucun texte de réponse à copier dans ce tour",
     "copyPlain": "Copier en texte brut",
     "branch": "Créer une branche",
     "duration": "Durée",

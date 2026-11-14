@@ -11,6 +11,8 @@ class PluginContributionBoundary extends Component<
     slot: SlotName;
     entryId: string;
     children: ReactNode;
+    /** 崩溃后的回退：single 用内置 UI，wrap 用内层内容，list 用 null */
+    fallback?: ReactNode;
   },
   { failed: boolean }
 > {
@@ -27,7 +29,7 @@ class PluginContributionBoundary extends Component<
   }
 
   render(): ReactNode {
-    return this.state.failed ? null : this.props.children;
+    return this.state.failed ? (this.props.fallback ?? null) : this.props.children;
   }
 }
 
@@ -35,9 +37,11 @@ class PluginContributionBoundary extends Component<
 export function PluginContribution({
   contribution,
   props,
+  fallback = null,
 }: {
   contribution: { pluginId: string; slot: SlotName; entry: { id: string }; component: ComponentType<Record<string, unknown>> };
   props: Record<string, unknown>;
+  fallback?: ReactNode;
 }) {
   const Contribution = contribution.component;
   return (
@@ -45,6 +49,7 @@ export function PluginContribution({
       pluginId={contribution.pluginId}
       slot={contribution.slot}
       entryId={contribution.entry.id}
+      fallback={fallback}
     >
       <Contribution {...props} />
     </PluginContributionBoundary>
@@ -80,6 +85,55 @@ export function PluginSlot({
           </PluginContributionBoundary>
         );
       })}
+    </>
+  );
+}
+
+/** 替换型槽位：有贡献渲染贡献（崩溃回退 fallback），否则渲染内置 fallback。 */
+export function PluginSlotSingle({
+  name,
+  props,
+  fallback = null,
+}: {
+  name: SlotName;
+  props: Record<string, unknown>;
+  fallback?: ReactNode;
+}) {
+  const contribution = usePluginSlot(name)[0];
+  if (!contribution) return <>{fallback}</>;
+  return <PluginContribution contribution={contribution} props={props} fallback={fallback} />;
+}
+
+/**
+ * 包裹型槽位：按 order 升序嵌套，最小者最外层；插件组件收到 children。
+ * 没有贡献时直接返回 children，不产生额外 DOM，避免破坏宿主布局。
+ */
+export function PluginWrap({
+  name,
+  props,
+  children,
+}: {
+  name: SlotName;
+  props: Record<string, unknown>;
+  children: ReactNode;
+}) {
+  const contributions = usePluginSlot(name);
+  return (
+    <>
+      {contributions.reduceRight<ReactNode>((inner, contribution) => {
+        const Contribution = contribution.component as ComponentType<Record<string, unknown>>;
+        return (
+          <PluginContributionBoundary
+            key={`${contribution.pluginId}:${contribution.entry.id}`}
+            pluginId={contribution.pluginId}
+            slot={name}
+            entryId={contribution.entry.id}
+            fallback={inner}
+          >
+            <Contribution {...props} children={inner} />
+          </PluginContributionBoundary>
+        );
+      }, children)}
     </>
   );
 }

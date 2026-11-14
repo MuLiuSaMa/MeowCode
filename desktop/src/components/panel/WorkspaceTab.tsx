@@ -18,6 +18,8 @@ import {
   LuTrash2,
 } from "react-icons/lu";
 import { api } from "../../api";
+import { PluginSlot } from "../../plugins/PluginSlot";
+import { usePluginSlot } from "../../plugins/runtime";
 import { FilePreview } from "./FilePreview";
 import { formatNumber } from "../../i18n/format";
 import "./WorkspaceTab.css";
@@ -118,6 +120,7 @@ export function WorkspaceTab({
   onSelect: (path: string) => void;
 }) {
   const { t } = useTranslation("panel");
+  const pluginMenuItems = usePluginSlot("fileTree.contextMenu");
   /** 目录路径 → 直接子项（"" = 工作区根），逐层缓存 */
   const [childrenByDir, setChildrenByDir] = useState<Record<string, DirEntry[]>>({});
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
@@ -585,18 +588,40 @@ export function WorkspaceTab({
                     <LuTrash2 size={13} />
                     {t("workspace.menu.delete")}
                   </button>
+                  {pluginMenuItems.length > 0 ? <div className="mc-wstree__menusep" /> : null}
+                  <PluginSlot
+                    name="fileTree.contextMenu"
+                    props={{
+                      target: {
+                        kind: menuEntry.dir ? "folder" : "file",
+                        path: menuEntry.path,
+                        name: menuEntry.name,
+                      },
+                      closeMenu: () => setMenu(null),
+                    }}
+                  />
                 </>
               ) : (
-                <button
-                  type="button"
-                  role="menuitem"
-                  className="mc-wstree__menuitem"
-                  disabled={!clipboard}
-                  onClick={() => runMenuAction(() => pasteIntoDir(""))}
-                >
-                  <LuClipboardPaste size={13} />
-                  {t("workspace.menu.paste")}
-                </button>
+                <>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="mc-wstree__menuitem"
+                    disabled={!clipboard}
+                    onClick={() => runMenuAction(() => pasteIntoDir(""))}
+                  >
+                    <LuClipboardPaste size={13} />
+                    {t("workspace.menu.paste")}
+                  </button>
+                  {pluginMenuItems.length > 0 ? <div className="mc-wstree__menusep" /> : null}
+                  <PluginSlot
+                    name="fileTree.contextMenu"
+                    props={{
+                      target: { kind: "root" },
+                      closeMenu: () => setMenu(null),
+                    }}
+                  />
+                </>
               )}
             </div>,
             document.body,

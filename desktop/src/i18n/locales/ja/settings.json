@@ -198,7 +198,16 @@
     "empty": "ワークスペースはまだ追加されていません。",
     "removeTitle": "プロジェクトを削除",
     "removeMessage": "「{{name}}」を削除しますか？一覧から隠れるだけで、チャットとファイルは削除されません。",
-    "removeConfirm": "削除"
+    "removeConfirm": "削除",
+    "batchManage": "一括管理",
+    "batchCancel": "キャンセル",
+    "batchRemove": "選択項目を削除",
+    "batchRemoveCount": "選択項目を削除 · {{count}}",
+    "batchSelectAll": "すべて選択",
+    "batchSelected": "{{count}} 件選択中",
+    "batchRemoveTitle": "選択したプロジェクトを削除",
+    "batchRemoveMessage": "選択した {{count}} 個のプロジェクトを削除しますか？リストから隠れるだけで、チャットとファイルは残ります。",
+    "batchActiveHint": "現在のプロジェクトは削除できません"
   },
   "models": {
     "section": "モデル",

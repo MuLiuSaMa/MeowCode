@@ -1,3 +1,4 @@
+import { useSyncExternalStore } from "react";
 import {
   pluginRpc,
   pluginStorageDelete,
@@ -94,10 +95,40 @@ export function createPluginContext(deps: PluginContextDeps): PluginContextBundl
         );
       },
     },
+    tabs: {
+      register: (entry, component) => {
+        requirePermission(descriptor, "ui");
+        return pluginSlots.register(descriptor.id, "rightpanel.tabs", { ...entry }, component);
+      },
+    },
     actions: {
       sendPrompt: async (text) => {
         requirePermission(descriptor, "prompt");
         await actions.sendPrompt(text);
+      },
+      stopTurn: () => {
+        requirePermission(descriptor, "prompt");
+        actions.stopTurn();
+      },
+      openFile: (path) => {
+        requirePermission(descriptor, "ui");
+        actions.openFile(path);
+      },
+      openTab: (tabId, pluginId) => {
+        requirePermission(descriptor, "ui");
+        const target = pluginId || descriptor.id;
+        const entry = pluginSlots
+          .get("rightpanel.tabs")
+          .find((item) => item.pluginId === target && item.entry.id === tabId)?.entry;
+        if (!entry) {
+          throw new Error(`plugin tab "${target}:${tabId}" is not registered`);
+        }
+        actions.openPluginTab({
+          pluginId: target,
+          tabId,
+          title: entry.title ?? tabId,
+          ...(entry.icon ? { icon: entry.icon } : {}),
+        });
       },
       insertComposerText: (text) => {
         requirePermission(descriptor, "prompt");
@@ -131,6 +162,31 @@ export function createPluginContext(deps: PluginContextDeps): PluginContextBundl
     store: {
       getState: () => getState(),
       subscribe: (listener) => subscribeState(listener),
+    },
+    hooks: {
+      useAppState: () => useSyncExternalStore(subscribeState, getState, getState),
+    },
+    window: {
+      minimize: () => {
+        requirePermission(descriptor, "ui");
+        actions.window.minimize();
+      },
+      toggleMaximize: () => {
+        requirePermission(descriptor, "ui");
+        actions.window.toggleMaximize();
+      },
+      close: () => {
+        requirePermission(descriptor, "ui");
+        actions.window.close();
+      },
+      isMaximized: () => {
+        requirePermission(descriptor, "ui");
+        return actions.window.isMaximized();
+      },
+      onStateChange: (listener) => {
+        requirePermission(descriptor, "ui");
+        return actions.window.onStateChange(listener);
+      },
     },
     rpc: {
       call: async (method, args) => {

@@ -1,0 +1,53 @@
+.mc-stage {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  color: var(--text-tertiary, var(--text-secondary));
+}
+
+/* 等人：最需要被看见的一档 */
+.mc-stage[data-stage^="person/"] {
+  color: var(--warning, #d97706);
+}
+
+.mc-stage[data-stage="working/running"] {
+  color: var(--accent, #2563eb);
+}
+
+.mc-stage[data-stage^="machine/"] {
+  color: var(--text-secondary);
+}
+
+.mc-stage[data-stage="ended/completed"] {
+  color: var(--success, #16a34a);
+}
+
+.mc-stage[data-stage="ended/failed"] {
+  color: var(--danger, #dc2626);
+}
+
+.mc-stage[data-stage="ended/aborted"],
+.mc-stage[data-stage="ended/cancelled"] {
+  color: var(--text-tertiary, var(--text-secondary));
+}
+
+.mc-stage[data-stage="idle"] {
+  color: var(--text-tertiary, var(--text-secondary));
+}
+
+.mc-stage__spin {
+  animation: mc-stage-spin 1s linear infinite;
+}
+
+@keyframes mc-stage-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mc-stage__spin {
+    animation: none;
+  }
+}

@@ -95,5 +95,25 @@
     "errorRequired": "Please fill in the required fields",
     "invalidCron": "Invalid cron expression",
     "saveFailed": "Failed to save"
+  },
+  "autonomy": {
+    "label": "Execution",
+    "auto": "Run automatically",
+    "observe": "Observe only",
+    "off": "Do not run"
+  },
+  "decision": {
+    "tabHistory": "Run history",
+    "tabDecision": "Decisions",
+    "empty": "No decisions recorded yet.",
+    "last": "Last decision: {{outcome}} · {{time}}",
+    "planned": "Would have sent",
+    "outcome": {
+      "executed": "Executed",
+      "observed": "Observed only",
+      "skipped": "Skipped",
+      "failed": "Failed",
+      "uncertain": "Unconfirmed"
+    }
   }
 }

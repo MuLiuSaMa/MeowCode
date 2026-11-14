@@ -121,7 +121,8 @@
     "notGitRepo": "現在のワークスペースは git リポジトリではないため、worktree による分離は使えません。"
   },
   "toast": {
-    "worktreeDirty": "メインのワークスペースに未コミットの変更があります。worktree は HEAD を基準にするため、未コミットの内容は引き継がれません"
+    "worktreeDirty": "メインのワークスペースに未コミットの変更があります。worktree は HEAD を基準にするため、未コミットの内容は引き継がれません",
+    "jobExited": "バックグラウンドジョブ {{id}} が終了しました（code {{code}}）"
   },
   "architecture": {
     "customName": "カスタム Agent"

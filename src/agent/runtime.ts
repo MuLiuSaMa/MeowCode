@@ -48,7 +48,7 @@ import {
   type WebSearchResult,
 } from "./web-search.js";
 import { fetchWebPage, type WebFetchOutcome } from "./web-fetch.js";
-import { multiEditPaths, readMultiEditGroups } from "./multi-edit.js";
+import { multiEditPaths } from "./multi-edit.js";
 import {
   displayPath,
   isWithinAppDataRoot,
@@ -71,6 +71,7 @@ import {
   toRulePath,
 } from "./approval-rules.js";
 import { createJobManager, type JobManager } from "./jobs.js";
+import { JobExitWatcher, type JobExit } from "./job-watch.js";
 import { isForceApprovalGitAction, isMutatingGitAction } from "./git-tools.js";
 import { patchPaths } from "./patch.js";
 import {
@@ -82,8 +83,7 @@ import {
   dynamicToolsVersion,
   toolDefinitions,
   admitToolDefinition,
-  truncateOutput,
-  READ_MANY_MAX_PATHS,
+  truncateWithSpill,
   type ToolRunOptions,
 } from "./tools.js";
 import type { PluginRegistry } from "../plugins/registry.js";
@@ -123,8 +123,12 @@ import {
   reconcileToolCatalog,
   type ToolCatalog,
 } from "./tool-catalog.js";
+import { formatToolRejection } from "./tool-feedback.js";
+import { planMutationWeight, planNudge, turnEndPlanBlock } from "./plan-freshness.js";
+import { observerCopy, validateToolInput } from "./tool-input.js";
+import { dropSupersededNotes } from "./context-notes.js";
 import { FAILOVER_WALL_CLOCK_MS, failoverReason, planFallbacks } from "./provider-fallback.js";
-import { boostEffort } from "./thinking-budget.js";
+import { resolveThinkingPolicy, type ThinkingComplexity } from "./thinking-budget.js";
 import { projectForMainPath, projectForRequest } from "./request-projection.js";
 import { SUGGESTION_SYSTEM_PROMPT, SUGGESTION_USER_PROMPT, usableSuggestion } from "./prompt-suggestion.js";
 import { toResponsesInput } from "./responses.js";
@@ -334,19 +338,12 @@ Start by calling admit to declare the task shape (T0 trivial / T1 single lane / 
 Work lane by lane: implement (yourself or via an implementer subagent), then close every gate in the order your architecture graph defines, dispatching exactly the role each gate names (G4 implement → G5 review → G6 verification, plus the extra gates your graph adds). Never weaken a failing test — a regression is a signal.
 Stop only when every lane has passed G6 (the run completes itself), or you are blocked on a decision that truly needs the user. When stopping, state what is done, what remains, and what you need.`;
 
-/** 连续 N 次文件变更没有更新计划 → 轮间提醒一次（每再涨 N 次再提醒） */
-const PLAN_NUDGE_STEP = 4;
-/** 计入「计划新鲜度」的文件变更工具 */
-const PLAN_MUTATION_TOOLS = new Set([
-  "write_file",
-  "edit_file",
-  "multi_edit",
-  "apply_patch",
-  "delete_file",
-  "move_file",
-]);
+/**
+ * 计划新鲜度（todolist）的计数与提醒决策在 plan-freshness.ts：
+ * 改动量按「涉及文件数」加权、收尾闸按「本回合是否改过文件」判定。
+ */
 
-const APPROVAL_TOOLS = new Set([
+export const APPROVAL_TOOLS = new Set([
   "write_file",
   "edit_file",
   "multi_edit",
@@ -368,7 +365,7 @@ function hasSkillReference(text: string): boolean {
 }
 
 /** 浏览器写操作始终审批；外站导航也审批，本地页面预览保持直接执行 */
-const BROWSER_APPROVAL_TOOLS = new Set(["browser_click", "browser_type"]);
+export const BROWSER_APPROVAL_TOOLS = new Set(["browser_click", "browser_type"]);
 
 function isLocalBrowserUrl(url: string): boolean {
   try {
@@ -389,7 +386,6 @@ function isLocalBrowserUrl(url: string): boolean {
  * 循环检测（P1-2）：同一回合内「参数完全相同 且 输出逐字节相同」的连续工具调用，
  * 状态与阈值见 loop-guard.ts（3/5/8 分级，参考 dsh repeat-tool-reminder）。
  */
-type ToolArgumentSpec = { required: string[]; nonEmpty: string[] };
 
 type LiveSubagent = {
   runtime: AgentRuntime;
@@ -429,29 +425,6 @@ type SubagentObservations = {
   pendingCommands: Map<string, string>;
 };
 
-/** 必填参数校验：参数不完整时绝不落盘/执行，按工具错误回给模型。 */
-const TOOL_ARGUMENTS: Record<string, ToolArgumentSpec> = {
-  read_file: { required: ["path"], nonEmpty: ["path"] },
-  glob: { required: ["pattern"], nonEmpty: ["pattern"] },
-  grep: { required: ["pattern"], nonEmpty: ["pattern"] },
-  run_code: { required: ["code"], nonEmpty: ["code"] },
-  write_file: { required: ["path", "content"], nonEmpty: ["path"] },
-  edit_file: { required: ["path", "oldString", "newString"], nonEmpty: ["path", "oldString"] },
-  run_command: { required: ["command"], nonEmpty: ["command"] },
-  browser_navigate: { required: ["url"], nonEmpty: ["url"] },
-  browser_click: { required: ["ref"], nonEmpty: ["ref"] },
-  browser_type: { required: ["text"], nonEmpty: ["text"] },
-  task: { required: ["description"], nonEmpty: ["description"] },
-  admit: { required: ["tier", "task_shape"], nonEmpty: ["tier", "task_shape"] },
-  job: { required: ["action"], nonEmpty: ["action"] },
-  git: { required: ["action"], nonEmpty: ["action"] },
-  delete_file: { required: ["path"], nonEmpty: ["path"] },
-  move_file: { required: ["from", "to"], nonEmpty: ["from", "to"] },
-  apply_patch: { required: ["patch"], nonEmpty: ["patch"] },
-  web_search: { required: ["query"], nonEmpty: ["query"] },
-  web_fetch: { required: ["url"], nonEmpty: ["url"] },
-};
-
 /** 门禁拦截事件的 input 回显：尽力解析参数，解析失败给空对象 */
 function safeToolInput(call: ToolCall): unknown {
   try {
@@ -459,56 +432,6 @@ function safeToolInput(call: ToolCall): unknown {
   } catch {
     return {};
   }
-}
-
-function validateToolArguments(
-  tool: string,
-  raw: string | undefined,
-): { ok: true; input: unknown } | { ok: false; error: string } {
-  const text = (raw ?? "").trim();
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(text || "{}");
-  } catch {
-    return { ok: false, error: "tool arguments are not valid JSON." };
-  }
-  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-    return { ok: false, error: "tool arguments must be a JSON object." };
-  }
-  const args = parsed as Record<string, unknown>;
-  // multi_edit 支持跨文件：path 可以在顶层，也可以挂在每条 edit 上
-  if (tool === "multi_edit") {
-    const groups = readMultiEditGroups(args);
-    if (typeof groups === "string") return { ok: false, error: groups };
-    return { ok: true, input: args };
-  }
-  // read_many 的 paths 是字符串数组：单独校验（TOOL_ARGUMENTS 只覆盖字符串字段）
-  if (tool === "read_many") {
-    const paths = args.paths;
-    if (!Array.isArray(paths) || paths.length === 0) {
-      return { ok: false, error: 'argument "paths" must be a non-empty array of file paths.' };
-    }
-    if (paths.length > READ_MANY_MAX_PATHS) {
-      return { ok: false, error: `argument "paths" accepts at most ${READ_MANY_MAX_PATHS} files; split into batches.` };
-    }
-    if (paths.some((item) => typeof item !== "string" || !item.trim())) {
-      return { ok: false, error: 'every entry in "paths" must be a non-empty string.' };
-    }
-    return { ok: true, input: args };
-  }
-  const spec = TOOL_ARGUMENTS[tool];
-  if (spec) {
-    for (const field of spec.required) {
-      const value = args[field];
-      if (typeof value !== "string") {
-        return { ok: false, error: `missing required string argument "${field}".` };
-      }
-      if (spec.nonEmpty.includes(field) && !value.trim()) {
-        return { ok: false, error: `argument "${field}" must not be empty.` };
-      }
-    }
-  }
-  return { ok: true, input: args };
 }
 
 /**
@@ -523,7 +446,7 @@ function validateToolArguments(
 export { isApprovalMode, normalizeApprovalMode, isSessionMode, normalizeSessionMode };
 
 /** 只有写类工具参与"可写根"判定；命令走独立的高危判定，见 autoApprovalReason。 */
-const WRITABLE_ROOT_TOOLS = new Set([
+export const WRITABLE_ROOT_TOOLS = new Set([
   "write_file",
   "edit_file",
   "multi_edit",
@@ -743,6 +666,14 @@ const IDLE_COMPACTION_MIN_RATIO = 0.6;
 const COMPACTION_FAILURE_LIMIT = 3;
 /** 摘要连续失败 / 连续压不下去后的冷却时间：冷却期内溢出直接零模型兜底。 */
 const COMPACTION_COOLDOWN_MS = 600_000;
+/**
+ * rapid-refill 抖动熔断（#11）：刚压完 3 分钟内又冲回 80%，说明压缩白做——
+ * 典型原因是模型在压缩后立刻重读大文件/重跑长命令。连续 2 次进冷却，
+ * 并在历史尾部挂一条可操作提醒（压缩后别重读大文件，改用 offset/limit），
+ * 而不是让「压缩→重读→再压缩」循环每轮烧一份摘要请求。
+ */
+const RAPID_REFILL_WINDOW_MS = 180_000;
+const RAPID_REFILL_LIMIT = 2;
 const SHRINK_SPILL_MAP_MAX = 400;
 
 /**
@@ -881,7 +812,7 @@ function fileChangeOperation(tool: string): "write_file" | "edit_file" | "delete
 }
 
 /** 记忆总开关关闭时要撤下的工具：读写删除三条一起，避免「关了但还能写」 */
-const MEMORY_TOOL_NAMES: ReadonlySet<string> = new Set([
+export const MEMORY_TOOL_NAMES: ReadonlySet<string> = new Set([
   "memory_read",
   "memory_write",
   "memory_delete",
@@ -1082,7 +1013,23 @@ export class AgentRuntime {
     contextEditing?: boolean;
     /** fork 继承父 system/instructions 以复用前缀缓存；默认开，置 false 回退旧行为 */
     forkPrefixReuse?: boolean;
+    /** 自定义提示词走「基线 + 边界后增量段」；默认开，置 false 回退整体替换 */
+    promptSegments?: boolean;
+    /** 复杂度调档；默认开（未设置视为开） */
+    complexityThinking?: boolean;
   } | null = null;
+  /**
+   * 提示词行为开关：两个默认都开，不暴露给设置面板（用户明确要求「默认开着就行」）。
+   * 只有 MEOWCODE_EXPERIMENTAL 显式传 false 才关（排障用）。
+   * 只影响请求参数与分段来源，不改 system/tools 基线字节。
+   */
+  promptFlags: {
+    /** 自定义提示词走「基线 + 边界后增量段」（默认开） */
+    promptSegments: boolean;
+    /** 复杂度调档（默认开） */
+    complexityThinking: boolean;
+  } = { promptSegments: true, complexityThinking: true };
+
   /**
    * 治理层（metis 式 admission + gate 状态机）。只有根 runtime 驱动它：
    * 子 Agent 的 createSubagentRuntime 不注册治理 hooks。governance=off 时
@@ -1090,10 +1037,18 @@ export class AgentRuntime {
    */
   private readonly governance: GovernanceMode;
   private workflow = new WorkflowRuntime();
-  /** 连续文件变更没更新 update_plan 的计数（所有会话都算，不只治理模式） */
+  /** 自上次 update_plan 以来的加权改动量（按文件数计，不是按工具调用次数） */
   private mutationsSincePlanCheck = 0;
-  /** 上次注入计划提醒时的计数：再涨 PLAN_NUDGE_STEP 次才提醒下一次 */
+  /** 上次注入计划提醒时的加权改动量 */
   private planNudgeAt = 0;
+  /** 本回合是否已经推过「建清单」：整回合只推一次 */
+  private noPlanNudged = false;
+  /**
+   * 本回合是否有过写操作。与 mutationsSincePlanCheck 分开记：
+   * 后者会被 update_plan 清零，而收尾闸需要的是「这回合到底改过东西没有」。
+   * 用同一个计数会让「先更新清单 → 再跑验证」这种正常流程绕过收尾闸。
+   */
+  private turnHadMutations = false;
   /** 本轮思考计时：首个 thinking_delta 开始，到首个正文增量（没有正文则在消息落盘时结算） */
   private thinkingStartedAt: number | null = null;
   /** 本轮思考时长（毫秒）：只算一次，后续事件与落盘复用 */
@@ -1131,6 +1086,9 @@ export class AgentRuntime {
   /** 摘要失败后的冷却截止：连续 2 次失败进 600s，避免每轮白烧全量输入。 */
   private compactionCooldownUntil = 0;
   private compactionFailureStreak = 0;
+  /** 上一次压缩完成的时间与 token 量：rapid-refill 判据 */
+  private lastCompactionAt = 0;
+  private rapidRefills = 0;
   /** 摘要成功但占用仍 ≥80% 的无效压缩次数；连续 2 次进冷却。 */
   private ineffectiveCompactions = 0;
   /** 当前回合 id：工具/审批事件与 partial 检查点都挂在它下面 */
@@ -1153,8 +1111,11 @@ export class AgentRuntime {
   private listeners = new Set<(event: MeowEvent) => void>();
   /** 诊断：turn/llm/tool 三层 span，环形缓冲；日志由 server 注入 sink 落盘 */
   private readonly traceRecorder: TraceRecorder;
+  /** 后台任务结束通知：start 时登记所属会话，退出且模型没在等/读过时写 context note */
+  private readonly jobSessions = new Map<string, SessionStore>();
+  private readonly jobWatcher: JobExitWatcher;
   /** 后台任务：桌面端走主进程 job-host（PTY 可在终端页签接管），CLI/测试走本地子进程 */
-  private readonly jobManager: JobManager = createJobManager();
+  private readonly jobManager: JobManager;
   /** 子 Agent 树深度（顶层 0）与该 trace 剩余配额（含嵌套） */
   private readonly subagentDepth: number;
   private subagentBudget: number;
@@ -1178,6 +1139,15 @@ export class AgentRuntime {
   private systemPrompt: string;
   /** 调用方显式传了 systemPrompt：此时档位提示词不覆盖它（子 Agent / side 聊天 / 测试） */
   private customSystemPrompt: boolean;
+  /**
+   * 缓存边界后的增量提示词段（架构图主/角色节点自定义的提示词）。
+   *
+   * 这些段独立成 system 消息，排在 instructions 之后：
+   * 用户改一次自定义提示词，只重写这一段（以及其后的历史尾部），
+   * 基线提示词 + AGENTS.md 的缓存前缀逐字节不动。以前是「整体替换」，
+   * 一改就等于把 tools 之后的全部前缀推倒重来。
+   */
+  private extraSystemSegments: string[];
   /** 子 Agent 写/改文件后回写父会话（审阅聚合） */
   private onFileChange?: (change: {
     path: string;
@@ -1345,6 +1315,8 @@ export class AgentRuntime {
     homeDir?: string;
     workspace?: string;
     browserHost?: BrowserHostClient | null;
+    /** 后台任务管理器：缺省按环境自建（桌面端 job-host / 本地子进程）；测试注入用 */
+    jobs?: JobManager;
     enableTaskTool?: boolean;
     /**
      * 缓存 TTL 的 auto 判据：人驱动的会话用 "interactive"，子代理/后台批量用
@@ -1352,6 +1324,11 @@ export class AgentRuntime {
      */
     sessionPace?: "interactive" | "machine";
     systemPrompt?: string;
+    /**
+     * 缓存边界后的增量提示词段：独立 system 消息、排在 instructions 之后。
+     * 与 systemPrompt 的区别是「追加」而不是「替换」——改它不动前缀。
+     */
+    systemSegments?: string[];
     allowedTools?: Iterable<string>;
     /**
      * 禁止 run_code 的宿主写桥（meow.write / edit / multiEdit / delete / move）。
@@ -1374,6 +1351,13 @@ export class AgentRuntime {
       nativeCompaction?: boolean;
       contextEditing?: boolean;
       forkPrefixReuse?: boolean;
+      /**
+       * 架构图自定义提示词走「基线 + 边界后增量段」（默认开）。
+       * false = 回退旧行为：自定义提示词整体替换档位提示词。
+       */
+      promptSegments?: boolean;
+      /** 复杂度调档（门禁数/子 Agent 数/T2/连续失败升一档，默认开）。false = 只看 plan/goal 模式 */
+      complexityThinking?: boolean;
     };
     /** 插件注册表（server 级单例）：null/缺省 = 未启用插件系统，hook 直通、无动态工具 */
     plugins?: PluginRegistry | null;
@@ -1427,12 +1411,22 @@ export class AgentRuntime {
     this.sessionPace = options.sessionPace ?? "interactive";
     this.systemPrompt = options.systemPrompt ?? BASE_SYSTEM_PROMPT;
     this.customSystemPrompt = options.systemPrompt !== undefined;
+    this.extraSystemSegments = (options.systemSegments ?? [])
+      .map((segment) => segment.trim())
+      .filter(Boolean);
     this.allowedTools = options.allowedTools ? new Set(options.allowedTools) : null;
     this.denyHostWrites = options.denyHostWrites === true;
     this.injectInstructions = options.injectInstructions ?? true;
     this.instructionSettings = options.instructionSettings ?? {};
     this.builtinSkillsDir = options.builtinSkillsDir;
     this.experimental = options.experimental ?? null;
+    // 提示词行为开关：env/构造参数只做「显式覆写」，未指定的键保留默认值
+    if (options.experimental?.promptSegments !== undefined) {
+      this.promptFlags.promptSegments = options.experimental.promptSegments;
+    }
+    if (options.experimental?.complexityThinking !== undefined) {
+      this.promptFlags.complexityThinking = options.experimental.complexityThinking;
+    }
     this.plugins = options.plugins ?? null;
     this.hookScope = options.hookScope ?? null;
     this.mcpReady = options.mcpReady ?? null;
@@ -1464,6 +1458,10 @@ export class AgentRuntime {
     );
     this.subagentDepth = options.subagentDepth ?? 0;
     this.subagentBudget = options.subagentBudget ?? SUBAGENT_BUDGET_PER_TURN;
+    // 放在构造函数里而不是字段初始化：trackJobs 依赖上面先初始化的 jobSessions
+    const baseJobs = options.jobs ?? createJobManager();
+    this.jobWatcher = new JobExitWatcher(baseJobs, (job) => this.notifyJobExit(job));
+    this.jobManager = this.trackJobs(baseJobs);
   }
 
   /**
@@ -2821,10 +2819,28 @@ export class AgentRuntime {
    */
   private get effectiveSystemPrompt(): string {
     if (this.customSystemPrompt) return this.systemPrompt;
-    // 架构图里主 Agent 节点写了提示词就用它（整体替换档位那份）
+    // 架构图里主 Agent 节点写了提示词：默认走「基线 + 边界后增量段」，
+    // 基线保持档位提示词不动；只有显式关掉 promptSegments 才回退整体替换。
     const harnessPrompt = this.enableTaskTool ? this.workflow.rootAgentPrompt : null;
-    if (harnessPrompt) return harnessPrompt;
+    if (harnessPrompt && !this.promptSegmentsEnabled) return harnessPrompt;
     return this.activeProfile.prompt;
+  }
+
+  /** 提示词分段开关：默认开，设置面板可热切换。 */
+  private get promptSegmentsEnabled(): boolean {
+    return this.promptFlags.promptSegments;
+  }
+
+  /** 边界后的增量段：架构图主 Agent 的自定义提示词排在最前，其余由构造参数注入。 */
+  private get systemSegments(): string[] {
+    const segments = [...this.extraSystemSegments];
+    // 调用方显式给了 systemPrompt（子 Agent / side 聊天 / 测试）时以它为唯一权威，
+    // 架构图分段不叠加——子 Agent 的机器契约不能被工作区配置混进来。
+    if (!this.customSystemPrompt && this.enableTaskTool && this.promptSegmentsEnabled) {
+      const harnessPrompt = this.workflow.rootAgentPrompt;
+      if (harnessPrompt) segments.unshift(harnessPrompt);
+    }
+    return segments;
   }
 
   /** 审批/ask_user 的 Promise 不响应 AbortSignal：停止/插话前必须先结算，否则 runTurn 永远退不出。 */
@@ -2887,10 +2903,62 @@ export class AgentRuntime {
     }
   }
 
+  /** 包装 JobManager：登记后台任务所属会话，并记录模型是否已经通过 output/wait 看到退出。 */
+  private trackJobs(manager: JobManager): JobManager {
+    return {
+      start: async (input) => {
+        const job = await manager.start(input);
+        const session = this.currentSession;
+        if (session) {
+          this.jobSessions.set(job.id, session);
+          this.jobWatcher.track(job.id);
+        }
+        return job;
+      },
+      read: async (id, offset) => {
+        const chunk = await manager.read(id, offset);
+        if (chunk?.exited) this.jobWatcher.observe(id);
+        return chunk;
+      },
+      write: (id, data) => manager.write(id, data),
+      kill: async (id) => {
+        this.jobSessions.delete(id);
+        this.jobWatcher.untrack(id);
+        await manager.kill(id);
+      },
+      list: () => manager.list(),
+    };
+  }
+
+  /**
+   * 后台任务在模型没等它的时候结束：把结果写成 context note（下一次请求可见），
+   * 并发一条事件给界面。模型已经用 output/wait 读到退出的任务不会再走到这里。
+   */
+  private notifyJobExit(job: JobExit): void {
+    const session = this.jobSessions.get(job.id);
+    this.jobSessions.delete(job.id);
+    if (!session) return;
+    const note = `Background job ${job.id} (${job.command}) exited (code ${job.code ?? "?"}).${job.tail ? `\nLast output:\n${job.tail}` : ""}`;
+    void session
+      .appendContextNote(note, "job")
+      .then(() => session.flush())
+      .catch(() => undefined);
+    this.emit({
+      type: "job_exited",
+      sessionId: session.id,
+      jobId: job.id,
+      command: job.command,
+      code: job.code,
+      ...(job.tail ? { tail: job.tail } : {}),
+    });
+  }
+
   /** 应用/server 关停：中止回合但保留排队消息，下次启动作为“待发送”恢复。 */
   shutdown(): void {
     this.shuttingDown = true;
     this.cancelIdleTimers();
+    this.jobWatcher.stop();
+    this.jobSessions.clear();
     this.settlePendingApprovals();
     this.abortSubagents(true);
     this.turnAbort?.abort();
@@ -3001,8 +3069,10 @@ export class AgentRuntime {
     const instructionTokens = this.instructions ? estimateTokens(this.instructions) : 0;
     // 技能索引包含在 instructions 里：单独拎出来归因，其余规则/记忆算「其他」
     const skillTokens = Math.min(instructionTokens, this.instructionSkills.tokens);
+    // 增量段也是 system 的一部分：漏算会让占用估算偏低、压缩阈值偏晚
+    const segmentTokens = this.systemSegments.reduce((sum, segment) => sum + estimateTokens(segment), 0);
     const estimated: ContextBreakdown = {
-      system: estimateTokens(this.effectiveSystemPrompt),
+      system: estimateTokens(this.effectiveSystemPrompt) + segmentTokens,
       tools: estimateToolDefinitionsTokens(this.activeTools),
       skills: skillTokens,
       messages: estimateMessagesTokens(effective),
@@ -3376,6 +3446,28 @@ export class AgentRuntime {
     return true;
   }
 
+  /** 拖动排序：把 id 移到 beforeId 之前（null = 队尾）；目标不在队列时保持原样。 */
+  reorderQueuedPrompt(id: string, beforeId: string | null): boolean {
+    const from = this.promptQueue.findIndex((item) => item.id === id);
+    if (from < 0) return false;
+    if (beforeId === id) return true;
+    if (beforeId !== null && !this.promptQueue.some((item) => item.id === beforeId)) return false;
+    const [item] = this.promptQueue.splice(from, 1);
+    const to = beforeId === null ? -1 : this.promptQueue.findIndex((entry) => entry.id === beforeId);
+    this.promptQueue.splice(to < 0 ? this.promptQueue.length : to, 0, item);
+    return true;
+  }
+
+  /** 编辑排队项正文：原位替换，附件与队列位置保留。 */
+  editQueuedPrompt(id: string, text: string): boolean {
+    const item = this.promptQueue.find((entry) => entry.id === id);
+    if (!item) return false;
+    item.text = text;
+    // 会话日志按 queueId 覆盖同一项（Map 保留首次插入顺序），重启恢复时正文一致
+    void this.currentSession?.appendQueuedPrompt(id, text).catch(() => undefined);
+    return true;
+  }
+
   /** 强制插话：中止当前回合，并把指定排队项提到队首立即执行。 */
   steerQueuedPrompt(id: string): void {
     const index = this.promptQueue.findIndex((item) => item.id === id);
@@ -3679,6 +3771,8 @@ export class AgentRuntime {
       if (this.workflow.state?.completed) this.workflow.reset();
       this.mutationsSincePlanCheck = 0;
       this.planNudgeAt = 0;
+      this.noPlanNudged = false;
+      this.turnHadMutations = false;
       // 插件 hook：context_inject（往历史尾部追加上下文）。
       // 只走 context_note，不进系统提示 —— 否则请求前缀一变，prompt cache 整段作废。
       const injected = await runHook(
@@ -4432,9 +4526,20 @@ export class AgentRuntime {
     }
     const hash = (text: string) => createHash("sha1").update(text).digest("hex").slice(0, 16);
     const toolsFingerprint = fingerprintTools(options.tools);
+    const plan = resolveCachePlan(options.provider);
     const snapshot: PrefixSnapshot = {
       tools: toolsFingerprint,
       system: systemTexts.map(hash),
+      // 逐工具指纹：掉了缓存时能直接报「哪个工具的描述/参数变了」，而不是只说 tools 变了
+      toolNames: options.tools.map((tool) => tool.function.name),
+      toolHashes: options.tools.map((tool) => hash(JSON.stringify(tool.function))),
+      // 配置漂移单独记：画像/TTL/断点/会话键变了不等于内容前缀变了
+      meta: {
+        profile: plan.profile,
+        ttl: plan.ttl,
+        breakpoints: plan.breakpoints.join(","),
+        sessionKey: sessionAffinityKey(sessionId),
+      },
     };
     // 整段拼接的 key 保留：samePrefix 的判定口径必须与历史一致
     const key = `${toolsFingerprint}|${hash(systemTexts.join("\n"))}`;
@@ -4475,7 +4580,13 @@ export class AgentRuntime {
     }
     const hash = (text: string) => createHash("sha1").update(text).digest("hex").slice(0, 16);
     const toolsFingerprint = fingerprintTools(tools);
-    const after: PrefixSnapshot = { tools: toolsFingerprint, system: systemTexts.map(hash) };
+    const after: PrefixSnapshot = {
+      tools: toolsFingerprint,
+      system: systemTexts.map(hash),
+      toolNames: tools.map((tool) => tool.function.name),
+      toolHashes: tools.map((tool) => hash(JSON.stringify(tool.function))),
+      ...(before.meta ? { meta: before.meta } : {}),
+    };
     const key = `${toolsFingerprint}|${hash(systemTexts.join("\n"))}`;
     const changed =
       before.tools !== after.tools ||
@@ -4527,7 +4638,8 @@ export class AgentRuntime {
         // 主路径滞回投影：旧截图/扫描件总量越过 8MiB 触发线才裁到 4MiB（opencode 同款）。
         // 切点单调、两次裁剪之间前缀字节零变化；未变化的沿用原对象引用，增量链不受影响。
         // thinking 不投影：它的「保留最近 1 回合」边界每轮移动，逐轮投影等于每轮自爆缓存。
-        const history = projectForMainPath(session.effectiveMessages);
+        // 同一家族的旧注记在请求里只留最新一条：journal 与 UI 历史原样保留
+        const history = dropSupersededNotes(projectForMainPath(session.effectiveMessages));
         const messages: ChatMessage[] = [
           ...this.systemMessages(),
           ...history,
@@ -4596,13 +4708,20 @@ export class AgentRuntime {
           ...this.applyCachePolicy(turnProvider, session.id),
           maxTokens,
         };
-        // 思考档位按会话模式升一档（plan/goal 要更长的推理链）；显式预算不参与升档，
-        // 用户手填的数字是精确意图，不该被模式悄悄改掉。
-        const mode = this.turnChatMode ?? this.chatMode;
-        if ((mode === "plan" || mode === "goal") && turnProvider.thinkingBudget === undefined) {
-          const boosted = boostEffort(turnProvider.reasoningEffort, turnProvider.reasoningLevels);
-          if (boosted && boosted !== turnProvider.reasoningEffort) {
-            requestProvider = { ...requestProvider, reasoningEffort: boosted };
+        // 思考档位：plan/goal 模式与「复杂度事实」各算一个升档步数，取较大者。
+        // 显式预算不参与升档：用户手填的数字是精确意图。
+        // 换档只改 reasoning_effort / budget_tokens，不动 system/tools，前缀缓存不受影响。
+        if (turnProvider.thinkingBudget === undefined) {
+          const mode = this.turnChatMode ?? this.chatMode;
+          const policy = resolveThinkingPolicy({
+            effort: turnProvider.reasoningEffort,
+            maxTokens,
+            reasoningLevels: turnProvider.reasoningLevels,
+            boost: mode === "plan" || mode === "goal",
+            complexity: this.thinkingComplexity(),
+          });
+          if (policy.effort && policy.effort !== turnProvider.reasoningEffort) {
+            requestProvider = { ...requestProvider, reasoningEffort: policy.effort };
           }
         }
         if (incrementalOn && turnProvider.protocol === "openai-responses") {
@@ -5006,13 +5125,13 @@ export class AgentRuntime {
       earlyRun: (callId) => this.earlyToolRuns.get(callId),
       isParallelSafe: (toolName) => isToolParallelSafe(toolName),
       /**
-       * 回合 token 预算：按窗口的 3 倍给（输入每轮重发，长回合本来就会在窗口里
-       * 反复计费）。窗口未知时按 200k 兜底，仍远高于任何真实任务；
-       * 命中只是「别再跑了」，不是正常工作限制。
+       * 单回合只限轮次，不再设累计 token 上限。
+       *
+       * 原先按「3× 上下文窗口」累计计费：每轮重发整段历史，200k 上下文跑
+       * 15 轮就到 3M，正常长任务会被反复掐断；OpenCode/Codex/DSH 也都没有
+       * 这种普通回合的累计 token 硬停。跑飞由 60 轮上限和循环守卫兜底。
        */
-      turnBudget: () => ({
-        maxTokens: Math.max(200_000, (turnProvider.contextWindow ?? 200_000) * 3),
-      }),
+      turnBudget: () => ({}),
       pushUserMessage: (messages, content) => this.pushUserMessage(session, messages, content),
       onToolBlocked: (call, message) => {
         // 门禁拦截也要有完整 UI 事件（与插件 block 的形态一致）
@@ -5041,6 +5160,26 @@ export class AgentRuntime {
     if (this.governance === "off") return false;
     if (this.governance === "always") return true;
     return (this.turnChatMode ?? this.chatMode) === "goal";
+  }
+
+  /**
+   * 复杂度事实（#9）：门禁数 / 本回合子 Agent 数 / 治理档 / 本回合失败次数。
+   *
+   * 全部取自「已经发生过的事」——可解释、可复现，且不需要额外模型调用。
+   * 关掉 complexityThinking 就返回 undefined，退回只看 plan/goal 模式。
+   */
+  private thinkingComplexity(): ThinkingComplexity | undefined {
+    if (!this.promptFlags.complexityThinking) return undefined;
+    const snapshot = this.governanceApplies() ? this.workflow.snapshot() : null;
+    const gates = snapshot
+      ? Math.max(0, ...snapshot.lanes.map((lane) => Object.keys(lane.gates).length))
+      : 0;
+    return {
+      gates,
+      subagents: this.subagentsStartedThisTurn,
+      ...(snapshot ? { tier: snapshot.tier } : {}),
+      recentFailures: this.verifyFailuresThisTurn,
+    };
   }
 
   /** 治理 roadmap 快照事件（每次状态变化后全量推送，前端面板单一数据源）。 */
@@ -5119,7 +5258,9 @@ export class AgentRuntime {
         const hasOpenSteps = Boolean(
           plan?.steps.some((step) => step.status !== "completed" && step.status !== "cancelled"),
         );
-        if (hasOpenSteps && this.mutationsSincePlanCheck > 0) {
+        // 判据用 turnHadMutations（整回合），不用 mutationsSincePlanCheck：
+        // 后者会被 update_plan 自己清零，「先更新清单 → 再跑验证」就永远绕开这里。
+        if (turnEndPlanBlock({ hasOpenSteps, turnHadMutations: this.turnHadMutations })) {
           return {
             block: true,
             reason:
@@ -5140,25 +5281,29 @@ export class AgentRuntime {
         const hasOpenSteps = Boolean(
           plan?.steps.some((step) => step.status !== "completed" && step.status !== "cancelled"),
         );
-        const due =
-          this.mutationsSincePlanCheck >= PLAN_NUDGE_STEP &&
-          this.mutationsSincePlanCheck - this.planNudgeAt >= PLAN_NUDGE_STEP;
-        if (due) {
-          this.planNudgeAt = this.mutationsSincePlanCheck;
-          if (hasOpenSteps) {
-            injections.push({
-              role: "user",
-              content:
-                "[plan] You have made several file changes since the checklist was last updated. Call update_plan now: mark finished steps completed, mark the step you are working on in_progress, and keep titles current. Do not batch several finished steps into a later update.",
-            });
-          } else if (!plan?.steps.length) {
-            // 还没有清单但变更已经不少：轻推一次建清单（马上做完可以跳过）。
-            injections.push({
-              role: "user",
-              content:
-                "[plan] No checklist exists yet and this turn already spans several file changes. Call update_plan once to list the remaining steps (finished work can be one completed entry); skip it if you are about to finish.",
-            });
-          }
+        const nudge = planNudge({
+          mutations: this.mutationsSincePlanCheck,
+          nudgedAt: this.planNudgeAt,
+          hasPlan: Boolean(plan?.steps.length),
+          hasOpenSteps,
+          noPlanNudged: this.noPlanNudged,
+        });
+        if (nudge?.kind === "update") {
+          this.planNudgeAt = nudge.nextNudgedAt;
+          injections.push({
+            role: "user",
+            content:
+              "[plan] You have made several file changes since the checklist was last updated. Call update_plan now: mark finished steps completed, mark the step you are working on in_progress, and keep titles current. Do not batch several finished steps into a later update.",
+          });
+        } else if (nudge?.kind === "create") {
+          // 还没有清单但已经开始改东西：轻推一次建清单（马上做完可以跳过）。
+          // 整回合只推一次，避免每一轮都啰嗦。
+          this.noPlanNudged = true;
+          injections.push({
+            role: "user",
+            content:
+              "[plan] No checklist exists yet and this turn already changed files. Call update_plan once to list the remaining steps (finished work can be one completed entry); skip it if you are about to finish.",
+          });
         }
       }
       if (this.enableTaskTool && this.workflow.active && this.governanceApplies()) {
@@ -5185,10 +5330,17 @@ export class AgentRuntime {
       if (tool === "update_plan") {
         this.mutationsSincePlanCheck = 0;
         this.planNudgeAt = 0;
+        // turnHadMutations 不清：收尾闸判的是「这回合改过文件没有」，
+        // 与「距上次更新清单的改动量」是两件事（前者不能被 update_plan 自己抹掉）。
         return;
       }
-      // 计划新鲜度计数对每个会话都跑（治理模式之外也要提醒模型同步 todolist）
-      if (PLAN_MUTATION_TOOLS.has(tool)) this.mutationsSincePlanCheck += 1;
+      // 计划新鲜度计数对每个会话都跑（治理模式之外也要提醒模型同步 todolist）。
+      // 权重按涉及文件数算：一次 multi_edit 改 4 个文件 = 4，而不是 1。
+      const weight = planMutationWeight(tool, safeToolInput(call));
+      if (weight > 0) {
+        this.mutationsSincePlanCheck += weight;
+        this.turnHadMutations = true;
+      }
       if (!this.workflow.active) return;
       if (tool === "write_file" || tool === "edit_file" || tool === "multi_edit") {
         let input: Record<string, unknown> = {};
@@ -5324,18 +5476,40 @@ export class AgentRuntime {
     call: ToolCall,
     messages: ChatMessage[],
   ): Promise<Extract<ChatMessage, { role: "tool" }>> {
-    let input: unknown = {};
-    try {
-      input = JSON.parse(call.function.arguments || "{}");
-    } catch {
-      input = {};
-    }
     const tool = call.function.name;
+    // 只读批也要过参数门禁：裸 JSON.parse 失败会退化成 {}，
+    // 工具于是带着 undefined 参数执行，回给模型的是一句无从纠正的
+    // "undefined not found."——比拒绝更糟，因为模型看不出错在哪。
+    const validated = validateToolInput(tool, call.function.arguments);
+    let input: unknown = validated.ok ? validated.input : {};
     const turnId = this.currentTurnId;
     if (turnId) await this.markToolCallStarted(session, { turnId, callId: call.id, tool, input });
-    this.emit({ type: "tool_started", sessionId: session.id, callId: call.id, tool, input });
+    // 观察者拿副本：监听器 in-place 改字段不能改到下面要执行的对象
+    this.emit({
+      type: "tool_started",
+      sessionId: session.id,
+      callId: call.id,
+      tool,
+      input: observerCopy(input),
+    });
+    if (!validated.ok) {
+      const output = formatToolRejection({
+        tool,
+        kind: "invalid_arguments",
+        reason: validated.error,
+        rawArguments: call.function.arguments,
+      });
+      this.emit({ type: "tool_output", sessionId: session.id, callId: call.id, output, truncated: false });
+      this.emit({ type: "tool_finished", sessionId: session.id, callId: call.id, ok: false });
+      return { role: "tool", content: output, tool_call_id: call.id, name: tool };
+    }
     if (!this.toolAllowed(tool)) {
-      const output = `Tool ${tool} is not available for this agent profile.`;
+      const output = formatToolRejection({
+        tool,
+        kind: "unavailable",
+        reason: `not enabled for agent profile "${this.activeProfile}"`,
+        availableTools: this.activeTools.map((item) => item.function.name),
+      });
       this.emit({ type: "tool_output", sessionId: session.id, callId: call.id, output, truncated: false });
       this.emit({ type: "tool_finished", sessionId: session.id, callId: call.id, ok: false });
       return { role: "tool", content: output, tool_call_id: call.id, name: tool };
@@ -5361,7 +5535,8 @@ export class AgentRuntime {
         sessionId: session.id,
         callId: call.id,
         tool,
-        input: inputRecord,
+        // hook 拿到副本：想改参数必须返回 { input }，走下面的重校验通道
+        input: observerCopy(inputRecord),
         ...this.hookScopeFields(session),
       },
       this.hookContext(session, this.turnAbort?.signal),
@@ -5379,9 +5554,14 @@ export class AgentRuntime {
       ? toolCallHook.reason ?? "The PreToolUse hook requests approval."
       : undefined;
     if (toolCallHook?.input) {
-      const revalidated = validateToolArguments(tool, JSON.stringify(toolCallHook.input));
+      const revalidated = validateToolInput(tool, JSON.stringify(toolCallHook.input));
       if (!revalidated.ok) {
-        const output = `Tool call rejected: hook returned invalid arguments (${revalidated.error})`;
+        const output = formatToolRejection({
+          tool,
+          kind: "invalid_arguments",
+          reason: `a tool_call hook rewrote the arguments into something invalid (${revalidated.error})`,
+          rawArguments: JSON.stringify(toolCallHook.input),
+        });
         this.emit({ type: "tool_output", sessionId: session.id, callId: call.id, output, truncated: false });
         this.emit({ type: "tool_finished", sessionId: session.id, callId: call.id, ok: false });
         return { role: "tool", content: output, tool_call_id: call.id, name: tool };
@@ -5561,15 +5741,27 @@ export class AgentRuntime {
     session: SessionStore,
     call: ToolCall,
   ): Promise<Extract<ChatMessage, { role: "tool" }>> {
-    const validated = validateToolArguments("task", call.function.arguments);
+    const validated = validateToolInput("task", call.function.arguments);
     let input = validated.ok ? validated.input : {};
     const turnId = this.currentTurnId;
     if (validated.ok && turnId) {
       await this.markToolCallStarted(session, { turnId, callId: call.id, tool: "task", input });
     }
-    this.emit({ type: "tool_started", sessionId: session.id, callId: call.id, tool: "task", input });
+    // 观察者拿副本：监听器 in-place 改字段不能改到下面要执行的对象
+    this.emit({
+      type: "tool_started",
+      sessionId: session.id,
+      callId: call.id,
+      tool: "task",
+      input: observerCopy(input),
+    });
     if (!validated.ok) {
-      const output = `Tool call rejected: ${validated.error}`;
+      const output = formatToolRejection({
+        tool: "task",
+        kind: "invalid_arguments",
+        reason: validated.error,
+        rawArguments: call.function.arguments,
+      });
       this.emit({ type: "tool_output", sessionId: session.id, callId: call.id, output, truncated: false });
       this.emit({ type: "tool_finished", sessionId: session.id, callId: call.id, ok: false });
       return { role: "tool", content: output, tool_call_id: call.id, name: "task" };
@@ -5583,7 +5775,8 @@ export class AgentRuntime {
         sessionId: session.id,
         callId: call.id,
         tool: "task",
-        input: input as Record<string, unknown>,
+        // hook 拿到副本：想改参数必须返回 { input }，走下面的重校验通道
+        input: observerCopy(input as Record<string, unknown>),
         ...this.hookScopeFields(session),
       },
       this.hookContext(session, this.turnAbort?.signal),
@@ -5601,9 +5794,14 @@ export class AgentRuntime {
       ? toolCallHook.reason ?? "The PreToolUse hook requests approval."
       : undefined;
     if (toolCallHook?.input) {
-      const revalidated = validateToolArguments("task", JSON.stringify(toolCallHook.input));
+      const revalidated = validateToolInput("task", JSON.stringify(toolCallHook.input));
       if (!revalidated.ok) {
-        const output = `Tool call rejected: hook returned invalid arguments (${revalidated.error})`;
+        const output = formatToolRejection({
+          tool: "task",
+          kind: "invalid_arguments",
+          reason: `a tool_call hook rewrote the arguments into something invalid (${revalidated.error})`,
+          rawArguments: JSON.stringify(toolCallHook.input),
+        });
         this.emit({ type: "tool_output", sessionId: session.id, callId: call.id, output, truncated: false });
         this.emit({ type: "tool_finished", sessionId: session.id, callId: call.id, ok: false });
         return { role: "tool", content: output, tool_call_id: call.id, name: "task" };
@@ -5663,7 +5861,7 @@ export class AgentRuntime {
       this.turnAbort?.signal,
     );
     const result = await this.applyToolResultHook(session, call.id, "task", input, taskResult);
-    const truncated = truncateOutput(result.output);
+    const truncated = await truncateWithSpill(session.cwd, "task", result.output);
     this.emit({
       type: "tool_output",
       sessionId: session.id,
@@ -5739,11 +5937,23 @@ export class AgentRuntime {
     const overridePrompt = override?.systemPrompt;
     const inheritPrefix = params.inheritPrefix === true;
     // fork 复用父 system 才能命中父前缀缓存；其余角色照旧走角色提示词。
+    const overrideText = overridePrompt?.trim();
+    // 角色节点的自定义提示词默认走「基线 + 增量段」：基线仍是注册表里的角色提示词，
+    // 覆盖内容排在缓存断点之后，改它不会把整段角色前缀推倒。
+    const overrideAsSegment = !inheritPrefix && !!overrideText && this.promptSegmentsEnabled;
     const effectivePrompt = inheritPrefix
       ? this.effectiveSystemPrompt
-      : overridePrompt?.trim()
-        ? overridePrompt
-        : definition.systemPrompt;
+      : overrideAsSegment
+        ? definition.systemPrompt
+        : overrideText
+          ? overrideText
+          : definition.systemPrompt;
+    // fork 必须连父的增量段一起继承，否则 system 段数不同 → 前缀根本对不上
+    const roleSegments = inheritPrefix
+      ? this.systemSegments
+      : overrideAsSegment && overrideText
+        ? [overrideText]
+        : [];
     const roleTools = override?.tools
       ? new Set(override.tools.filter((tool) => tool !== "task"))
       : definition.tools;
@@ -5788,6 +5998,7 @@ export class AgentRuntime {
       // 子代理是机器节奏：连续打点、没有人为空档，1h 档只会多付写入溢价
       sessionPace: "machine",
       systemPrompt: effectivePrompt,
+      ...(roleSegments.length ? { systemSegments: roleSegments } : {}),
       instructionSettings: { ...this.instructionSettings },
       ...(effectiveTools ? { allowedTools: effectiveTools } : {}),
       // 验证类角色：能跑命令，但 run_code 的写桥一律拒绝
@@ -7150,6 +7361,8 @@ export class AgentRuntime {
       await session.appendContextNote(
         `Runtime context: files already read or changed before compaction (paths and net changes; re-read if you need contents):\n${list}`,
       );
+      // rapid-refill 判据的时间戳：3 分钟内又冲回阈值就算一次抖动
+      this.lastCompactionAt = Date.now();
       // 基线：这些文件已经「交代过」了，压缩后模型再读一遍说明摘要没兜住
       this.compactionQuality = {
         compactionId,
@@ -7209,7 +7422,8 @@ export class AgentRuntime {
     );
     const rebuilt: ChatMessage[] = [
       ...this.systemMessages(),
-      ...session.effectiveMessages,
+      // 与主请求同口径：旧注记在请求里只留最新，重建出来的前缀才对得上
+      ...dropSupersededNotes(session.effectiveMessages),
     ];
     const toolTokens = estimateToolDefinitionsTokens(this.activeTools);
     const outputTokens = clampOutputTokens(provider, estimateMessagesTokens(rebuilt) + toolTokens);
@@ -7242,6 +7456,22 @@ export class AgentRuntime {
     // 软阈值带绝对预留；95% 总量硬闸单独按窗口比值判，不随预留口径移动
     const warmupAt = compactionTriggerTokens(usage.contextWindow, provider.maxTokens, ratio);
     if (warmupAt <= 0 || usage.usedTokens < warmupAt) return;
+    // rapid-refill 熔断：刚压完又冲回阈值，先挂提醒并计数，连续 2 次进冷却
+    if (this.lastCompactionAt && Date.now() - this.lastCompactionAt < RAPID_REFILL_WINDOW_MS) {
+      this.rapidRefills += 1;
+      if (this.rapidRefills >= RAPID_REFILL_LIMIT) {
+        this.compactionCooldownUntil = Date.now() + COMPACTION_COOLDOWN_MS;
+        this.rapidRefills = 0;
+        console.error("[meowcode] rapid refill after compaction: pausing auto-compaction for 10min");
+      }
+      void session
+        .appendContextNote(
+          "Runtime context: the context was just compacted but is filling up again because large files are being re-read or long commands re-run. Read with offset/limit, cite the earlier summary instead of re-reading whole files, and do not re-run commands already recorded above.",
+        )
+        .catch(() => undefined);
+      return;
+    }
+    this.rapidRefills = 0;
     if (usage.usedTokens / usage.contextWindow >= COMPACTION_WARMUP_MAX_RATIO) return;
     // 没有可摘要的旧历史（全部都在逐字保留预算内）就不预热
     const recent = session.recentKeptMessages({
@@ -7259,8 +7489,8 @@ export class AgentRuntime {
     const prefix = effective.slice(0, prefixLength);
     // 复用路径发与主请求逐字节一致的全量对话（主路径带滞回投影，这里同口径，
     // 否则摘要请求与主请求前缀字节不一致、读不回刚写入的缓存）；回退路径只发投影后的旧前缀
-    const fullMessages = [...systems, ...projectForMainPath(effective)];
-    const summaryMessages = [...systems, ...projectForRequest(prefix, provider)];
+    const fullMessages = [...systems, ...dropSupersededNotes(projectForMainPath(effective))];
+    const summaryMessages = [...systems, ...dropSupersededNotes(projectForRequest(prefix, provider))];
     const controller = new AbortController();
     const warmup: WarmupCompaction = {
       session,
@@ -7425,7 +7655,10 @@ export class AgentRuntime {
     const tools = this.ensureToolCatalog().tools;
     const systems = this.systemMessages();
     // 与主路径同口径：不带投影的保活请求会和主请求字节不一致，保活反而写不进同一条缓存
-    const messages = [...systems, ...projectForMainPath(session.effectiveMessages)];
+    const messages = [
+      ...systems,
+      ...dropSupersededNotes(projectForMainPath(session.effectiveMessages)),
+    ];
     if (messages.length <= systems.length) return; // 空会话没什么可保
     this.keepalivePingsLeft -= 1;
     this.keepaliveAbort = new AbortController();
@@ -7635,7 +7868,14 @@ export class AgentRuntime {
       );
     }
     if (!this.toolAllowed(tool)) {
-      return reject(`Tool ${tool} is not available for this agent profile.`);
+      return reject(
+        formatToolRejection({
+          tool,
+          kind: "unavailable",
+          reason: `not enabled for agent profile "${this.activeProfile}"`,
+          availableTools: this.activeTools.map((item) => item.function.name),
+        }),
+      );
     }
     // 计划模式：只允许 plans/ 下的计划文档写入，命令一律拒绝
     const planPaths =
@@ -7845,14 +8085,26 @@ export class AgentRuntime {
     call: ToolCall,
   ): Promise<void> {
     const tool = call.function.name;
-    const validated = validateToolArguments(tool, call.function.arguments);
+    const validated = validateToolInput(tool, call.function.arguments);
     let input: unknown = validated.ok ? validated.input : {};
     const approvalMode = this.turnApprovalMode ?? this.approvalMode;
     const allowOutsideWorkspace = approvalMode === "full";
-    this.emit({ type: "tool_started", sessionId: session.id, callId: call.id, tool, input });
+    // 观察者拿副本：监听器 in-place 改字段不能改到下面要执行的对象
+    this.emit({
+      type: "tool_started",
+      sessionId: session.id,
+      callId: call.id,
+      tool,
+      input: observerCopy(input),
+    });
 
     if (!validated.ok) {
-      const output = `Tool call rejected: ${validated.error}`;
+      const output = formatToolRejection({
+        tool,
+        kind: "invalid_arguments",
+        reason: validated.error,
+        rawArguments: call.function.arguments,
+      });
       await this.pushToolMessage(session, messages, {
         role: "tool",
         content: output,
@@ -7873,7 +8125,12 @@ export class AgentRuntime {
     const turnId = this.currentTurnId;
     if (turnId) await this.markToolCallStarted(session, { turnId, callId: call.id, tool, input });
     if (!this.toolAllowed(tool)) {
-      const output = `Tool ${tool} is not available for this agent profile.`;
+      const output = formatToolRejection({
+        tool,
+        kind: "unavailable",
+        reason: `not enabled for agent profile "${this.activeProfile}"`,
+        availableTools: this.activeTools.map((item) => item.function.name),
+      });
       await this.pushToolMessage(session, messages, {
         role: "tool",
         content: output,
@@ -7895,8 +8152,8 @@ export class AgentRuntime {
         sessionId: session.id,
         callId: call.id,
         tool,
-        // validated.ok 时必为 JSON object（validateToolArguments 保证）
-        input: input as Record<string, unknown>,
+        // validated.ok 时必为 JSON object（validateToolInput 保证）
+        input: observerCopy(input as Record<string, unknown>),
         ...this.hookScopeFields(session),
       },
       this.hookContext(session, this.turnAbort?.signal),
@@ -7921,9 +8178,14 @@ export class AgentRuntime {
       : undefined;
     if (toolCallHook?.input) {
       // hook 改写后的参数必须重新校验，防止把非法/越界参数直接送进执行器。
-      const revalidated = validateToolArguments(tool, JSON.stringify(toolCallHook.input));
+      const revalidated = validateToolInput(tool, JSON.stringify(toolCallHook.input));
       if (!revalidated.ok) {
-        const output = `Tool call rejected: hook returned invalid arguments (${revalidated.error})`;
+        const output = formatToolRejection({
+          tool,
+          kind: "invalid_arguments",
+          reason: `a tool_call hook rewrote the arguments into something invalid (${revalidated.error})`,
+          rawArguments: JSON.stringify(toolCallHook.input),
+        });
         await this.pushToolMessage(session, messages, {
           role: "tool",
           content: output,
@@ -8062,7 +8324,7 @@ export class AgentRuntime {
         this.turnAbort?.signal,
       );
       const result = await this.applyToolResultHook(session, call.id, tool, input, taskResult);
-      const truncated = truncateOutput(result.output);
+      const truncated = await truncateWithSpill(session.cwd, "task", result.output);
       await this.pushToolMessage(session, messages, {
         role: "tool",
         content: truncated.output,
@@ -8934,6 +9196,7 @@ export class AgentRuntime {
     sessionId: string;
     prompt: string;
     instructions: string | null;
+    segments: string;
     messages: ChatMessage[];
   } | null = null;
 
@@ -8945,23 +9208,47 @@ export class AgentRuntime {
   private systemMessages(): ChatMessage[] {
     const prompt = this.effectiveSystemPrompt;
     const instructions = this.instructions ?? null;
+    const segments = this.systemSegments;
+    const segmentKey = segments.join("\u0000");
     const sessionId = this.currentSession?.id ?? "";
     const cached = this.systemMessagesCache;
     if (
       cached &&
       cached.sessionId === sessionId &&
       cached.prompt === prompt &&
-      cached.instructions === instructions
+      cached.instructions === instructions &&
+      cached.segments === segmentKey
     ) {
       return cached.messages;
     }
-    const system: ChatMessage = { role: "system", content: prompt };
-    const instructionsMessage: ChatMessage | null = instructions
-      ? { role: "system", content: instructions }
+    const messages: ChatMessage[] = [{ role: "system", content: prompt }];
+    // 顺序即缓存语义：基线 → instructions（稳定段，断点落在这里）→ 增量段。
+    // 增量段后的字节不入前缀缓存，所以改自定义提示词的代价只有它自己。
+    if (instructions) messages.push({ role: "system", content: instructions });
+    for (const segment of segments) messages.push({ role: "system", content: segment });
+    this.systemMessagesCache = sessionId
+      ? { sessionId, prompt, instructions, segments: segmentKey, messages }
       : null;
-    const messages: ChatMessage[] = instructionsMessage ? [system, instructionsMessage] : [system];
-    this.systemMessagesCache = sessionId ? { sessionId, prompt, instructions, messages } : null;
     return messages;
+  }
+
+  /**
+   * 提示词版本指纹（设置页显示 + 实验对照用）：基线与每一段各自取短哈希。
+   * 只读不写盘，不参与请求。
+   */
+  get promptVersion(): { baseline: string; instructions: string | null; segments: string[] } {
+    const short = (text: string): string => {
+      let hash = 0;
+      for (let index = 0; index < text.length; index += 1) {
+        hash = (hash * 31 + text.charCodeAt(index)) | 0;
+      }
+      return (hash >>> 0).toString(16).padStart(8, "0").slice(0, 8);
+    };
+    return {
+      baseline: short(this.effectiveSystemPrompt),
+      instructions: this.instructions ? short(this.instructions) : null,
+      segments: this.systemSegments.map(short),
+    };
   }
 
   /** MCP 工具注册完成前不发首个模型请求；10s 上限兜底 MCP 卡死（mcpReady 永远 resolve，race 只是保险）。 */
@@ -9002,8 +9289,10 @@ export class AgentRuntime {
     const body =
       speechStylePrompt(this.speechStyle) ??
       "Use plain, neutral wording. No persona, no verbal tics, no role-play.";
+    // 语色只管「说给用户听的话」。人设里常有「少用小标题/编号/清单」这类要求，
+    // 不加边界会被泛化到工具行为上，实测会让模型连 update_plan 都不愿意调。
     await session.appendContextNote(
-      `${SPEECH_STYLE_PREFIX} ${wanted} (supersedes earlier style notes; it outranks reply-format preferences):\n${body}`,
+      `${SPEECH_STYLE_PREFIX} ${wanted} (supersedes earlier style notes; it outranks reply-format preferences):\n${body}\n\nScope: this styles only the prose you say to the user. It does not change tool calls, update_plan/checklist maintenance, code, paths, or command output.`,
       "style",
     );
   }

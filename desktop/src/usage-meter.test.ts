@@ -3,6 +3,7 @@ import {
   applySample,
   EMPTY_SAMPLE,
   hitRate,
+  inputBreakdown,
   isCacheBust,
   mergeSample,
   retractSample,
@@ -65,17 +66,42 @@ describe("usage-meter", () => {
     expect(retractSample(retracted, undefined)).toEqual(retracted);
   });
 
-  it("命中率只统计报告过缓存的轮次，没有分母时为 null", () => {
+  it("命中率只统计报告过缓存的轮次，未报告输入单独归类", () => {
     expect(hitRate({ ...EMPTY_SAMPLE })).toBeNull();
-    const noCache = applySample({ ...EMPTY_SAMPLE }, undefined, sample({ input: 500, output: 10 }));
+    const noCache = applySample(
+      { ...EMPTY_SAMPLE },
+      undefined,
+      mergeSample(undefined, { inputTokens: 500, outputTokens: 10 }),
+    );
     expect(hitRate(noCache)).toBeNull();
     const withCache = applySample(
       noCache,
       undefined,
-      sample({ input: 1000, output: 10, cacheRead: 900, cacheInput: 1000, cacheReported: true }),
+      mergeSample(undefined, { inputTokens: 1000, outputTokens: 10, cacheReadTokens: 900 }),
     );
-    // 只算报告缓存那一轮的输入（1000），未报告缓存的 500 不进分母
+    // 分母只算报告缓存那一轮的 1000；未报告的 500 单独归类
     expect(hitRate(withCache)).toBeCloseTo(0.9);
+    expect(
+      inputBreakdown({
+        input: withCache.input,
+        cacheInput: withCache.cacheInput,
+        cacheRead: withCache.cacheRead,
+        cacheWrite: withCache.cacheWrite,
+        cacheReported: withCache.cacheReported,
+      }),
+    ).toEqual({ uncached: 100, unreported: 500 });
+  });
+
+  it("缓存全未报告时不把输入算成未命中", () => {
+    expect(
+      inputBreakdown({
+        input: 57_921,
+        cacheInput: 0,
+        cacheRead: null,
+        cacheWrite: null,
+        cacheReported: false,
+      }),
+    ).toEqual({ uncached: null, unreported: null });
   });
 
   it("事件缺字段时不把已有值清零", () => {

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { saveAutomation, type Automation, type AutomationInput } from "../../api";
+import { saveAutomation, type Automation, type AutomationAutonomy, type AutomationInput } from "../../api";
 import { Button } from "../ui/Button";
 import { CustomSelect } from "../ui/CustomSelect";
 import { Dialog } from "../ui/Dialog";
@@ -50,6 +50,7 @@ export function AutomationEditDialog({
   const [onceAt, setOnceAt] = useState("");
   const [cron, setCron] = useState("");
   const [maxRuns, setMaxRuns] = useState("");
+  const [autonomy, setAutonomy] = useState<AutomationAutonomy>("auto");
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -70,6 +71,7 @@ export function AutomationEditDialog({
       setOnceAt(initial.onceAt ? toLocalInputValue(new Date(initial.onceAt)) : "");
       setCron(initial.cron ?? "");
       setMaxRuns(initial.maxRuns != null ? String(initial.maxRuns) : "");
+      setAutonomy(initial.autonomy ?? "auto");
       setAdvancedOpen(initial.kind === "cron");
     } else {
       setTitle("");
@@ -84,6 +86,7 @@ export function AutomationEditDialog({
       setOnceAt(toLocalInputValue(new Date(Date.now() + 15 * 60_000)));
       setCron("");
       setMaxRuns("");
+      setAutonomy("auto");
       setAdvancedOpen(false);
     }
   }, [open, initial, workspace, projects]);
@@ -117,6 +120,7 @@ export function AutomationEditDialog({
         kind,
         recurring: kind !== "once",
         enabled: initial?.enabled ?? true,
+        autonomy,
       };
       if (kind === "interval") {
         input.intervalMinutes = Math.max(1, Math.floor(Number(intervalMinutes) || 0));
@@ -272,6 +276,18 @@ export function AutomationEditDialog({
                 onChange={(event) => setCron(event.target.value)}
               />
             ) : null}
+            <div className="mc-field">
+              <span className="mc-field__label">{t("autonomy.label")}</span>
+              <SegmentedControl<AutomationAutonomy>
+                value={autonomy}
+                ariaLabel={t("autonomy.label")}
+                options={(["auto", "observe", "off"] as const).map((value) => ({
+                  value,
+                  label: t(`autonomy.${value}`),
+                }))}
+                onChange={setAutonomy}
+              />
+            </div>
             <TextField
               label={t("form.fieldMaxRuns")}
               type="number"

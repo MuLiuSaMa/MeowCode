@@ -1,6 +1,8 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { writeTextAtomic } from "./atomic-json.js";
+import { estimateTokens } from "./context.js";
+import { sliceHeadToTokens } from "./tool-budget.js";
 import { resolveWithinWorkspace } from "./paths.js";
 
 /**
@@ -10,9 +12,12 @@ import { resolveWithinWorkspace } from "./paths.js";
 export const RULES_DIR = path.join(".meowcode", "rules");
 export const MAX_RULE_NAME_LENGTH = 64;
 export const MAX_RULE_BYTES = 64 * 1024;
-/** 规则注入指令的字符预算：不和 AGENTS.md / 技能索引抢满 16k 总预算 */
-const MAX_RULES_PROMPT_CHARS = 12_000;
-const MAX_RULE_PROMPT_CHARS = 6_000;
+/**
+ * 规则注入指令的预算按 **token** 计（字符口径对中文放大 4 倍，见 instructions.ts）。
+ * 单条默认 1500、总量 3000 token：规则由设置页显式创建，不该悄悄吃掉 AGENTS.md 的预算。
+ */
+const MAX_RULES_PROMPT_TOKENS = 3_000;
+const MAX_RULE_PROMPT_TOKENS = 1_500;
 
 const RULE_NAME_PATTERN = /^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$/;
 
@@ -114,26 +119,80 @@ export async function deleteRule(workspace: string, name: string): Promise<boole
   }
 }
 
-/** 把规则拼进系统指令；按文件名排序，单条 6k、总量 12k 字符封顶。 */
+/** 规则文件 frontmatter（#8）：`---` 包裹的 YAML 子集，只认这四个键。 */
+export type RuleFrontmatter = {
+  /** 注入排序（大者优先）；缺省 0，同值按文件名排序 */
+  priority: number;
+  /** false = 本条规则不注入（保留在磁盘，列表里仍可见） */
+  enabled: boolean;
+  /** 本条规则的 token 预算；缺省 MAX_RULE_PROMPT_TOKENS */
+  budget: number | null;
+};
+
+const EMPTY_FRONTMATTER: RuleFrontmatter = { priority: 0, enabled: true, budget: null };
+
+/**
+ * 解析规则文件头部的 frontmatter。刻意只认 `key: value` 一层的最小子集：
+ * 这些文件是用户在设置页手写的，上 YAML 解析器是给注入链路引依赖。
+ * 解析失败 = 当作没有 frontmatter，原文照常注入（不能因为格式把规则弄丢）。
+ */
+export function parseRuleFrontmatter(content: string): RuleFrontmatter {
+  const match = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?/.exec(content);
+  if (!match) return EMPTY_FRONTMATTER;
+  const result: RuleFrontmatter = { ...EMPTY_FRONTMATTER };
+  for (const line of match[1].split(/\r?\n/)) {
+    const pair = /^([A-Za-z_-]+)\s*:\s*(.*?)\s*$/.exec(line.trim());
+    if (!pair) continue;
+    const [, key, raw] = pair;
+    if (key === "priority") {
+      const value = Number(raw);
+      if (Number.isFinite(value)) result.priority = Math.floor(value);
+    } else if (key === "enabled") {
+      result.enabled = raw.toLowerCase() !== "false";
+    } else if (key === "budget") {
+      const value = Number(raw);
+      if (Number.isFinite(value) && value > 0) result.budget = Math.floor(value);
+    }
+  }
+  return result;
+}
+
+/** 剥掉 frontmatter，正文给模型看。 */
+export function stripRuleFrontmatter(content: string): string {
+  const match = /^---\r?\n[\s\S]*?\r?\n---\r?\n?/.exec(content);
+  return match ? content.slice(match[0].length).trim() : content.trim();
+}
+
+/** 把规则拼进系统指令：frontmatter 排序/开关/预算，正文 token 封顶。 */
 export async function loadRulesForInstructions(workspace: string): Promise<string | undefined> {
   const summaries = await listRules(workspace).catch(() => []);
   if (!summaries.length) return undefined;
-  const blocks: string[] = [];
-  let used = 0;
+  const records: Array<{ name: string; frontmatter: RuleFrontmatter; content: string }> = [];
   for (const summary of summaries) {
     const record = await readRule(workspace, summary.name).catch(() => null);
     if (!record?.content.trim()) continue;
-    let content = record.content.trim();
-    if (content.length > MAX_RULE_PROMPT_CHARS) {
-      content = `${content.slice(0, MAX_RULE_PROMPT_CHARS)}\n... [rule truncated]`;
+    const frontmatter = parseRuleFrontmatter(record.content);
+    if (!frontmatter.enabled) continue;
+    records.push({ name: summary.name, frontmatter, content: stripRuleFrontmatter(record.content) });
+  }
+  if (!records.length) return undefined;
+  // priority 大者在前；同值保持文件名序（listRules 已排好，sort 是稳定排序）
+  records.sort((a, b) => b.frontmatter.priority - a.frontmatter.priority);
+  const blocks: string[] = [];
+  let used = 0;
+  for (const record of records) {
+    const budget = record.frontmatter.budget ?? MAX_RULE_PROMPT_TOKENS;
+    let content = record.content;
+    if (estimateTokens(content) > budget) {
+      content = `${sliceHeadToTokens(content, budget)}\n... [rule truncated]`;
     }
-    const block = `### ${summary.name}\n${content}`;
-    if (used + block.length > MAX_RULES_PROMPT_CHARS) {
+    const block = `### ${record.name}\n${content}`;
+    if (used + estimateTokens(block) > MAX_RULES_PROMPT_TOKENS) {
       blocks.push("... [more project rules omitted to fit the context budget]");
       break;
     }
     blocks.push(block);
-    used += block.length;
+    used += estimateTokens(block);
   }
   if (!blocks.length) return undefined;
   return [

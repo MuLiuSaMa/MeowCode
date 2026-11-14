@@ -28,9 +28,13 @@
   cursor: pointer;
   transition: background-color var(--dur, 0.15s) var(--ease, ease), color var(--dur, 0.15s) var(--ease, ease);
 }
-.mc-turninfo__action:hover {
+.mc-turninfo__action:hover:not(:disabled) {
   background: var(--surface-hover);
   color: var(--fg);
+}
+.mc-turninfo__action:disabled {
+  opacity: 0.38;
+  cursor: default;
 }
 .mc-turninfo__action:focus-visible {
   outline: none;

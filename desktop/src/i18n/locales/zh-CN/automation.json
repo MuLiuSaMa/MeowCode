@@ -95,5 +95,25 @@
     "errorRequired": "请填写必填项",
     "invalidCron": "Cron 表达式无效",
     "saveFailed": "保存失败"
+  },
+  "autonomy": {
+    "label": "执行方式",
+    "auto": "自动执行",
+    "observe": "只观察",
+    "off": "不执行"
+  },
+  "decision": {
+    "tabHistory": "运行历史",
+    "tabDecision": "决策记录",
+    "empty": "还没有决策记录。",
+    "last": "最近决策：{{outcome}} · {{time}}",
+    "planned": "本该发送",
+    "outcome": {
+      "executed": "已执行",
+      "observed": "仅记录",
+      "skipped": "已跳过",
+      "failed": "失败",
+      "uncertain": "未确认"
+    }
   }
 }

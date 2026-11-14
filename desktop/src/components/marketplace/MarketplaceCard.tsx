@@ -43,7 +43,7 @@ export function MarketIcon({
       style={{ background: SOURCE_COLORS[entry.source] ?? "#64748b", width: size, height: size }}
       aria-hidden="true"
     >
-      {(entry.name || entry.id).charAt(0).toUpperCase()}
+      {(Array.from(entry.name || entry.id)[0] ?? "?").toUpperCase()}
     </span>
   );
 }

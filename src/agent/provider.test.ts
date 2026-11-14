@@ -563,6 +563,56 @@ describe("streamChatCompletion cache usage buckets", () => {
     });
   });
 
+  it("derives cache read when the gateway reports only prompt_cache_miss_tokens", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        sseResponse([
+          {
+            choices: [{ delta: { content: "ok" }, finish_reason: "stop" }],
+            usage: { prompt_tokens: 800, completion_tokens: 5, prompt_cache_miss_tokens: 200 },
+          },
+        ]),
+      ),
+    );
+
+    const result = await streamChatCompletion(baseOptions);
+    expect(result.usage).toEqual({
+      inputTokens: 800,
+      uncachedInputTokens: 200,
+      outputTokens: 5,
+      cacheReadTokens: 600,
+    });
+  });
+
+  it("accepts Anthropic-style cache fields passed through by a gateway", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        sseResponse([
+          {
+            choices: [{ delta: { content: "ok" }, finish_reason: "stop" }],
+            usage: {
+              prompt_tokens: 1_000,
+              completion_tokens: 5,
+              cache_read_input_tokens: 600,
+              cache_creation_input_tokens: 100,
+            },
+          },
+        ]),
+      ),
+    );
+
+    const result = await streamChatCompletion(baseOptions);
+    expect(result.usage).toEqual({
+      inputTokens: 1_000,
+      uncachedInputTokens: 300,
+      outputTokens: 5,
+      cacheReadTokens: 600,
+      cacheWriteTokens: 100,
+    });
+  });
+
   it("reads cached tokens for the responses protocol", async () => {
     vi.stubGlobal(
       "fetch",

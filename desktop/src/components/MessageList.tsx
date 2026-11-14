@@ -12,6 +12,9 @@ import { useTranslation } from "react-i18next";
 import { LuCircleAlert, LuInfo } from "react-icons/lu";
 import type { SubagentRun, TimelineCompaction, TimelineItem, TimelineMessage } from "../api";
 import logo from "../assets/icon.png";
+import { planDocPathOf } from "../plan-doc";
+import { PlanDocCard } from "./PlanDocCard";
+import { PluginSlot, PluginSlotSingle } from "../plugins/PluginSlot";
 import { AssistantMessage, ThinkingRow } from "./AssistantMessage";
 import { AssistantStatusLine, type AssistantStatus } from "./AssistantStatusLine";
 import { CheckpointMarker } from "./CheckpointMarker";
@@ -117,6 +120,7 @@ export function MessageList({
   onSuggestionDismiss,
   onScrolledAwayChange,
   scrollApiRef,
+  onOpenPlan,
 }: {
   items: TimelineItem[];
   canUse: boolean;
@@ -160,6 +164,8 @@ export function MessageList({
   suggestion?: string | null;
   onSuggestionUse?: (text: string) => void;
   onSuggestionDismiss?: () => void;
+  /** 打开任意一份计划文档（整卡点击） */
+  onOpenPlan?: (path: string) => void;
 }) {
   const { t } = useTranslation("chat");
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -424,6 +430,10 @@ export function MessageList({
     <div className="mc-streamwrap">
       <div className="mc-stream" ref={scrollRef} onScroll={handleScroll} onWheel={handleWheel}>
         <div className="mc-stream__inner">
+          <PluginSlot
+            name="message.list.before"
+            props={{ count: items.length, loading: Boolean(loading) }}
+          />
           {!items.length ? (
             loading ? (
               // 切换会话期间：清空时间线但还没加载完，给个加载态而不是空白
@@ -431,7 +441,11 @@ export function MessageList({
                 <Spinner size={22} />
               </div>
             ) : (
-              <EmptyState canUse={canUse} />
+              <PluginSlotSingle
+                name="chat.empty"
+                props={{ canUse }}
+                fallback={<EmptyState canUse={canUse} />}
+              />
             )
           ) : (
             <div className="mc-stream__list">
@@ -444,6 +458,23 @@ export function MessageList({
                   )
                   .filter(Boolean)
                   .join("\n\n");
+                // 纯工具回合没有 assistant 正文：复制按钮退化为复制本轮改动文件清单
+                const fileSummary = turn
+                  .flatMap((item) => (item.kind === "turn-changes" ? item.files : []))
+                  .map((file) => `- ${file.path} (+${file.added} / -${file.removed})`)
+                  .join("\n");
+                const copyMarkdown = markdown || fileSummary;
+                // 本回合写出的计划文档：只认已完成的写盘工具，历史回放同样可识别
+                let turnPlanDoc: string | null = null;
+                for (let i = turn.length - 1; i >= 0; i -= 1) {
+                  const item = turn[i];
+                  if (item.kind !== "tool") continue;
+                  const path = planDocPathOf(item.tool, item.input);
+                  if (path && (item.replayed === true || item.ok === true)) {
+                    turnPlanDoc = path;
+                    break;
+                  }
+                }
                 return (
                   <div className="mc-turn" key={turn[0]?.key ?? `turn-${turnIndex}`}>
                     <div className="mc-turn__body">
@@ -509,15 +540,32 @@ export function MessageList({
                         return nodes;
                       })()}
                     </div>
+                    {turnPlanDoc && !(isLast && turnStartedAt != null) ? (
+                      <PlanDocCard path={turnPlanDoc} onOpen={onOpenPlan} />
+                    ) : null}
                     {info?.kind === "turn-info" ? (
                       <TurnInfoBar
                         durationMs={info.durationMs}
                         endedAt={info.endedAt}
                         usage={info.usage}
-                        markdown={markdown}
+                        markdown={copyMarkdown}
                         onBranch={onBranchSession}
                       />
                     ) : null}
+                    <PluginSlot
+                      name="timeline.turn.tail"
+                      props={{
+                        turnIndex,
+                        markdown,
+                        ...(info?.kind === "turn-info"
+                          ? {
+                              durationMs: info.durationMs,
+                              endedAt: info.endedAt,
+                              usage: info.usage,
+                            }
+                          : {}),
+                      }}
+                    />
                   </div>
                 );
               })}
@@ -542,6 +590,10 @@ export function MessageList({
               ))}
             </div>
           )}
+          <PluginSlot
+            name="message.list.after"
+            props={{ count: items.length, loading: Boolean(loading) }}
+          />
         </div>
       </div>
       {userNavItems.length >= 2 ? (

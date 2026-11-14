@@ -17,11 +17,28 @@ const { readJsonWithBackup, writeJsonAtomic } = require("./persist.cjs");
 const TICK_MS = 30_000;
 /** 超过这个间隔的到期视为「错过」而不是「到点」：覆盖重启/休眠，容忍慢 tick */
 const MISSED_TOLERANCE_MS = 10 * 60_000;
-/** 触发失败重试：共尝试 3 次，间隔 10s（server 正在重启时给它恢复时间） */
-const FIRE_ATTEMPTS = 3;
+/** 投递失败重试的间隔：server 正在重启时给它恢复时间（次数见 DELIVER_ATTEMPTS） */
 const FIRE_RETRY_DELAY_MS = 10_000;
 const HISTORY_LIMIT = 20;
 const INTERVAL_MINUTES_MAX = 525_600; // 一年
+
+/**
+ * 决策记录：每次触发都留一条「做了 / 没做 / 为什么」。
+ * 放 automation.decisions 而不是 history —— history 只有 4 个状态且结算逻辑按
+ * history[0].sessionId 精确匹配，混入 observed 会打乱它。
+ */
+const DECISION_LIMIT = 50;
+const DECISION_MESSAGE_MAX = 2_000;
+const DECISION_OUTCOMES = ["executed", "observed", "skipped", "failed", "uncertain"];
+/** 三档自主：off 只记跳过，observe 只记「本该发什么」，auto 真执行 */
+const AUTONOMY_MODES = ["off", "observe", "auto"];
+const TRIGGER_PHASES = ["creating", "created", "delivered"];
+/** 卡在 creating 超过这个时间就认为进程当时被杀了：转 uncertain，永不重建 */
+const STALE_TRIGGER_MS = 2 * 60_000;
+/** pendingTrigger 最长保留一天，超过就当垃圾清掉 */
+const PENDING_TRIGGER_TTL_MS = 24 * 60 * 60_000;
+/** 只对投递重试：建会话不重试，否则一次故障会留下多个孤儿会话 */
+const DELIVER_ATTEMPTS = 2;
 
 const AUTOMATION_KINDS = ["interval", "daily", "weekly", "monthly", "cron", "once"];
 const HISTORY_STATUSES = ["started", "ok", "error", "missed"];
@@ -151,6 +168,11 @@ function normalizeAutomation(raw) {
   const kind = source.kind;
   if (!AUTOMATION_KINDS.includes(kind)) return fail("unknown schedule kind");
 
+  const createdAt =
+    typeof source.createdAt === "string" && source.createdAt ? source.createdAt : iso(Date.now());
+  /** 缺省 auto：老任务保持原行为，不因为升级就突然不跑了 */
+  const autonomy = AUTONOMY_MODES.includes(source.autonomy) ? source.autonomy : "auto";
+
   const value = {
     id: typeof source.id === "string" && source.id ? source.id : generateId(),
     title,
@@ -159,13 +181,14 @@ function normalizeAutomation(raw) {
     kind,
     enabled: source.enabled !== false,
     recurring: kind === "once" ? false : source.recurring !== false,
-    createdAt:
-      typeof source.createdAt === "string" && source.createdAt
-        ? source.createdAt
-        : iso(Date.now()),
+    createdAt,
     updatedAt: iso(Date.now()),
     fireCount: Number.isFinite(Number(source.fireCount)) ? Math.max(0, Math.floor(Number(source.fireCount))) : 0,
     history: [],
+    autonomy,
+    mandate: normalizeMandate(source.mandate, autonomy, createdAt),
+    decisions: normalizeDecisions(source.decisions),
+    pendingTrigger: normalizePendingTrigger(source.pendingTrigger),
   };
 
   if (kind === "interval") {
@@ -232,6 +255,75 @@ function normalizeAutomation(raw) {
   if (value.kind === "once" && !value.nextRunAt) value.enabled = false;
 
   return { ok: true, value };
+}
+
+/** 授权是数据：谁在什么时候把这条任务设成了哪一档，事后改档不篡改历史 */
+function normalizeMandate(raw, autonomy, createdAt) {
+  const source = raw && typeof raw === "object" ? raw : null;
+  const mode = source && AUTONOMY_MODES.includes(source.mode) ? source.mode : autonomy;
+  const at = source && typeof source.at === "string" && source.at ? source.at : createdAt;
+  // 两个字段都没有 = 升级前就存在的记录，标 legacy 便于审计区分
+  const origin = source ? (source.source === "legacy" ? "legacy" : "user") : "legacy";
+  return { mode, at, source: origin };
+}
+
+/** 决策记录：非法条目丢弃，最新在前，封顶 DECISION_LIMIT 条 */
+function normalizeDecisions(raw) {
+  const list = Array.isArray(raw) ? raw : [];
+  const decisions = [];
+  for (const entry of list) {
+    if (!entry || typeof entry !== "object") continue;
+    if (!DECISION_OUTCOMES.includes(entry.outcome)) continue;
+    if (!AUTONOMY_MODES.includes(entry.autonomy)) continue;
+    const at = typeof entry.at === "string" && entry.at ? entry.at : "";
+    if (!at) continue;
+    decisions.push({
+      // 老条目没有 triggerId：用决策时间回填，至少能唯一标识
+      triggerId:
+        typeof entry.triggerId === "string" && entry.triggerId ? entry.triggerId : `legacy:${at}`,
+      scheduledAt:
+        typeof entry.scheduledAt === "string" && entry.scheduledAt ? entry.scheduledAt : at,
+      at,
+      trigger: entry.trigger === "manual" ? "manual" : "schedule",
+      autonomy: entry.autonomy,
+      outcome: entry.outcome,
+      ...(typeof entry.plannedMessage === "string"
+        ? { plannedMessage: entry.plannedMessage.slice(0, DECISION_MESSAGE_MAX) }
+        : {}),
+      ...(typeof entry.messageHash === "string" ? { messageHash: entry.messageHash } : {}),
+      ...(entry.sessionId ? { sessionId: String(entry.sessionId) } : {}),
+      ...(TRIGGER_PHASES.includes(entry.phase) ? { phase: entry.phase } : {}),
+      ...(entry.error ? { error: String(entry.error).slice(0, 500) } : {}),
+      ...(entry.result === "ok" || entry.result === "error" ? { result: entry.result } : {}),
+    });
+    if (decisions.length >= DECISION_LIMIT) break;
+  }
+  return decisions;
+}
+
+/** 未完成触发：阶段不认识或超过一天就当不存在（残留的会话由人自己处理） */
+function normalizePendingTrigger(raw) {
+  if (!raw || typeof raw !== "object") return null;
+  if (!TRIGGER_PHASES.includes(raw.phase)) return null;
+  if (typeof raw.triggerId !== "string" || !raw.triggerId) return null;
+  const at = typeof raw.at === "string" && raw.at ? raw.at : "";
+  if (!at) return null;
+  const atMs = Date.parse(at);
+  if (Number.isFinite(atMs) && Date.now() - atMs > PENDING_TRIGGER_TTL_MS) return null;
+  return {
+    triggerId: raw.triggerId,
+    scheduledAt:
+      typeof raw.scheduledAt === "string" && raw.scheduledAt ? raw.scheduledAt : at,
+    at,
+    trigger: raw.trigger === "manual" ? "manual" : "schedule",
+    phase: raw.phase,
+    ...(raw.sessionId ? { sessionId: String(raw.sessionId) } : {}),
+  };
+}
+
+/** 正文指纹：连续槽位内容没变时，UI 可以把多条 observed 折起来看 */
+function hashText(text) {
+  return crypto.createHash("sha256").update(text).digest("hex").slice(0, 16);
 }
 
 /**
@@ -329,41 +421,179 @@ function createScheduler(options) {
   const retryDelayMs = () =>
     Number.isFinite(Number(opts.fireRetryDelayMs)) ? Number(opts.fireRetryDelayMs) : FIRE_RETRY_DELAY_MS;
 
-  /** 触发一次：新建会话 + 投递 prompt，重试 FIRE_ATTEMPTS 次，结果记历史。 */
+  /** 槽位标识：定时按 nextRunAt 定格，手动按调用时刻。同一槽位只决策一次。 */
+  function resolveTrigger(automation, manual) {
+    const scheduledAt = manual ? iso(now()) : automation.nextRunAt ?? iso(now());
+    return {
+      triggerId: manual
+        ? `${automation.id}:manual:${crypto.randomUUID()}`
+        : `${automation.id}:${scheduledAt}`,
+      scheduledAt,
+      trigger: manual ? "manual" : "schedule",
+    };
+  }
+
+  function recordDecision(automation, entry) {
+    automation.decisions.unshift(entry);
+    if (automation.decisions.length > DECISION_LIMIT) {
+      automation.decisions.length = DECISION_LIMIT;
+    }
+  }
+
+  /**
+   * 触发一次。五段：定槽位 → 档位闸 → 先落盘 → 建会话 → 投递。
+   *
+   * 两个不变量：
+   * 1. 一次触发最多建一个会话 —— 旧实现把建会话放在重试循环里，一次故障会留下
+   *    2~3 个孤儿会话；现在只有投递会重试，且复用同一个 sessionId。
+   * 2. off / observe 档不发任何请求，只留决策记录。
+   */
   async function fire(automation, { manual = false } = {}) {
     if (firing.has(automation.id)) return false;
     firing.add(automation.id);
     try {
       const message = buildMessage(automation);
+      const trigger = resolveTrigger(automation, manual);
+      // 同一槽位已经决策过（重复 tick / 崩溃恢复后补跑）：不再执行
+      if (automation.decisions.some((item) => item.triggerId === trigger.triggerId)) {
+        return false;
+      }
+      const base = { ...trigger, at: iso(now()), autonomy: automation.autonomy };
+
+      if (!manual && automation.autonomy !== "auto") {
+        recordDecision(automation, {
+          ...base,
+          outcome: automation.autonomy === "observe" ? "observed" : "skipped",
+          plannedMessage: message.slice(0, DECISION_MESSAGE_MAX),
+          messageHash: hashText(message),
+        });
+        advanceSchedule(automation, now());
+        persist();
+        changed();
+        return false;
+      }
+
+      // 先落盘再发请求：保证「客户端已发出」必先于「服务端已创建」被记录
+      automation.pendingTrigger = { ...trigger, phase: "creating" };
+      persist();
+
+      let sessionId = "";
+      try {
+        const opened = await opts.openSession({ cwd: automation.cwd });
+        sessionId = String(opened?.sessionId ?? "");
+        if (!sessionId) throw new Error("openSession returned no sessionId");
+      } catch (error) {
+        const errorText =
+          error instanceof Error ? error.message : String(error ?? "openSession failed");
+        recordDecision(automation, { ...base, outcome: "failed", error: errorText });
+        recordHistory(automation, { status: "error", error: errorText });
+        automation.pendingTrigger = null;
+        if (!manual) advanceSchedule(automation, now());
+        persist();
+        emit({ type: "fire-failed", automation: JSON.parse(JSON.stringify(automation)), error: errorText });
+        changed();
+        return false;
+      }
+
+      automation.pendingTrigger = { ...trigger, phase: "created", sessionId };
+      persist();
+
+      let delivered = false;
       let lastError = null;
-      for (let attempt = 0; attempt < FIRE_ATTEMPTS; attempt += 1) {
+      for (let attempt = 0; attempt < DELIVER_ATTEMPTS; attempt += 1) {
         if (attempt > 0) await delay(retryDelayMs());
         try {
-          const result = await opts.transport({ cwd: automation.cwd, message });
-          const sessionId = String(result?.sessionId ?? "");
-          if (!sessionId) throw new Error("transport returned no sessionId");
-          recordHistory(automation, { status: "started", sessionId });
-          if (!manual) {
-            automation.fireCount += 1;
-            advanceSchedule(automation, now());
-          }
-          persist();
-          changed();
-          return true;
+          await opts.deliver({ sessionId, cwd: automation.cwd, message });
+          delivered = true;
+          break;
         } catch (error) {
           lastError = error;
         }
       }
-      const errorText =
-        lastError instanceof Error ? lastError.message : String(lastError ?? "fire failed");
-      recordHistory(automation, { status: "error", error: errorText });
-      if (!manual) advanceSchedule(automation, now());
+
+      if (!delivered) {
+        const errorText =
+          lastError instanceof Error ? lastError.message : String(lastError ?? "deliver failed");
+        recordDecision(automation, { ...base, outcome: "failed", sessionId, error: errorText });
+        recordHistory(automation, { status: "error", error: errorText });
+        automation.pendingTrigger = null;
+        if (!manual) advanceSchedule(automation, now());
+        persist();
+        emit({ type: "fire-failed", automation: JSON.parse(JSON.stringify(automation)), error: errorText });
+        changed();
+        return false;
+      }
+
+      automation.pendingTrigger = null;
+      recordHistory(automation, { status: "started", sessionId });
+      recordDecision(automation, { ...base, outcome: "executed", sessionId, phase: "delivered" });
+      if (!manual) {
+        automation.fireCount += 1;
+        advanceSchedule(automation, now());
+      }
       persist();
-      emit({ type: "fire-failed", automation: JSON.parse(JSON.stringify(automation)), error: errorText });
       changed();
-      return false;
+      return true;
     } finally {
       firing.delete(automation.id);
+    }
+  }
+
+  /**
+   * 崩溃恢复：卡在 creating 的转 uncertain（会话可能已建好但响应没回来，
+   * 重建会多出孤儿会话），卡在 created 的用同一个 sessionId 补投一次。
+   */
+  async function reapStaleTriggers() {
+    let dirty = false;
+    for (const automation of automations) {
+      const pending = automation.pendingTrigger;
+      if (!pending) continue;
+      const at = Date.parse(pending.at);
+      const fresh = Number.isFinite(at) && now() - at < STALE_TRIGGER_MS;
+      if (pending.phase === "creating") {
+        if (!fresh) {
+          recordDecision(automation, {
+            triggerId: pending.triggerId,
+            scheduledAt: pending.scheduledAt,
+            at: iso(now()),
+            trigger: pending.trigger,
+            autonomy: automation.autonomy,
+            outcome: "uncertain",
+            error: "trigger interrupted while creating the session",
+          });
+          automation.pendingTrigger = null;
+          dirty = true;
+        }
+        continue;
+      }
+      if (pending.phase === "created" && pending.sessionId) {
+        const sessionId = pending.sessionId;
+        const decision = {
+          triggerId: pending.triggerId,
+          scheduledAt: pending.scheduledAt,
+          at: iso(now()),
+          trigger: pending.trigger,
+          autonomy: automation.autonomy,
+        };
+        try {
+          await opts.deliver({ sessionId, cwd: automation.cwd, message: buildMessage(automation) });
+          recordHistory(automation, { status: "started", sessionId });
+          recordDecision(automation, { ...decision, outcome: "executed", sessionId, phase: "delivered" });
+        } catch (error) {
+          recordDecision(automation, {
+            ...decision,
+            outcome: "failed",
+            sessionId,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+        automation.pendingTrigger = null;
+        dirty = true;
+      }
+    }
+    if (dirty) {
+      persist();
+      changed();
     }
   }
 
@@ -394,6 +624,8 @@ function createScheduler(options) {
   return {
     start() {
       load();
+      // 上次进程被杀时留下的半截触发：先收尾（转 uncertain 或补投），再跑调度
+      void reapStaleTriggers();
       // 启动即 tick 一次：应用重启窗口内到期的任务尽快补上（超过容错的会被标 missed）
       tick();
       timer = setInterval(() => tick(), opts.tickMs ?? TICK_MS);
@@ -409,6 +641,14 @@ function createScheduler(options) {
     /** 新建或更新（按 id 判断），返回归一化后的记录；非法抛错给 IPC 层。 */
     save(input) {
       const existing = input?.id ? find(String(input.id)) : null;
+      // 档位变更 = 一次显式授权：mandate 记下来；没改就沿用原记录
+      const autonomy = AUTONOMY_MODES.includes(input?.autonomy)
+        ? input.autonomy
+        : existing?.autonomy;
+      const mandate =
+        autonomy && autonomy !== existing?.autonomy
+          ? { mode: autonomy, at: iso(now()), source: "user" }
+          : existing?.mandate;
       const draft = normalizeAutomation({
         ...(existing ?? {}),
         ...input,
@@ -416,6 +656,11 @@ function createScheduler(options) {
         createdAt: existing?.createdAt,
         fireCount: existing?.fireCount,
         history: existing?.history ?? [],
+        // 决策记录与半截触发只能由调度器自己写，UI 传来的值一律忽略
+        autonomy,
+        mandate,
+        decisions: existing?.decisions ?? [],
+        pendingTrigger: existing?.pendingTrigger ?? null,
       });
       if (!draft.ok) throw new Error(draft.error);
       const next = draft.value;
@@ -468,6 +713,14 @@ function createScheduler(options) {
       if (!id) return;
       let dirty = false;
       for (const automation of automations) {
+        // 先结算决策记录：手动触发没有 history 条目，只有 decisions 能对上
+        const decision = automation.decisions.find(
+          (item) => item.sessionId === id && item.outcome === "executed" && item.result === undefined,
+        );
+        if (decision) {
+          decision.result = status === "ok" || status === "completed" ? "ok" : "error";
+          dirty = true;
+        }
         const entry = automation.history[0];
         if (!entry || entry.status !== "started" || entry.sessionId !== id) continue;
         // runtime 发的原始值是 "completed"/"aborted"/"error"（"ok" 只用于 trace 映射）
@@ -490,6 +743,9 @@ function createScheduler(options) {
 
 module.exports = {
   AUTOMATION_KINDS,
+  AUTONOMY_MODES,
+  DECISION_LIMIT,
+  DECISION_OUTCOMES,
   createScheduler,
   computeNextRun,
   normalizeAutomation,

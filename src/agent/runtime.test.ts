@@ -1179,6 +1179,100 @@ describe("AgentRuntime journal failures", () => {
     );
     expect(events.some((event) => event.type === "message_complete" && event.text === "done")).toBe(true);
   });
+
+  it("先更新清单再改文件的正常流程，收尾闸仍会拦一次把最后一步收口", async () => {
+    // 回归点：收尾闸原来用 mutationsSincePlanCheck 判断，而 update_plan 自己会把它清零，
+    // 于是「先更新清单（末步 in_progress）→ 改文件 → 收尾」永远绕过闸门，最后一步卡住。
+    const dir = await mkdtemp(path.join(tmpdir(), "meowcode-runtime-"));
+    const workspace = await mkdtemp(path.join(tmpdir(), "meowcode-plan-ws-"));
+    const runtime = makeRuntime(dir);
+    await runtime.newSession(workspace);
+    runtime.setApprovalMode("full");
+
+    let calls = 0;
+    streamMock.mockImplementation(async () => {
+      calls += 1;
+      if (calls === 1) {
+        return {
+          message: {
+            role: "assistant",
+            content: null,
+            tool_calls: [
+              {
+                id: "plan-1",
+                type: "function",
+                function: {
+                  name: "update_plan",
+                  arguments: JSON.stringify({
+                    steps: [{ title: "Edit the file", status: "in_progress" }],
+                  }),
+                },
+              },
+            ],
+          },
+        };
+      }
+      if (calls === 2) {
+        return {
+          message: {
+            role: "assistant",
+            content: null,
+            tool_calls: [
+              {
+                id: "write-1",
+                type: "function",
+                function: {
+                  name: "write_file",
+                  arguments: JSON.stringify({ path: "a.ts", content: "export const a = 1;\n" }),
+                },
+              },
+            ],
+          },
+        };
+      }
+      if (calls === 3) {
+        // 第一次收尾：清单还有 in_progress，本回合又改过文件 → 应被拦
+        return { message: { role: "assistant", content: "done" } };
+      }
+      if (calls === 4) {
+        return {
+          message: {
+            role: "assistant",
+            content: null,
+            tool_calls: [
+              {
+                id: "plan-2",
+                type: "function",
+                function: {
+                  name: "update_plan",
+                  arguments: JSON.stringify({
+                    steps: [{ title: "Edit the file", status: "completed" }],
+                  }),
+                },
+              },
+            ],
+          },
+        };
+      }
+      return { message: { role: "assistant", content: "all done" } };
+    });
+
+    await runtime.prompt("do the edit");
+
+    const blocked = streamMock.mock.calls.some((call) => {
+      const messages = (call[0] as { messages: ChatMessage[] }).messages;
+      return messages.some(
+        (message) =>
+          message.role === "user" &&
+          typeof message.content === "string" &&
+          message.content.includes("[plan] The turn is ending"),
+      );
+    });
+    expect(blocked).toBe(true);
+    expect(
+      runtime.current?.currentPlan?.steps.every((step) => step.status === "completed"),
+    ).toBe(true);
+  });
 });
 
 describe("AgentRuntime orphan tool calls", () => {
@@ -2669,6 +2763,52 @@ describe("prompt queue", () => {
         .filter((message) => message.role === "user")
         .map((message) => message.content),
     ).toEqual(["first", "keep me"]);
+  });
+
+  it("reorders and edits queued prompts in place", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "meowcode-runtime-"));
+    const runtime = makeRuntime(dir);
+    await runtime.newSession();
+    let release!: (value: { message: { role: "assistant"; content: string } }) => void;
+    streamMock
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            release = resolve;
+          }),
+      )
+      .mockResolvedValue({ message: { role: "assistant", content: "done" } });
+
+    const first = runtime.prompt("first");
+    await vi.waitFor(() => expect(callsForPrompts(["first"])).toHaveLength(1), { timeout: 5_000 });
+    await runtime.prompt("one", "q-one");
+    await runtime.prompt("two", "q-two");
+    await runtime.prompt("three", "q-three");
+    expect(runtime.queuedPrompts.map((item) => item.id)).toEqual(["q-one", "q-two", "q-three"]);
+
+    // 拖动排序：移到锚点之前；未知 id 不改顺序
+    expect(runtime.reorderQueuedPrompt("q-three", "q-one")).toBe(true);
+    expect(runtime.queuedPrompts.map((item) => item.id)).toEqual(["q-three", "q-one", "q-two"]);
+    expect(runtime.reorderQueuedPrompt("q-missing", "q-one")).toBe(false);
+    expect(runtime.reorderQueuedPrompt("q-two", "q-missing")).toBe(false);
+    expect(runtime.queuedPrompts.map((item) => item.id)).toEqual(["q-three", "q-one", "q-two"]);
+
+    // 编辑原位替换，位置不变
+    expect(runtime.editQueuedPrompt("q-two", "two edited")).toBe(true);
+    expect(runtime.editQueuedPrompt("q-missing", "x")).toBe(false);
+    expect(runtime.queuedPrompts.map((item) => item.text)).toEqual(["three", "one", "two edited"]);
+
+    release({ message: { role: "assistant", content: "first done" } });
+    await first;
+
+    const { SessionStore } = await import("./session-store.js");
+    const reloaded = await SessionStore.load(runtime.current!.filePath);
+    expect(
+      reloaded.messages
+        .filter((message) => message.role === "user")
+        .map((message) => message.content),
+    ).toEqual(["first", "three", "one", "two edited"]);
+    expect(reloaded.recoveredQueue).toEqual([]);
   });
 
   it("steers a queued prompt by aborting the active turn", async () => {

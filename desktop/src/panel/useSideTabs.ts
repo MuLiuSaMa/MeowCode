@@ -18,6 +18,14 @@ export type SideTab =
   | { id: string; kind: "plugin"; title: string; pluginId: string }
   | {
       id: string;
+      kind: "pluginview";
+      title: string;
+      pluginId: string;
+      tabId: string;
+      icon?: string;
+    }
+  | {
+      id: string;
       kind: "subagent";
       title: string;
       agentId: string;
@@ -29,6 +37,13 @@ export type SideTab =
 export type SideTabOpen =
   | { kind: "browser"; url: string; title?: string }
   | { kind: "plugin"; pluginId: string; title: string }
+  | {
+      kind: "pluginview";
+      pluginId: string;
+      tabId: string;
+      title: string;
+      icon?: string;
+    }
   | { kind: "workspace" | "review" | "sidechat" | "terminal" | "plan" | "subagents" };
 
 export type SubagentTabOpen = {
@@ -82,7 +97,7 @@ function resolveTitle(tab: SideTab, t: TFunction<"panel">): SideTab {
   if (tab.kind === "subagent") return tab.title ? tab : { ...tab, title: t("tabs.subagent") };
   if (tab.kind === "home") return { ...tab, title: t("tabs.home") };
   // 插件页签的标题是插件名（用户数据），不参与 i18n
-  if (tab.kind === "plugin") return tab;
+  if (tab.kind === "plugin" || tab.kind === "pluginview") return tab;
   // 后台任务终端用命令作为标题
   if (tab.kind === "terminal" && tab.termId) return tab;
   return { ...tab, title: t(SINGLETON_TITLE_KEYS[tab.kind]) };
@@ -94,6 +109,7 @@ function isDataTitleTab(tab: SideTab): boolean {
     tab.kind === "browser" ||
     tab.kind === "subagent" ||
     tab.kind === "plugin" ||
+    tab.kind === "pluginview" ||
     (tab.kind === "terminal" && Boolean(tab.termId))
   );
 }
@@ -164,6 +180,30 @@ export function useSideTabs() {
         };
         setTabs((current) => [...current, pluginTab]);
         setActiveId(pluginTab.id);
+        return;
+      }
+      if (request.kind === "pluginview") {
+        // 一个注册页签一个实例：按 pluginId + tabId 复用
+        const existingView = tabs.find(
+          (tab) =>
+            tab.kind === "pluginview" &&
+            tab.pluginId === request.pluginId &&
+            tab.tabId === request.tabId,
+        );
+        if (existingView) {
+          setActiveId(existingView.id);
+          return;
+        }
+        const viewTab: SideTab = {
+          id: nextTabId("pluginview"),
+          kind: "pluginview",
+          title: request.title,
+          pluginId: request.pluginId,
+          tabId: request.tabId,
+          ...(request.icon ? { icon: request.icon } : {}),
+        };
+        setTabs((current) => [...current, viewTab]);
+        setActiveId(viewTab.id);
         return;
       }
       // 终端不复用：每次新建都开一个全新终端（SSH 页签不能被「新建终端」占用）

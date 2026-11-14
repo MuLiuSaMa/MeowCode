@@ -91,7 +91,13 @@
     "steerTitle": "現在の応答を中止して、このメッセージをすぐ送信",
     "steer": "割り込み送信",
     "removeTitle": "キューから削除",
-    "remove": "削除"
+    "remove": "削除",
+    "edit": "編集",
+    "editTitle": "入力欄でこのメッセージを編集",
+    "editingHere": "下の入力欄で編集中",
+    "editingBar": "待機中のメッセージを編集中",
+    "editCancel": "キャンセル",
+    "dragAria": "ドラッグで並べ替え"
   },
   "plan": {
     "answerAria": "質問に回答",
@@ -105,6 +111,8 @@
     "exit": "プランモードを終了",
     "confirmTitle": "この計画で実行しますか？",
     "confirmSub": "確認後、この計画に沿って実行し内容を出力します",
+    "docAria": "計画ドキュメント",
+    "docTitle": "計画ドキュメント",
     "start": "実行を開始",
     "adjustPlaceholder": "計画を調整 — どう変えるか入力してください",
     "sendAdjust": "調整を送信",

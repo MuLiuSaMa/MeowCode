@@ -121,7 +121,8 @@
     "notGitRepo": "当前工作区不是 git 仓库，无法使用 worktree 隔离。"
   },
   "toast": {
-    "worktreeDirty": "主工作区有未提交改动：worktree 基于 HEAD，未提交内容不会带入"
+    "worktreeDirty": "主工作区有未提交改动：worktree 基于 HEAD，未提交内容不会带入",
+    "jobExited": "后台任务 {{id}} 已结束（code {{code}}）"
   },
   "architecture": {
     "customName": "自定义 Agent"

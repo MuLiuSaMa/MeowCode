@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   LuCheck,
@@ -23,6 +23,12 @@ import {
 import { CustomSelect, type CustomSelectOption } from "./ui/CustomSelect";
 import { Spinner } from "./ui/Spinner";
 import "./WorkspaceOverview.css";
+
+/**
+ * 收进折叠组的终态：跑完/失败/主动停的都不用再看。
+ * `interrupted` 排除在外 —— 它等人确认是否续跑，折起来等于藏掉处置入口。
+ */
+const FOLDED_STATUSES: ReadonlySet<SubagentStatus> = new Set(["completed", "failed", "aborted"]);
 
 function workspaceTotals(status: GitStatus | null): { added: number; removed: number } {
   if (!status?.isRepo) return { added: 0, removed: 0 };
@@ -142,6 +148,22 @@ export function WorkspaceOverview({
     [subagents],
   );
 
+  // 已结束的默认收起：卡片位置有限，上面只留还在跑 / 等人处置的
+  const [doneOpen, setDoneOpen] = useState(false);
+  const doneId = useId();
+  const activeAgents = sorted.filter((run) => !FOLDED_STATUSES.has(run.status));
+  const finishedAgents = sorted.filter((run) => FOLDED_STATUSES.has(run.status));
+  const agentFailedCount = finishedAgents.filter((run) => run.status === "failed").length;
+  const agentsDoneLabel = `${t("panel:subagents.doneGroup", { n: finishedAgents.length })}${
+    agentFailedCount > 0 ? ` · ${t("panel:runStatus.failed")} ${agentFailedCount}` : ""
+  }`;
+
+  // 同上：这批子 Agent 的状态一变（跑完 / 新起）就回到默认收起
+  const foldSignature = sorted.map((run) => `${run.agentId}:${run.status}`).join("|");
+  useEffect(() => {
+    setDoneOpen(false);
+  }, [foldSignature]);
+
   const branchName = status?.isRepo ? status.branch : undefined;
   const branchOptions = useMemo<Array<CustomSelectOption<string>>>(() => {
     if (branches?.length) {
@@ -187,6 +209,33 @@ export function WorkspaceOverview({
       setBranchBusy(null);
     }
   };
+
+  const renderAgent = (run: SubagentRun) => (
+    <button
+      key={run.agentId}
+      type="button"
+      className="mc-workspaceov__agent"
+      data-status={run.status}
+      onClick={() => onOpenSubagent(run.agentId)}
+    >
+      <span className="mc-workspaceov__agenticon" data-status={run.status} aria-hidden>
+        {statusIcon(run.status)}
+      </span>
+      <span className="mc-workspaceov__agenttext">
+        <span
+          className="mc-workspaceov__agentdesc"
+          title={run.description || run.agentType || run.agentId}
+        >
+          {run.description || run.agentType || run.agentId}
+        </span>
+        <span className="mc-workspaceov__agentmeta">
+          {t(`panel:runStatus.${run.status}`)}
+          {run.background ? ` · ${t("panel:subagent.background")}` : ""}
+        </span>
+      </span>
+      <LuChevronRight size={13} className="mc-workspaceov__chevron" aria-hidden />
+    </button>
+  );
 
   return (
     <div className="mc-workspaceov" ref={rootRef}>
@@ -253,38 +302,38 @@ export function WorkspaceOverview({
           </div>
 
           {sorted.length ? (
-            <div className="mc-workspaceov__agents">
-              {sorted.map((run) => (
-                <button
-                  key={run.agentId}
-                  type="button"
-                  className="mc-workspaceov__agent"
-                  data-status={run.status}
-                  onClick={() => onOpenSubagent(run.agentId)}
-                >
-                  <span
-                    className="mc-workspaceov__agenticon"
-                    data-status={run.status}
-                    aria-hidden
+            <>
+              {activeAgents.length ? (
+                <div className="mc-workspaceov__agents">{activeAgents.map(renderAgent)}</div>
+              ) : null}
+              {finishedAgents.length ? (
+                <div className="mc-workspaceov__done">
+                  <button
+                    type="button"
+                    className="mc-workspaceov__donehead"
+                    aria-expanded={doneOpen}
+                    aria-controls={doneId}
+                    title={agentsDoneLabel}
+                    onClick={() => setDoneOpen((open) => !open)}
                   >
-                    {statusIcon(run.status)}
-                  </span>
-                  <span className="mc-workspaceov__agenttext">
-                    <span
-                      className="mc-workspaceov__agentdesc"
-                      title={run.description || run.agentType || run.agentId}
-                    >
-                      {run.description || run.agentType || run.agentId}
-                    </span>
-                    <span className="mc-workspaceov__agentmeta">
-                      {t(`panel:runStatus.${run.status}`)}
-                      {run.background ? ` · ${t("panel:subagent.background")}` : ""}
-                    </span>
-                  </span>
-                  <LuChevronRight size={13} className="mc-workspaceov__chevron" aria-hidden />
-                </button>
-              ))}
-            </div>
+                    <LuChevronRight
+                      size={12}
+                      className="mc-workspaceov__chev"
+                      data-open={doneOpen}
+                      aria-hidden
+                    />
+                    <span>{agentsDoneLabel}</span>
+                  </button>
+                  <div className="mc-workspaceov__donebody" id={doneId} data-open={doneOpen}>
+                    <div className="mc-workspaceov__doneinner">
+                      <div className="mc-workspaceov__agents">
+                        {finishedAgents.map(renderAgent)}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+            </>
           ) : (
             <p className="mc-workspaceov__empty">{t("overview.noAgents")}</p>
           )}

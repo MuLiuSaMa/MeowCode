@@ -9,7 +9,7 @@ export type UsageSample = {
   output: number;
   cacheRead: number;
   cacheWrite: number;
-  /** 命中率分母：该轮报告过缓存读取时的输入总量 */
+  /** 命中率分母：报告过缓存读取的轮次输入总量 */
   cacheInput: number;
   cacheReported: boolean;
 };
@@ -75,7 +75,44 @@ export function retractSample(totals: UsageTotals, sample: UsageSample | undefin
   return sample ? addScaled(totals, sample, -1) : totals;
 }
 
-/** 缓存命中率：只统计报告过缓存的轮次；没有分母时返回 null（UI 显示 —）。 */
+export type SessionInputBreakdown = {
+  /** 已报告缓存轮次里真正未命中的输入 */
+  uncached: number | null;
+  /** 未报告缓存明细的输入总量；单独归类，不算未命中 */
+  unreported: number | null;
+};
+
+/**
+ * 把会话输入拆成「已报告轮次的未命中」与「未报告轮次的输入」。
+ *
+ * 切到会报缓存的普通服务商后，之前网关发过的轮次没有 cacheRead；若按
+ * `总输入 - cacheRead` 算未命中，那些历史输入会被整体改判成未命中。
+ * 这里用 cacheInput（只累计报告过缓存的轮次）做已报告侧的分母，
+ * 剩余部分单独归为「未报告」。
+ */
+export function inputBreakdown(input: {
+  input: number | null;
+  cacheInput: number | null;
+  cacheRead: number | null;
+  cacheWrite: number | null;
+  cacheReported: boolean;
+}): SessionInputBreakdown {
+  if (!input.cacheReported || input.input == null || input.cacheInput == null) {
+    return { uncached: null, unreported: null };
+  }
+  const reportedInput = Math.max(0, Math.min(input.cacheInput, input.input));
+  return {
+    uncached: Math.max(0, reportedInput - (input.cacheRead ?? 0) - (input.cacheWrite ?? 0)),
+    unreported: Math.max(0, input.input - reportedInput),
+  };
+}
+
+/**
+ * 缓存命中率：只统计报告过缓存的轮次（cacheInput 分母）。
+ *
+ * 未报告缓存的轮次单独归到「未报告输入」，不能算作未命中——否则切到普通
+ * 服务商后，网关的历史输入会被整体改判成 miss。没有一轮报告过缓存时返回 null。
+ */
 export function hitRate(totals: UsageTotals): number | null {
   if (!totals.cacheReported || totals.cacheInput <= 0) return null;
   return Math.min(totals.cacheRead / totals.cacheInput, 1);

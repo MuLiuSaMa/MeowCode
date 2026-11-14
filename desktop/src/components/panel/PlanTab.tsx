@@ -2,7 +2,9 @@ import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { LuFileText, LuListChecks, LuRotateCw } from "react-icons/lu";
 import { api, type WorkflowRoadmap } from "../../api";
+import { deriveStage } from "../../../../src/agent/stage";
 import { MarkdownDocument } from "../ui/MarkdownDocument";
+import { StageBadge } from "../stage/StageBadge";
 import { OpenWithButton } from "./OpenWithButton";
 import "./PlanTab.css";
 
@@ -42,6 +44,17 @@ function RoadmapSection({ roadmap }: { roadmap: WorkflowRoadmap }) {
           {roadmap.lanes.map((lane) => (
             <div className="mc-plan__lane" key={lane.id} data-status={lane.status}>
               <div className="mc-plan__lanehead">
+                <StageBadge
+                  stage={
+                    deriveStage({
+                      kind: "lane",
+                      status: lane.status,
+                      gates: lane.gates,
+                      repairCount: lane.repairCount,
+                    }).stage
+                  }
+                  size={12}
+                />
                 <span className="mc-plan__laneid">{lane.id}</span>
                 <span className="mc-plan__laneobjective mc-truncate" title={lane.objective}>
                   {lane.objective}

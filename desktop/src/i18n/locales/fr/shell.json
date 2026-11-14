@@ -121,7 +121,8 @@
     "notGitRepo": "L’espace de travail actuel n’est pas un dépôt Git, l’isolation par worktree est donc indisponible."
   },
   "toast": {
-    "worktreeDirty": "L’espace de travail principal contient des modifications non validées : les worktrees partent de HEAD, elles ne sont pas reprises"
+    "worktreeDirty": "L’espace de travail principal contient des modifications non validées : les worktrees partent de HEAD, elles ne sont pas reprises",
+    "jobExited": "Tâche d’arrière-plan {{id}} terminée (code {{code}})"
   },
   "architecture": {
     "customName": "Agent personnalisé"

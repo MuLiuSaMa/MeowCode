@@ -377,12 +377,24 @@ describe("GET /plugin-ui", () => {
     expect(response.status).toBe(200);
     expect(response.headers.get("content-type")).toContain("text/html");
     expect(response.headers.get("cache-control")).toContain("no-store");
+    // 渲染层 fetch 插件脚本是跨源请求（dev: Vite 源 → agent server；打包: file://）
+    expect(response.headers.get("access-control-allow-origin")).toBe("*");
     expect(await response.text()).toContain("panel-plugin-ui");
   });
 
   it("不带 token 拒绝（与 /session/asset 同一闸门）", async () => {
     const response = await fetch(`${baseUrl}/plugin-ui/panel-plugin/index.html`);
     expect(response.status).toBe(401);
+    // 错误响应也带 CORS 头，渲染层才能读到 401 而不是笼统的 Failed to fetch
+    expect(response.headers.get("access-control-allow-origin")).toBe("*");
+  });
+
+  it("OPTIONS 预检放行，便于将来 fetch 带自定义头", async () => {
+    const response = await fetch(`${baseUrl}/plugin-ui/panel-plugin/index.html`, {
+      method: "OPTIONS",
+    });
+    expect(response.status).toBe(204);
+    expect(response.headers.get("access-control-allow-origin")).toBe("*");
   });
 
   it("路径穿越拒绝（WHATWG URL 先消解点段，落到 ui 内不存在文件即 404；反斜杠走 resolve 拦 403）", async () => {

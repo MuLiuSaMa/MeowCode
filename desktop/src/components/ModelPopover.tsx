@@ -9,9 +9,9 @@ import { ProviderIcon } from "./ui/ProviderIcon";
 import "./ModelPopover.css";
 
 /** 滑块直径。轨道两端各内缩 (THUMB - TRACK_H) / 2，让两端圆头正好被滑块圆心盖住。 */
-const THUMB = 42;
+const THUMB = 30;
 const THUMB_HALF = THUMB / 2;
-const TRACK_H = 36;
+const TRACK_H = 24;
 const TRACK_INSET = (THUMB - TRACK_H) / 2;
 
 /** 把 0..1 的比例换算成滑块圆心位置（两端各留出滑块半径，所以永不溢出）。 */
@@ -145,7 +145,9 @@ export function ModelPopover({
           <div className="mc-popover__list">
             {groups.map((group) => (
               <div className="mc-popover__group" key={group.key}>
-                <div className="mc-popover__groupname">{group.name}</div>
+                <div className="mc-popover__groupname" title={group.name}>
+                  {group.name}
+                </div>
                 {group.items.map((provider) => (
                   <button
                     key={provider.id}
@@ -162,7 +164,10 @@ export function ModelPopover({
                       iconKey={providerModelIconKey(provider)}
                       size={20}
                     />
-                    <span className="mc-popover__itemname">
+                    <span
+                      className="mc-popover__itemname"
+                      title={provider.displayName || provider.model}
+                    >
                       {provider.displayName || provider.model}
                     </span>
                     {provider.id === activeProviderId ? (
@@ -213,7 +218,7 @@ export function ModelPopover({
             </button>
           </div>
 
-          <div className="mc-slider">
+          <div className="mc-slider" data-max={atMax}>
             <div className="mc-slider__track" />
             <div
               className="mc-slider__fill"

@@ -7,6 +7,8 @@ const SHOW_DELAY = 380;
 /** 气泡与元素、与窗口边缘的间距 */
 const GAP = 10;
 const MARGIN = 8;
+/** 超长 title（工具/思考预览）只展示开头一段，避免气泡铺满整屏 */
+const MAX_TIP_CHARS = 400;
 
 type TipState = {
   text: string;
@@ -61,13 +63,15 @@ export function GlobalTooltip() {
       if (!host || host === hostRef.current) return;
       const text = takeTitle(host);
       if (!text) return;
+      const display =
+        text.length > MAX_TIP_CHARS ? `${text.slice(0, MAX_TIP_CHARS).trimEnd()}…` : text;
       clearTimer();
       hostRef.current = host;
       // 元素的视口矩形在弹出时再取一次（延迟期间可能滚动过）
       const point = { x: event.clientX, y: event.clientY };
       timerRef.current = window.setTimeout(() => {
         setPos(null);
-        setTip({ text, rect: host.getBoundingClientRect(), point });
+        setTip({ text: display, rect: host.getBoundingClientRect(), point });
       }, SHOW_DELAY);
     };
 

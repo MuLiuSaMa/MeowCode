@@ -31,7 +31,7 @@ const extensionAuthoringPlugin: PluginFactory = (api: PluginAPI) => {
     if (!/插件|plugin/i.test(event.text)) return;
     return {
       notes: [
-        "【插件创作】先调用 plugin_authoring_guide 取 API 速查，再用 create_plugin 创建；不要阅读仓库源码来推断插件接口。",
+        "【插件创作】先调用 plugin_authoring_guide 取 API 速查，再用 create_plugin 创建；不要阅读仓库源码来推断插件接口。创建/修改完成后不要截图或操作电脑验证：界面会自动热重载，需要视觉确认时直接请用户看。",
       ],
     };
   });
@@ -40,13 +40,13 @@ const extensionAuthoringPlugin: PluginFactory = (api: PluginAPI) => {
   api.registerTool({
     name: "plugin_authoring_guide",
     description:
-      "写 MeowCode 插件前先调用：返回完整插件 API 速查（后端工具/命令/RPC/hook、client 槽位、pages、ctx、示例与规则）。不要阅读仓库源码来推断插件 API。",
+      "写 MeowCode 插件前先调用：返回完整插件 API 速查（后端工具/命令/RPC/hook、整站 UI 槽位、pages、右栏页签、ctx、示例与规则）。不要阅读仓库源码来推断插件 API。创建/修改后不要截图验证，界面会自动热重载。",
     parameters: {
       type: "object",
       properties: {
         section: {
           type: "string",
-          enum: ["all", "backend", "client", "pages", "examples"],
+          enum: ["all", "backend", "client", "slots", "pages", "examples"],
           description: "只看某一节；缺省 all",
         },
       },
@@ -54,7 +54,14 @@ const extensionAuthoringPlugin: PluginFactory = (api: PluginAPI) => {
     },
     execute: async (input) => {
       const raw = asString(input.section).trim();
-      const section: GuideSection = ["all", "backend", "client", "pages", "examples"].includes(raw)
+      const section: GuideSection = [
+        "all",
+        "backend",
+        "client",
+        "slots",
+        "pages",
+        "examples",
+      ].includes(raw)
         ? (raw as GuideSection)
         : "all";
       return { ok: true, output: pluginAuthoringGuide(section) };
@@ -108,7 +115,7 @@ const extensionAuthoringPlugin: PluginFactory = (api: PluginAPI) => {
   api.registerTool({
     name: "create_plugin",
     description:
-      "创建或覆盖一个 MeowCode 插件包（写入全局 ~/.meowcode/plugins/<id>/：plugin.json + index.ts，可带 ui/client.js 或 ui/index.html），成功后热重载，新工具/命令/界面槽位/整页立刻可用。写之前先调用 plugin_authoring_guide 取完整 API，不要翻仓库源码。插件是任意代码，调用前会弹审批。需要新增工具、命令或界面入口时调用；已有技能能覆盖的场景不要建插件。",
+      "创建或覆盖一个 MeowCode 插件包（写入全局 ~/.meowcode/plugins/<id>/：plugin.json + index.ts，可带 ui/client.js 或 ui/index.html），成功后热重载，新工具/命令/界面槽位/整页/右栏页签立刻可用；界面可挂到标题栏、导航、会话列表、聊天流、消息、输入框、设置页、右栏、文件树菜单，也可包裹/替换外壳。写之前先调用 plugin_authoring_guide 取完整 API（slots 分区有全部槽位），不要翻仓库源码。插件是任意代码，调用前会弹审批。需要新增工具、命令或界面入口时调用；已有技能能覆盖的场景不要建插件。创建/修改成功后不要用 computer_screenshot 或 browser_* 截图验证，界面会自动热重载；需要视觉确认时请用户看。",
     requiresApproval: true,
     parameters: {
       type: "object",

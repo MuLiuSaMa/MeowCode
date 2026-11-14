@@ -95,5 +95,25 @@
     "errorRequired": "必須項目を入力してください",
     "invalidCron": "Cron 式が無効です",
     "saveFailed": "保存に失敗しました"
+  },
+  "autonomy": {
+    "label": "実行方法",
+    "auto": "自動実行",
+    "observe": "記録のみ",
+    "off": "実行しない"
+  },
+  "decision": {
+    "tabHistory": "実行履歴",
+    "tabDecision": "判断履歴",
+    "empty": "判断履歴はまだありません。",
+    "last": "最新の判断：{{outcome}} · {{time}}",
+    "planned": "送信予定だった内容",
+    "outcome": {
+      "executed": "実行済み",
+      "observed": "記録のみ",
+      "skipped": "スキップ",
+      "failed": "失敗",
+      "uncertain": "未確認"
+    }
   }
 }

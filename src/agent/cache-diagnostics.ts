@@ -111,10 +111,18 @@ export function classifyCache(
 
 /**
  * 前缀分段快照：工具块一个指纹 + 每条 system 消息一个指纹（下标顺序即 system[i]）。
+ *
+ * `toolHashes` / `toolNames` 是可选的逐工具视图：只给整体 tools 指纹时，掉了缓存
+ * 只能报「工具段变了」；带上逐工具指纹才能说出「第几个、哪个工具变了」。
+ * `meta` 记缓存计划（画像 / TTL / 断点 / 会话键），只用于排除配置漂移，
+ * **不参与**「内容前缀是否变化」的判定。
  */
 export type PrefixSnapshot = {
   tools: string;
   system: readonly string[];
+  toolHashes?: readonly string[];
+  toolNames?: readonly string[];
+  meta?: Readonly<Record<string, string>>;
 };
 
 export type PrefixDiff = {
@@ -124,7 +132,34 @@ export type PrefixDiff = {
   system: readonly number[];
   /** system 条数变了：下标对齐不可信，只能整体归因 */
   countChanged: boolean;
+  /** 逐工具改写（只在两次快照都带 toolHashes 时给出；追加/删除不在此列） */
+  toolChanges?: ReadonlyArray<{ index: number; name: string }>;
+  /** 计划元信息变化项（profile / ttl / breakpoints / sessionKey）；不算内容前缀变化 */
+  metaChanged?: readonly string[];
 };
+
+function diffTools(
+  previous: PrefixSnapshot,
+  next: PrefixSnapshot,
+): Array<{ index: number; name: string }> {
+  if (!previous.toolHashes || !next.toolHashes) return [];
+  const changes: Array<{ index: number; name: string }> = [];
+  const shared = Math.min(previous.toolHashes.length, next.toolHashes.length);
+  for (let index = 0; index < shared; index += 1) {
+    if (previous.toolHashes[index] === next.toolHashes[index]) continue;
+    changes.push({ index, name: next.toolNames?.[index] ?? `#${index}` });
+  }
+  return changes;
+}
+
+function diffMeta(
+  previous: Readonly<Record<string, string>> | undefined,
+  next: Readonly<Record<string, string>> | undefined,
+): string[] {
+  if (!previous || !next) return [];
+  const keys = new Set([...Object.keys(previous), ...Object.keys(next)]);
+  return [...keys].filter((key) => previous[key] !== next[key]).sort();
+}
 
 /**
  * 比较两次请求的前缀分段指纹。
@@ -146,16 +181,32 @@ export function diffPrefix(
   for (let index = 0; index < shared; index += 1) {
     if (previous.system[index] !== next.system[index]) system.push(index);
   }
-  return { changed: tools || countChanged || system.length > 0, tools, system, countChanged };
+  const toolChanges = diffTools(previous, next);
+  const metaChanged = diffMeta(previous.meta, next.meta);
+  return {
+    changed: tools || countChanged || system.length > 0,
+    tools,
+    system,
+    countChanged,
+    ...(toolChanges.length > 0 ? { toolChanges } : {}),
+    ...(metaChanged.length > 0 ? { metaChanged } : {}),
+  };
 }
 
 /**
  * 差异 → 可读段名。段名进 `cacheReason`，UI 的 rebuilds 计数按 reason 分桶，
  * 于是「到底是谁在炸前缀」可以直接按段统计出来。
+ *
+ * 逐工具改写优先报 `tools[名字]`：MCP 热更新时能直接定位到是哪个工具的描述/参数
+ * 变了；只有整体指纹或数量变化（追加/删除）时才退回 `tools`。
  */
 export function prefixChangeSegments(diff: PrefixDiff): string[] {
   const segments: string[] = [];
-  if (diff.tools) segments.push("tools");
+  if (diff.toolChanges?.length) {
+    for (const change of diff.toolChanges) segments.push(`tools[${change.name}]`);
+  } else if (diff.tools) {
+    segments.push("tools");
+  }
   if (diff.countChanged) segments.push("system_count");
   for (const index of diff.system) segments.push(`system[${index}]`);
   return segments;

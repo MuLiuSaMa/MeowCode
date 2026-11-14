@@ -198,7 +198,16 @@
     "empty": "अभी कोई वर्कस्पेस नहीं जोड़ा गया।",
     "removeTitle": "प्रोजेक्ट हटाएँ",
     "removeMessage": "«{{name}}» हटाएँ? यह केवल सूची से छिपेगा; चैट और फ़ाइलें सुरक्षित रहेंगी।",
-    "removeConfirm": "हटाएँ"
+    "removeConfirm": "हटाएँ",
+    "batchManage": "बैच प्रबंधन",
+    "batchCancel": "रद्द करें",
+    "batchRemove": "चयनित हटाएं",
+    "batchRemoveCount": "चयनित हटाएं · {{count}}",
+    "batchSelectAll": "सभी चुनें",
+    "batchSelected": "{{count}} चयनित",
+    "batchRemoveTitle": "चयनित प्रोजेक्ट हटाएं",
+    "batchRemoveMessage": "चयनित {{count}} प्रोजेक्ट हटाएं? वे केवल सूची से छिपते हैं; चैट और फ़ाइलें रहती हैं।",
+    "batchActiveHint": "वर्तमान प्रोजेक्ट हटाया नहीं जा सकता"
   },
   "models": {
     "section": "मॉडल",

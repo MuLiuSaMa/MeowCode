@@ -1,12 +1,8 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import {
-  LuCircleAlert,
-  LuCircleCheck,
-  LuCircleX,
-  LuLoaderCircle,
-  LuPanelRightOpen,
-} from "react-icons/lu";
+import { LuPanelRightOpen } from "react-icons/lu";
+import { deriveStage } from "../../../src/agent/stage";
+import { StageBadge } from "./stage/StageBadge";
 import type { SubagentRun, TimelineTool } from "../api";
 import { SUBAGENT_ROLE_LABELS } from "../agentRoles";
 import { formatDuration } from "../i18n/format";
@@ -54,16 +50,8 @@ export function TaskToolRow({
       title={t("taskRow.open", { name: description })}
       onClick={() => onOpen(agent.agentId)}
     >
-      <span className="mc-taskrow__icon" aria-hidden="true">
-        {agent.status === "running" ? (
-          <LuLoaderCircle size={16} className="mc-taskrow__spin" />
-        ) : agent.status === "failed" ? (
-          <LuCircleX size={16} />
-        ) : agent.status === "aborted" || agent.status === "interrupted" ? (
-          <LuCircleAlert size={16} />
-        ) : (
-          <LuCircleCheck size={16} />
-        )}
+      <span className="mc-taskrow__icon">
+        <StageBadge stage={deriveStage({ kind: "subagent", status: agent.status }).stage} />
       </span>
       <span className="mc-taskrow__label">{t("subagent.label")}</span>
       <span className="mc-taskrow__type" data-type={role}>

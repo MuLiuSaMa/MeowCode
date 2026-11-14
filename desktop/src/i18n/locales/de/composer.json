@@ -91,7 +91,13 @@
     "steerTitle": "Aktuelle Antwort abbrechen und diese Nachricht sofort senden",
     "steer": "Sofort einwerfen",
     "removeTitle": "Aus der Warteschlange entfernen",
-    "remove": "Löschen"
+    "remove": "Löschen",
+    "edit": "Bearbeiten",
+    "editTitle": "Diese Nachricht im Eingabefeld bearbeiten",
+    "editingHere": "Wird unten bearbeitet",
+    "editingBar": "Wartende Nachricht wird bearbeitet",
+    "editCancel": "Abbrechen",
+    "dragAria": "Zum Sortieren ziehen"
   },
   "plan": {
     "answerAria": "Frage beantworten",
@@ -105,6 +111,8 @@
     "exit": "Planmodus beenden",
     "confirmTitle": "Diesen Plan ausführen?",
     "confirmSub": "Nach der Bestätigung führe ich den Plan aus und gebe die Ausgabe aus",
+    "docAria": "Plandokument",
+    "docTitle": "Plandokument",
     "start": "Ausführung starten",
     "adjustPlaceholder": "Plan anpassen — beschreiben Sie, was geändert werden soll",
     "sendAdjust": "Anpassung senden",

@@ -20,6 +20,7 @@ import {
 } from "./client-loader";
 import { createPluginContext, type PluginTimers } from "./context";
 import { reportPluginError, reportPluginLoadError } from "./errors";
+import { shouldReloadPlugin } from "./reload";
 import { pluginSlots } from "./slot-registry";
 import type {
   PluginAppState,
@@ -31,6 +32,8 @@ import { PluginConsentDialog } from "./PluginConsentDialog";
 
 type LoadedPlugin = {
   dispose: () => void;
+  /** 客户端脚本指纹：变了要 dispose 旧实例、重新 apply */
+  rev?: string;
 };
 
 type PluginRuntimeValue = {
@@ -105,12 +108,22 @@ export function PluginRuntimeProvider({
   const stableActions = useMemo<PluginHostActions>(
     () => ({
       sendPrompt: (text) => actionsRef.current.sendPrompt(text),
+      stopTurn: () => actionsRef.current.stopTurn(),
       insertComposerText: (text) => actionsRef.current.insertComposerText(text),
       openPanel: (pluginId) => actionsRef.current.openPanel(pluginId),
+      openFile: (path) => actionsRef.current.openFile(path),
+      openPluginTab: (request) => actionsRef.current.openPluginTab(request),
       toast: (message, kind) => actionsRef.current.toast(message, kind),
       openExternal: (url) => actionsRef.current.openExternal(url),
       openView: (view) => actionsRef.current.openView(view),
       showChat: () => actionsRef.current.showChat(),
+      window: {
+        minimize: () => actionsRef.current.window.minimize(),
+        toggleMaximize: () => actionsRef.current.window.toggleMaximize(),
+        close: () => actionsRef.current.window.close(),
+        isMaximized: () => actionsRef.current.window.isMaximized(),
+        onStateChange: (listener) => actionsRef.current.window.onStateChange(listener),
+      },
     }),
     [],
   );
@@ -132,7 +145,15 @@ export function PluginRuntimeProvider({
 
   const loadDescriptor = useCallback(
     async (descriptor: PluginDescriptor): Promise<void> => {
-      if (loadedRef.current.has(descriptor.id)) return;
+      const rev = descriptor.ui?.client?.rev;
+      const existing = loadedRef.current.get(descriptor.id);
+      // 脚本没变就保留运行状态；改过 client.js（rev 变化）则先卸载旧实例再重新加载
+      if (!shouldReloadPlugin(existing, descriptor)) return;
+      if (existing) {
+        existing.dispose();
+        loadedRef.current.delete(descriptor.id);
+        pluginSlots.clearPlugin(descriptor.id);
+      }
       const styles = new PluginStyles(descriptor.id);
       let timers: PluginTimers | null = null;
       let disposeApply: PluginClientDisposer = () => {};
@@ -153,6 +174,7 @@ export function PluginRuntimeProvider({
         });
         disposeApply = await applyPluginClient(module, bundle.ctx);
         loadedRef.current.set(descriptor.id, {
+          rev,
           dispose: () => {
             disposeApply();
             timers?.dispose();
@@ -169,9 +191,22 @@ export function PluginRuntimeProvider({
     [stableActions, getState, subscribeState],
   );
 
-  const refresh = useCallback(async (): Promise<void> => {
+  const doRefresh = useCallback(async (): Promise<void> => {
     setLoading(true);
     try {
+      // 安全模式：外壳级槽位可把整个 UI 换掉；保留一条不加载任何界面插件的退路
+      const safeUi = (() => {
+        try {
+          return window.localStorage.getItem("meowcode.safeUiPlugins") === "1";
+        } catch {
+          return false;
+        }
+      })();
+      if (safeUi) {
+        for (const pluginId of [...loadedRef.current.keys()]) disposePlugin(pluginId);
+        setPendingConsent([]);
+        return;
+      }
       const overview = await listPlugins();
       const targets = overview.plugins.filter((item) => item.enabled && item.ui?.client);
       const approvals = await readApprovals();
@@ -205,6 +240,17 @@ export function PluginRuntimeProvider({
     }
   }, [disposePlugin, loadDescriptor]);
 
+  /**
+   * 串行化：StrictMode 首屏会跑两次 effect，plugins_changed 也可能与首轮重叠；
+   * 两轮并发 refresh 都看到「未加载」就会 apply 两次，页面/按钮出现双份。
+   */
+  const refreshChainRef = useRef<Promise<void>>(Promise.resolve());
+  const refresh = useCallback((): Promise<void> => {
+    const run = refreshChainRef.current.then(doRefresh);
+    refreshChainRef.current = run.catch(() => undefined);
+    return run;
+  }, [doRefresh]);
+
   refreshRef.current = refresh;
 
   useEffect(() => {
@@ -226,7 +272,15 @@ export function PluginRuntimeProvider({
   useEffect(() => {
     stateRef.current = state;
     for (const listener of stateListeners.current) listener();
-  }, [state.sessionId, state.workspace, state.theme, state.locale]);
+  }, [
+    state.sessionId,
+    state.workspace,
+    state.theme,
+    state.locale,
+    state.view,
+    state.running,
+    state.mode,
+  ]);
 
   const approve = useCallback(
     async (request: PluginConsentRequest) => {

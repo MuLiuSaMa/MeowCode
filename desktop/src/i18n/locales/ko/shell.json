@@ -121,7 +121,8 @@
     "notGitRepo": "현재 워크스페이스가 git 저장소가 아니어서 worktree 격리를 사용할 수 없습니다."
   },
   "toast": {
-    "worktreeDirty": "메인 워크스페이스에 커밋하지 않은 변경 사항이 있습니다. worktree 는 HEAD 를 기준으로 하므로 해당 변경은 가져오지 않습니다"
+    "worktreeDirty": "메인 워크스페이스에 커밋하지 않은 변경 사항이 있습니다. worktree 는 HEAD 를 기준으로 하므로 해당 변경은 가져오지 않습니다",
+    "jobExited": "백그라운드 작업 {{id}} 종료됨 (code {{code}})"
   },
   "architecture": {
     "customName": "사용자 지정 Agent"

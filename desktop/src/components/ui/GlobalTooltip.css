@@ -4,6 +4,8 @@
   z-index: 9999;
   box-sizing: border-box;
   max-width: 320px;
+  max-height: min(42vh, 260px);
+  overflow: hidden;
   padding: 7px 10px;
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-sm, 6px);

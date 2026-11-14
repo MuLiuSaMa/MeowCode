@@ -619,6 +619,8 @@ export type PluginUiDescriptor = {
     entry: string;
     /** 脚本可用的客户端权限（来自 manifest） */
     permissions: PluginPermission[];
+    /** 脚本文件的修改指纹，渲染层据此判断是否需要重新加载 */
+    rev?: string;
   };
 };
 

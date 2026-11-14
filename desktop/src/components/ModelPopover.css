@@ -2,11 +2,11 @@
   position: absolute;
   right: 0;
   bottom: calc(100% + 10px);
-  width: 320px;
-  padding: 10px 12px;
+  width: 280px;
+  padding: 8px 12px;
   background: var(--bg-elevated);
   border: 1px solid var(--border);
-  border-radius: var(--radius-2xl);
+  border-radius: var(--radius-xl);
   corner-shape: superellipse(1.5);
   box-shadow: var(--shadow-lg);
   z-index: 30;
@@ -22,15 +22,15 @@
 /* 滑杆视图：26px | 1fr | 26px 三列，左右对称留白让中间块严格居中 */
 .mc-popover__head--slider {
   display: grid;
-  grid-template-columns: 26px 1fr 26px;
+  grid-template-columns: 20px 1fr 20px;
 }
 .mc-popover__levelbtn {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 3px;
+  gap: 2px;
   min-width: 0;
-  padding: 2px 8px;
+  padding: 3px 12px;
   border: 0;
   border-radius: var(--radius-md);
   corner-shape: superellipse(1.5);
@@ -47,7 +47,7 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: var(--fs-lg);
+  font-size: var(--fs-base);
   font-weight: var(--fw-medium);
   letter-spacing: -0.01em;
   line-height: 1.2;
@@ -62,7 +62,7 @@
   align-items: center;
   gap: 3px;
   max-width: 100%;
-  font-size: var(--fs-caption);
+  font-size: var(--fs-xs);
   color: var(--fg-subtlest);
 }
 .mc-popover__modelchev {
@@ -77,8 +77,8 @@
 /* ---- 粗胶囊滑杆 + 刻度点 + 大圆滑块 ---- */
 .mc-slider {
   position: relative;
-  height: 44px;
-  margin-top: 16px;
+  height: 30px;
+  margin-top: 8px;
 }
 
 /* 轨道两端各内缩 3px：让 36px 的圆头正好落在 42px 滑块的圆心处，两端被完全盖住 */
@@ -86,7 +86,7 @@
 .mc-slider__fill {
   position: absolute;
   top: 50%;
-  height: 36px;
+  height: 24px;
   transform: translateY(-50%);
   border-radius: var(--radius-full);
 }
@@ -181,7 +181,11 @@
   border-radius: 50%;
   background: rgba(255 255 255 / 0.20);
   pointer-events: none;
-  transition: background-color var(--dur) var(--ease);
+  transition: background-color var(--dur) var(--ease), opacity var(--dur) var(--ease);
+}
+/* 满档不再显示各阶段圆点，只保留填充渐变与粒子 */
+.mc-slider[data-max="true"] .mc-slider__dot {
+  opacity: 0;
 }
 /* 落在已填充区域内的点提亮，才在蓝色填充上看得到 */
 .mc-slider__dot[data-in="true"] {
@@ -191,8 +195,8 @@
 .mc-slider__thumb {
   position: absolute;
   top: 50%;
-  width: 42px;
-  height: 42px;
+  width: 30px;
+  height: 30px;
   transform: translate(-50%, -50%);
   border-radius: 50%;
   background: #ffffff;

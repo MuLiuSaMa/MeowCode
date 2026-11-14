@@ -1,0 +1,388 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`request snapshot > matches the pinned first-turn request snapshot 1`] = `
+{
+  "messages": [
+    {
+      "index": 0,
+      "length": 11,
+      "role": "user",
+      "sha1": "af2e598292ea",
+      "toolCalls": [],
+    },
+    {
+      "index": 1,
+      "length": 2,
+      "role": "assistant",
+      "sha1": "7a85f4764bbd",
+      "toolCalls": [],
+    },
+  ],
+  "system": [
+    {
+      "head": "You are MeowCode, a local coding agent on Windows.
+
+Read before you change; edit",
+      "index": 0,
+      "length": 1427,
+      "sha1": "9ad099029d4b",
+    },
+    {
+      "head": "Project instructions from the user's workspace (AGENTS.md, CLAUDE.md, project ru",
+      "index": 1,
+      "length": 1167,
+      "sha1": "852aa578ddc3",
+    },
+  ],
+  "tools": [
+    {
+      "description": {
+        "length": 113,
+        "sha1": "ffd5e80741dc",
+      },
+      "index": 0,
+      "name": "list_dir",
+      "parameters": {
+        "length": 162,
+        "sha1": "1e3b7f9947a2",
+      },
+    },
+    {
+      "description": {
+        "length": 320,
+        "sha1": "c4a930e82ce1",
+      },
+      "index": 1,
+      "name": "read_file",
+      "parameters": {
+        "length": 399,
+        "sha1": "f4bd268955c5",
+      },
+    },
+    {
+      "description": {
+        "length": 191,
+        "sha1": "7a25c2f5959e",
+      },
+      "index": 2,
+      "name": "read_many",
+      "parameters": {
+        "length": 334,
+        "sha1": "095f3942bae5",
+      },
+    },
+    {
+      "description": {
+        "length": 234,
+        "sha1": "4669513665c3",
+      },
+      "index": 3,
+      "name": "read_video",
+      "parameters": {
+        "length": 557,
+        "sha1": "b6bab6bca8c8",
+      },
+    },
+    {
+      "description": {
+        "length": 52,
+        "sha1": "de9f4f281e99",
+      },
+      "index": 4,
+      "name": "glob",
+      "parameters": {
+        "length": 361,
+        "sha1": "5f6fe974917e",
+      },
+    },
+    {
+      "description": {
+        "length": 80,
+        "sha1": "d5fe266d5f2a",
+      },
+      "index": 5,
+      "name": "grep",
+      "parameters": {
+        "length": 594,
+        "sha1": "51dbe14ea1ba",
+      },
+    },
+    {
+      "description": {
+        "length": 269,
+        "sha1": "2ffbbc4e94d5",
+      },
+      "index": 6,
+      "name": "web_search",
+      "parameters": {
+        "length": 155,
+        "sha1": "fb5d404d4b47",
+      },
+    },
+    {
+      "description": {
+        "length": 187,
+        "sha1": "1bbb3139a104",
+      },
+      "index": 7,
+      "name": "web_fetch",
+      "parameters": {
+        "length": 142,
+        "sha1": "1d828191c868",
+      },
+    },
+    {
+      "description": {
+        "length": 357,
+        "sha1": "a3ffe031f744",
+      },
+      "index": 8,
+      "name": "run_code",
+      "parameters": {
+        "length": 154,
+        "sha1": "2ea34265175c",
+      },
+    },
+    {
+      "description": {
+        "length": 163,
+        "sha1": "64f8a896f0af",
+      },
+      "index": 9,
+      "name": "write_file",
+      "parameters": {
+        "length": 377,
+        "sha1": "ea3ca9d4866a",
+      },
+    },
+    {
+      "description": {
+        "length": 246,
+        "sha1": "b599e9b57454",
+      },
+      "index": 10,
+      "name": "edit_file",
+      "parameters": {
+        "length": 463,
+        "sha1": "f1e5cc7e6ae1",
+      },
+    },
+    {
+      "description": {
+        "length": 249,
+        "sha1": "62e813342e71",
+      },
+      "index": 11,
+      "name": "multi_edit",
+      "parameters": {
+        "length": 670,
+        "sha1": "e38a6a4c8ea4",
+      },
+    },
+    {
+      "description": {
+        "length": 1187,
+        "sha1": "fdb2a17d1c08",
+      },
+      "index": 12,
+      "name": "run_command",
+      "parameters": {
+        "length": 354,
+        "sha1": "1d6ad17aee88",
+      },
+    },
+    {
+      "description": {
+        "length": 882,
+        "sha1": "a241f844f88c",
+      },
+      "index": 13,
+      "name": "task",
+      "parameters": {
+        "length": 1295,
+        "sha1": "4637edac0e66",
+      },
+    },
+    {
+      "description": {
+        "length": 357,
+        "sha1": "45fbf27d623f",
+      },
+      "index": 14,
+      "name": "update_plan",
+      "parameters": {
+        "length": 459,
+        "sha1": "813523c6e367",
+      },
+    },
+    {
+      "description": {
+        "length": 126,
+        "sha1": "369e20ba5576",
+      },
+      "index": 15,
+      "name": "context_status",
+      "parameters": {
+        "length": 62,
+        "sha1": "daea6ffc60ca",
+      },
+    },
+    {
+      "description": {
+        "length": 76,
+        "sha1": "5d93029b8a86",
+      },
+      "index": 16,
+      "name": "diagnostics",
+      "parameters": {
+        "length": 204,
+        "sha1": "b0a728551f65",
+      },
+    },
+    {
+      "description": {
+        "length": 172,
+        "sha1": "9157dc632266",
+      },
+      "index": 17,
+      "name": "ask_user",
+      "parameters": {
+        "length": 441,
+        "sha1": "b09a205481c4",
+      },
+    },
+    {
+      "description": {
+        "length": 77,
+        "sha1": "d393b30b53a8",
+      },
+      "index": 18,
+      "name": "memory_read",
+      "parameters": {
+        "length": 294,
+        "sha1": "a20c81d2abba",
+      },
+    },
+    {
+      "description": {
+        "length": 210,
+        "sha1": "ae4226851d7a",
+      },
+      "index": 19,
+      "name": "memory_write",
+      "parameters": {
+        "length": 472,
+        "sha1": "5bbcfc324b7b",
+      },
+    },
+    {
+      "description": {
+        "length": 64,
+        "sha1": "baaf87ed3c6c",
+      },
+      "index": 20,
+      "name": "memory_delete",
+      "parameters": {
+        "length": 294,
+        "sha1": "a20c81d2abba",
+      },
+    },
+    {
+      "description": {
+        "length": 215,
+        "sha1": "73ab998db3a3",
+      },
+      "index": 21,
+      "name": "session_search",
+      "parameters": {
+        "length": 251,
+        "sha1": "89cf7f97d37d",
+      },
+    },
+    {
+      "description": {
+        "length": 161,
+        "sha1": "73e9cfdc2477",
+      },
+      "index": 22,
+      "name": "tool_search",
+      "parameters": {
+        "length": 261,
+        "sha1": "f6d05fffaaa9",
+      },
+    },
+    {
+      "description": {
+        "length": 233,
+        "sha1": "161d0313a866",
+      },
+      "index": 23,
+      "name": "job",
+      "parameters": {
+        "length": 860,
+        "sha1": "55f4173f9831",
+      },
+    },
+    {
+      "description": {
+        "length": 190,
+        "sha1": "f9161ad7e7c9",
+      },
+      "index": 24,
+      "name": "git",
+      "parameters": {
+        "length": 1290,
+        "sha1": "5c37e4c565fd",
+      },
+    },
+    {
+      "description": {
+        "length": 149,
+        "sha1": "b9d93a41db8e",
+      },
+      "index": 25,
+      "name": "delete_file",
+      "parameters": {
+        "length": 133,
+        "sha1": "739d93023bdf",
+      },
+    },
+    {
+      "description": {
+        "length": 125,
+        "sha1": "0a36fbf23331",
+      },
+      "index": 26,
+      "name": "move_file",
+      "parameters": {
+        "length": 293,
+        "sha1": "e99c951d2f9f",
+      },
+    },
+    {
+      "description": {
+        "length": 155,
+        "sha1": "512b68cfb992",
+      },
+      "index": 27,
+      "name": "apply_patch",
+      "parameters": {
+        "length": 140,
+        "sha1": "7e8a90ec3e74",
+      },
+    },
+    {
+      "description": {
+        "length": 137,
+        "sha1": "9bf461b54a57",
+      },
+      "index": 28,
+      "name": "admit",
+      "parameters": {
+        "length": 962,
+        "sha1": "3f062a9e6962",
+      },
+    },
+  ],
+}
+`;

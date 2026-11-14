@@ -180,8 +180,9 @@ export interface AgentLoopHost {
   isParallelSafe?(toolName: string): boolean;
 
   /**
-   * 回合级预算：轮次上限与 token 上限。未实现时用默认轮次上限、不设 token 上限。
-   * token 上限的语义是「本回合累计输入 + 输出」，由宿主按 provider 窗口给值。
+   * 回合级预算：轮次上限与可选的 token 上限。未实现时用默认轮次上限、不设 token 上限。
+   * token 上限的语义是「本回合累计输入 + 输出」；当前桌面运行时只给轮次上限，
+   * 避免长回合按「每轮重发整段历史」的累计口径被过早掐断。
    */
   turnBudget?(): { maxRounds?: number; maxTokens?: number | null };
 

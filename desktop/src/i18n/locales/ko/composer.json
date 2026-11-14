@@ -91,7 +91,13 @@
     "steerTitle": "현재 응답을 중단하고 이 메시지를 즉시 보내기",
     "steer": "즉시 끼어들기",
     "removeTitle": "대기열에서 삭제",
-    "remove": "삭제"
+    "remove": "삭제",
+    "edit": "편집",
+    "editTitle": "입력창에서 이 메시지 편집",
+    "editingHere": "아래에서 편집 중",
+    "editingBar": "대기 중인 메시지 편집 중",
+    "editCancel": "취소",
+    "dragAria": "드래그하여 순서 변경"
   },
   "plan": {
     "answerAria": "질문에 답변",
@@ -105,6 +111,8 @@
     "exit": "계획 모드 종료",
     "confirmTitle": "이 계획대로 실행할까요?",
     "confirmSub": "확인하면 이 계획대로 실행하고 내용을 출력합니다",
+    "docAria": "계획 문서",
+    "docTitle": "계획 문서",
     "start": "실행 시작",
     "adjustPlaceholder": "계획 조정 — 어떻게 바꿀지 입력하세요",
     "sendAdjust": "조정 보내기",

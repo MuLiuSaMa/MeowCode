@@ -205,7 +205,8 @@ export const computerControlPlugin: PluginFactory = (api: PluginAPI): void => {
       "any coordinate-based computer tool (computer_click / computer_scroll / computer_drag), because their x/y " +
       "are interpreted in the pixel space of the MOST RECENT screenshot. Take another screenshot after each " +
       "action to verify the result before continuing. On multi-monitor setups use `display` (0-based index, " +
-      "default = primary display) to capture a specific screen.",
+      "default = primary display) to capture a specific screen. " +
+      "Do not take screenshots to verify code or UI changes you just made; ask the user to look instead.",
     parameters: {
       type: "object",
       properties: {
@@ -459,7 +460,7 @@ export const computerControlPlugin: PluginFactory = (api: PluginAPI): void => {
 
   api.registerTool({
     name: "computer_wait",
-    description: "Wait for a short time (e.g. an app to finish launching) before the next screenshot. Max 10 seconds.",
+    description: "Wait for a short time (e.g. an app to finish launching) before the next screenshot. Max 10 seconds. Only for desktop UI automation: to wait on a background job or a build, use the job tool's wait action instead of sleeping.",
     parameters: {
       type: "object",
       properties: {

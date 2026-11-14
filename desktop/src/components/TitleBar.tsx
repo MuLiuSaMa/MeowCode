@@ -4,7 +4,7 @@ import { LuCopy, LuMinus, LuSquare, LuX } from "react-icons/lu";
 import wordmarkBlackUrl from "../assets/wordmark-black.png";
 import wordmarkUrl from "../assets/wordmark.png";
 import { useTheme } from "../theme/theme";
-import { PluginSlot } from "../plugins/PluginSlot";
+import { PluginSlot, PluginSlotSingle } from "../plugins/PluginSlot";
 import { AnnouncementBar } from "./AnnouncementBar";
 import "./TitleBar.css";
 
@@ -39,6 +39,39 @@ export function TitleBar({ forceDark = false, announcements = false }: { forceDa
     };
   }, []);
 
+  const windowControls = (
+    <>
+      <button
+        type="button"
+        className="mc-winbtn"
+        aria-label={t("window.minimize")}
+        title={t("window.minimize")}
+        onClick={() => void window.meow?.minimizeWindow?.()}
+      >
+        <LuMinus size={16} />
+      </button>
+      <button
+        type="button"
+        className="mc-winbtn"
+        data-maximized={maximized}
+        aria-label={maximized ? t("window.restore") : t("window.maximize")}
+        title={maximized ? t("window.restore") : t("window.maximize")}
+        onClick={() => void window.meow?.toggleMaximizeWindow?.()}
+      >
+        {maximized ? <LuCopy size={14} /> : <LuSquare size={13} />}
+      </button>
+      <button
+        type="button"
+        className="mc-winbtn mc-winbtn--close"
+        aria-label={t("window.close")}
+        title={t("window.close")}
+        onClick={() => void window.meow?.closeWindow?.()}
+      >
+        <LuX size={16} />
+      </button>
+    </>
+  );
+
   return (
     <header className="mc-titlebar">
       <div className="mc-titlebar__brand">
@@ -48,39 +81,18 @@ export function TitleBar({ forceDark = false, announcements = false }: { forceDa
       {/* 公告：紧跟 Logo 右侧，小字号、一行截断；点击弹窗看全文，× 关闭（设置 → 通用可关） */}
       {announcements ? <AnnouncementBar /> : null}
 
+      <PluginSlot name="titlebar.leading" props={{}} />
+
       <div className="mc-titlebar__plugins">
         <PluginSlot name="titlebar.actions" props={{}} />
       </div>
 
       <div className="mc-titlebar__controls">
-        <button
-          type="button"
-          className="mc-winbtn"
-          aria-label={t("window.minimize")}
-          title={t("window.minimize")}
-          onClick={() => void window.meow?.minimizeWindow?.()}
-        >
-          <LuMinus size={16} />
-        </button>
-        <button
-          type="button"
-          className="mc-winbtn"
-          data-maximized={maximized}
-          aria-label={maximized ? t("window.restore") : t("window.maximize")}
-          title={maximized ? t("window.restore") : t("window.maximize")}
-          onClick={() => void window.meow?.toggleMaximizeWindow?.()}
-        >
-          {maximized ? <LuCopy size={14} /> : <LuSquare size={13} />}
-        </button>
-        <button
-          type="button"
-          className="mc-winbtn mc-winbtn--close"
-          aria-label={t("window.close")}
-          title={t("window.close")}
-          onClick={() => void window.meow?.closeWindow?.()}
-        >
-          <LuX size={16} />
-        </button>
+        <PluginSlotSingle
+          name="titlebar.controls"
+          props={{ maximized }}
+          fallback={windowControls}
+        />
       </div>
     </header>
   );

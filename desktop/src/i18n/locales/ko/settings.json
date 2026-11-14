@@ -198,7 +198,16 @@
     "empty": "아직 추가된 작업 공간이 없습니다.",
     "removeTitle": "프로젝트 제거",
     "removeMessage": "「{{name}}」을(를) 제거할까요? 목록에서만 숨겨지며 대화와 파일은 그대로 남습니다.",
-    "removeConfirm": "제거"
+    "removeConfirm": "제거",
+    "batchManage": "일괄 관리",
+    "batchCancel": "취소",
+    "batchRemove": "선택 항목 제거",
+    "batchRemoveCount": "선택 항목 제거 · {{count}}",
+    "batchSelectAll": "전체 선택",
+    "batchSelected": "{{count}}개 선택됨",
+    "batchRemoveTitle": "선택한 프로젝트 제거",
+    "batchRemoveMessage": "선택한 프로젝트 {{count}}개를 제거할까요? 목록에서만 숨겨지고 채팅과 파일은 그대로입니다.",
+    "batchActiveHint": "현재 프로젝트는 제거할 수 없습니다"
   },
   "models": {
     "section": "모델",

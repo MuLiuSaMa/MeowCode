@@ -174,7 +174,7 @@ export function toClaudeToolInput(tool: string, input: Record<string, unknown>):
 /**
  * CC hook 返回的 updatedInput → 内部工具参数。
  * CC 字段优先（hook 脚本按 CC 形态改写）；未知字段原样保留，交给 runtime
- * 的 validateToolArguments 决定是否放行。
+ * 的 validateToolInput（tool-input.ts）决定是否放行。
  */
 export function fromClaudeToolInput(tool: string, raw: Record<string, unknown>): Record<string, unknown> {
   const out: Record<string, unknown> = { ...raw };

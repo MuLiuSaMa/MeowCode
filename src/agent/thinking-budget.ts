@@ -94,8 +94,50 @@ export function boostEffort(
 }
 
 /**
- * 请求级思考策略：显式预算 > 模式升档后的档位。
- * runtime 用它算 plan/goal 模式下的升档结果，协议层只消费最终值。
+ * 复杂度事实：runtime 每回合按**已经发生过的事**填，不用「一句话分类」。
+ * 换档改的是 reasoning_effort / budget_tokens（不进前缀），
+ * 所以调档不会破坏缓存，但会让服务端换一套推理行为——必须有据可依。
+ */
+export type ThinkingComplexity = {
+  /** 本轮治理门禁数（同一 lane 上最多几条门禁） */
+  gates?: number;
+  /** 本回合已派发的子 Agent 数 */
+  subagents?: number;
+  /** 治理档 T0/T1/T2 */
+  tier?: string;
+  /** 本回合连续工具/验证失败次数 */
+  recentFailures?: number;
+};
+
+/** 单项阈值：过了才加一档，避免「什么都算复杂」等于什么都没调 */
+const COMPLEXITY_RULES = {
+  gates: 4,
+  subagents: 2,
+  failures: 2,
+} as const;
+/** 最多升两档：再往上就是 max，cost 会翻倍而收益递减 */
+const MAX_COMPLEXITY_STEPS = 2;
+
+/**
+ * 复杂度 → 升档步数。纯函数，可单测。
+ *
+ * 为什么不用「一句话分类」：分类结果本身不稳定，且换档会改请求参数
+ * （reasoning_effort / budget_tokens 不进前缀，但会改服务端的推理行为），
+ * 用**已经发生过的事实**（门禁数、子 Agent 数、T2、失败次数）更可解释。
+ */
+export function complexityBoostSteps(complexity: ThinkingComplexity | undefined): number {
+  if (!complexity) return 0;
+  let steps = 0;
+  if ((complexity.gates ?? 0) >= COMPLEXITY_RULES.gates) steps += 1;
+  if ((complexity.subagents ?? 0) >= COMPLEXITY_RULES.subagents) steps += 1;
+  if (complexity.tier === "T2") steps += 1;
+  if ((complexity.recentFailures ?? 0) >= COMPLEXITY_RULES.failures) steps += 1;
+  return Math.min(steps, MAX_COMPLEXITY_STEPS);
+}
+
+/**
+ * 请求级思考策略：显式预算 > 复杂度/模式升档后的档位。
+ * runtime 用它算升档结果，协议层只消费最终值。
  */
 export function resolveThinkingPolicy(input: {
   effort?: string;
@@ -104,15 +146,27 @@ export function resolveThinkingPolicy(input: {
   reasoningLevels?: string[];
   /** plan/goal 模式升档 */
   boost?: boolean;
+  /**
+   * 复杂度事实（#9）。显式预算仍然优先：用户手填的数字是精确意图。
+   * boost 与 complexity 取较大步数，不是相加——两套信号高度相关，
+   * 相加会让「plan 模式 + 4 条门禁」直接跳到 max。
+   */
+  complexity?: ThinkingComplexity;
 }): { effort?: string; budget?: number } {
-  const effort =
-    input.boost && input.explicit === undefined
-      ? boostEffort(input.effort, input.reasoningLevels)
-      : input.effort;
+  const modeSteps = input.boost ? 1 : 0;
+  const steps = Math.max(modeSteps, complexityBoostSteps(input.complexity));
+  // 显式预算不参与升档：用户手填的数字是精确意图
+  const applied = input.explicit === undefined && steps > 0;
+  const effort = applied
+    ? boostEffort(input.effort, input.reasoningLevels, steps)
+    : input.effort;
   const budget = resolveThinkingBudget({
     effort,
     explicit: input.explicit,
     maxTokens: input.maxTokens,
   });
-  return { ...(effort ? { effort } : {}), ...(budget !== undefined ? { budget } : {}) };
+  return {
+    ...(effort ? { effort } : {}),
+    ...(budget !== undefined ? { budget } : {}),
+  };
 }

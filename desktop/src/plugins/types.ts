@@ -1,19 +1,11 @@
 import type { ComponentType, ReactNode } from "react";
 import type { PluginDescriptor, PluginPermission } from "../api";
+import type { PluginSlotName } from "../../../src/plugins/ui-slots";
 
-/** 首版固定的 UI 槽位。新增槽位只改这里和对应宿主组件。 */
-export type SlotName =
-  | "rail.actions"
-  | "pages"
-  | "titlebar.actions"
-  | "home.widgets"
-  | "session.header.actions"
-  | "composer.banner"
-  | "composer.actions"
-  | "message.toolCard"
-  | "settings.sections";
+/** 槽位名来自 src/plugins/ui-slots.ts 的单一目录，宿主与 Agent 速查共用。 */
+export type SlotName = PluginSlotName;
 
-/** 注册到 `pages` 的页面条目：id 在插件内唯一，会出现在左侧导航与页面导航里。 */
+/** 注册到 `pages` / `rightpanel.tabs` 的条目：id 在插件内唯一。 */
 export type PluginPageEntry = {
   id: string;
   title: string;
@@ -21,6 +13,8 @@ export type PluginPageEntry = {
   icon?: string;
   order?: number;
 };
+
+export type PluginTabEntry = PluginPageEntry;
 
 /** 贡献项元数据：id 在插件内唯一；toolCard 用 key 命中工具名。 */
 export type SlotEntry = {
@@ -47,18 +41,40 @@ export type PluginAppState = {
   locale: string;
   /** 当前主视图：chat / settings / plugin:<pluginId>:<pageId> … */
   view: string;
+  /** 当前会话是否有回合在跑 */
+  running: boolean;
+  /** 当前聊天模式（default / plan / …） */
+  mode: string;
+};
+
+export type PluginWindowControl = {
+  minimize: () => void;
+  toggleMaximize: () => void;
+  close: () => void;
+  isMaximized: () => Promise<boolean>;
+  onStateChange: (listener: (state: { isMaximized: boolean }) => void) => () => void;
 };
 
 /** 宿主提供给插件 UI 的受控动作；App 注入具体实现。 */
 export type PluginHostActions = {
   sendPrompt: (text: string) => Promise<void>;
+  stopTurn: () => void;
   insertComposerText: (text: string) => void;
   openPanel: (pluginId: string) => void;
+  openFile: (path: string) => void;
+  /** 打开插件注册的右侧检查器页签 */
+  openPluginTab: (request: {
+    pluginId: string;
+    tabId: string;
+    title: string;
+    icon?: string;
+  }) => void;
   toast: (message: string, kind?: "info" | "success" | "error") => void;
   openExternal: (url: string) => Promise<void>;
   /** 切到宿主主视图（chat / settings / plugin:...） */
   openView: (view: string) => void;
   showChat: () => void;
+  window: PluginWindowControl;
 };
 
 export type PluginClientContext = {
@@ -82,10 +98,21 @@ export type PluginClientContext = {
       component: ComponentType<Record<string, unknown>>,
     ) => () => void;
   };
+  /** 右侧检查器页签注册：用 actions.openTab 打开。 */
+  tabs: {
+    register: (
+      entry: PluginTabEntry,
+      component: ComponentType<Record<string, unknown>>,
+    ) => () => void;
+  };
   actions: {
     sendPrompt: (text: string) => Promise<void>;
+    stopTurn: () => void;
     insertComposerText: (text: string) => void;
     openPanel: (panelId: string) => void;
+    openFile: (path: string) => void;
+    /** 打开自己的（或指定插件的）右侧检查器页签 */
+    openTab: (tabId: string, pluginId?: string) => void;
     toast: (message: string, kind?: "info" | "success" | "error") => void;
     openExternal: (url: string) => Promise<void>;
     /** 打开页面（pageId 是 pages.register 的 id；pluginId 缺省为自己，可跨插件跳转） */
@@ -99,6 +126,11 @@ export type PluginClientContext = {
     getState: () => PluginAppState;
     subscribe: (listener: () => void) => () => void;
   };
+  hooks: {
+    /** 在插件组件里订阅宿主状态（React hook）。 */
+    useAppState: () => PluginAppState;
+  };
+  window: PluginWindowControl;
   rpc: {
     call: (method: string, args?: unknown) => Promise<unknown>;
   };

@@ -1,0 +1,9 @@
+/* 插件宿主容器：只负责给插件一个不干扰布局的挂载层。 */
+
+.mc-plugin-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  /* 插件自行给交互元素开 pointer-events:auto；整层不拦截鼠标 */
+  pointer-events: none;
+}

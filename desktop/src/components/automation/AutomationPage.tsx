@@ -8,6 +8,7 @@ import {
   runAutomationNow,
   toggleAutomation,
   type Automation,
+  type AutomationDecisionOutcome,
   type AutomationHistoryStatus,
 } from "../../api";
 import { Badge } from "../ui/Badge";
@@ -143,6 +144,7 @@ export function AutomationPage({
       <div className="mc-auto__rows">
         {(list ?? []).map((automation) => {
           const last = automation.history[0];
+          const lastDecision = automation.decisions?.[0];
           const busy = busyKeys.has(`toggle:${automation.id}`) || busyKeys.has(`run:${automation.id}`);
           return (
             <div className="mc-auto__row" key={automation.id}>
@@ -153,6 +155,11 @@ export function AutomationPage({
                 <div className="mc-auto__rowname">
                   <span>{automation.title}</span>
                   {!automation.enabled ? <Badge>{t("status.disabled")}</Badge> : null}
+                  {automation.autonomy !== "auto" ? (
+                    <Badge tone={automation.autonomy === "observe" ? "neutral" : "danger"}>
+                      {t(`autonomy.${automation.autonomy}`)}
+                    </Badge>
+                  ) : null}
                 </div>
                 <p className="mc-auto__rowdesc">
                   {describeSchedule(automation, t)} · {t("page.cwd", { cwd: baseName(automation.cwd) })}
@@ -168,6 +175,12 @@ export function AutomationPage({
                         time: formatDateTime(last.at),
                       })
                     : t("page.neverRun")}
+                  {lastDecision
+                    ? ` · ${t("decision.last", {
+                        outcome: t(`decision.outcome.${lastDecision.outcome}`),
+                        time: formatDateTime(lastDecision.at),
+                      })}`
+                    : ""}
                   {" · "}
                   {t("page.runs", { count: automation.fireCount })}
                 </p>
@@ -268,5 +281,15 @@ export function statusTone(status: AutomationHistoryStatus): "success" | "danger
   if (status === "ok") return "success";
   if (status === "error") return "danger";
   if (status === "started") return "running";
+  return "neutral";
+}
+
+/** 决策结果色调：没执行（observed / skipped）不是失败，别用红色 */
+export function decisionTone(
+  outcome: AutomationDecisionOutcome,
+): "success" | "danger" | "running" | "neutral" {
+  if (outcome === "executed") return "success";
+  if (outcome === "failed") return "danger";
+  if (outcome === "uncertain") return "running";
   return "neutral";
 }

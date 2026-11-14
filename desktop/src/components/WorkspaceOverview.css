@@ -216,6 +216,70 @@
   margin-top: 4px;
 }
 
+/* 已结束的子 Agent 折叠组：一枚「已完成 N」小按钮 + grid 0fr 收合 */
+.mc-workspaceov__done {
+  display: flex;
+  flex-direction: column;
+  margin-top: 2px;
+}
+
+.mc-workspaceov__donehead {
+  display: inline-flex;
+  align-self: flex-start;
+  align-items: center;
+  gap: 3px;
+  padding: 4px 6px 4px 2px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--fg-subtlest);
+  font: inherit;
+  font-size: var(--fs-xs);
+  cursor: pointer;
+  transition: background-color var(--dur) var(--ease), color var(--dur) var(--ease);
+}
+
+.mc-workspaceov__donehead:hover {
+  background: var(--surface-hover);
+  color: var(--fg-subtle);
+}
+
+.mc-workspaceov__donehead:focus-visible {
+  outline: 2px solid var(--accent, currentColor);
+  outline-offset: -2px;
+}
+
+.mc-workspaceov__chev {
+  flex: none;
+  transition: transform var(--dur) var(--ease);
+}
+
+.mc-workspaceov__chev[data-open="true"] {
+  transform: rotate(90deg);
+}
+
+.mc-workspaceov__donebody {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows var(--dur) var(--ease);
+}
+
+.mc-workspaceov__donebody[data-open="true"] {
+  grid-template-rows: 1fr;
+}
+
+.mc-workspaceov__doneinner {
+  min-height: 0;
+  overflow: hidden;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mc-workspaceov__donebody,
+  .mc-workspaceov__chev {
+    transition: none;
+  }
+}
+
 .mc-workspaceov__agent {
   display: flex;
   align-items: center;

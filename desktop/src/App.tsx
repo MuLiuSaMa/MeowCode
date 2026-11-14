@@ -71,8 +71,10 @@ import {
   shouldRecommendCompaction,
 } from "./api";
 import { setModelProfiles, type ModelProfile } from "./modelProfiles";
+import { planDocPathOf } from "./plan-doc";
 import { PluginPage } from "./plugins/PluginPage";
 import { PluginPageNav } from "./plugins/PluginPageNav";
+import { PluginWrap } from "./plugins/PluginSlot";
 import { PluginRuntimeProvider, usePluginSlot } from "./plugins/runtime";
 import { AppShell } from "./components/AppShell";
 import { GlobalTooltip } from "./components/ui/GlobalTooltip";
@@ -83,7 +85,6 @@ import { WorkspaceOverview } from "./components/WorkspaceOverview";
 import { CloseConfirmDialog } from "./components/CloseConfirmDialog";
 import { ContextWarningBanner } from "./components/ContextWarningBanner";
 import { Composer, type ComposerChip, type ComposerImage } from "./components/Composer";
-import { EmptySuggestions } from "./components/EmptySuggestions";
 import { ConversationPanel } from "./components/ConversationPanel";
 import { RightPanel } from "./components/RightPanel";
 import { QuickOpenDialog } from "./components/panel/QuickOpenDialog";
@@ -217,30 +218,6 @@ function preparingWriteTool(
   return null;
 }
 
-/** plans/ 下的写工具：用于计划页签的「写入中」状态（与后端门控同一判定范围） */
-const PLAN_WRITE_TOOLS = new Set(["write_file", "edit_file", "multi_edit"]);
-
-/** 从工具参数里取 plans/ 下的目标路径（工作区相对）；不在 plans/ 内返回 null。 */
-function planDocPathOf(tool: string, input: unknown): string | null {
-  if (!PLAN_WRITE_TOOLS.has(tool)) return null;
-  const args = (input ?? {}) as Record<string, unknown>;
-  const raw: string[] = [];
-  if (typeof args.path === "string") raw.push(args.path);
-  if (Array.isArray(args.edits)) {
-    for (const edit of args.edits) {
-      const value = (edit as Record<string, unknown> | null)?.path;
-      if (typeof value === "string") raw.push(value);
-    }
-  }
-  if (!raw.length) return null;
-  const normalized = raw.map((item) => item.replace(/\\/g, "/").replace(/^\.\//, ""));
-  // 绝对路径交给后端事件（plan_documented 会带相对路径），这里只处理 plans/ 前缀
-  const inPlans = normalized.every(
-    (item) => item.startsWith("plans/") && !item.split("/").includes(".."),
-  );
-  return inPlans ? normalized[0] : null;
-}
-
 /**
  * 输入框下移的缓动：先快、后慢，无回弹。
  * easeOutExpo 起步速度最高，尾段缓慢贴住底部；不使用弹簧/过冲。
@@ -286,6 +263,7 @@ function startComposerDrop(container: HTMLElement | null, from: DOMRect): void {
 
 const EMPTY_TURN_METRICS: TurnMetrics = {
   inputTokens: null,
+  cacheInputTokens: null,
   cacheReadTokens: null,
   cacheWriteTokens: null,
   outputTokens: null,
@@ -566,27 +544,6 @@ export default function App() {
   /** 每个会话的输入草稿；切走/重启后按会话恢复 */
   const [drafts, setDrafts] = useState<Record<string, { text: string; updatedAt: string }>>({});
   const activeDraftKey = session?.id ?? null;
-  const input = activeDraftKey ? (drafts[activeDraftKey]?.text ?? "") : "";
-  const setInput = useCallback(
-    (value: string | ((current: string) => string)) => {
-      if (!activeDraftKey) return;
-      setDrafts((previous) => {
-        const current = previous[activeDraftKey]?.text ?? "";
-        const text = typeof value === "function" ? value(current) : value;
-        if (!text.trim()) {
-          if (!(activeDraftKey in previous)) return previous;
-          const next = { ...previous };
-          delete next[activeDraftKey];
-          return next;
-        }
-        return {
-          ...previous,
-          [activeDraftKey]: { text, updatedAt: new Date().toISOString() },
-        };
-      });
-    },
-    [activeDraftKey],
-  );
   /** 新对话建议点击后让输入框获得焦点（只递增，Composer 监听变化） */
   const [composerFocusToken, setComposerFocusToken] = useState(0);
   /** 新对话发送后做 FLIP：记录发送前输入框位置，让输入框从居中位置滑到底部 */
@@ -640,6 +597,76 @@ export default function App() {
     queuedPromptsRef.current = items;
     setQueuedPrompts(items);
   }, []);
+  /** 正在输入框里编辑的排队消息：文本独立于会话草稿，取消/提交后草稿原样保留 */
+  const [queuedEdit, setQueuedEdit] = useState<{
+    id: string;
+    sessionId: string;
+    text: string;
+  } | null>(null);
+  const queuedEditRef = useRef<{
+    id: string;
+    sessionId: string;
+    text: string;
+  } | null>(null);
+  const updateQueuedEdit = useCallback(
+    (next: { id: string; sessionId: string; text: string } | null) => {
+      queuedEditRef.current = next;
+      setQueuedEdit(next);
+    },
+    [],
+  );
+  /** 排队项离开队列（被执行 / 删除 / 清空）时退出编辑态 */
+  useEffect(() => {
+    const editing = queuedEditRef.current;
+    if (!editing) return;
+    if (queuedPrompts.some((item) => item.id === editing.id)) return;
+    queuedEditRef.current = null;
+    setQueuedEdit(null);
+  }, [queuedPrompts]);
+  const editingQueued = queuedEdit && activeDraftKey === queuedEdit.sessionId ? queuedEdit : null;
+  const input = editingQueued
+    ? editingQueued.text
+    : activeDraftKey
+      ? (drafts[activeDraftKey]?.text ?? "")
+      : "";
+  const setInput = useCallback(
+    (value: string | ((current: string) => string)) => {
+      const editing = queuedEditRef.current;
+      if (editing) {
+        if (!activeDraftKey || editing.sessionId !== activeDraftKey) return;
+        const text = typeof value === "function" ? value(editing.text) : value;
+        updateQueuedEdit({ ...editing, text });
+        return;
+      }
+      if (!activeDraftKey) return;
+      setDrafts((previous) => {
+        const current = previous[activeDraftKey]?.text ?? "";
+        const text = typeof value === "function" ? value(current) : value;
+        if (!text.trim()) {
+          if (!(activeDraftKey in previous)) return previous;
+          const next = { ...previous };
+          delete next[activeDraftKey];
+          return next;
+        }
+        return {
+          ...previous,
+          [activeDraftKey]: { text, updatedAt: new Date().toISOString() },
+        };
+      });
+    },
+    [activeDraftKey, updateQueuedEdit],
+  );
+  const beginQueuedEdit = useCallback(
+    (id: string) => {
+      if (!activeDraftKey) return;
+      const item = queuedPromptsRef.current.find((entry) => entry.id === id);
+      if (!item) return;
+      updateQueuedEdit({ id, sessionId: activeDraftKey, text: item.text });
+      setComposerFocusToken((token) => token + 1);
+    },
+    [activeDraftKey, updateQueuedEdit],
+  );
+  const cancelQueuedEdit = useCallback(() => updateQueuedEdit(null), [updateQueuedEdit]);
   const [view, setView] = useState<View>("chat");
   // 插件被停用/卸载后，停留在它的页面要自动退回对话
   useEffect(() => {
@@ -970,6 +997,19 @@ export default function App() {
       if (!mod) return;
       const target = event.target as HTMLElement | null;
       if (target?.closest?.(".mc-rtp__term")) return; // 终端内不抢键
+      if (event.key.toLowerCase() === "p" && event.altKey && event.shiftKey) {
+        // 安全模式：外壳级插件可能替换整个 UI，留一条不加载界面插件的退路
+        event.preventDefault();
+        try {
+          const key = "meowcode.safeUiPlugins";
+          if (localStorage.getItem(key) === "1") localStorage.removeItem(key);
+          else localStorage.setItem(key, "1");
+        } catch {
+          /* 存储不可用时仍然刷新，至少先解除当前渲染 */
+        }
+        window.location.reload();
+        return;
+      }
       if (event.key.toLowerCase() === "p" && !event.altKey && !event.shiftKey) {
         event.preventDefault();
         setShowInspector(true);
@@ -1032,6 +1072,17 @@ export default function App() {
       }
       if (tab.kind === "plugin") {
         tabs.push({ id: tab.id, kind: "plugin", title: tab.title, pluginId: tab.pluginId });
+        continue;
+      }
+      if (tab.kind === "pluginview") {
+        tabs.push({
+          id: tab.id,
+          kind: "pluginview",
+          title: tab.title,
+          pluginId: tab.pluginId,
+          tabId: tab.tabId,
+          ...(tab.icon ? { icon: tab.icon } : {}),
+        });
         continue;
       }
       tabs.push({ id: tab.id, kind: tab.kind, title: tab.title });
@@ -1552,6 +1603,7 @@ export default function App() {
         setTurnMetrics({
           ...EMPTY_TURN_METRICS,
           inputTokens: usage?.hasUsage ? totals.input : null,
+          cacheInputTokens: usage?.hasUsage ? totals.cacheInput : null,
           cacheReadTokens: totals.cacheReported ? totals.cacheRead : null,
           cacheWriteTokens: usage?.hasUsage ? totals.cacheWrite : null,
           outputTokens: usage?.hasUsage ? totals.output : null,
@@ -1645,6 +1697,35 @@ export default function App() {
   const pushError = useCallback((message: string) => {
     setTimeline((items) => [...items, { kind: "error", key: nextKey("error"), message }]);
   }, []);
+
+  /** 拖动排序：本地先动，服务端失败再回滚 */
+  const reorderQueuedPrompt = useCallback(
+    async (id: string, beforeId: string | null) => {
+      const items = queuedPromptsRef.current;
+      const from = items.findIndex((item) => item.id === id);
+      if (from < 0 || id === beforeId) return;
+      const rest = items.filter((item) => item.id !== id);
+      const to = beforeId === null ? rest.length : rest.findIndex((item) => item.id === beforeId);
+      if (to < 0) return;
+      const next = [...rest.slice(0, to), items[from], ...rest.slice(to)];
+      if (next.every((item, index) => item === items[index])) return;
+      queueVersionRef.current += 1;
+      queuedPromptsRef.current = next;
+      setQueuedPrompts(next);
+      try {
+        await api("/session/queue/reorder", {
+          method: "POST",
+          body: JSON.stringify({ id, beforeId }),
+        });
+      } catch (err) {
+        queueVersionRef.current += 1;
+        queuedPromptsRef.current = items;
+        setQueuedPrompts(items);
+        pushError(err instanceof Error ? err.message : String(err));
+      }
+    },
+    [pushError],
+  );
 
   /** 右上角轻提示（如「已是最新版本」）：几秒后自动消失 */
   const [toast, setToast] = useState<{ key: number; text: string } | null>(null);
@@ -2211,6 +2292,15 @@ export default function App() {
         });
         return;
       }
+      if (event.type === "job_exited") {
+        showToast(
+          i18n.t("shell:toast.jobExited", {
+            id: event.jobId,
+            code: event.code ?? "?",
+          }),
+        );
+        return;
+      }
       if (event.type === "subagent_completed") {
         removeAgentApprovals(agentId);
         updateSubagentRuns((current) => {
@@ -2416,6 +2506,29 @@ export default function App() {
         lanes: event.lanes ?? [],
       };
       setWorkflowRoadmaps((current) => ({ ...current, [id]: roadmap }));
+      return;
+    }
+    // 治理门禁判定：就地更新对应 lane 的 gate。以前只发事件没人收，gate 状态要等
+    // 下一次全量快照才更新（失败那一下往往是用户最需要看到的时刻）。
+    if (event.type === "workflow_gate" && event.sessionId && event.laneId && event.gate) {
+      const id = event.sessionId;
+      const gateId = event.gate;
+      const gateState = event.verdict === "pass" ? "passed" : "failed";
+      setWorkflowRoadmaps((current) => {
+        const roadmap = current[id];
+        if (!roadmap) return current;
+        let touched = false;
+        const lanes = roadmap.lanes.map((lane) => {
+          if (lane.id !== event.laneId) return lane;
+          touched = true;
+          return {
+            ...lane,
+            gates: { ...(lane.gates ?? {}), [gateId]: gateState },
+            ...(gateState === "failed" ? { repairCount: (lane.repairCount ?? 0) + 1 } : {}),
+          };
+        });
+        return touched ? { ...current, [id]: { ...roadmap, lanes } } : current;
+      });
       return;
     }
     // 运行状态变化会让进行中的 loadCurrentSession 快照过期
@@ -2792,6 +2905,7 @@ export default function App() {
       setTurnMetrics({
         ...EMPTY_TURN_METRICS,
         inputTokens: totals.input || null,
+        cacheInputTokens: totals.cacheInput,
         cacheReadTokens: totals.cacheReported ? totals.cacheRead : null,
         cacheWriteTokens: totals.cacheWrite || null,
         outputTokens: totals.output || null,
@@ -2924,6 +3038,7 @@ export default function App() {
         return {
           ...base,
           inputTokens: totals.input || base.inputTokens,
+          cacheInputTokens: totals.cacheInput,
           cacheReadTokens: totals.cacheReported ? totals.cacheRead : null,
           cacheWriteTokens: totals.cacheWrite || null,
           outputTokens: totals.output || base.outputTokens,
@@ -3069,6 +3184,8 @@ export default function App() {
       }
     }
     if (event.type === "plan_updated") {
+      // 后台会话的清单不该覆盖当前会话：事件带了 sessionId 就只认当前会话
+      if (event.sessionId && event.sessionId !== mainSessionIdRef.current) return;
       setPlan({
         steps: event.steps ?? [],
         ...(event.explanation ? { explanation: event.explanation } : {}),
@@ -3146,6 +3263,19 @@ export default function App() {
           if (tab.kind === "plugin") {
             if (!tab.pluginId) return [];
             return [{ id: tab.id, kind: "plugin", title: tab.title, pluginId: tab.pluginId }];
+          }
+          if (tab.kind === "pluginview") {
+            if (!tab.pluginId || !tab.tabId) return [];
+            return [
+              {
+                id: tab.id,
+                kind: "pluginview",
+                title: tab.title,
+                pluginId: tab.pluginId,
+                tabId: tab.tabId,
+                ...(tab.icon ? { icon: tab.icon } : {}),
+              },
+            ];
           }
           return [{ id: tab.id, kind: tab.kind, title: tab.title }];
         });
@@ -3268,6 +3398,28 @@ export default function App() {
     ).trim();
     if (!text && !images?.length) return;
     if (compacting || sessionSwitching || worktreeBusy) return;
+    // 编辑排队消息：原位替换，不产生新回合/新队列项；目标已不在队列就按普通新消息发送
+    const editing = queuedEditRef.current;
+    if (editing && editing.sessionId === activeDraftKey) {
+      if (queuedPromptsRef.current.some((item) => item.id === editing.id)) {
+        try {
+          await api("/session/queue/edit", {
+            method: "POST",
+            body: JSON.stringify({ id: editing.id, message: text, sessionId: editing.sessionId }),
+          });
+          queueVersionRef.current += 1;
+          queuedPromptsRef.current = queuedPromptsRef.current.map((item) =>
+            item.id === editing.id ? { ...item, text } : item,
+          );
+          setQueuedPrompts(queuedPromptsRef.current);
+          updateQueuedEdit(null);
+        } catch (err) {
+          pushError(err instanceof Error ? err.message : String(err));
+        }
+        return;
+      }
+      updateQueuedEdit(null);
+    }
     // 用户开始新回合：上一轮的输入建议立即作废
     suggestionSeqRef.current += 1;
     setPromptSuggestion(null);
@@ -3431,6 +3583,8 @@ export default function App() {
     pushError,
     reloadSessions,
     t,
+    activeDraftKey,
+    updateQueuedEdit,
   ]);
 
   /** 发送上次未交付的排队消息：走正常 prompt，并把它从恢复列表移除。 */
@@ -3834,6 +3988,16 @@ export default function App() {
     (cwd: string) => {
       const current = settings?.removedProjects ?? [];
       if (!current.includes(cwd)) void savePreferences({ removedProjects: [...current, cwd] });
+    },
+    [settings?.removedProjects, savePreferences],
+  );
+
+  /** 批量移除：一次写入，避免逐条保存互相覆盖 */
+  const removeProjects = useCallback(
+    (cwds: string[]) => {
+      const current = settings?.removedProjects ?? [];
+      const next = [...new Set([...current, ...cwds])];
+      if (next.length !== current.length) void savePreferences({ removedProjects: next });
     },
     [settings?.removedProjects, savePreferences],
   );
@@ -5011,10 +5175,27 @@ export default function App() {
       <PluginRuntimeProvider
         actions={{
           sendPrompt: (text) => sendPrompt(text),
+          stopTurn: () => void abortSession(),
           insertComposerText: (text) => setInput(text),
           openPanel: (pluginId) => {
             sideTabs.open({ kind: "plugin", pluginId, title: pluginId });
             setView("chat");
+          },
+          openFile: (path) => {
+            sideTabs.openFile(path);
+            setShowInspector(true);
+          },
+          openPluginTab: ({ pluginId, tabId, title, icon }) => {
+            sideTabs.open({
+              kind: "pluginview",
+              pluginId,
+              tabId,
+              title,
+              ...(icon ? { icon } : {}),
+            });
+            // 检查器只在 chat 视图挂载；从插件页/设置页打开页签时切回对话
+            setView("chat");
+            setShowInspector(true);
           },
           toast: showToast,
           openExternal: async (url) => {
@@ -5022,6 +5203,15 @@ export default function App() {
           },
           openView: (next) => setView(next as View),
           showChat: () => setView("chat"),
+          window: {
+            minimize: () => void window.meow?.minimizeWindow?.(),
+            toggleMaximize: () => void window.meow?.toggleMaximizeWindow?.(),
+            close: () => void window.meow?.closeWindow?.(),
+            isMaximized: async () =>
+              (await window.meow?.getWindowState?.())?.isMaximized ?? false,
+            onStateChange: (listener) =>
+              window.meow?.onWindowStateChange?.(listener) ?? (() => {}),
+          },
         }}
         state={{
           sessionId: session?.id,
@@ -5029,10 +5219,13 @@ export default function App() {
           theme: pluginTheme,
           locale: i18n.language,
           view,
+          running: streaming,
+          mode: chatMode,
         }}
       >
       <MailProvider onToast={showToast} aiProviderId={preferences.mailAiProviderId ?? ""}>
       <AppShell
+        view={view}
         announcements={settings?.announcements ?? true}
         listWidth={listWidthLive.current}
         listColRef={listColRef}
@@ -5260,6 +5453,16 @@ export default function App() {
               </button>
             </div>
           ) : null}
+          <PluginWrap
+            name="chat.view"
+            props={{
+              sessionId: session?.id,
+              workspace: activeWorkspace,
+              streaming,
+              canUse,
+              items: timeline,
+            }}
+          >
           <div
             className="mc-chatflow"
             data-empty={emptyConversation ? "true" : undefined}
@@ -5291,6 +5494,12 @@ export default function App() {
               onBranchSession={() => {
                 const path = session?.filePath;
                 if (path) void branchSessionByPath(path);
+              }}
+              onOpenPlan={(path) => {
+                setPlanTabPath(path);
+                setPlanDocVersion((current) => current + 1);
+                sideTabs.open({ kind: "plan" });
+                setShowInspector(true);
               }}
               focus={messageFocus}
               suggestion={promptSuggestion}
@@ -5337,6 +5546,10 @@ export default function App() {
               queuedPrompts={queuedPrompts}
               onSteerQueued={(id) => void steerQueuedPrompt(id)}
               onRemoveQueued={(id) => void removeQueuedPrompt(id)}
+              onReorderQueued={(id, beforeId) => void reorderQueuedPrompt(id, beforeId)}
+              editingQueuedId={editingQueued?.id ?? null}
+              onEditQueued={beginQueuedEdit}
+              onCancelQueuedEdit={cancelQueuedEdit}
               recoveredPrompts={recoveredPrompts}
               onSendRecovered={sendRecoveredPrompt}
               onDiscardRecovered={(id) => void discardRecoveredPrompt(id)}
@@ -5388,15 +5601,8 @@ export default function App() {
               showJumpBottom={chatScrolledAway}
               onJumpBottom={() => chatScrollApiRef.current?.scrollToBottom()}
             />
-            {emptyConversation ? (
-              <EmptySuggestions
-                onPick={(text) => {
-                  setInput(text);
-                  setComposerFocusToken((token) => token + 1);
-                }}
-              />
-            ) : null}
           </div>
+          </PluginWrap>
         </div>
 
         {view === "git" ? (
@@ -5457,6 +5663,7 @@ export default function App() {
             onAddProject={() => void pickWorkspace()}
             onRenameProject={renameProject}
             onRemoveProject={removeProject}
+            onRemoveProjects={removeProjects}
             onUnarchiveSession={unarchiveSession}
             onDeleteArchivedSession={(filePath) => void deleteArchivedSessions([filePath])}
             onDeleteSessions={deleteSessionsByPath}

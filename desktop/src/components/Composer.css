@@ -142,6 +142,79 @@
   background: var(--surface);
 }
 
+/* 拖动把手：按住才开始整行拖拽，正文仍可正常选中 */
+.mc-queued__grip {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  margin-left: -4px;
+  color: var(--fg-subtle);
+  cursor: grab;
+  touch-action: none;
+}
+
+.mc-queued__grip:active {
+  cursor: grabbing;
+}
+
+.mc-queued[data-dragging] {
+  opacity: 0.55;
+}
+
+.mc-queued[data-drop] {
+  border-color: var(--accent);
+}
+
+.mc-queued[data-editing] .mc-queued__text {
+  color: var(--fg-subtle);
+}
+
+.mc-queued__editing {
+  flex: none;
+  font-size: var(--fs-caption);
+  color: var(--fg-subtle);
+  white-space: nowrap;
+}
+
+/* 输入框顶部的编辑状态条：说明当前在编辑哪类消息，右侧只留取消 */
+.mc-queuededit {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px 0;
+  font-size: var(--fs-caption);
+  color: var(--fg-subtle);
+}
+
+.mc-queuededit__icon {
+  flex: none;
+}
+
+.mc-queuededit__text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mc-queuededit__cancel {
+  flex: none;
+  border: 0;
+  background: transparent;
+  color: var(--fg-subtle);
+  font: inherit;
+  font-size: var(--fs-caption);
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.mc-queuededit__cancel:hover {
+  color: var(--fg);
+  background: var(--surface);
+}
+
 .mc-queued__text {
   flex: 1;
   min-width: 0;

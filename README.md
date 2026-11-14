@@ -216,6 +216,7 @@ if (-not $iscc) {
 -   输入：`desktop\release\win-unpacked\`
 -   产物：`installer-output\MeowCode-<版本>-setup.exe`
 -   版本号自动读取 `win-unpacked\MeowCode.exe`，由 `desktop/package.json` 的 `version` 决定
+-   向导侧边图：`resources\installer-wizard.bmp`，改图标后运行 `node scripts/make-installer-assets.mjs` 重新生成
 
 ### 微软商店版（MSIX）
 

@@ -37,6 +37,10 @@ export function ChatHeader({
   return (
     <header className="mc-header">
       <div className="mc-header__bar">
+        <PluginSlot
+          name="session.header.leading"
+          props={{ sessionId, title: title ?? undefined, workspace }}
+        />
         <div className="mc-header__title">
           {/* 标题由 AI 根据首条消息生成（参考 ZCode）；无图标 */}
           <div className="mc-header__titles">

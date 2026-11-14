@@ -21,6 +21,7 @@ import { PluginSlot } from "../../plugins/PluginSlot";
 import type { ProviderSettings, SpeedSample, TurnMetrics } from "../../api";
 import type { SideTabOpen } from "../../panel/useSideTabs";
 import { formatNumber } from "../../i18n/format";
+import { inputBreakdown } from "../../usage-meter";
 
 /** 工具卡片：点击开页签（search 例外，开检索弹窗）；hovering 浮出「…」菜单。表里只存 key，标题在组件里查表。 */
 const CARDS: Array<{
@@ -328,19 +329,34 @@ export function HomeTab({
   /** 服务商未报告缓存明细时显示「未报告」，不把未知伪装成 0。 */
   const cacheReported = metrics?.cacheReadTokens != null;
   const inputTotal = typeof metrics?.inputTokens === "number" ? metrics.inputTokens : null;
+  const cacheInputTotal =
+    typeof metrics?.cacheInputTokens === "number" ? metrics.cacheInputTokens : null;
   const cacheRead = cacheReported ? (metrics?.cacheReadTokens ?? 0) : null;
   const cacheWrite = typeof metrics?.cacheWriteTokens === "number" ? metrics.cacheWriteTokens : null;
   const outputTotal = typeof metrics?.outputTokens === "number" ? metrics.outputTokens : null;
-  // 未命中输入 = 总输入 - 缓存读 - 缓存写：写入的部分已计入缓存，不再算「未缓存」
-  const uncachedInput =
-    inputTotal != null && cacheRead != null
-      ? Math.max(0, inputTotal - cacheRead - (cacheWrite ?? 0))
-      : null;
+  // 已报告轮次的未命中与未报告轮次的输入必须分开：切到会报缓存的服务商后，
+  // 网关历史输入不能被整体改判成「未命中」；全部未报告时仍只显示「未报告」。
+  const { uncached: uncachedInput, unreported: unreportedInput } = inputBreakdown({
+    input: inputTotal,
+    cacheInput: cacheInputTotal,
+    cacheRead,
+    cacheWrite,
+    cacheReported,
+  });
 
   const legend = [
     { key: "read", label: t("home.field.cacheRead"), value: cacheRead },
     { key: "uncached", label: t("home.field.uncachedInput"), value: uncachedInput },
     { key: "write", label: t("home.field.cacheWrite"), value: cacheWrite },
+    ...(unreportedInput != null && unreportedInput > 0
+      ? [
+          {
+            key: "unreported",
+            label: t("home.field.unreportedInput"),
+            value: unreportedInput,
+          },
+        ]
+      : []),
     { key: "output", label: t("home.field.output"), value: outputTotal },
   ];
   const tokenTotal = legend.reduce((sum, item) => sum + (item.value ?? 0), 0);

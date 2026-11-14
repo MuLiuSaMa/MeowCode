@@ -121,7 +121,8 @@
     "notGitRepo": "El espacio de trabajo actual no es un repositorio git, así que el aislamiento por worktree no está disponible."
   },
   "toast": {
-    "worktreeDirty": "El espacio de trabajo principal tiene cambios sin confirmar: los worktrees parten de HEAD, así que esos cambios no se trasladan"
+    "worktreeDirty": "El espacio de trabajo principal tiene cambios sin confirmar: los worktrees parten de HEAD, así que esos cambios no se trasladan",
+    "jobExited": "La tarea en segundo plano {{id}} terminó (código {{code}})"
   },
   "architecture": {
     "customName": "Agente personalizado"

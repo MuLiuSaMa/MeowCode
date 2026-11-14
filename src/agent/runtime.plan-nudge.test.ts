@@ -51,7 +51,7 @@ beforeEach(() => {
 });
 
 describe("计划清单新鲜度提醒", () => {
-  it("有未完成步骤时，连续 4 次文件变更未更新计划 → 轮间注入提醒", async () => {
+  it("有未完成步骤时，改动量累计到阈值未更新计划 → 轮间注入提醒", async () => {
     const dir = await mkdtemp(path.join(tmpdir(), "meowcode-plan-"));
     const workspace = await mkdtemp(path.join(tmpdir(), "meowcode-planws-"));
     const runtime = makeRuntime(dir);
@@ -132,7 +132,7 @@ describe("计划清单新鲜度提醒", () => {
     await runtime.closeSession();
   }, 60_000);
 
-  it("还没建清单时，连续 4 次文件变更 → 提醒建一次清单", async () => {
+  it("还没建清单时，第一次文件变更后就提醒建清单（只提醒一次）", async () => {
     const dir = await mkdtemp(path.join(tmpdir(), "meowcode-plan-"));
     const workspace = await mkdtemp(path.join(tmpdir(), "meowcode-planws-"));
     const runtime = makeRuntime(dir);
@@ -160,7 +160,9 @@ describe("计划清单新鲜度提醒", () => {
           call("p1", "update_plan", {
             steps: [
               { title: "step one", status: "completed" },
-              { title: "step two", status: "in_progress" },
+              // 全部 completed：本用例只验证「建清单提醒只发一次」，
+              // 留 in_progress 会触发收尾闸多跑一轮，混入无关变量
+              { title: "step two", status: "completed" },
             ],
           }),
         );
@@ -170,8 +172,14 @@ describe("计划清单新鲜度提醒", () => {
 
     await runtime.prompt("do the work");
 
-    // 第 3 轮请求前注入建清单提醒；建完后不再重复
-    expect(rounds[2].some((message) => String(message.content ?? "").startsWith("[plan] No checklist"))).toBe(true);
+    // 第 2 轮请求前就注入建清单提醒（第一次改动即触发，不再等 4 次）；
+    // 注入会落进历史，所以后面几轮仍能看到它——要断言的是「只注入了一条」。
+    const createNotes = (messages: ChatMessage[]) =>
+      messages.filter((message) =>
+        String(message.content ?? "").startsWith("[plan] No checklist"),
+      ).length;
+    expect(createNotes(rounds[1])).toBe(1);
+    expect(createNotes(rounds[3])).toBe(1);
     expect(rounds.length).toBe(4);
     await runtime.closeSession();
   }, 60_000);

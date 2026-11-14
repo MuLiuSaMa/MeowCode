@@ -77,6 +77,20 @@ export function SideChatTab({
   const [streaming, setStreaming] = useState(false);
   const [queuedPrompts, setQueuedPrompts] = useState<QueuedPrompt[]>([]);
   const queuedPromptsRef = useRef<QueuedPrompt[]>([]);
+  /** 正在输入框里编辑的排队消息：文本独立于草稿 */
+  const [queuedEdit, setQueuedEdit] = useState<{ id: string; text: string } | null>(null);
+  const queuedEditRef = useRef<{ id: string; text: string } | null>(null);
+  const updateQueuedEdit = useCallback((next: { id: string; text: string } | null) => {
+    queuedEditRef.current = next;
+    setQueuedEdit(next);
+  }, []);
+  useEffect(() => {
+    const editing = queuedEditRef.current;
+    if (!editing) return;
+    if (queuedPrompts.some((item) => item.id === editing.id)) return;
+    queuedEditRef.current = null;
+    setQueuedEdit(null);
+  }, [queuedPrompts]);
   const [failure, setFailure] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [approval, setApproval] = useState<{
@@ -125,6 +139,43 @@ export function SideChatTab({
     queuedPromptsRef.current = [];
     setQueuedPrompts([]);
   }, []);
+
+  const beginQueuedEdit = useCallback(
+    (id: string) => {
+      const item = queuedPromptsRef.current.find((entry) => entry.id === id);
+      if (!item) return;
+      updateQueuedEdit({ id, text: item.text });
+    },
+    [updateQueuedEdit],
+  );
+
+  const cancelQueuedEdit = useCallback(() => updateQueuedEdit(null), [updateQueuedEdit]);
+
+  const reorderQueuedPrompt = useCallback(
+    async (id: string, beforeId: string | null) => {
+      const items = queuedPromptsRef.current;
+      const from = items.findIndex((item) => item.id === id);
+      if (from < 0 || id === beforeId) return;
+      const rest = items.filter((item) => item.id !== id);
+      const to = beforeId === null ? rest.length : rest.findIndex((item) => item.id === beforeId);
+      if (to < 0) return;
+      const next = [...rest.slice(0, to), items[from], ...rest.slice(to)];
+      if (next.every((item, index) => item === items[index])) return;
+      queuedPromptsRef.current = next;
+      setQueuedPrompts(next);
+      try {
+        await api("/side/session/queue/reorder", {
+          method: "POST",
+          body: JSON.stringify({ id, beforeId }),
+        });
+      } catch (error) {
+        queuedPromptsRef.current = items;
+        setQueuedPrompts(items);
+        pushError(error instanceof Error ? error.message : String(error));
+      }
+    },
+    [pushError],
+  );
 
   const completeQueuedPrompt = useCallback((id: string) => {
     const item = queuedPromptsRef.current.find((entry) => entry.id === id);
@@ -453,9 +504,30 @@ export function SideChatTab({
     recoveredId?: string,
     images?: ComposerImage[],
   ) => {
-    const text = (overrideText ?? input).trim();
+    const editing = queuedEditRef.current;
+    const text = (overrideText ?? (editing ? editing.text : input)).trim();
     if ((!text && !images?.length) || !sideId) return;
     if (compacting) return;
+    // 编辑排队消息：原位替换；目标已不在队列就按普通新消息发送
+    if (editing) {
+      if (queuedPromptsRef.current.some((item) => item.id === editing.id)) {
+        try {
+          await api("/side/session/queue/edit", {
+            method: "POST",
+            body: JSON.stringify({ id: editing.id, message: text }),
+          });
+          queuedPromptsRef.current = queuedPromptsRef.current.map((item) =>
+            item.id === editing.id ? { ...item, text } : item,
+          );
+          setQueuedPrompts(queuedPromptsRef.current);
+          updateQueuedEdit(null);
+        } catch (error) {
+          pushError(error instanceof Error ? error.message : String(error));
+        }
+        return;
+      }
+      updateQueuedEdit(null);
+    }
     if (overrideText === undefined) setInput("");
     const queued = streaming;
     let queueId: string | undefined;
@@ -503,7 +575,16 @@ export function SideChatTab({
       pushError(error instanceof Error ? error.message : String(error));
       if (!queued) setStreaming(false);
     }
-  }, [input, streaming, compacting, sideId, enqueueQueuedPrompt, dropQueuedPrompt, pushError]);
+  }, [
+    input,
+    streaming,
+    compacting,
+    sideId,
+    enqueueQueuedPrompt,
+    dropQueuedPrompt,
+    pushError,
+    updateQueuedEdit,
+  ]);
 
   const stop = useCallback(() => {
     clearQueuedPrompts();
@@ -667,8 +748,14 @@ export function SideChatTab({
       />
       <MessageList items={timeline} canUse={Boolean(sideId)} waiting={waiting} onOpenFile={onOpenFile} />
       <Composer
-        value={input}
-        onChange={setInput}
+        value={queuedEdit ? queuedEdit.text : input}
+        onChange={(next) => {
+          if (queuedEditRef.current) {
+            updateQueuedEdit({ ...queuedEditRef.current, text: next });
+            return;
+          }
+          setInput(next);
+        }}
         polishTarget="side"
         onSend={(images, overrideText) => void send(overrideText, undefined, images)}
         onError={pushError}
@@ -678,6 +765,10 @@ export function SideChatTab({
         queuedPrompts={queuedPrompts}
         onSteerQueued={(id) => void steerQueuedPrompt(id)}
         onRemoveQueued={(id) => void removeQueuedPrompt(id)}
+        onReorderQueued={(id, beforeId) => void reorderQueuedPrompt(id, beforeId)}
+        editingQueuedId={queuedEdit?.id ?? null}
+        onEditQueued={beginQueuedEdit}
+        onCancelQueuedEdit={cancelQueuedEdit}
         recoveredPrompts={recoveredPrompts}
         onSendRecovered={(item) => void send(item.text, item.id)}
         onDiscardRecovered={(id) => {

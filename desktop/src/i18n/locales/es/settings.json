@@ -198,7 +198,16 @@
     "empty": "Aún no hay espacios de trabajo añadidos.",
     "removeTitle": "Quitar proyecto",
     "removeMessage": "¿Quitar «{{name}}»? Solo se ocultará de la lista; los chats y archivos no se eliminan.",
-    "removeConfirm": "Quitar"
+    "removeConfirm": "Quitar",
+    "batchManage": "Gestionar",
+    "batchCancel": "Cancelar",
+    "batchRemove": "Quitar seleccionados",
+    "batchRemoveCount": "Quitar seleccionados · {{count}}",
+    "batchSelectAll": "Seleccionar todo",
+    "batchSelected": "{{count}} seleccionados",
+    "batchRemoveTitle": "Quitar proyectos seleccionados",
+    "batchRemoveMessage": "¿Quitar los {{count}} proyectos seleccionados? Solo se ocultan de la lista; los chats y archivos no se tocan.",
+    "batchActiveHint": "El proyecto actual no se puede quitar"
   },
   "models": {
     "section": "Modelos",

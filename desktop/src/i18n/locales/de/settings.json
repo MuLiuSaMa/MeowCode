@@ -198,7 +198,16 @@
     "empty": "Noch keine Arbeitsbereiche hinzugefügt.",
     "removeTitle": "Projekt entfernen",
     "removeMessage": "„{{name}}“ entfernen? Es wird nur aus der Liste ausgeblendet; Chats und Dateien bleiben erhalten.",
-    "removeConfirm": "Entfernen"
+    "removeConfirm": "Entfernen",
+    "batchManage": "Verwalten",
+    "batchCancel": "Abbrechen",
+    "batchRemove": "Ausgewählte entfernen",
+    "batchRemoveCount": "Ausgewählte entfernen · {{count}}",
+    "batchSelectAll": "Alle auswählen",
+    "batchSelected": "{{count}} ausgewählt",
+    "batchRemoveTitle": "Ausgewählte Projekte entfernen",
+    "batchRemoveMessage": "Die {{count}} ausgewählten Projekte entfernen? Sie werden nur aus der Liste ausgeblendet; Chats und Dateien bleiben.",
+    "batchActiveHint": "Das aktuelle Projekt kann nicht entfernt werden"
   },
   "models": {
     "section": "Modelle",

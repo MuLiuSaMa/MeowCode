@@ -1,0 +1,27 @@
+diff --git a/lib/conpty_console_list_agent.js b/lib/conpty_console_list_agent.js
+index 8c4fca9022a6d6f015bca87f61625cde2278f428..b9dd674fb152ddbfc5ee6bae9517ac7823bdbf4d 100644
+--- a/lib/conpty_console_list_agent.js
++++ b/lib/conpty_console_list_agent.js
+@@ -10,7 +10,20 @@ Object.defineProperty(exports, "__esModule", { value: true });
+ var utils_1 = require("./utils");
+ var getConsoleProcessList = utils_1.loadNativeModule('conpty_console_list').module.getConsoleProcessList;
+ var shellPid = parseInt(process.argv[2], 10);
+-var consoleProcessList = getConsoleProcessList(shellPid);
+-process.send({ consoleProcessList: consoleProcessList });
++var consoleProcessList = [];
++try {
++    consoleProcessList = getConsoleProcessList(shellPid) || [];
++}
++catch (error) {
++    // AttachConsole fails when the shell already exited or ConPTY owns the console.
++    // The parent falls back to its 5s timeout; answer with an empty list instead of
++    // crashing this helper and printing a stack trace into the host process log.
++}
++try {
++    process.send({ consoleProcessList: consoleProcessList });
++}
++catch (error) {
++    // Parent already gone: nothing to report.
++}
+ process.exit(0);
+ //# sourceMappingURL=conpty_console_list_agent.js.map

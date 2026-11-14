@@ -376,6 +376,16 @@ export type MeowEvent = AgentEventMeta &
       durationMs: number;
       usage?: UsageSummary;
     }
+  /** 后台任务结束：模型侧走 context note，这里给界面一条轻提示 */
+  | {
+      type: "job_exited";
+      sessionId: string;
+      jobId: string;
+      command: string;
+      code: number | null;
+      /** 退出时的尾部输出（已截断） */
+      tail?: string;
+    }
   /** 子 Agent 运行中用户插话：已入队，下一步生效 */
   | {
       type: "subagent_steer_queued";
@@ -1353,7 +1363,7 @@ export type SessionEntry =
       parentId: string | null;
       timestamp: string;
       /** plugin = context_inject hook 注入（会话日志 schema v2 内向后兼容） */
-      source: "plan" | "file" | "subagent" | "workflow" | "plugin" | "style";
+      source: "plan" | "file" | "subagent" | "workflow" | "plugin" | "style" | "job";
       content: string;
     }
   | {

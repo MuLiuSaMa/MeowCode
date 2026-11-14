@@ -115,7 +115,7 @@ style(diff): diff 增删色换成更鲜艳的绿/红
 
 1. 改 `desktop/package.json` 的 `version`
 2. `pnpm package`
-3. 在 GitCode 建 Release，tag 用 `v<version>`，上传 `MeowCode-Setup-<version>.exe`
+3. 在 GitCode 建 Release，tag 用 `v<version>`，上传 `MeowCode-<version>-setup.exe`
 4. 客户端拿 `app.getVersion()` 和 release 的 `tag_name` 按数字段比较
 
 内置令牌会随安装包分发，拿到安装包的人都能提取出来。请只授予该仓库的**只读**权限，不要用带写权限的私钥。

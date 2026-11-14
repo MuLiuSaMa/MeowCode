@@ -274,7 +274,16 @@
     "empty": "No workspaces added yet.",
     "removeTitle": "Remove project",
     "removeMessage": "Remove “{{name}}”? It will only be hidden from the list; chats and files stay untouched.",
-    "removeConfirm": "Remove"
+    "removeConfirm": "Remove",
+    "batchManage": "Manage",
+    "batchCancel": "Cancel",
+    "batchRemove": "Remove selected",
+    "batchRemoveCount": "Remove selected · {{count}}",
+    "batchSelectAll": "Select all",
+    "batchSelected": "{{count}} selected",
+    "batchRemoveTitle": "Remove selected projects",
+    "batchRemoveMessage": "Remove the {{count}} selected projects? They are only hidden from the list; chats and files stay untouched.",
+    "batchActiveHint": "The current project can't be removed"
   },
   "models": {
     "section": "Models",

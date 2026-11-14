@@ -1,4 +1,6 @@
 import type { CSSProperties, ReactNode, RefObject } from "react";
+import { PluginSlot, PluginWrap } from "../plugins/PluginSlot";
+import "../plugins/PluginHost.css";
 import { TitleBar } from "./TitleBar";
 import "./AppShell.css";
 
@@ -17,6 +19,7 @@ export function AppShell({
   listWidth,
   listResizer,
   listColRef,
+  view = "chat",
 }: {
   rail: ReactNode;
   conversations: ReactNode;
@@ -30,25 +33,46 @@ export function AppShell({
   listResizer?: ReactNode;
   /** 左栏列容器的 ref：拖拽时直接改宽度样式，绕过 React 重渲染 */
   listColRef?: RefObject<HTMLDivElement | null>;
+  /** 当前主视图：传给外壳级插件槽位 */
+  view?: string;
 }) {
   return (
-    <div className="mc-root">
-      <TitleBar announcements={announcements} />
-      <div className="mc-body">
-        {rail}
-        <div className="mc-columns">
-          <div
-            ref={listColRef}
-            className="mc-listcol"
-            style={listWidth ? ({ width: `${listWidth}px` } as CSSProperties) : undefined}
-          >
-            {conversations}
-            {listResizer}
+    <PluginWrap name="shell.root" props={{}}>
+      <div className="mc-root">
+        <PluginWrap name="shell.titlebar" props={{ announcements }}>
+          <TitleBar announcements={announcements} />
+        </PluginWrap>
+        <div className="mc-body">
+          <PluginWrap name="shell.rail" props={{ view }}>
+            {rail}
+          </PluginWrap>
+          <div className="mc-columns">
+            <div
+              ref={listColRef}
+              className="mc-listcol"
+              style={listWidth ? ({ width: `${listWidth}px` } as CSSProperties) : undefined}
+            >
+              <PluginWrap name="shell.conversations" props={{ view }}>
+                {conversations}
+              </PluginWrap>
+              {listResizer}
+            </div>
+            <main className="mc-panel mc-panel--content">
+              <PluginWrap name="shell.content" props={{ view }}>
+                {children}
+              </PluginWrap>
+            </main>
+            {inspector ? (
+              <PluginWrap name="shell.inspector" props={{ open: true }}>
+                {inspector}
+              </PluginWrap>
+            ) : null}
           </div>
-          <main className="mc-panel mc-panel--content">{children}</main>
-          {inspector}
+        </div>
+        <div className="mc-plugin-overlay">
+          <PluginSlot name="shell.overlay" props={{ view }} />
         </div>
       </div>
-    </div>
+    </PluginWrap>
   );
 }

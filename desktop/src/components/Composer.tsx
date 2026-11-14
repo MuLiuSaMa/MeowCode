@@ -1,7 +1,7 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
-import { LuArrowDown, LuArrowRight, LuArrowUp, LuCheck, LuChevronDown, LuChevronLeft, LuChevronRight, LuCircleAlert, LuEye, LuFileText, LuFolder, LuGitBranch, LuGitFork, LuListChecks, LuLoaderCircle, LuPaperclip, LuPlus, LuPuzzle, LuRotateCw, LuSearch, LuShield, LuShieldCheck, LuSparkles, LuSquare, LuTarget, LuWandSparkles, LuX } from "react-icons/lu";
+import { LuArrowDown, LuArrowRight, LuArrowUp, LuCheck, LuChevronDown, LuChevronLeft, LuChevronRight, LuCircleAlert, LuEye, LuFileText, LuFolder, LuGitBranch, LuGitFork, LuGripVertical, LuListChecks, LuLoaderCircle, LuPaperclip, LuPlus, LuPencil, LuPuzzle, LuRotateCw, LuSearch, LuShield, LuShieldCheck, LuSparkles, LuSquare, LuTarget, LuWandSparkles, LuX } from "react-icons/lu";
 import { effortLabel, isEffortValid } from "../effort";
 import {
   api,
@@ -25,7 +25,7 @@ import {
 } from "../api";
 import { agentProfileDisplay } from "../agentProfiles";
 import { Toggle } from "./ui/Toggle";
-import { PluginSlot } from "../plugins/PluginSlot";
+import { PluginSlot, PluginSlotSingle, PluginWrap } from "../plugins/PluginSlot";
 import { BranchMenu } from "./BranchMenu";
 import { invalidateMarketplaceCatalog, loadMarketplaceCatalog } from "../data/marketplaceCatalog";
 import { invalidatePluginIconMap } from "../data/pluginIcons";
@@ -241,6 +241,26 @@ function permissionIcon(mode: PermissionMode) {
 }
 
 /**
+ * 拖动落点：把拖起的项插入到目标项之前（向下拖时插到目标项之后那一项之前，等价于目标之后）。
+ * 与 ZCode 的 reorderQueueItem 锚点语义一致：始终给出「插到谁前面」，null = 队尾。
+ */
+function resolveQueueDropBeforeId(
+  items: QueuedPrompt[],
+  activeId: string,
+  overId: string,
+): string | null {
+  const from = items.findIndex((item) => item.id === activeId);
+  const over = items.findIndex((item) => item.id === overId);
+  if (from < 0 || over < 0 || from === over) return activeId;
+  if (from < over) {
+    const rest = items.filter((item) => item.id !== activeId);
+    const overAfter = rest.findIndex((item) => item.id === overId);
+    return rest[overAfter + 1]?.id ?? null;
+  }
+  return overId;
+}
+
+/**
  * 项目切换菜单（输入框上方项目标签点开）：搜索 + 项目列表（当前项打勾）+ 新建项目。
  */
 function ProjectMenu({
@@ -368,6 +388,10 @@ export function Composer({
   queuedPrompts,
   onSteerQueued,
   onRemoveQueued,
+  onReorderQueued,
+  editingQueuedId,
+  onEditQueued,
+  onCancelQueuedEdit,
   recoveredPrompts,
   onSendRecovered,
   onDiscardRecovered,
@@ -458,6 +482,12 @@ export function Composer({
   queuedPrompts: QueuedPrompt[];
   onSteerQueued: (id: string) => void;
   onRemoveQueued: (id: string) => void;
+  /** 拖动排序：把 id 移到 beforeId 之前（null = 队尾） */
+  onReorderQueued?: (id: string, beforeId: string | null) => void;
+  /** 正在输入框里编辑的排队项：该行换成「正在下方编辑」占位，且不再可拖 */
+  editingQueuedId?: string | null;
+  onEditQueued?: (id: string) => void;
+  onCancelQueuedEdit?: () => void;
   /** 上次进程退出时未交付的消息；只展示，不自动执行 */
   recoveredPrompts: QueuedPrompt[];
   onSendRecovered: (item: QueuedPrompt) => void;
@@ -597,6 +627,10 @@ export function Composer({
   /** 待发送的图片（粘贴 / 拖拽 / 加号选择） */
   const [images, setImages] = useState<ComposerImage[]>([]);
   const [dragging, setDragging] = useState(false);
+  /** 排队项拖动：dragArmed 只在按住拖拽把手时开启行拖拽，避免正文选中被拖走 */
+  const [dragArmed, setDragArmed] = useState<string | null>(null);
+  const [dragId, setDragId] = useState<string | null>(null);
+  const [dropId, setDropId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   /** 计划确认卡片里「调整计划」的输入内容 */
   const [adjust, setAdjust] = useState("");
@@ -1553,9 +1587,47 @@ export function Composer({
     );
   }
 
+  const pluginSend = () => {
+    if (trySlashCommand()) return;
+    onSend(takeImages());
+  };
+  const builtinSubmit = streaming ? (
+    <button
+      type="button"
+      className="mc-sendbtn"
+      aria-label={t("action.stop")}
+      title={t("action.stop")}
+      onClick={onStop}
+    >
+      <LuSquare size={13} />
+    </button>
+  ) : (
+    <button
+      type="button"
+      className="mc-sendbtn"
+      aria-label={t("action.send")}
+      title={t("action.send")}
+      disabled={sendDisabled}
+      onClick={pluginSend}
+    >
+      <LuArrowUp size={17} />
+    </button>
+  );
+
   return (
-    <div className="mc-composerwrap">
-      <div className="mc-composerstack">
+    <PluginWrap
+      name="composer.wrap"
+      props={{
+        text: value,
+        setText: onChange,
+        send: pluginSend,
+        stop: onStop,
+        streaming,
+        disabled: sendDisabled,
+      }}
+    >
+      <div className="mc-composerwrap">
+        <div className="mc-composerstack">
         {/* 输入框上方悬浮行：进度胶囊 + 返回底部按钮（胶囊隐藏时按钮仍单独显示） */}
         <div className="mc-composerstack__floating">
           <SessionProgressPill
@@ -1736,31 +1808,98 @@ export function Composer({
 
         {queuedPrompts.length ? (
           <div className="mc-queuedlist" role="status" aria-label={t("queue.pendingAria")}>
-            {queuedPrompts.map((item) => (
-              <div className="mc-queued" key={item.id}>
-                <span className="mc-queued__text" title={queuedPreview(item.text)}>
-                  {queuedPreview(item.text)}
-                </span>
-                <div className="mc-queued__actions">
-                  <button
-                    type="button"
-                    className="mc-queued__action"
-                    title={t("queue.steerTitle")}
-                    onClick={() => onSteerQueued(item.id)}
+            {queuedPrompts.map((item) => {
+              const editing = editingQueuedId === item.id;
+              return (
+                <div
+                  className="mc-queued"
+                  key={item.id}
+                  data-editing={editing || undefined}
+                  data-dragging={dragId === item.id || undefined}
+                  data-drop={dropId === item.id && dragId !== item.id ? "true" : undefined}
+                  draggable={!editing && dragArmed === item.id}
+                  onDragStart={(event) => {
+                    if (editing) return;
+                    setDragId(item.id);
+                    event.dataTransfer.effectAllowed = "move";
+                    event.dataTransfer.setData("text/plain", item.id);
+                  }}
+                  onDragOver={(event) => {
+                    if (!dragId || dragId === item.id) return;
+                    event.preventDefault();
+                    event.dataTransfer.dropEffect = "move";
+                    setDropId(item.id);
+                  }}
+                  onDragLeave={() => {
+                    setDropId((current) => (current === item.id ? null : current));
+                  }}
+                  onDrop={(event) => {
+                    if (!dragId || dragId === item.id) return;
+                    event.preventDefault();
+                    const beforeId = resolveQueueDropBeforeId(queuedPrompts, dragId, item.id);
+                    if (beforeId !== dragId) onReorderQueued?.(dragId, beforeId);
+                    setDragId(null);
+                    setDropId(null);
+                    setDragArmed(null);
+                  }}
+                  onDragEnd={() => {
+                    setDragId(null);
+                    setDropId(null);
+                    setDragArmed(null);
+                  }}
+                >
+                  <span
+                    className="mc-queued__grip"
+                    role="button"
+                    aria-label={t("queue.dragAria")}
+                    title={t("queue.dragAria")}
+                    onPointerDown={() => {
+                      if (!editing) setDragArmed(item.id);
+                    }}
+                    onPointerUp={() => {
+                      if (!dragId) setDragArmed(null);
+                    }}
                   >
-                    {t("queue.steer")}
-                  </button>
-                  <button
-                    type="button"
-                    className="mc-queued__action mc-queued__action--danger"
-                    title={t("queue.removeTitle")}
-                    onClick={() => onRemoveQueued(item.id)}
-                  >
-                    {t("queue.remove")}
-                  </button>
+                    <LuGripVertical size={12} />
+                  </span>
+                  <span className="mc-queued__text" title={queuedPreview(item.text)}>
+                    {queuedPreview(item.text)}
+                  </span>
+                  <div className="mc-queued__actions">
+                    {editing ? (
+                      <span className="mc-queued__editing">{t("queue.editingHere")}</span>
+                    ) : (
+                      <>
+                        <button
+                          type="button"
+                          className="mc-queued__action"
+                          title={t("queue.editTitle")}
+                          onClick={() => onEditQueued?.(item.id)}
+                        >
+                          {t("queue.edit")}
+                        </button>
+                        <button
+                          type="button"
+                          className="mc-queued__action"
+                          title={t("queue.steerTitle")}
+                          onClick={() => onSteerQueued(item.id)}
+                        >
+                          {t("queue.steer")}
+                        </button>
+                        <button
+                          type="button"
+                          className="mc-queued__action mc-queued__action--danger"
+                          title={t("queue.removeTitle")}
+                          onClick={() => onRemoveQueued(item.id)}
+                        >
+                          {t("queue.remove")}
+                        </button>
+                      </>
+                    )}
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         ) : null}
 
@@ -1904,6 +2043,11 @@ export function Composer({
           </div>
         ) : null}
 
+        <PluginSlot
+          name="composer.before"
+          props={{ text: value, disabled: sendDisabled || compacting }}
+        />
+
         <div
           className="mc-composer"
           data-disabled={disabled || compacting}
@@ -1925,6 +2069,16 @@ export function Composer({
             addFiles([...event.dataTransfer.files]);
           }}
         >
+          {editingQueuedId ? (
+            <div className="mc-queuededit" role="status" aria-label={t("queue.editingBar")}>
+              <LuPencil size={12} className="mc-queuededit__icon" />
+              <span className="mc-queuededit__text">{t("queue.editingBar")}</span>
+              <button type="button" className="mc-queuededit__cancel" onClick={onCancelQueuedEdit}>
+                {t("queue.editCancel")}
+              </button>
+            </div>
+          ) : null}
+
           {images.length ? (
             <div className="mc-attach" role="list" aria-label={t("attach.listAria")}>
               {images.map((image) => (
@@ -2422,6 +2576,10 @@ export function Composer({
             </div>
 
             <div className="mc-composer__right">
+              <PluginSlot
+                name="composer.right"
+                props={{ text: value, disabled: sendDisabled || compacting }}
+              />
               {showContext ? (
                 <div className="mc-composer__ctxwrap">
                   <ContextMeter
@@ -2501,35 +2659,22 @@ export function Composer({
                 )}
               </button>
 
-              {streaming ? (
-                <button
-                  type="button"
-                  className="mc-sendbtn"
-                  aria-label={t("action.stop")}
-                  title={t("action.stop")}
-                  onClick={onStop}
-                >
-                  <LuSquare size={13} />
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  className="mc-sendbtn"
-                  aria-label={t("action.send")}
-                  title={t("action.send")}
-                  disabled={sendDisabled}
-                  onClick={() => {
-                    if (trySlashCommand()) return;
-                    onSend(takeImages());
-                  }}
-                >
-                  <LuArrowUp size={17} />
-                </button>
-              )}
+              <PluginSlotSingle
+                name="composer.submit"
+                props={{
+                  text: value,
+                  streaming,
+                  disabled: sendDisabled,
+                  send: pluginSend,
+                  stop: onStop,
+                }}
+                fallback={builtinSubmit}
+              />
             </div>
           </div>
         </div>
       </div>
-    </div>
+      </div>
+    </PluginWrap>
   );
 }

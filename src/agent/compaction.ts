@@ -14,14 +14,50 @@ import type { ChatMessage, ProviderConfig, ToolDefinition, TokenUsage } from "./
  * 摘要正文规范：SYSTEM_PROMPT（独立摘要请求）与 INSTRUCTION（复用主前缀时
  * 追加在对话尾部）共用，避免两处各写一遍、改一处忘一处。
  */
-const COMPACTION_BODY = `Use the same language as the conversation. Use terse bullet points under these headings:
-Goal, Progress, Files, Commands and results, Decisions, Next step.
+/**
+ * 摘要正文规范（#11）：9 节结构 + `<analysis>`/`<summary>` 分离。
+ *
+ * 9 节里的 Errors、Pending、Current work 三节是压缩后重读率的主要来源——
+ * 旧版 6 节没有给「出错→怎么修的」和「还欠什么」留位置，模型只能靠重读文件找回。
+ * `<analysis>` 是模型的推理草稿（自问自答，不进上下文）：逼它先想清楚再写摘要，
+ * 代码路径与因果才不会漏；落盘前由 extractCompactionSummary 只保留 `<summary>`。
+ */
+const COMPACTION_BODY = `Use the same language as the conversation.
+First think in a short <analysis> block (self-questioning, at most ~200 tokens); then output the handoff in a <summary> block with exactly these 9 terse sections, in this order:
+1. Goal and intent
+2. Progress
+3. Files and code sections (path:line + one-line purpose)
+4. Errors and fixes (error -> cause -> fix, so the next agent does not rediscover it)
+5. Commands and results (what was run, what it proved; do not re-run proven things)
+6. Decisions and constraints
+7. Pending tasks
+8. Current work (what was in flight when this summary was written)
+9. Next step (the single concrete next action)
 Preserve the user's objective, important file paths, commands already run, key results, unresolved errors, decisions, and the next concrete action.
 If an earlier handoff summary is present, rewrite it from scratch within the budget, carrying forward only still-relevant items; never append delta sections to the old summary.
 Do not restate system/developer instructions, AGENTS.md or repository conventions, environment details, or memory entries: the next agent receives those separately. Summarize only what this conversation added.
 Do not paste full file contents, diffs, or long logs; cite path:line and the command instead.
-Keep each heading to at most 6 bullets and drop details the next agent can cheaply re-derive.
-Do not include API keys, tokens, passwords, or unrelated history.`;
+Keep each section to at most 6 bullets and drop details the next agent can cheaply re-derive.
+Do not include API keys, tokens, passwords, or unrelated history.
+The <analysis> block is discarded and never reaches the next agent; everything durable must be inside <summary>.`;
+
+/**
+ * 从模型输出里摘出 `<summary>` 块；没有标记时原样返回（旧格式兼容）。
+ *
+ * 为什么要剥 `<analysis>`：它只在生成时刻有用，落进上下文就是每个后续请求
+ * 都要重发的死重量。模型忘写 `<summary>` 标记时按「最后一个块之前全是 analysis」
+ * 兜底——宁可多带一点，也不能把正文整个丢掉。
+ */
+export function extractCompactionSummary(text: string): string {
+  const trimmed = text.trim();
+  if (!trimmed) return trimmed;
+  const tagged = /<summary>\s*([\s\S]*?)\s*<\/summary>/i.exec(trimmed);
+  if (tagged?.[1]?.trim()) return tagged[1].trim();
+  // 没有闭合标记但写了开头的：取开头之后的内容（analysis 在前、正文在后）
+  const opened = /<summary>\s*([\s\S]*)$/i.exec(trimmed);
+  if (opened?.[1]?.trim()) return opened[1].trim();
+  return trimmed;
+}
 
 export const COMPACTION_SYSTEM_PROMPT = `Create a compact handoff summary for a coding agent.
 ${COMPACTION_BODY}
@@ -199,7 +235,7 @@ export async function createCompactionSummary(options: {
         const text = (result.message.content ?? "").trim();
         // 纯文本空摘要不重试：换条路径大概率还是空，等于白烧一份大输入。
         // 但模型仍试图调工具说明复用请求不被支持，回退到 tools:[] 的专用路径。
-        if (text || !result.message.tool_calls?.length) return text;
+        if (text || !result.message.tool_calls?.length) return extractCompactionSummary(text);
       } catch (error) {
         if (isAbortError(error) || !isCacheReuseMismatch(error)) throw error;
         // 网关不认识 tool_choice / 缓存字段 → 回退到专用摘要路径
@@ -226,7 +262,7 @@ export async function createCompactionSummary(options: {
     onDelta: () => undefined,
   });
   if (result.usage) options.onUsage?.(result.usage);
-  return (result.message.content ?? "").trim();
+  return extractCompactionSummary((result.message.content ?? "").trim());
 }
 
 /**

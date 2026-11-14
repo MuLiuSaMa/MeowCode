@@ -91,7 +91,13 @@
     "steerTitle": "Interrompre la réponse en cours et envoyer ce message maintenant",
     "steer": "Intervenir",
     "removeTitle": "Retirer de la file d’attente",
-    "remove": "Supprimer"
+    "remove": "Supprimer",
+    "edit": "Modifier",
+    "editTitle": "Modifier ce message dans le champ de saisie",
+    "editingHere": "Modification en cours ci-dessous",
+    "editingBar": "Modification d’un message en file d’attente",
+    "editCancel": "Annuler",
+    "dragAria": "Glisser pour réordonner"
   },
   "plan": {
     "answerAria": "Répondre à la question",
@@ -105,6 +111,8 @@
     "exit": "Quitter le mode plan",
     "confirmTitle": "Exécuter ce plan ?",
     "confirmSub": "Après confirmation, j’exécuterai ce plan et produirai le résultat",
+    "docAria": "Document de plan",
+    "docTitle": "Document de plan",
     "start": "Commencer l’exécution",
     "adjustPlaceholder": "Ajuster le plan — dites-moi quoi changer",
     "sendAdjust": "Envoyer l’ajustement",

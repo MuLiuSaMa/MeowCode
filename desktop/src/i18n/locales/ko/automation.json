@@ -95,5 +95,25 @@
     "errorRequired": "필수 항목을 입력해 주세요",
     "invalidCron": "Cron 표현식이 잘못되었습니다",
     "saveFailed": "저장 실패"
+  },
+  "autonomy": {
+    "label": "실행 방식",
+    "auto": "자동 실행",
+    "observe": "관찰만",
+    "off": "실행 안 함"
+  },
+  "decision": {
+    "tabHistory": "실행 기록",
+    "tabDecision": "결정 기록",
+    "empty": "아직 결정 기록이 없습니다.",
+    "last": "최근 결정: {{outcome}} · {{time}}",
+    "planned": "전송 예정 내용",
+    "outcome": {
+      "executed": "실행됨",
+      "observed": "기록만",
+      "skipped": "건너뜀",
+      "failed": "실패",
+      "uncertain": "미확인"
+    }
   }
 }

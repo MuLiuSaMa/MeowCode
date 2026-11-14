@@ -95,5 +95,25 @@
     "errorRequired": "Completa los campos obligatorios",
     "invalidCron": "Expresión cron no válida",
     "saveFailed": "No se pudo guardar"
+  },
+  "autonomy": {
+    "label": "Ejecución",
+    "auto": "Automática",
+    "observe": "Solo observar",
+    "off": "No ejecutar"
+  },
+  "decision": {
+    "tabHistory": "Historial",
+    "tabDecision": "Decisiones",
+    "empty": "Aún no hay decisiones.",
+    "last": "Última decisión: {{outcome}} · {{time}}",
+    "planned": "Habría enviado",
+    "outcome": {
+      "executed": "Ejecutado",
+      "observed": "Solo observado",
+      "skipped": "Omitido",
+      "failed": "Fallido",
+      "uncertain": "Sin confirmar"
+    }
   }
 }

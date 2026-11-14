@@ -105,6 +105,13 @@ function isStreamingAssistantTail(feed: FeedItem[]): boolean {
   return Boolean(last && last.kind === "assistant" && last.streaming);
 }
 
+/** 思考段结束时收尾：旧的流式助手条目应显示完成态，不能一直转圈。 */
+function finalizeStreamingAssistants(feed: FeedItem[]): FeedItem[] {
+  return feed.map((item) =>
+    item.kind === "assistant" && item.streaming ? { ...item, streaming: false } : item,
+  );
+}
+
 /** 会话历史快照 → 尾流种子：直接复用主窗口的 timelineFromHistory，思考/工具/输入输出完整重建 */
 let historyKeySeq = 0;
 function feedFromMessages(messages: ChatMessage[]): FeedItem[] {
@@ -222,7 +229,8 @@ function reducer(state: State, action: Action): State {
         const parentId = event.parentSessionId;
         if (!parentId) return state;
         return upsert(state, parentId, (s) => {
-          const index = s.feed.findIndex((item) => item.kind === "tool" && item.callId === event.agentId);
+          const base = finalizeStreamingAssistants(s.feed);
+          const index = base.findIndex((item) => item.kind === "tool" && item.callId === event.agentId);
           const toolItem: FeedItem = {
             key: nextFeedKey(),
             kind: "tool",
@@ -234,8 +242,8 @@ function reducer(state: State, action: Action): State {
           };
           const feed =
             index >= 0
-              ? s.feed.map((item, i) => (i === index ? { ...toolItem, key: (item as { key: string }).key } : item))
-              : [...s.feed, toolItem].slice(-MAX_FEED);
+              ? base.map((item, i) => (i === index ? { ...toolItem, key: (item as { key: string }).key } : item))
+              : [...base, toolItem].slice(-MAX_FEED);
           return { ...s, feed, activityAt: Date.now() };
         });
       }
@@ -247,9 +255,7 @@ function reducer(state: State, action: Action): State {
           // island 自己发送的已由 sent 乐观加过，末尾同文本则去重
           const incoming = typeof event.text === "string" ? event.text : "";
           return upsert(state, sid, (s) => {
-            let feed = s.feed.map((item) =>
-              item.kind === "assistant" && item.streaming ? { ...item, streaming: false } : item,
-            );
+            let feed = finalizeStreamingAssistants(s.feed);
             const last = feed[feed.length - 1];
             const alreadyThere = Boolean(incoming) && last?.kind === "user" && last.text === clip(incoming);
             if (incoming && !alreadyThere) {
@@ -275,7 +281,7 @@ function reducer(state: State, action: Action): State {
               return { ...s, running: true, thinking: true, feed, activityAt: Date.now() };
             }
             const feed = [
-              ...s.feed,
+              ...finalizeStreamingAssistants(s.feed),
               { key: nextFeedKey(), kind: "assistant" as const, text: "", thinking: delta, streaming: true },
             ].slice(-MAX_FEED);
             return { ...s, running: true, thinking: true, feed, activityAt: Date.now() };
@@ -294,7 +300,7 @@ function reducer(state: State, action: Action): State {
               return { ...s, running: true, thinking: false, feed, activityAt: Date.now() };
             }
             const feed = [
-              ...s.feed,
+              ...finalizeStreamingAssistants(s.feed),
               { key: nextFeedKey(), kind: "assistant" as const, text: clip(delta), streaming: true },
             ].slice(-MAX_FEED);
             return { ...s, running: true, thinking: false, feed, activityAt: Date.now() };
@@ -306,7 +312,7 @@ function reducer(state: State, action: Action): State {
             running: true,
             thinking: false,
             feed: [
-              ...s.feed,
+              ...finalizeStreamingAssistants(s.feed),
               {
                 key: nextFeedKey(),
                 kind: "tool" as const,
@@ -357,9 +363,7 @@ function reducer(state: State, action: Action): State {
             thinking: false,
             approvals: [],
             queued: 0,
-            feed: s.feed.map((item) =>
-              item.kind === "assistant" && item.streaming ? { ...item, streaming: false } : item,
-            ),
+            feed: finalizeStreamingAssistants(s.feed),
             activityAt: Date.now(),
           }));
         case "error":
@@ -367,7 +371,10 @@ function reducer(state: State, action: Action): State {
             ...s,
             running: false,
             thinking: false,
-            feed: [...s.feed, { key: nextFeedKey(), kind: "error" as const, text: clip(event.message ?? event.error ?? "") }].slice(-MAX_FEED),
+            feed: [
+              ...finalizeStreamingAssistants(s.feed),
+              { key: nextFeedKey(), kind: "error" as const, text: clip(event.message ?? event.error ?? "") },
+            ].slice(-MAX_FEED),
             activityAt: Date.now(),
           }));
         case "session_title":

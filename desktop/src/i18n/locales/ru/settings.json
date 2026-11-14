@@ -198,7 +198,16 @@
     "empty": "Рабочие области пока не добавлены.",
     "removeTitle": "Удалить проект",
     "removeMessage": "Удалить «{{name}}»? Проект будет только скрыт из списка; чаты и файлы останутся.",
-    "removeConfirm": "Удалить"
+    "removeConfirm": "Удалить",
+    "batchManage": "Массовое управление",
+    "batchCancel": "Отмена",
+    "batchRemove": "Удалить выбранные",
+    "batchRemoveCount": "Удалить выбранные · {{count}}",
+    "batchSelectAll": "Выбрать все",
+    "batchSelected": "Выбрано: {{count}}",
+    "batchRemoveTitle": "Удалить выбранные проекты",
+    "batchRemoveMessage": "Удалить выбранные проекты ({{count}})? Они только скрываются из списка; чаты и файлы остаются.",
+    "batchActiveHint": "Текущий проект нельзя удалить"
   },
   "models": {
     "section": "Модели",

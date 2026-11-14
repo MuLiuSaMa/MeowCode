@@ -36,6 +36,44 @@ describe("PluginSlotRegistry", () => {
     expect(registry.get("rail.actions")).toEqual([]);
   });
 
+  it("未知槽位与 keyed 缺 key 都抛引导错误", () => {
+    const registry = new PluginSlotRegistry();
+    expect(() =>
+      registry.register("p1", "nope" as never, { id: "x" }, component),
+    ).toThrow(/unknown plugin slot/);
+    expect(() =>
+      registry.register("p1", "message.toolCard", { id: "x" }, component),
+    ).toThrow(/needs entry.key/);
+  });
+
+  it("keyed 同 key 只有 order 最小者生效", () => {
+    const registry = new PluginSlotRegistry();
+    registry.register("p1", "message.toolCard", { id: "late", key: "grep", order: 20 }, component);
+    registry.register("p2", "message.toolCard", { id: "early", key: "grep", order: 10 }, component);
+    expect(registry.get("message.toolCard", "grep").map((item) => item.entry.id)).toEqual([
+      "early",
+    ]);
+  });
+
+  it("同插件同槽位同 entry.id 重复注册只保留最新一份", () => {
+    const registry = new PluginSlotRegistry();
+    registry.register("p1", "rail.footer.actions", { id: "badge", order: 10 }, component);
+    registry.register("p1", "rail.footer.actions", { id: "badge", order: 10 }, component);
+    registry.register("p2", "rail.footer.actions", { id: "badge", order: 10 }, component);
+    expect(registry.get("rail.footer.actions").map((item) => item.pluginId)).toEqual([
+      "p1",
+      "p2",
+    ]);
+  });
+
+  it("getSingle 取 order 最小、同 order 先注册的贡献", () => {
+    const registry = new PluginSlotRegistry();
+    expect(registry.getSingle("chat.empty")).toBeUndefined();
+    registry.register("p1", "chat.empty", { id: "late", order: 20 }, component);
+    registry.register("p2", "chat.empty", { id: "early", order: 10 }, component);
+    expect(registry.getSingle("chat.empty")?.entry.id).toBe("early");
+  });
+
   it("订阅在注册/注销时通知", () => {
     const registry = new PluginSlotRegistry();
     const listener = vi.fn();

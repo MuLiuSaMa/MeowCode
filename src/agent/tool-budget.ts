@@ -76,6 +76,14 @@ export function sliceTailToTokens(text: string, maxTokens: number): string {
 export type TokenTruncation = {
   text: string;
   truncated: boolean;
+  /**
+   * 正文原本的 token 估算（未截断时等于正文本身）。
+   *
+   * 只报「省了多少」不够：模型无法判断该不该翻页重读。带上原始总量后，
+   * 「4k 里的 3.9k」与「80k 里的 76k」是两种完全不同的决策
+   * （codex 的 exec 结果同样带 original_token_count）。
+   */
+  originalTokens: number;
   omittedTokens: number;
 };
 
@@ -89,11 +97,11 @@ export function truncateToTokens(
   options: {
     headRatio?: number;
     /** 自定义省略标记（不要带前后换行，函数会补） */
-    note?: (omittedTokens: number) => string;
+    note?: (omittedTokens: number, originalTokens: number) => string;
   } = {},
 ): TokenTruncation {
   const total = approxTokens(text);
-  if (total <= maxTokens) return { text, truncated: false, omittedTokens: 0 };
+  if (total <= maxTokens) return { text, truncated: false, originalTokens: total, omittedTokens: 0 };
 
   const headRatio = Math.min(1, Math.max(0, options.headRatio ?? 0.5));
   // 给省略标记留 8% 余量，避免截完仍超预算
@@ -103,10 +111,11 @@ export function truncateToTokens(
   const head = text.slice(0, headIndexByTokens(text, headBudget));
   const tail = text.slice(tailIndexByTokens(text, tailBudget));
   const omitted = Math.max(1, Math.round(total - approxTokens(head) - approxTokens(tail)));
-  const note = options.note?.(omitted) ?? `... [truncated ${omitted} tokens]`;
+  const note = options.note?.(omitted, total) ?? `... [truncated ${omitted} of ${total} tokens]`;
   return {
     text: `${head}\n${note}\n${tail}`,
     truncated: true,
+    originalTokens: total,
     omittedTokens: omitted,
   };
 }

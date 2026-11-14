@@ -12,10 +12,14 @@ function makeCtx(register = vi.fn()): PluginClientContext {
     plugin: { id: "demo", name: "Demo", version: "1.0.0", permissions: ["ui"] },
     slots: { register: register as unknown as PluginClientContext["slots"]["register"] },
     pages: { register: () => () => {} },
+    tabs: { register: () => () => {} },
     actions: {
       sendPrompt: async () => {},
+      stopTurn: () => {},
       insertComposerText: () => {},
       openPanel: () => {},
+      openFile: () => {},
+      openTab: () => {},
       toast: () => {},
       openExternal: async () => {},
       openPage: (_pageId: string, _pluginId?: string) => {},
@@ -23,8 +27,30 @@ function makeCtx(register = vi.fn()): PluginClientContext {
       showChat: () => {},
     },
     store: {
-      getState: () => ({ theme: "light", locale: "zh-CN", view: "chat" }),
+      getState: () => ({
+        theme: "light",
+        locale: "zh-CN",
+        view: "chat",
+        running: false,
+        mode: "default",
+      }),
       subscribe: () => () => {},
+    },
+    hooks: {
+      useAppState: (() => ({
+        theme: "light",
+        locale: "zh-CN",
+        view: "chat",
+        running: false,
+        mode: "default",
+      })) as unknown as PluginClientContext["hooks"]["useAppState"],
+    },
+    window: {
+      minimize: () => {},
+      toggleMaximize: () => {},
+      close: () => {},
+      isMaximized: async () => false,
+      onStateChange: () => () => {},
     },
     rpc: { call: async () => undefined },
     storage: {

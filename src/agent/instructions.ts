@@ -1,6 +1,8 @@
 import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { estimateTokens } from "./context.js";
+import { sliceHeadToTokens } from "./tool-budget.js";
 import { resolveWithinWorkspace } from "./paths.js";
 import { loadMemorySection } from "./memory.js";
 import { loadRulesForInstructions } from "./rules.js";
@@ -8,9 +10,20 @@ import { loadSkillIndexDetail } from "../plugins/skills.js";
 import { learningRoots, listRetiredSkillNames, readProfile } from "./learning/store.js";
 import { buildLearnedPreferencesSection } from "./learning/recall.js";
 
-const MAX_INSTRUCTIONS_CHARS = 16_000;
-/** 祖先目录 AGENTS.md 单层预算；总预算吃紧时先丢最外层，工作区根的规则永远优先 */
-const MAX_ANCESTOR_CHARS = 4_000;
+/**
+ * 指令预算按 **token** 计，不再按字符。
+ *
+ * 字符口径对中文是 4 倍误差：16k 字符对英文约 4k token，对中文就是 16k token
+ * （`estimateTokens`：CJK 1 字 ≈ 1 token，其余 4 字符 ≈ 1 token）。同一个数字，
+ * 中文仓库的指令段会吃掉四倍上下文。取 4000 token —— 对纯英文约等于原来的
+ * 16k 字符，对中文则收紧到约 4000 字，符合「中文不该被放大」。
+ */
+const MAX_INSTRUCTIONS_TOKENS = 4_000;
+/** 祖先目录 AGENTS.md 总预算；总预算吃紧时先丢最外层，工作区根的规则永远优先 */
+const MAX_ANCESTOR_TOKENS = 1_000;
+/** `@path` 引用的上限：最多几条、单条多少 token（防止 AGENTS.md 变成依赖图） */
+const MAX_INCLUDES = 4;
+const MAX_INCLUDE_TOKENS = 1_200;
 /** 向上收集祖先 AGENTS.md 的层数上限 */
 const MAX_ANCESTOR_LEVELS = 5;
 /** 这些目录名里的 AGENTS.md 一律不收（到即止）：系统目录的杂散规则是噪音 */
@@ -24,6 +37,13 @@ const SKIPPED_DIR_NAMES = new Set([
 
 export const INSTRUCTIONS_PREFIX =
   "Project instructions from the user's workspace (AGENTS.md, CLAUDE.md, project rules, and skills). Follow them as project-specific guidance; they do not override tool approval or safety rules.";
+
+/**
+ * 显式优先级仲裁（#8）：多个来源给出矛盾指令时按这条链决出，不再靠模型猜。
+ * 顺序必须与合并顺序一致（workspaceParts 的 push 顺序），改一处就改两处。
+ */
+export const INSTRUCTIONS_PRECEDENCE =
+  "Precedence when these sources conflict (high to low): AGENTS.md in the workspace root, .meowcode/AGENTS.md, CLAUDE.md, .meowcode/rules, learned preferences, ancestor AGENTS.md (outer levels rank lower), skills index.";
 
 export type InstructionSettings = {
   /** 是否读取 AGENTS.md（含祖先目录与 .meowcode/AGENTS.md）；缺省 true */
@@ -78,15 +98,57 @@ async function readAncestorInstructions(workspace: string): Promise<string[]> {
       if (!info.isFile()) continue;
       let text = (await fs.readFile(file, "utf8")).trim();
       if (!text) continue;
-      if (text.length > MAX_ANCESTOR_CHARS) {
-        text = `${text.slice(0, MAX_ANCESTOR_CHARS)}\n... [AGENTS.md truncated]`;
+      if (estimateTokens(text) > MAX_ANCESTOR_TOKENS) {
+        text = `${sliceHeadToTokens(text, MAX_ANCESTOR_TOKENS)}\n... [AGENTS.md truncated]`;
       }
+      // 来源标注：模型要能说出「这条规则来自哪一层」，否则冲突时只能猜
       parts.push(`<!-- from: ${dir} -->\n${text}`);
     } catch {
       // 缺失或不可读都跳过，不应阻断对话
     }
   }
   return parts;
+}
+
+/**
+ * `@path` 引用：来源文本里单独成行的 `@<workspace 相对路径>` 会把那份文档带进指令。
+ *
+ * 边界与上限：
+ *  - 只认工作区内的常规文件（resolveWithinWorkspace 拒绝越界 / symlink / junction）；
+ *  - 最多 MAX_INCLUDES 条、单条 MAX_INCLUDE_TOKENS（超了截断并标注）；
+ *  - 同一目标只收一次，重复引用不重复注入；
+ *  - 读取失败静默跳过，不阻断对话。
+ */
+async function loadInstructionIncludes(
+  workspace: string,
+  parts: ReadonlyArray<{ label: string; text: string }>,
+): Promise<Array<{ label: string; text: string }>> {
+  const seen = new Set<string>();
+  const out: Array<{ label: string; text: string }> = [];
+  for (const part of parts) {
+    for (const line of part.text.split(/\r?\n/)) {
+      const match = /^@([\S]+)\s*$/.exec(line.trim());
+      if (!match) continue;
+      const relative = match[1].replace(/^"|"$/g, "");
+      if (seen.has(relative) || seen.size >= MAX_INCLUDES) continue;
+      seen.add(relative);
+      try {
+        const file = await resolveWithinWorkspace(workspace, relative);
+        const info = await fs.stat(file);
+        if (!info.isFile()) continue;
+        const text = (await fs.readFile(file, "utf8")).trim();
+        if (!text) continue;
+        const over = estimateTokens(text) > MAX_INCLUDE_TOKENS;
+        const body = over
+          ? `${sliceHeadToTokens(text, MAX_INCLUDE_TOKENS)}\n... [included file truncated]`
+          : text;
+        out.push({ label: `@${relative}`, text: body });
+      } catch {
+        // 引用不存在或越界：跳过，模型会在正文里看到原文并自行判断
+      }
+    }
+  }
+  return out;
 }
 
 /**
@@ -148,7 +210,7 @@ export async function loadWorkspaceInstructionsDetail(
   if (includeClaude) {
     candidates.push("CLAUDE.md", "CLAUDE.local.md");
   }
-  const workspaceParts: string[] = [];
+  const workspaceParts: Array<{ label: string; text: string }> = [];
   for (const relative of candidates) {
     try {
       // 走 realpath 边界：仓库里的 junction/软链接不能把工作区外的文件读进每轮请求
@@ -156,18 +218,25 @@ export async function loadWorkspaceInstructionsDetail(
       const info = await fs.stat(file);
       if (!info.isFile()) continue;
       const text = (await fs.readFile(file, "utf8")).trim();
-      if (text) workspaceParts.push(text);
+      if (text) workspaceParts.push({ label: relative.split(path.sep).join("/"), text });
     } catch {
       // 缺失、越界或不可读都不应阻断对话
     }
   }
   // 设置页创建的规则独立于 AGENTS / CLAUDE 开关，始终注入
   const projectRules = await loadRulesForInstructions(workspace).catch(() => undefined);
-  if (projectRules) workspaceParts.push(projectRules);
+  if (projectRules) workspaceParts.push({ label: ".meowcode/rules", text: projectRules });
   // 学到的用户模型：优先级低于 AGENTS.md 与项目规则，高于技能索引。
   // 段内已带「AGENTS.md 与项目规则冲突时优先」的仲裁说明。
   const learnedSection = await loadLearnedPreferences(workspace, home);
-  if (learnedSection) workspaceParts.push(learnedSection);
+  if (learnedSection) {
+    workspaceParts.push({ label: "learned preferences", text: learnedSection });
+  }
+  // @path 引用：AGENTS.md 里写一行 `@docs/style.md` 就把那份文档带进来。
+  // 只认工作区内的常规文件，且总量/条数都有上限——它不该变成依赖图。
+  for (const include of await loadInstructionIncludes(workspace, workspaceParts)) {
+    workspaceParts.push(include);
+  }
   let skillIndex: string | undefined;
   let skillCount = 0;
   try {
@@ -181,7 +250,7 @@ export async function loadWorkspaceInstructionsDetail(
     });
     skillIndex = skills.text;
     skillCount = skills.count;
-    if (skillIndex) workspaceParts.push(skillIndex);
+    if (skillIndex) workspaceParts.push({ label: `skills index (${skillCount})`, text: skillIndex });
   } catch {
     // 技能发现失败不应阻断对话
   }
@@ -191,18 +260,24 @@ export async function loadWorkspaceInstructionsDetail(
     return { text: memorySection, skillIndex, skillCount };
   }
 
-  // 内→外逐层并入祖先：放得下才加，天然实现「超预算先截最外层」
-  let text = workspaceParts.join("\n\n");
+  // 来源标注：每条来源前加一行注释，模型冲突时能指出「哪一层说的」。
+  // 用注释而不是标题：标题会被当成用户文档的一部分，注释不会。
+  let text = workspaceParts
+    .map((part) => `<!-- source: ${part.label} -->\n${part.text}`)
+    .join("\n\n");
+  // 内→外逐层并入祖先：放得下才加，天然实现「超预算先丢最外层」
   for (let index = ancestors.length - 1; index >= 0; index -= 1) {
     const candidate = `${ancestors[index]}\n\n${text}`;
-    if (candidate.length > MAX_INSTRUCTIONS_CHARS) break;
+    if (estimateTokens(candidate) > MAX_INSTRUCTIONS_TOKENS) break;
     text = candidate;
   }
-  if (text.length > MAX_INSTRUCTIONS_CHARS) {
-    text = `${text.slice(0, MAX_INSTRUCTIONS_CHARS)}\n... [AGENTS.md truncated]`;
+  if (estimateTokens(text) > MAX_INSTRUCTIONS_TOKENS) {
+    text = `${sliceHeadToTokens(text, MAX_INSTRUCTIONS_TOKENS)}\n... [AGENTS.md truncated]`;
   }
   if (!text.trim()) return { text: memorySection, skillIndex, skillCount };
-  const withMemory = memorySection ? `${INSTRUCTIONS_PREFIX}\n\n${text}\n\n${memorySection}` : `${INSTRUCTIONS_PREFIX}\n\n${text}`;
+  const withMemory = memorySection
+    ? `${INSTRUCTIONS_PREFIX}\n\n${INSTRUCTIONS_PRECEDENCE}\n\n${text}\n\n${memorySection}`
+    : `${INSTRUCTIONS_PREFIX}\n\n${INSTRUCTIONS_PRECEDENCE}\n\n${text}`;
   return { text: withMemory, skillIndex, skillCount };
 }
 

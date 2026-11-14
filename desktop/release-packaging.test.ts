@@ -28,7 +28,13 @@ function loadHooks() {
     require(id: string) {
       if (id === "node:path") return path;
       if (id === "node:child_process") return { execFileSync };
-      if (id === "node:fs") return { rmSync, existsSync: () => true, readFileSync: () => Buffer.alloc(0), writeFileSync: vi.fn() };
+      if (id === "node:fs") return {
+        rmSync,
+        mkdirSync: vi.fn(),
+        existsSync: () => true,
+        readFileSync: () => Buffer.alloc(0),
+        writeFileSync: vi.fn(),
+      };
       if (id === "resedit") return {
         NtExecutable: { from: () => ({ generate: () => new ArrayBuffer(0) }) },
         NtExecutableResource: { from: () => ({ entries: [], outputResource: vi.fn() }) },

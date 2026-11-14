@@ -95,5 +95,25 @@
     "errorRequired": "Bitte Pflichtfelder ausfüllen",
     "invalidCron": "Ungültiger Cron-Ausdruck",
     "saveFailed": "Speichern fehlgeschlagen"
+  },
+  "autonomy": {
+    "label": "Ausführung",
+    "auto": "Automatisch",
+    "observe": "Nur beobachten",
+    "off": "Nicht ausführen"
+  },
+  "decision": {
+    "tabHistory": "Verlauf",
+    "tabDecision": "Entscheidungen",
+    "empty": "Noch keine Entscheidungen.",
+    "last": "Letzte Entscheidung: {{outcome}} · {{time}}",
+    "planned": "Wäre gesendet worden",
+    "outcome": {
+      "executed": "Ausgeführt",
+      "observed": "Nur beobachtet",
+      "skipped": "Übersprungen",
+      "failed": "Fehlgeschlagen",
+      "uncertain": "Unbestätigt"
+    }
   }
 }

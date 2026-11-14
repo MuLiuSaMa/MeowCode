@@ -60,7 +60,7 @@ import { WorktreeSection } from "./WorktreeSection";
 import "./SettingsPage.css";
 
 import { LuPuzzle } from "react-icons/lu";
-import { PluginContribution } from "../../plugins/PluginSlot";
+import { PluginContribution, PluginWrap } from "../../plugins/PluginSlot";
 import { usePluginSlot } from "../../plugins/runtime";
 
 export type CoreSettingsSectionId =
@@ -202,6 +202,7 @@ export function SettingsBody({
   onAddProject,
   onRenameProject,
   onRemoveProject,
+  onRemoveProjects,
   onUnarchiveSession,
   onDeleteArchivedSession,
   onDeleteAllArchived,
@@ -258,6 +259,8 @@ export function SettingsBody({
   onRenameProject: (cwd: string, name: string) => void;
   /** 只从列表隐藏，不删除会话与磁盘文件 */
   onRemoveProject: (cwd: string) => void;
+  /** 批量移除：一次写入 */
+  onRemoveProjects?: (cwds: string[]) => void;
   onUnarchiveSession: (filePath: string) => void;
   /** 删除单个归档会话（文件一起删） */
   onDeleteArchivedSession: (filePath: string) => void;
@@ -360,6 +363,7 @@ export function SettingsBody({
         onAddProject={onAddProject}
         onRenameProject={onRenameProject}
         onRemoveProject={onRemoveProject}
+        onRemoveProjects={onRemoveProjects}
       />
     ),
     island: (
@@ -511,12 +515,14 @@ export function SettingsBody({
   })();
 
   return (
-    <div className="mc-settings__body">
-      {pluginContribution ? (
-        <PluginContribution contribution={pluginContribution} props={{}} />
-      ) : (
-        body[section as CoreSettingsSectionId]
-      )}
-    </div>
+    <PluginWrap name="settings.view" props={{ section }}>
+      <div className="mc-settings__body">
+        {pluginContribution ? (
+          <PluginContribution contribution={pluginContribution} props={{}} />
+        ) : (
+          body[section as CoreSettingsSectionId]
+        )}
+      </div>
+    </PluginWrap>
   );
 }

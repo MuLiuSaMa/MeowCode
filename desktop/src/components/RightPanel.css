@@ -18,6 +18,14 @@
   overflow-x: auto;
   scrollbar-width: none;
   flex-shrink: 0;
+  cursor: grab;
+  user-select: none;
+}
+.mc-rtp__tabs[data-dragging="true"],
+.mc-rtp__tabs[data-dragging="true"] .mc-rtp__tabmain,
+.mc-rtp__tabs[data-dragging="true"] .mc-rtp__tabclose,
+.mc-rtp__tabs[data-dragging="true"] .mc-rtp__tabadd {
+  cursor: grabbing;
 }
 .mc-rtp__tabs::-webkit-scrollbar {
   display: none;
@@ -387,6 +395,7 @@
   --mc-stat-write: var(--accent-violet);
   --mc-stat-uncached: color-mix(in oklab, var(--accent) 48%, var(--surface));
   --mc-stat-output: color-mix(in oklab, var(--fg) 32%, transparent);
+  --mc-stat-unreported: color-mix(in oklab, var(--fg) 18%, transparent);
 }
 
 /* 经典色（中性画布）：环形/曲线/比例条一律灰阶，避免一块蓝色跳出来 */
@@ -396,6 +405,7 @@
   --mc-stat-write: color-mix(in oklab, var(--fg) 55%, transparent);
   --mc-stat-uncached: color-mix(in oklab, var(--fg) 35%, transparent);
   --mc-stat-output: color-mix(in oklab, var(--fg) 18%, transparent);
+  --mc-stat-unreported: color-mix(in oklab, var(--fg) 10%, transparent);
 }
 
 .mc-rtp__stats {
@@ -467,6 +477,9 @@
 .mc-tokenbar__seg--output {
   background: var(--mc-stat-output);
 }
+.mc-tokenbar__seg--unreported {
+  background: var(--mc-stat-unreported);
+}
 
 .mc-tokenlegend {
   display: flex;
@@ -501,6 +514,9 @@
 }
 .mc-tokenlegend__dot--output {
   background: var(--mc-stat-output);
+}
+.mc-tokenlegend__dot--unreported {
+  background: var(--mc-stat-unreported);
 }
 .mc-tokenlegend__label {
   flex: 1;

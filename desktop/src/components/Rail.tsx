@@ -157,6 +157,9 @@ export function Rail({
       {/* 插件贡献的侧栏动作：组件自己渲染 mc-rail__btn 样式的按钮 */}
       <PluginSlot name="rail.actions" props={{ view }} />
 
+      <div className="mc-rail__foot">
+      <PluginSlot name="rail.footer.actions" props={{}} />
+
       {update ? (
         <div className="mc-rail__update">
           {update.status === "downloading" ? (
@@ -219,6 +222,7 @@ export function Rail({
           )}
         </div>
       ) : null}
+      </div>
     </nav>
   );
 }

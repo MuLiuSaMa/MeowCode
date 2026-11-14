@@ -91,7 +91,13 @@
     "steerTitle": "中止当前回复，立即发送这条消息",
     "steer": "强制插话",
     "removeTitle": "从队列中删除",
-    "remove": "删除"
+    "remove": "删除",
+    "edit": "编辑",
+    "editTitle": "在输入框里修改这条消息",
+    "editingHere": "正在下方编辑",
+    "editingBar": "正在编辑排队消息",
+    "editCancel": "取消",
+    "dragAria": "拖动排序"
   },
   "plan": {
     "answerAria": "回答问题",
@@ -105,6 +111,8 @@
     "exit": "退出计划模式",
     "confirmTitle": "确认按此计划执行？",
     "confirmSub": "确认后，我将按此计划执行并输出内容",
+    "docAria": "计划文档",
+    "docTitle": "计划文档",
     "start": "开始执行",
     "adjustPlaceholder": "调整计划，补充内容告诉我如何调整",
     "sendAdjust": "发送调整",

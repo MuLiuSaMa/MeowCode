@@ -2,6 +2,7 @@ import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { LuCheck, LuX } from "react-icons/lu";
 import type { PlanState, SessionChangeSummary } from "../api";
+import { deriveStage } from "../../../src/agent/stage";
 import { Spinner } from "./ui/Spinner";
 import "./SessionProgressPill.css";
 
@@ -41,9 +42,10 @@ export function SessionProgressPill({
   const fileChanges = changes ?? [];
   const total = steps.length;
   const done = steps.filter((step) => step.status === "completed").length;
-  const active = steps.some((step) => step.status === "in_progress");
-  const allDone = total > 0 && done === total;
-  const running = !allDone && (streaming || active);
+  // 阶段派生：全部完成与「完成 + 取消」都算结束，避免有取消步骤时图标永远转圈
+  const planStage = deriveStage({ kind: "plan", steps, streaming });
+  const allDone = planStage.stage.stage === "ended";
+  const running = planStage.stage.stage === "working";
   const added = fileChanges.reduce((sum, change) => sum + change.added, 0);
   const removed = fileChanges.reduce((sum, change) => sum + change.removed, 0);
   const showFiles = fileChanges.length > 0;

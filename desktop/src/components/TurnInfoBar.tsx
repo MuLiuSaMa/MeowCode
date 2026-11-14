@@ -55,6 +55,10 @@ export function TurnInfoBar({
   };
 
   const time = endedAt ? formatDateTime(new Date(endedAt)) : "";
+  // 纯工具/被中止的回合没有 assistant 正文：复制按钮置灰，避免看起来可点却静默无响应
+  const hasCopyText = markdown.trim().length > 0;
+  const copyTitle = (key: "turnFooter.copyMarkdown" | "turnFooter.copyPlain") =>
+    hasCopyText ? t(key) : t("turnFooter.copyEmpty");
 
   return (
     <div className="mc-turninfo">
@@ -62,8 +66,9 @@ export function TurnInfoBar({
         <button
           type="button"
           className="mc-turninfo__action"
-          title={t("turnFooter.copyMarkdown")}
-          aria-label={t("turnFooter.copyMarkdown")}
+          disabled={!hasCopyText}
+          title={copyTitle("turnFooter.copyMarkdown")}
+          aria-label={copyTitle("turnFooter.copyMarkdown")}
           onClick={() => void copy("markdown")}
         >
           {copied === "markdown" ? <LuCheck size={14} /> : <LuCopy size={14} />}
@@ -71,8 +76,9 @@ export function TurnInfoBar({
         <button
           type="button"
           className="mc-turninfo__action"
-          title={t("turnFooter.copyPlain")}
-          aria-label={t("turnFooter.copyPlain")}
+          disabled={!hasCopyText}
+          title={copyTitle("turnFooter.copyPlain")}
+          aria-label={copyTitle("turnFooter.copyPlain")}
           onClick={() => void copy("text")}
         >
           {copied === "text" ? <LuCheck size={14} /> : <LuFileText size={14} />}

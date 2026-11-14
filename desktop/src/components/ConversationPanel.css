@@ -484,3 +484,16 @@
 .mc-convpanel__itemrow[data-selecting="true"] .mc-convpanel__rowbtn {
   display: none;
 }
+
+/* ---- 插件槽位容器：无贡献时不占位 ---- */
+.mc-convpanel__pluginactions,
+.mc-convpanel__pluginfoot {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+}
+.mc-convpanel__pluginactions:empty,
+.mc-convpanel__pluginfoot:empty {
+  display: none;
+}

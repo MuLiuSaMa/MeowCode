@@ -95,5 +95,25 @@
     "errorRequired": "Veuillez remplir les champs obligatoires",
     "invalidCron": "Expression cron invalide",
     "saveFailed": "Échec de l'enregistrement"
+  },
+  "autonomy": {
+    "label": "Exécution",
+    "auto": "Automatique",
+    "observe": "Observer seulement",
+    "off": "Ne pas exécuter"
+  },
+  "decision": {
+    "tabHistory": "Historique",
+    "tabDecision": "Décisions",
+    "empty": "Aucune décision enregistrée.",
+    "last": "Dernière décision : {{outcome}} · {{time}}",
+    "planned": "Aurait envoyé",
+    "outcome": {
+      "executed": "Exécuté",
+      "observed": "Observé seulement",
+      "skipped": "Ignoré",
+      "failed": "Échec",
+      "uncertain": "Non confirmé"
+    }
   }
 }

@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { LuChevronRight, LuCircleCheck, LuLoaderCircle } from "react-icons/lu";
 import { formatDuration } from "../i18n/format";
+import { PluginSlot, PluginWrap } from "../plugins/PluginSlot";
 import { Markdown } from "./ui/Markdown";
 import "./AssistantMessage.css";
 import "./ToolRow.css";
@@ -87,15 +88,29 @@ export function AssistantMessage({
   /** 正在流式输出：末段内容淡入，看起来像在“写” */
   streaming?: boolean;
 }) {
+  const slotProps = {
+    content,
+    streaming: Boolean(streaming),
+    messageIndex,
+  };
   return (
-    <article
-      className="mc-assistant"
-      data-streaming={streaming ? "true" : undefined}
-      {...(messageIndex !== undefined ? { "data-message-index": String(messageIndex) } : {})}
-    >
-      <div className="mc-assistant__body">
-        <Markdown content={content} />
-      </div>
-    </article>
+    <>
+      <PluginSlot name="message.assistant.before" props={slotProps} />
+      <article
+        className="mc-assistant"
+        data-streaming={streaming ? "true" : undefined}
+        {...(messageIndex !== undefined ? { "data-message-index": String(messageIndex) } : {})}
+      >
+        <div className="mc-assistant__body">
+          <PluginWrap name="message.assistant.body" props={slotProps}>
+            <Markdown content={content} />
+          </PluginWrap>
+        </div>
+        <div className="mc-assistant__pluginactions">
+          <PluginSlot name="message.assistant.actions" props={slotProps} />
+        </div>
+      </article>
+      <PluginSlot name="message.assistant.after" props={slotProps} />
+    </>
   );
 }

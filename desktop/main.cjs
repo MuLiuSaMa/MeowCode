@@ -1101,6 +1101,7 @@ const UI_TAB_KINDS = new Set([
   "subagent",
   "subagents",
   "plugin",
+  "pluginview",
 ]);
 const MAX_UI_TABS = 32;
 const MAX_DRAFTS = 200;
@@ -1189,6 +1190,22 @@ function sanitizeUiState(raw) {
           kind: "plugin",
           title: title || pluginId,
           pluginId: pluginId.slice(0, 64),
+        });
+        continue;
+      }
+      if (item.kind === "pluginview") {
+        const pluginId = typeof item.pluginId === "string" ? item.pluginId.trim() : "";
+        const tabId = typeof item.tabId === "string" ? item.tabId.trim() : "";
+        if (!pluginId || !tabId) continue;
+        const icon =
+          typeof item.icon === "string" && item.icon.length <= 10_000 ? item.icon : undefined;
+        tabs.push({
+          id,
+          kind: "pluginview",
+          title: title || pluginId,
+          pluginId: pluginId.slice(0, 64),
+          tabId: tabId.slice(0, 64),
+          ...(icon ? { icon } : {}),
         });
         continue;
       }
@@ -2214,7 +2231,11 @@ async function focusSessionFromNotification(sessionId) {
 const automationScheduler = createScheduler({
   filePath: () =>
     path.join(settingsDir ?? path.join(app.getPath("userData"), "agent"), "automations.json"),
-  transport: async ({ cwd, message }) => {
+  /**
+   * 建会话与投递拆成两步：调度器需要在「会话已建好、投递失败」时用同一个
+   * sessionId 重试，而不是重新建一个（旧实现的重试循环会留下孤儿会话）。
+   */
+  openSession: async ({ cwd }) => {
     await waitForServerReady();
     if (!serverUrl) throw new Error("agent server is not running");
     const created = await fetch(`${serverUrl}/session/new`, {
@@ -2226,6 +2247,11 @@ const automationScheduler = createScheduler({
     const createdBody = await created.json();
     const sessionId = String(createdBody?.id ?? "");
     if (!sessionId) throw new Error("create session returned no id");
+    return { sessionId };
+  },
+  deliver: async ({ sessionId, message }) => {
+    await waitForServerReady();
+    if (!serverUrl) throw new Error("agent server is not running");
     const sent = await fetch(`${serverUrl}/session/prompt`, {
       method: "POST",
       headers: { authorization: `Bearer ${serverToken}`, "content-type": "application/json" },
@@ -2235,7 +2261,6 @@ const automationScheduler = createScheduler({
       const detail = await sent.text().catch(() => "");
       throw new Error(`prompt failed (${sent.status}) ${detail.slice(0, 200)}`);
     }
-    return { sessionId };
   },
   getPrefix: (automation) =>
     String(uiStrings().automationPromptPrefix ?? "").replaceAll("{title}", automation?.title ?? ""),

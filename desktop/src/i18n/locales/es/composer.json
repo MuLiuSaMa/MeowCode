@@ -91,7 +91,13 @@
     "steerTitle": "Detener la respuesta actual y enviar este mensaje ahora",
     "steer": "Interrumpir ahora",
     "removeTitle": "Quitar de la cola",
-    "remove": "Eliminar"
+    "remove": "Eliminar",
+    "edit": "Editar",
+    "editTitle": "Editar este mensaje en el cuadro de entrada",
+    "editingHere": "Editando abajo",
+    "editingBar": "Editando un mensaje en cola",
+    "editCancel": "Cancelar",
+    "dragAria": "Arrastra para reordenar"
   },
   "plan": {
     "answerAria": "Responder a la pregunta",
@@ -105,6 +111,8 @@
     "exit": "Salir del modo plan",
     "confirmTitle": "¿Ejecutar según este plan?",
     "confirmSub": "Tras confirmar, ejecutaré este plan y generaré el resultado",
+    "docAria": "Documento de plan",
+    "docTitle": "Documento de plan",
     "start": "Empezar a ejecutar",
     "adjustPlaceholder": "Ajusta el plan — dime qué cambiar",
     "sendAdjust": "Enviar ajuste",

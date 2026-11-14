@@ -32,9 +32,11 @@ export function PluginPageIcon({
       />
     );
   }
+  // Array.from 按码点切：emoji（🌐）用 slice(0,1) 会截出半个代理对，显示成 �
+  const glyph = Array.from(icon?.trim() || title.trim() || "◆")[0] ?? "◆";
   return (
     <span className="mc-pluginpage__icontext" style={{ fontSize: Math.max(12, size - 2) }}>
-      {icon?.trim().slice(0, 1) || title.trim().slice(0, 1) || "◆"}
+      {glyph}
     </span>
   );
 }

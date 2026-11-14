@@ -17,6 +17,7 @@ import {
   LuX,
 } from "react-icons/lu";
 import type { SessionSummary } from "../api";
+import { PluginSlot } from "../plugins/PluginSlot";
 import { groupSessionsByProject } from "../conversation-groups";
 import { formatDateTime, formatSessionStamp } from "../i18n/format";
 import { baseName } from "../util";
@@ -436,6 +437,9 @@ export function ConversationPanel({
             <span>{t("conversation.newChat")}</span>
           </button>
         )}
+        <div className="mc-convpanel__pluginactions">
+          <PluginSlot name="conversations.header.actions" props={{}} />
+        </div>
       </div>
 
       <div className="mc-convpanel__scroll">
@@ -839,6 +843,10 @@ export function ConversationPanel({
             })}
           </>
         )}
+      </div>
+
+      <div className="mc-convpanel__pluginfoot">
+        <PluginSlot name="conversations.footer" props={{}} />
       </div>
 
       <RenameProjectDialog

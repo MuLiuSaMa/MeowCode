@@ -1,34 +1,7 @@
 {
   "empty": {
     "setup": "Configure um provedor de modelos e escolha um espaço de trabalho para começar.",
-    "title": "Vamos criar algo juntos?",
-    "suggestions": {
-      "idea": "Criar um pelicano andando de bicicleta",
-      "readme": "Escrever um README claro para o projeto",
-      "bug": "Localizar e corrigir este erro",
-      "tests": "Adicionar testes à funcionalidade existente",
-      "api": "Projetar uma API simples",
-      "refactor": "Dividir uma função longa em módulos menores",
-      "script": "Escrever um pequeno script de automação",
-      "dashboard": "Criar um painel de visualização de dados",
-      "risk": "Verificar os riscos das alterações recentes",
-      "steps": "Dividir os requisitos em etapas",
-      "setting": "Adicionar um interruptor na página de configurações",
-      "release": "Montar uma lista de verificação de lançamento",
-      "label": "Sugestões",
-      "ideaPrompt": "Crie uma pequena peça de “pelicano andando de bicicleta” com a tecnologia mais adequada do projeto: SVG, animação Canvas ou página web. Primeiro defina o formato de saída; depois implemente com proporções e movimento convincentes para que fique claro que é um pelicano na bicicleta; por fim, explique como visualizar.",
-      "readmePrompt": "Leia a estrutura e a configuração principal do projeto e escreva um README claro: visão geral, stack, instalação/execução, estrutura de pastas, scripts comuns e FAQ. Não invente comandos.",
-      "bugPrompt": "Encontrei um erro. Primeiro reproduza e encontre a causa raiz com evidências; depois corrija, sem tratar apenas o sintoma. Explique as mudanças, o alcance e como verificou.",
-      "testsPrompt": "Revise a estrutura de testes e as lacunas de cobertura, e adicione testes úteis para esta funcionalidade: caminho normal e falhas principais. Execute-os e corrija o que aparecer.",
-      "apiPrompt": "Projete uma API pequena e estável: primeiro descreva recursos, campos de requisição/resposta, códigos de erro e autenticação. Siga o estilo do projeto e entregue uma implementação mínima ou rascunho de interface.",
-      "refactorPrompt": "Encontre uma função longa ou com responsabilidades misturadas, divida em módulos menores sem mudar o comportamento; explique primeiro os limites, depois altere e rode os testes relacionados.",
-      "scriptPrompt": "Escreva um pequeno script para eliminar trabalho repetitivo. Primeiro pergunte qual fluxo automatizar, implemente, explique o uso e execute de verdade neste ambiente para validar.",
-      "dashboardPrompt": "Crie um painel de visualização de dados com as fontes existentes do projeto. Confirme antes as métricas e definições, use o mínimo de dependências e trate estados vazio, carregando e erro.",
-      "riskPrompt": "Revise as alterações não commitadas: liste problemas por risco (regressões, casos-limite, segurança, desempenho) com arquivo/linha e sugestões de correção. Não pare em comentários de estilo.",
-      "stepsPrompt": "Divida meu requisito em etapas executáveis: objetivo, arquivos afetados, critérios de aceite e dependências de cada uma. Mostre primeiro o plano e aguarde minha confirmação antes de alterar código.",
-      "settingPrompt": "Adicione um interruptor persistente à página de configurações. Reutilize o formulário e o armazenamento existentes, trate estados ocioso/desativado/falha ao salvar e verifique que permanece após reiniciar.",
-      "releasePrompt": "Monte uma lista de verificação de release: versão, build, testes, migrações, rollback e notas de versão. Use os comandos reais deste projeto, não frases genéricas."
-    }
+    "title": "Vamos criar algo juntos?"
   },
   "suggestion": {
     "label": "Sugestão",
@@ -279,6 +252,7 @@
     "applyPatch": "Aplicar patch",
     "git": "Git",
     "job": "Tarefa em segundo plano",
+    "jobWait": "Aguardando tarefa em segundo plano",
     "view": {
       "open": "Abrir",
       "unanswered": "(sem resposta)",
@@ -348,6 +322,7 @@
   },
   "turnFooter": {
     "copyMarkdown": "Copiar como Markdown",
+    "copyEmpty": "Não há texto de resposta para copiar neste turno",
     "copyPlain": "Copiar como texto simples",
     "branch": "Criar novo branch",
     "duration": "Duração",

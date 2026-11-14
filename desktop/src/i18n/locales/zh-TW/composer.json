@@ -91,7 +91,13 @@
     "steerTitle": "中止目前回覆，立即傳送這則訊息",
     "steer": "強制插話",
     "removeTitle": "從佇列中移除",
-    "remove": "刪除"
+    "remove": "刪除",
+    "edit": "編輯",
+    "editTitle": "在輸入框裡修改這則訊息",
+    "editingHere": "正在下方編輯",
+    "editingBar": "正在編輯排隊訊息",
+    "editCancel": "取消",
+    "dragAria": "拖動排序"
   },
   "plan": {
     "answerAria": "回答問題",
@@ -105,6 +111,8 @@
     "exit": "退出計畫模式",
     "confirmTitle": "確認按此計畫執行？",
     "confirmSub": "確認後，我將按此計畫執行並輸出內容",
+    "docAria": "計畫文件",
+    "docTitle": "計畫文件",
     "start": "開始執行",
     "adjustPlaceholder": "調整計畫，補充內容告訴我如何調整",
     "sendAdjust": "傳送調整",

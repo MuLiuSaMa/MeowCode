@@ -1,4 +1,12 @@
-import { useCallback, useState, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type MouseEvent as ReactMouseEvent,
+  type PointerEvent as ReactPointerEvent,
+  type ReactNode,
+} from "react";
 import { useTranslation } from "react-i18next";
 import {
   LuArrowLeft,
@@ -26,6 +34,8 @@ import type {
 } from "../api";
 import { normalizeAddress } from "../panel/address";
 import type { SideTab, SideTabOpen } from "../panel/useSideTabs";
+import { PluginPageIcon } from "../plugins/PluginPage";
+import { PluginTabView } from "../plugins/PluginTabView";
 import { BrowserTab } from "./panel/BrowserTab";
 import { HomeTab } from "./panel/HomeTab";
 import { PlanTab } from "./panel/PlanTab";
@@ -61,6 +71,12 @@ function tabIcon(tab: SideTab): ReactNode {
       return <LuUsers size={12} />;
     case "plugin":
       return <LuPuzzle size={12} />;
+    case "pluginview":
+      return tab.icon ? (
+        <PluginPageIcon icon={tab.icon} title={tab.title} size={12} />
+      ) : (
+        <LuPuzzle size={12} />
+      );
   }
 }
 
@@ -139,6 +155,85 @@ export function RightPanel({
   /** 顶部搜索栏只属于「新标签页」；其他页签各有自己的上下文 */
   const isHome = activeTab?.kind === "home";
   const [address, setAddress] = useState("");
+  const tabsRef = useRef<HTMLDivElement | null>(null);
+  const [tabsDragging, setTabsDragging] = useState(false);
+  const tabsDragRef = useRef({
+    active: false,
+    startX: 0,
+    startScroll: 0,
+    moved: false,
+  });
+  const suppressTabsClickRef = useRef(false);
+
+  // 滚轮横向滚动页签栏（原生滚动条已隐藏，普通竖向滚轮默认不会动它）
+  useEffect(() => {
+    const bar = tabsRef.current;
+    if (!bar) return;
+    const onWheel = (event: WheelEvent) => {
+      if (bar.scrollWidth <= bar.clientWidth) return;
+      const raw =
+        Math.abs(event.deltaX) > Math.abs(event.deltaY) ? event.deltaX : event.deltaY;
+      if (!raw) return;
+      event.preventDefault();
+      const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? bar.clientWidth : 1;
+      bar.scrollLeft += raw * unit;
+    };
+    bar.addEventListener("wheel", onWheel, { passive: false });
+    return () => bar.removeEventListener("wheel", onWheel);
+  }, []);
+
+  const startTabsDrag = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (event.button !== 0 || event.pointerType !== "mouse") return;
+    tabsDragRef.current = {
+      active: true,
+      startX: event.clientX,
+      startScroll: event.currentTarget.scrollLeft,
+      moved: false,
+    };
+    // 先不捕获指针：普通点击必须继续落到页签/新建按钮上。
+    // 真正超过拖动阈值后才在 move 里捕获。
+  };
+
+  const moveTabsDrag = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const drag = tabsDragRef.current;
+    if (!drag.active) return;
+    const delta = event.clientX - drag.startX;
+    if (!drag.moved && Math.abs(delta) < 5) return;
+    if (!drag.moved) {
+      drag.moved = true;
+      setTabsDragging(true);
+      event.currentTarget.setPointerCapture(event.pointerId);
+    }
+    event.currentTarget.scrollLeft = drag.startScroll - delta;
+    event.preventDefault();
+  };
+
+  const endTabsDrag = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const drag = tabsDragRef.current;
+    if (!drag.active) return;
+    drag.active = false;
+    if (drag.moved) {
+      suppressTabsClickRef.current = true;
+      // 指针在非按钮区域松开时不会有 click；下一拍自动复位，避免吞掉后续正常点击
+      window.setTimeout(() => {
+        suppressTabsClickRef.current = false;
+      }, 0);
+    }
+    setTabsDragging(false);
+    try {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    } catch {
+      // 指针已释放
+    }
+  };
+
+  /** 拖动结束后浏览器仍会补一次 click：吃掉它，避免误切换/误关闭页签。 */
+  const handleTabsClickCapture = (event: ReactMouseEvent<HTMLDivElement>) => {
+    if (!suppressTabsClickRef.current) return;
+    suppressTabsClickRef.current = false;
+    event.preventDefault();
+    event.stopPropagation();
+  };
 
   /** 新标签页的搜索栏提交：新开浏览器页签（地址栏随后由浏览器页签自带） */
   const submitAddress = () => {
@@ -157,8 +252,23 @@ export function RightPanel({
 
   return (
     <aside className="mc-panel mc-panel--inspector mc-rtp">
-      {/* 页签栏 */}
-      <div className="mc-rtp__tabs" role="tablist" aria-label={t("rightPanel.tabsAria")}>
+      {/* 页签栏：滚轮横滚 + 按住拖动滚动 */}
+      <div
+        ref={tabsRef}
+        className="mc-rtp__tabs"
+        role="tablist"
+        aria-label={t("rightPanel.tabsAria")}
+        data-dragging={tabsDragging ? "true" : undefined}
+        onPointerDown={startTabsDrag}
+        onPointerMove={moveTabsDrag}
+        onPointerUp={endTabsDrag}
+        onPointerCancel={endTabsDrag}
+        onPointerLeave={() => {
+          // 没达到拖动阈值就移出：取消这次候选拖动，不影响按钮点击
+          if (!tabsDragRef.current.moved) tabsDragRef.current.active = false;
+        }}
+        onClickCapture={handleTabsClickCapture}
+      >
         {tabs.map((tab) => (
           <div
             key={tab.id}
@@ -278,6 +388,13 @@ export function RightPanel({
                 pluginId={tab.pluginId}
                 active={tab.id === activeId}
                 sessionId={session?.id}
+              />
+            ) : tab.kind === "pluginview" ? (
+              <PluginTabView
+                pluginId={tab.pluginId}
+                tabId={tab.tabId}
+                sessionId={session?.id}
+                workspace={workspace}
               />
             ) : (
               <SideChatTab

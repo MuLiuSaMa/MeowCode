@@ -274,7 +274,16 @@
     "empty": "还没有添加任何工作区。",
     "removeTitle": "移除项目",
     "removeMessage": "确定移除「{{name}}」吗？只会从列表中隐藏，聊天记录和文件都不会删除。",
-    "removeConfirm": "移除"
+    "removeConfirm": "移除",
+    "batchManage": "批量管理",
+    "batchCancel": "取消",
+    "batchRemove": "移除所选",
+    "batchRemoveCount": "移除所选 · {{count}}",
+    "batchSelectAll": "全选",
+    "batchSelected": "已选 {{count}} 个",
+    "batchRemoveTitle": "移除所选项目",
+    "batchRemoveMessage": "移除选中的 {{count}} 个项目？只从列表隐藏，会话和文件都不受影响。",
+    "batchActiveHint": "当前项目不能移除"
   },
   "models": {
     "section": "模型",

@@ -40,10 +40,20 @@
 
 /* ---- 左下角：静默下载更新 ---- */
 
+.mc-rail__foot {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  margin-top: auto; /* 插件底栏与更新入口一起推到底部 */
+}
+.mc-rail__foot:empty {
+  display: none;
+}
 .mc-rail__update {
   position: relative;
   display: flex;
-  margin-top: auto; /* 推到底部 */
+  margin-top: 0;
 }
 /* 更新图标整体比普通导航按钮大一圈，突出更新入口 */
 .mc-rail__updatebtn {

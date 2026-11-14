@@ -81,7 +81,8 @@ export const browserToolDefinitions: ToolDefinition[] = [
     function: {
       name: "browser_screenshot",
       description:
-        "Capture the visible browser page as a PNG. Returns the image when the active model supports image input; otherwise the PNG is saved to a temp file and its path is returned.",
+        "Capture the visible browser page as a PNG. Returns the image when the active model supports image input; otherwise the PNG is saved to a temp file and its path is returned. " +
+        "Do not take screenshots to verify code or UI changes you just made; ask the user to look instead.",
       parameters: {
         type: "object",
         properties: {},

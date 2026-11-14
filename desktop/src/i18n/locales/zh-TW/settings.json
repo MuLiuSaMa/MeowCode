@@ -198,7 +198,16 @@
     "empty": "還沒有加入任何工作區。",
     "removeTitle": "移除專案",
     "removeMessage": "確定移除「{{name}}」嗎？只會從清單隱藏，聊天紀錄和檔案都不會刪除。",
-    "removeConfirm": "移除"
+    "removeConfirm": "移除",
+    "batchManage": "批次管理",
+    "batchCancel": "取消",
+    "batchRemove": "移除所選",
+    "batchRemoveCount": "移除所選 · {{count}}",
+    "batchSelectAll": "全選",
+    "batchSelected": "已選 {{count}} 個",
+    "batchRemoveTitle": "移除所選專案",
+    "batchRemoveMessage": "移除選取的 {{count}} 個專案？只從清單隱藏，工作階段和檔案都不受影響。",
+    "batchActiveHint": "目前專案不能移除"
   },
   "models": {
     "section": "模型",

@@ -95,5 +95,25 @@
     "errorRequired": "請填寫必填欄位",
     "invalidCron": "Cron 運算式無效",
     "saveFailed": "儲存失敗"
+  },
+  "autonomy": {
+    "label": "執行方式",
+    "auto": "自動執行",
+    "observe": "只觀察",
+    "off": "不執行"
+  },
+  "decision": {
+    "tabHistory": "執行歷史",
+    "tabDecision": "決策記錄",
+    "empty": "還沒有決策記錄。",
+    "last": "最近決策：{{outcome}} · {{time}}",
+    "planned": "原本會送出",
+    "outcome": {
+      "executed": "已執行",
+      "observed": "僅記錄",
+      "skipped": "已略過",
+      "failed": "失敗",
+      "uncertain": "未確認"
+    }
   }
 }

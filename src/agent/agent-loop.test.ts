@@ -338,6 +338,19 @@ describe("runAgentLoop 薄循环", () => {
     expect(host.trace.errors).toEqual([]);
   });
 
+  it("宿主不下发 token 上限时：超大累计用量不会硬停", async () => {
+    const host = createMockHost({
+      turnBudget: () => ({}),
+      script: [
+        { message: assistant("", [toolCall("c1", "read_file")]), usage: { inputTokens: 10_000_000 } },
+        { message: assistant("done"), usage: { inputTokens: 10_000_000 } },
+      ],
+    });
+    await runAgentLoop(host);
+    expect(host.trace.completed).toEqual(["done"]);
+    expect(host.trace.errors).toEqual([]);
+  });
+
   it("截断的工具调用：不执行，补配对结果并报错结束", async () => {
     const host = createMockHost({
       script: [{ message: assistant("", [toolCall("c1", "edit_file")]), finishReason: "length" }],

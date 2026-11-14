@@ -25,3 +25,6 @@ electron_builder_binaries_mirror: https://npmmirror.com/mirrors/electron-builder
 # 强制到 5.1.0（ESM，Node ≥22.12 可直接 require）。
 overrides:
   "@electron/get": 5.1.0
+
+patchedDependencies:
+  node-pty@1.1.0: patches/node-pty@1.1.0.patch

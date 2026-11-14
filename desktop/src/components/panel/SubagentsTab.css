@@ -190,6 +190,78 @@
   font-size: var(--fs-sm);
 }
 
+/* 已结束的子 Agent 收进折叠组：一条细分割线 + 一枚「已完成 N」组头 */
+.mc-subagents__done {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  margin-top: 8px;
+  padding-top: 6px;
+  border-top: 1px solid var(--border);
+}
+
+.mc-subagents__doneHead {
+  display: inline-flex;
+  align-self: flex-start;
+  align-items: center;
+  gap: 3px;
+  padding: 3px 6px 3px 2px;
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: none;
+  color: var(--fg-subtle);
+  font-family: inherit;
+  font-size: var(--fs-xs);
+  cursor: pointer;
+  transition: color var(--dur) var(--ease), background-color var(--dur) var(--ease);
+}
+
+.mc-subagents__doneHead:hover {
+  background: var(--surface-hover);
+  color: var(--fg);
+}
+
+.mc-subagents__doneLabel {
+  white-space: nowrap;
+}
+
+.mc-subagents__chev {
+  flex: none;
+  color: var(--fg-subtlest);
+  transition: transform var(--dur) var(--ease);
+}
+
+.mc-subagents__chev[data-open="true"] {
+  transform: rotate(90deg);
+}
+
+/* 高度过渡用 grid 0fr→1fr，收起时高度真的归零，不会留一条空白 */
+.mc-subagents__doneBody {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows var(--dur) var(--ease);
+}
+
+.mc-subagents__doneBody[data-open="true"] {
+  grid-template-rows: 1fr;
+}
+
+.mc-subagents__doneInner {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.mc-subagents__doneInner > .mc-subagents__list {
+  padding-top: 6px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mc-subagents__doneBody,
+  .mc-subagents__chev {
+    transition: none;
+  }
+}
+
 /* 契约角色（implementer/reviewer/verifier）的宿主校验徽章 */
 .mc-subagents__childresult {
   flex: none;

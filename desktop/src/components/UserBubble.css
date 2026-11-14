@@ -12,20 +12,44 @@
   margin-top: 3px;
   margin-right: 2px;
   padding: 3px;
-  border: 1px solid var(--border);
+  border: 1px solid transparent;
   border-radius: var(--radius-sm);
-  background: var(--surface);
-  color: var(--muted, var(--fg));
+  background: transparent;
+  color: var(--fg-subtle);
   opacity: 0;
-  transition: opacity 0.12s ease;
+  transition: opacity 0.12s ease, background-color 0.12s ease, border-color 0.12s ease;
 }
 .mc-userrow:hover .mc-userbubble__rewind,
 .mc-userbubble__rewind:focus-visible {
   opacity: 1;
 }
-.mc-userbubble__rewind:hover {
+/* 卡片背景只跟单个按钮的悬停/聚焦走，不跟着整行悬停常驻 */
+.mc-userbubble__rewind:hover,
+.mc-userbubble__rewind:focus-visible {
+  background: var(--surface);
+  border-color: var(--border);
   color: var(--fg);
-  border-color: var(--border-strong, var(--border));
+}
+/* 插件操作区：与回滚按钮同排、同样只在悬停行时显现 */
+.mc-userbubble__pluginactions {
+  align-self: flex-end;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 3px;
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+/* 操作行里的按钮已经有行级 margin，去掉单个按钮的 */
+.mc-userbubble__pluginactions .mc-userbubble__rewind {
+  margin-top: 0;
+}
+.mc-userrow:hover .mc-userbubble__pluginactions,
+.mc-userbubble__pluginactions:focus-within {
+  opacity: 1;
+}
+.mc-userbubble__pluginactions:empty {
+  display: none;
 }
 .mc-userbubble {
   max-width: 78%;

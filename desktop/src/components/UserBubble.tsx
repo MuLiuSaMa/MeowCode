@@ -1,9 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { TimelineImage } from "../api";
 import { loadMarketplaceCatalog } from "../data/marketplaceCatalog";
 import { loadPluginIconMap } from "../data/pluginIcons";
-import { LuFileText, LuPuzzle, LuSparkles, LuUndo2 } from "react-icons/lu";
+import { LuCheck, LuCopy, LuFileText, LuPuzzle, LuSparkles, LuUndo2 } from "react-icons/lu";
+import { PluginSlot } from "../plugins/PluginSlot";
 import { parseUserMessage } from "../user-references";
 import "./UserBubble.css";
 
@@ -35,6 +36,28 @@ export function UserBubble({
   const parsed = parseUserMessage(content);
   const [icons, setIcons] = useState<Record<string, string>>({});
   const [pluginIcons, setPluginIcons] = useState<Record<string, string>>({});
+  const [copied, setCopied] = useState(false);
+  const copiedTimer = useRef<number | null>(null);
+  const copyText = parsed.body.trim() ? parsed.body : content;
+
+  useEffect(
+    () => () => {
+      if (copiedTimer.current) window.clearTimeout(copiedTimer.current);
+    },
+    [],
+  );
+
+  const copyMessage = async () => {
+    if (!copyText.trim()) return;
+    try {
+      await navigator.clipboard.writeText(copyText);
+      setCopied(true);
+      if (copiedTimer.current) window.clearTimeout(copiedTimer.current);
+      copiedTimer.current = window.setTimeout(() => setCopied(false), 1_500);
+    } catch {
+      // 剪贴板不可用：不打断阅读
+    }
+  };
 
   useEffect(() => {
     if (!parsed.command && parsed.chips.length === 0) {
@@ -71,6 +94,10 @@ export function UserBubble({
       data-nl-key={navKey}
       {...(messageIndex !== undefined ? { "data-message-index": String(messageIndex) } : {})}
     >
+      <PluginSlot
+        name="message.user.before"
+        props={{ content, images, messageIndex }}
+      />
       <div className="mc-userbubble">
         {images?.length ? (
           <div className="mc-userbubble__images">
@@ -130,21 +157,40 @@ export function UserBubble({
         ) : null}
         {parsed.body ? parsed.body : null}
       </div>
-      {checkpointId && onRewind ? (
+      <div className="mc-userbubble__pluginactions">
         <button
           type="button"
           className="mc-userbubble__rewind"
-          aria-label={t("checkpoint.rewind")}
-          title={
-            checkpointHasSnapshot
-              ? t("checkpoint.rewindToHere")
-              : t("checkpoint.rewindConversationOnly")
-          }
-          onClick={() => onRewind(checkpointId)}
+          aria-label={t("turnFooter.copyPlain")}
+          title={t("turnFooter.copyPlain")}
+          onClick={() => void copyMessage()}
         >
-          <LuUndo2 size={13} aria-hidden="true" />
+          {copied ? <LuCheck size={13} aria-hidden="true" /> : <LuCopy size={13} aria-hidden="true" />}
         </button>
-      ) : null}
+        {checkpointId && onRewind ? (
+          <button
+            type="button"
+            className="mc-userbubble__rewind"
+            aria-label={t("checkpoint.rewind")}
+            title={
+              checkpointHasSnapshot
+                ? t("checkpoint.rewindToHere")
+                : t("checkpoint.rewindConversationOnly")
+            }
+            onClick={() => onRewind(checkpointId)}
+          >
+            <LuUndo2 size={13} aria-hidden="true" />
+          </button>
+        ) : null}
+        <PluginSlot
+          name="message.user.actions"
+          props={{ content, images, messageIndex }}
+        />
+      </div>
+      <PluginSlot
+        name="message.user.after"
+        props={{ content, images, messageIndex }}
+      />
     </div>
   );
 }

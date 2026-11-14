@@ -46,6 +46,8 @@ export function PluginDetailPage({
     let cancelled = false;
     setDetail(null);
     setLoadError(null);
+    // 自建/内置插件是渲染层合成的条目，市场索引里没有详情可查
+    if (entry.local) return;
     fetchMarketplaceDetail(entry.id, entry.type, entry.channel)
       .then((result) => {
         if (!cancelled) setDetail(result);

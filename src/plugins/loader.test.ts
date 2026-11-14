@@ -417,8 +417,43 @@ describe("plugin.json manifest", () => {
     expect(errors).toEqual([]);
     expect(descriptor?.version).toBe("1.0.0");
     expect(descriptor?.manifest?.permissions).toEqual(["storage", "ui"]);
-    expect(descriptor?.ui?.client).toEqual({ entry: "client.js", permissions: ["storage", "ui"] });
+    expect(descriptor?.ui?.client).toMatchObject({
+      entry: "client.js",
+      permissions: ["storage", "ui"],
+    });
+    expect(descriptor?.ui?.client?.rev).toContain("client.js:");
     registry.unregisterAll();
+  });
+
+  it("client 脚本改写后 rev 变化，渲染层据此重新加载", async () => {
+    const home = await makeTempRoot();
+    const dir = await writePlugin(
+      home,
+      "reload-me",
+      {
+        id: "reload-me",
+        version: "1.0.0",
+        apiVersion: 2,
+        permissions: ["ui"],
+        client: "ui/client.js",
+      },
+      { "ui/client.js": "return { apply() {} }" },
+    );
+    const workspace = await makeTempRoot();
+    const first = await loadPlugins({ workspace, homeDir: home, registry: new PluginRegistry() });
+    const rev1 = first.descriptors.find((item) => item.id === "reload-me")?.ui?.client?.rev;
+
+    await fs.writeFile(
+      path.join(dir, "ui", "client.js"),
+      "return { apply() { /* changed */ } }",
+      "utf8",
+    );
+    const second = await loadPlugins({ workspace, homeDir: home, registry: new PluginRegistry() });
+    const rev2 = second.descriptors.find((item) => item.id === "reload-me")?.ui?.client?.rev;
+
+    expect(rev1).toBeTruthy();
+    expect(rev2).toBeTruthy();
+    expect(rev2).not.toBe(rev1);
   });
 
   it("client 但未声明 ui 权限 → 加载错误", async () => {

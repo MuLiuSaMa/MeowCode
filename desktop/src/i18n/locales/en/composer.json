@@ -91,7 +91,13 @@
     "steerTitle": "Stop the current reply and send this message now",
     "steer": "Steer now",
     "removeTitle": "Remove from queue",
-    "remove": "Delete"
+    "remove": "Delete",
+    "edit": "Edit",
+    "editTitle": "Edit this message in the composer",
+    "editingHere": "Editing below",
+    "editingBar": "Editing a queued message",
+    "editCancel": "Cancel",
+    "dragAria": "Drag to reorder"
   },
   "plan": {
     "answerAria": "Answer the question",
@@ -105,6 +111,8 @@
     "exit": "Exit plan mode",
     "confirmTitle": "Proceed with this plan?",
     "confirmSub": "Once confirmed, I will implement this plan and produce the output",
+    "docAria": "Plan document",
+    "docTitle": "Plan document",
     "start": "Start",
     "adjustPlaceholder": "Adjust the plan — tell me what to change",
     "sendAdjust": "Send adjustment",

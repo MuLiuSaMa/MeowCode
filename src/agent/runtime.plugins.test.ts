@@ -169,7 +169,8 @@ describe("生命周期 hooks（P3）", () => {
       messages.some(
         (m) =>
           m.role === "tool" &&
-          m.content.includes("Tool call rejected: hook returned invalid arguments"),
+          m.content.includes("Tool call rejected (invalid_arguments)") &&
+          m.content.includes("hook rewrote the arguments"),
       ),
     ).toBe(true);
   });

@@ -25,7 +25,7 @@ import { runCodeInSandbox, type HostToolBridge } from "./code-mode.js";
 import { sliceLinesForModel } from "./read-slice.js";
 import { changedSinceRead, recordRead, recordWrite } from "./read-state.js";
 import { searchGlob, searchGrep } from "./search.js";
-import { persistToolOutput } from "./tool-output.js";
+import { persistToolOutput, TOOL_OUTPUT_DIR } from "./tool-output.js";
 import {
   deleteMemory,
   isValidMemoryName,
@@ -49,6 +49,7 @@ import { MAX_COMMAND_OUTPUT_BYTES, DEFAULT_COMMAND_TIMEOUT_MS } from "./exec/typ
 import {
   builtinToolContract,
   isParallelSafeContract,
+  READ_MANY_MAX_PATHS,
   type ToolContract,
 } from "./tool-contract.js";
 import { executeJobTool, jobToolDefinition, startBackgroundCommand } from "./job-tools.js";
@@ -105,7 +106,8 @@ export function truncateMiddle(
   const lines = text.split(/\r?\n/).length;
   const truncated = truncateToTokens(text, maxTokens, {
     headRatio: 1 / 3,
-    note: (omitted) => `... [truncated ${omitted} tokens in the middle; ${lines} lines total]`,
+    note: (omitted, total) =>
+      `... [truncated ${omitted} of ${total} tokens in the middle; ${lines} lines total]`,
   });
   return {
     output: truncated.text,
@@ -183,6 +185,43 @@ function parseMemoryScope(value: unknown): MemoryScope | null {
  * 重跑一次的成本（整个上下文重发）远高于读落盘文件。
  * 只用于 grep / glob：run_command 的输出是诊断信息，绝不能这样降级。
  */
+/** 目标是否已经落在工具输出的落盘目录里：读产物不该再生成新产物（会无限增殖）。 */
+function isInsideToolOutput(workspace: string, file: string): boolean {
+  const relative = path.relative(path.resolve(workspace), path.resolve(file));
+  if (!relative || relative.startsWith("..") || path.isAbsolute(relative)) return false;
+  const normalized = relative.split(path.sep).join("/");
+  const dir = TOOL_OUTPUT_DIR.split(path.sep).join("/");
+  return normalized === dir || normalized.startsWith(`${dir}/`);
+}
+
+/**
+ * 通用截断收口：超预算就把完整文本落盘，并在头尾之间留一条可续读指针。
+ *
+ * 与 `degradeStructuredOutput` 是同一套约定（落盘 + `read_file (offset/limit)`），
+ * 区别只在于不要求结果是结构化搜索结果。动态工具（MCP / 插件）与 `task` 子 Agent
+ * 的报告都走这里 —— 它们的输出一旦被裸截断，模型就再也拿不回全文了。
+ */
+export async function truncateWithSpill(
+  workspace: string,
+  tool: string,
+  text: string,
+  maxTokens = MAX_OUTPUT_TOKENS,
+): Promise<{ output: string; truncated: boolean; spilled?: string }> {
+  if (estimateTokens(text) <= maxTokens) return { output: text, truncated: false };
+  const saved = await persistToolOutput(workspace, tool, text).catch(() => null);
+  const truncated = truncateToTokens(text, maxTokens, {
+    note: (omitted, original) =>
+      saved
+        ? `... [${omitted} of ${original} tokens omitted; full output saved to ${saved} — read that path with read_file (offset/limit)]`
+        : `... [${omitted} of ${original} tokens omitted; narrow the result or re-run with a smaller scope]`,
+  });
+  return {
+    output: truncated.text,
+    truncated: truncated.truncated,
+    ...(saved ? { spilled: saved } : {}),
+  };
+}
+
 export async function degradeStructuredOutput(
   workspace: string,
   tool: string,
@@ -203,10 +242,10 @@ export async function degradeStructuredOutput(
   const over = estimateTokens(body) > STRUCTURED_OUTPUT_TOKENS;
   const bounded = over
     ? truncateToTokens(body, STRUCTURED_OUTPUT_TOKENS, {
-        note: (omitted) =>
+        note: (omitted, total) =>
           saved
-            ? `... [${omitted} tokens omitted; full result saved to ${saved} — page it with read_file (offset/limit) instead of re-running this search]`
-            : `... [${omitted} tokens omitted; narrow the pattern to see more]`,
+            ? `... [${omitted} of ${total} tokens omitted; full result saved to ${saved} — page it with read_file (offset/limit) instead of re-running this search]`
+            : `... [${omitted} of ${total} tokens omitted; narrow the pattern to see more]`,
       }).text
     : body;
   // 搜索层已经裁过、但正文仍在预算内：保留截断回执，不能因为“够短”丢掉落盘路径
@@ -266,7 +305,7 @@ export const toolDefinitions: ToolDefinition[] = [
     function: {
       name: "read_file",
       description:
-        "Read a UTF-8 text file (default 400 lines; result reports the next offset). Images (png/jpg/webp/gif, max 4 MB) are attached when the model accepts them. PDFs: text layer, 20 pages per call — page with pages=\"1-5\".",
+        "Read a UTF-8 text file (default 400 lines; result reports the next offset). Images (png/jpg/webp/gif, max 4 MB) are attached when the model accepts them. PDFs: text layer, 20 pages per call — page with pages=\"1-5\". Oversized files and truncated tool output are saved to .meowcode/tool-output/ and can be re-read by path.",
       parameters: {
         type: "object",
         properties: {
@@ -496,7 +535,7 @@ export const toolDefinitions: ToolDefinition[] = [
     function: {
       name: "run_command",
       description:
-        "Run a PowerShell command in the workspace. Routine commands run automatically; only destructive ones (disk, registry, shutdown) ask first. Long output keeps head and tail; full log is saved under .meowcode/tool-output/. When the command sandbox is enabled, writes outside the workspace and configured extra roots are blocked; a blocked command may ask once to retry outside the sandbox. background=true starts a long-running job (dev server, watcher) in a terminal and returns immediately; read it with the job tool. " +
+        "Run a PowerShell command in the workspace. Routine commands run automatically; only destructive ones (disk, registry, shutdown) ask first. Long output keeps head and tail; full log is saved under .meowcode/tool-output/. When the command sandbox is enabled, writes outside the workspace and configured extra roots are blocked; a blocked command may ask once to retry outside the sandbox. background=true starts a long-running job (dev server, watcher) in a terminal and returns immediately; read it with the job tool (job wait blocks for output). " +
         // 这段是给模型看的写法约束：系统提示词按 token 预算只留了「怎么搜/怎么读」，
         // 只在真要下命令时才需要读到的东西放这里。
         "This is PowerShell, not bash: no rm -rf / export / cat / grep -r — use Remove-Item -Recurse -Force, $env:NAME='value', Get-Content, Select-String. Windows PowerShell 5.1 has no && or ||: chain with ';'. There is no stdin, so interactive prompts (Read-Host, pause, git commit without -m) hang until the timeout. " +
@@ -509,7 +548,7 @@ export const toolDefinitions: ToolDefinition[] = [
           background: {
             type: "boolean",
             description:
-              "Start as a background job in a terminal and return immediately (default false). The user can take over in the terminal tab.",
+              "Start as a background job in a terminal and return immediately (default false). Use job wait to block for output. The user can take over in the terminal tab.",
           },
         },
         required: ["command"],
@@ -1386,8 +1425,13 @@ export async function executeTool(
     const dynamic = dynamicTools.get(name);
     if (dynamic) {
       const result = await executeDynamicTool(name, dynamic, input, workspace, options);
-      const shaped = truncateOutput(result.output);
-      return { ...result, output: shaped.output, truncated: shaped.truncated };
+      const shaped = await truncateWithSpill(workspace, name, result.output);
+      return {
+        ...result,
+        output: shaped.output,
+        truncated: shaped.truncated,
+        ...(shaped.spilled ? { spilled: shaped.spilled } : {}),
+      };
     }
     if (retiredDynamicNames.has(name)) {
       return {
@@ -1938,7 +1982,12 @@ async function readFile(options: {
 
   // 超长文件且一屏读不完：头尾预览 + 全文落盘。模型拿到落盘路径后用
   // read_file (offset/limit) 续读，不必对原文件一页页 offset 翻。
-  if (estimateTokens(read.file.content) > READ_SAVE_THRESHOLD_TOKENS && slice.shown < slice.total) {
+  // 读的本来就是落盘产物时不再落第二份：否则「读产物 → 生成新产物」会自我增殖
+  if (
+    !isInsideToolOutput(workspace, file) &&
+    estimateTokens(read.file.content) > READ_SAVE_THRESHOLD_TOKENS &&
+    slice.shown < slice.total
+  ) {
     const saved = await persistToolOutput(workspace, "read_file", read.file.content).catch(
       () => null,
     );
@@ -2027,8 +2076,8 @@ async function readPdfFile(options: {
   };
 }
 
-/** read_many 单次最多读多少个文件：超过就要求模型分批，避免一次性灌爆输出预算。 */
-export const READ_MANY_MAX_PATHS = 12;
+/** read_many 单次最多读多少个文件：常量在 tool-contract（门禁与执行同源），这里只转出手。 */
+export { READ_MANY_MAX_PATHS };
 /** read_many 单个文件的最低预算（tokens）：低于这个数宁可跳过该文件（读了也是碎片）。 */
 const READ_MANY_MIN_FILE_TOKENS = 600;
 

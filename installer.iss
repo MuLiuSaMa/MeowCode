@@ -50,6 +50,9 @@ UninstallDisplayIcon={app}\{#MyAppExeName}
 
 ; 安装包自身图标与版本信息
 SetupIconFile=resources\icon.ico
+; 猫头品牌向导图（scripts/make-installer-assets.mjs 生成）
+WizardImageFile=resources\installer-wizard.bmp
+WizardSmallImageFile=resources\installer-wizard-small.bmp
 VersionInfoVersion={#MyAppVersion}
 VersionInfoCopyright=Copyright © MuLiuSaMa
 VersionInfoProductName={#MyAppName}

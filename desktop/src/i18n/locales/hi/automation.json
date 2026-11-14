@@ -95,5 +95,25 @@
     "errorRequired": "आवश्यक फ़ील्ड भरें",
     "invalidCron": "अमान्य Cron एक्सप्रेशन",
     "saveFailed": "सहेजने में विफल"
+  },
+  "autonomy": {
+    "label": "निष्पादन",
+    "auto": "स्वचालित",
+    "observe": "केवल निरीक्षण",
+    "off": "न चलाएँ"
+  },
+  "decision": {
+    "tabHistory": "चलाने का इतिहास",
+    "tabDecision": "निर्णय",
+    "empty": "अभी कोई निर्णय दर्ज नहीं है।",
+    "last": "अंतिम निर्णय: {{outcome}} · {{time}}",
+    "planned": "यह भेजा जाता",
+    "outcome": {
+      "executed": "निष्पादित",
+      "observed": "केवल निरीक्षण",
+      "skipped": "छोड़ा गया",
+      "failed": "विफल",
+      "uncertain": "अपुष्ट"
+    }
   }
 }

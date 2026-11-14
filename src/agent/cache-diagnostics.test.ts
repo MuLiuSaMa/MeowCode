@@ -167,4 +167,45 @@ describe("diffPrefix", () => {
     expect(diff.changed).toBe(false);
     expect(prefixChangeSegments(diff)).toEqual([]);
   });
+
+  it("names the tool whose description or schema changed", () => {
+    const previous: PrefixSnapshot = {
+      tools: "t1",
+      system: ["a"],
+      toolHashes: ["h1", "h2"],
+      toolNames: ["read_file", "write_file"],
+    };
+    const next: PrefixSnapshot = {
+      tools: "t2",
+      system: ["a"],
+      toolHashes: ["h1", "h2-changed"],
+      toolNames: ["read_file", "write_file"],
+    };
+    const diff = diffPrefix(previous, next);
+    expect(diff.toolChanges).toEqual([{ index: 1, name: "write_file" }]);
+    expect(prefixChangeSegments(diff)).toEqual(["tools[write_file]"]);
+  });
+
+  it("falls back to the whole tools segment without per-tool fingerprints", () => {
+    const diff = diffPrefix(snapshot("t1", ["a"]), snapshot("t2", ["a"]));
+    expect(diff.toolChanges).toBeUndefined();
+    expect(prefixChangeSegments(diff)).toEqual(["tools"]);
+  });
+
+  it("reports cache-plan drift without treating it as a content prefix change", () => {
+    const previous: PrefixSnapshot = {
+      tools: "t1",
+      system: ["a"],
+      meta: { profile: "anthropic-native", ttl: "5m", breakpoints: "tools,system1,anchor,tail" },
+    };
+    const next: PrefixSnapshot = {
+      tools: "t1",
+      system: ["a"],
+      meta: { profile: "qwen", ttl: "5m", breakpoints: "system0,tail" },
+    };
+    const diff = diffPrefix(previous, next);
+    expect(diff.changed).toBe(false);
+    expect(diff.metaChanged).toEqual(["breakpoints", "profile"]);
+    expect(prefixChangeSegments(diff)).toEqual([]);
+  });
 });

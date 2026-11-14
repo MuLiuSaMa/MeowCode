@@ -121,7 +121,8 @@
     "notGitRepo": "Der aktuelle Workspace ist kein Git-Repository, daher ist Worktree-Isolation nicht verfügbar."
   },
   "toast": {
-    "worktreeDirty": "Im Haupt-Workspace gibt es nicht committete Änderungen: Worktrees starten von HEAD, diese Änderungen werden nicht übernommen"
+    "worktreeDirty": "Im Haupt-Workspace gibt es nicht committete Änderungen: Worktrees starten von HEAD, diese Änderungen werden nicht übernommen",
+    "jobExited": "Hintergrundjob {{id}} beendet (code {{code}})"
   },
   "architecture": {
     "customName": "Benutzerdefinierter Agent"

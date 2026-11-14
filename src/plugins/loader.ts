@@ -182,11 +182,22 @@ async function hasAiPluginMarker(homeDir: string, id: string): Promise<boolean> 
 }
 
 /** 把 manifest 的 client 入口映射成 `/plugin-ui/<id>/...` 下的相对路径。 */
-function clientDescriptor(manifest: PluginManifest | undefined): PluginUiDescriptor["client"] {
+async function clientDescriptor(
+  manifest: PluginManifest | undefined,
+  pluginDir: string,
+): Promise<PluginUiDescriptor["client"]> {
   if (!manifest?.client) return undefined;
+  const entry = manifest.client.replace(/^ui\//, "");
+  const stats = await fs.stat(path.resolve(pluginDir, "ui", entry)).catch(() => null);
   return {
-    entry: manifest.client.replace(/^ui\//, ""),
+    entry,
     permissions: manifest.permissions,
+    // mtime 之外的 ctime/size 一起进指纹：同毫秒覆盖也能被 tsc/编辑器写盘识别
+    ...(stats
+      ? {
+          rev: `${entry}:${stats.mtimeMs}:${stats.ctimeMs}:${stats.size}:${manifest.version}:${manifest.permissions.join(",")}`,
+        }
+      : {}),
   };
 }
 
@@ -421,7 +432,7 @@ export async function loadPlugins(options: LoadPluginsOptions): Promise<{
 
     // 目录型插件可以带 ui/index.html（iframe 面板）与 ui/client.js（槽位脚本）
     const panel = await detectPluginUi(item.path);
-    const client = clientDescriptor(manifest);
+    const client = await clientDescriptor(manifest, path.dirname(item.path));
     if (panel || client) {
       descriptor.ui = {
         ...(panel ? { panel } : {}),

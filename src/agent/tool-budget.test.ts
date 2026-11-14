@@ -5,11 +5,13 @@ import { sliceHeadToTokens, truncateToTokens } from "./tool-budget";
 describe("truncateToTokens", () => {
   it("under budget keeps the original text", () => {
     const text = "const value = 1;";
-    expect(truncateToTokens(text, 100)).toEqual({
+    expect(truncateToTokens(text, 100)).toMatchObject({
       text,
       truncated: false,
       omittedTokens: 0,
     });
+    // 未截断时也要报原始量：调用方不必分支就能拿到同一个字段
+    expect(truncateToTokens(text, 100).originalTokens).toBeGreaterThan(0);
   });
 
   it("keeps head and tail of over-budget text", () => {
@@ -21,6 +23,20 @@ describe("truncateToTokens", () => {
     expect(result.text).toContain("truncated");
     expect(result.omittedTokens).toBeGreaterThan(0);
     expect(estimateTokens(result.text)).toBeLessThanOrEqual(110);
+  });
+
+  it("省略标记同时给出原始总量，模型才能判断该不该翻页", () => {
+    const text = "x".repeat(4_000);
+    const result = truncateToTokens(text, 100);
+    // 4_000 字符 ≈ 1_000 token（非 CJK 按 4 字符/token）
+    expect(result.originalTokens).toBe(1_000);
+    expect(result.text).toContain(`of ${result.originalTokens} tokens`);
+    expect(result.omittedTokens).toBeLessThan(result.originalTokens);
+    // 自定义 note 也能拿到原始总量
+    const custom = truncateToTokens(text, 100, {
+      note: (omitted, total) => `... [${omitted}/${total}]`,
+    });
+    expect(custom.text).toContain(`[${custom.omittedTokens}/${custom.originalTokens}]`);
   });
 
   it("韩文也按 CJK 字计预算", () => {

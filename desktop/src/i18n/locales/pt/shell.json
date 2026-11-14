@@ -121,7 +121,8 @@
     "notGitRepo": "O workspace atual não é um repositório git, então o isolamento por worktree não está disponível."
   },
   "toast": {
-    "worktreeDirty": "O workspace principal tem alterações não commitadas: worktrees partem do HEAD, então essas alterações não são levadas"
+    "worktreeDirty": "O workspace principal tem alterações não commitadas: worktrees partem do HEAD, então essas alterações não são levadas",
+    "jobExited": "Tarefa em segundo plano {{id}} encerrada (código {{code}})"
   },
   "architecture": {
     "customName": "Agente personalizado"

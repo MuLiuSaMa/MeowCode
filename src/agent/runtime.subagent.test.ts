@@ -1065,7 +1065,7 @@ describe("AgentRuntime subagents", () => {
     await runtime.newSession(workspace);
     await runtime.setApprovalMode("full");
 
-    let childSystem = "";
+    let childSystemParts: string[] = [];
     let childTools: string[] = [];
     streamMock.mockImplementation(async ({
       messages,
@@ -1074,12 +1074,11 @@ describe("AgentRuntime subagents", () => {
       messages: ChatMessage[];
       tools: Array<{ function: { name: string } }>;
     }) => {
-      const system = messages
+      const systemParts = messages
         .filter((message) => message.role === "system")
-        .map((message) => message.content ?? "")
-        .join("\n");
-      if (system.includes("CUSTOM IMPLEMENTER PROMPT")) {
-        childSystem = system;
+        .map((message) => message.content ?? "");
+      if (systemParts.some((text) => text.includes("CUSTOM IMPLEMENTER PROMPT"))) {
+        childSystemParts = systemParts;
         childTools = tools.map((tool) => tool.function.name).sort();
         return { message: { role: "assistant", content: "override report" } };
       }
@@ -1103,8 +1102,12 @@ describe("AgentRuntime subagents", () => {
 
     await runtime.prompt("use override");
 
-    expect(childSystem).toContain("CUSTOM IMPLEMENTER PROMPT");
-    expect(childSystem).not.toContain("Implementer subagent");
+    // 角色覆盖走「基线 + 边界后增量段」：基线仍是注册表提示词，覆盖是独立分段
+    expect(childSystemParts.some((text) => text.includes("CUSTOM IMPLEMENTER PROMPT"))).toBe(true);
+    expect(childSystemParts.some((text) => text.includes("Implementer subagent"))).toBe(true);
+    expect(
+      childSystemParts.find((text) => text.includes("CUSTOM IMPLEMENTER PROMPT")),
+    ).not.toContain("Implementer subagent");
     expect(childTools).toEqual(["read_file"]);
     await runtime.closeSession();
   });

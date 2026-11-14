@@ -21,6 +21,15 @@
     animation: none;
   }
 }
+.mc-assistant__pluginactions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 4px;
+}
+.mc-assistant__pluginactions:empty {
+  display: none;
+}
 .mc-assistant__body {
   position: relative;
   color: var(--fg);

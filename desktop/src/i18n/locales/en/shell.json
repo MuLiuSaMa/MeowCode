@@ -121,7 +121,8 @@
     "notGitRepo": "The current workspace is not a git repository, so worktree isolation is unavailable."
   },
   "toast": {
-    "worktreeDirty": "The main workspace has uncommitted changes: worktrees start from HEAD, so those changes are not carried over"
+    "worktreeDirty": "The main workspace has uncommitted changes: worktrees start from HEAD, so those changes are not carried over",
+    "jobExited": "Background job {{id}} exited (code {{code}})"
   },
   "architecture": {
     "customName": "Custom agent"
