@@ -204,7 +204,7 @@ import type {
   TurnStatus,
 } from "../agent/types.js";
 
-const APP_VERSION = "1.3.0";
+const APP_VERSION = "1.4.0";
 const DEFAULT_SESSIONS_DIR = path.join(os.homedir(), "AppData", "Roaming", "MeowCode", "agent", "sessions");
 
 /** 插件命令 chip 的展示标记：首行是名称/插件/命令，空行后才是实际 `/command` 文本 */
