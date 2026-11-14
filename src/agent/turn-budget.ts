@@ -1,3 +1,5 @@
+import { positiveIntFromEnv } from "./env-limits.js";
+
 /**
  * 回合级预算：轮次上限 + token 上限 + 交替循环检测。
  *
@@ -10,10 +12,10 @@
  * 命中先注一条 wrap-up 提醒，再命中才硬停并给出可读原因。
  */
 
-/** 单回合模型请求轮次硬上限。 */
-export const MAX_TURN_ROUNDS = 60;
-/** 软阈值：到这里注入一次 wrap-up 提醒，让模型收尾而不是被打断。 */
-export const TURN_WRAPUP_ROUNDS = 50;
+/** 单回合模型请求轮次硬上限。默认 60；需要跑长任务时用 MEOWCODE_MAX_TURN_ROUNDS 调大。 */
+export const MAX_TURN_ROUNDS = positiveIntFromEnv("MEOWCODE_MAX_TURN_ROUNDS", 60);
+/** 软阈值：到这里注入一次 wrap-up 提醒，让模型收尾而不是被打断。用 MEOWCODE_TURN_WRAPUP_ROUNDS 调整，需与上一项同步抬高。 */
+export const TURN_WRAPUP_ROUNDS = positiveIntFromEnv("MEOWCODE_TURN_WRAPUP_ROUNDS", 50);
 /** 交替循环窗口：只看最近这么多次只读调用。 */
 export const ALTERNATING_WINDOW = 12;
 /**
