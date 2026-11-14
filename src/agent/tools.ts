@@ -19,7 +19,7 @@ import { renderChangeSnippet } from "./diff.js";
 import { readMultiEditGroups } from "./multi-edit.js";
 import { readPdfBase64, readPdfText } from "./pdf.js";
 import { grabFrames, grabStoryboard, probeVideo, type VideoToolResult } from "./video.js";
-import { resolveToolPath, IGNORED_ENTRY_NAMES } from "./paths.js";
+import { canonicalPathSync, resolveToolPath, IGNORED_ENTRY_NAMES } from "./paths.js";
 import { runDiagnosticsTool } from "../lsp/tool.js";
 import { runCodeInSandbox, type HostToolBridge } from "./code-mode.js";
 import { sliceLinesForModel } from "./read-slice.js";
@@ -187,11 +187,19 @@ function parseMemoryScope(value: unknown): MemoryScope | null {
  */
 /** 目标是否已经落在工具输出的落盘目录里：读产物不该再生成新产物（会无限增殖）。 */
 function isInsideToolOutput(workspace: string, file: string): boolean {
-  const relative = path.relative(path.resolve(workspace), path.resolve(file));
-  if (!relative || relative.startsWith("..") || path.isAbsolute(relative)) return false;
-  const normalized = relative.split(path.sep).join("/");
   const dir = TOOL_OUTPUT_DIR.split(path.sep).join("/");
-  return normalized === dir || normalized.startsWith(`${dir}/`);
+  const matches = (base: string, target: string): boolean => {
+    const relative = path.relative(base, target);
+    if (!relative || relative.startsWith("..") || path.isAbsolute(relative)) return false;
+    const normalized = relative.split(path.sep).join("/");
+    return normalized === dir || normalized.startsWith(`${dir}/`);
+  };
+  const resolvedWorkspace = path.resolve(workspace);
+  const resolvedFile = path.resolve(file);
+  if (matches(resolvedWorkspace, resolvedFile)) return true;
+  // 工作区可能是 8.3 短路径 / junction，而 file 已被 resolveToolPath realpath 展开：
+  // 词法 relative 会得到一串 ..，必须再按真实路径比一次（Windows CI 的 TEMP 就是短路径）。
+  return matches(canonicalPathSync(resolvedWorkspace), canonicalPathSync(resolvedFile));
 }
 
 /**

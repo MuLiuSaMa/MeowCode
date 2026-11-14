@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="./MeowCode.png" alt="MeowCode — A programming agent whose architecture you can tweak freely" width="100%">
+  <img src="./assets/MeowCode.png" alt="MeowCode — A programming agent whose architecture you can tweak freely" width="100%">
 </p>
 
 <h1 align="center">MeowCode —— 可自由修改架构的Agent</h1>
