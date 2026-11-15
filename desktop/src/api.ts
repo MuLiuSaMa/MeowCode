@@ -151,6 +151,11 @@ export type MeowEvent = {
   explanation?: string;
   /** ask_user 事件：模型提出的澄清问题（可批量多题）与每题候选选项 */
   questions?: AskUserQuestion[];
+  /** reconnect 事件：阶段 / 第几次尝试 / 最大尝试次数 / 下轮等待 */
+  phase?: "started" | "recovered" | "stopped";
+  attempt?: number;
+  maxAttempts?: number;
+  delayMs?: number;
   /** usage 事件：本轮模型调用的稳定 id（实时样本与最终真值共用，前端按 id 替换） */
   roundId?: string;
   /** usage 事件：true = 该轮最终真值 */

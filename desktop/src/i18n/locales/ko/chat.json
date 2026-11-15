@@ -25,7 +25,9 @@
     "fixingBugs": "버그 수정 중",
     "waitingAnswer": "답변 대기 중…",
     "compacting": "대화 기록 압축 중…",
-    "writingPlan": "계획 작성 중…"
+    "writingPlan": "계획 작성 중…",
+    "reconnecting": "연결이 끊겼습니다. 재연결 중 ({{attempt}}/{{max}})",
+    "reconnected": "다시 연결되었습니다"
   },
   "user": {
     "imageAlt": "이미지"

@@ -363,15 +363,18 @@ async function streamChatCompletions(options: {
       const choice = parsed.choices?.[0];
       if (choice?.finish_reason) finishReason = choice.finish_reason;
       const delta = choice?.delta;
+      let progressed = false;
       // 思考内容增量（reasoning_content 是 DeepSeek/GLM 的事实标准，reasoning 是部分网关的变体）
       const thinkingDelta = delta?.reasoning_content ?? delta?.reasoning;
       if (thinkingDelta) {
         reasoning.push(thinkingDelta);
         options.onThinking?.(thinkingDelta);
+        progressed = true;
       }
       if (delta?.content) {
         content.push(delta.content);
         options.onDelta(delta.content);
+        progressed = true;
       }
       for (const partial of delta?.tool_calls ?? []) {
         const index = partial.index ?? 0;
@@ -382,7 +385,10 @@ async function streamChatCompletions(options: {
         };
         if (partial.id) current.id = partial.id;
         if (partial.function?.name) current.function.name = partial.function.name;
-        if (partial.function?.arguments) current.function.arguments += partial.function.arguments;
+        if (partial.function?.arguments) {
+          current.function.arguments += partial.function.arguments;
+          progressed = true;
+        }
         toolCalls.set(index, current);
         options.onToolCall?.(summarizeToolCalls(toolCalls.values()));
         // 参数闭合即刻回调（每个 call 只触发一次）；调用方拿快照自行决定是否提前执行
@@ -395,6 +401,7 @@ async function streamChatCompletions(options: {
           options.onToolCallComplete({ ...current, function: { ...current.function } });
         }
       }
+      if (progressed) return true;
     },
     options.signal,
   );

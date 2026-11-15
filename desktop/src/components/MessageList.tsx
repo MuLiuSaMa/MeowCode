@@ -121,6 +121,7 @@ export function MessageList({
   onScrolledAwayChange,
   scrollApiRef,
   onOpenPlan,
+  reconnect,
 }: {
   items: TimelineItem[];
   canUse: boolean;
@@ -166,6 +167,8 @@ export function MessageList({
   onSuggestionDismiss?: () => void;
   /** 打开任意一份计划文档（整卡点击） */
   onOpenPlan?: (path: string) => void;
+  /** 模型流断线后的自动重连状态：占用底部状态行 */
+  reconnect?: { phase: "started" | "recovered"; attempt: number; maxAttempts: number } | null;
 }) {
   const { t } = useTranslation("chat");
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -182,6 +185,21 @@ export function MessageList({
 
   /** 回合进行中才显示：具体进度 > 压缩 > 等你回答 > 思考中 > 等待模型响应 > 随机文案；回合结束隐藏。 */
   const statusLine = useMemo<{ visible: boolean; status: AssistantStatus | null }>(() => {
+    if (reconnect?.phase === "started") {
+      return {
+        visible: true,
+        status: {
+          text: t("status.reconnecting", {
+            attempt: reconnect.attempt,
+            max: reconnect.maxAttempts,
+          }),
+          busy: true,
+        },
+      };
+    }
+    if (reconnect?.phase === "recovered") {
+      return { visible: true, status: { text: t("status.reconnected"), busy: false } };
+    }
     if (preparing) return { visible: true, status: { text: preparing, busy: true } };
 
     const anchor = lastStatusAnchor(items);
@@ -211,7 +229,7 @@ export function MessageList({
     if (waiting) return { visible: true, status: { text: t("waiting.response"), busy: true } };
 
     return { visible: false, status: null };
-  }, [items, waiting, preparing, t]);
+  }, [items, waiting, preparing, reconnect, t]);
 
   // 对话浏览条只列用户消息；不足两条时没有浏览意义，不渲染
   const userNavItems = useMemo(

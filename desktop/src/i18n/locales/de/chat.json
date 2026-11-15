@@ -25,7 +25,9 @@
     "fixingBugs": "Kämpft mit Bugs",
     "waitingAnswer": "Warte auf deine Antwort…",
     "compacting": "Gesprächsverlauf wird verdichtet…",
-    "writingPlan": "Plan wird geschrieben…"
+    "writingPlan": "Plan wird geschrieben…",
+    "reconnecting": "Verbindung unterbrochen, verbinde erneut ({{attempt}}/{{max}})",
+    "reconnected": "Wieder verbunden"
   },
   "user": {
     "imageAlt": "Bild"

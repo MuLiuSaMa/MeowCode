@@ -75,6 +75,11 @@ export function SideChatTab({
   const [contextWarningDismissed, setContextWarningDismissed] = useState(false);
   const [input, setInput] = useState("");
   const [streaming, setStreaming] = useState(false);
+  const [reconnectView, setReconnectView] = useState<{
+    phase: "started" | "recovered";
+    attempt: number;
+    maxAttempts: number;
+  } | null>(null);
   const [queuedPrompts, setQueuedPrompts] = useState<QueuedPrompt[]>([]);
   const queuedPromptsRef = useRef<QueuedPrompt[]>([]);
   /** 正在输入框里编辑的排队消息：文本独立于草稿 */
@@ -333,6 +338,21 @@ export function SideChatTab({
       if (event.type === "plan_documented") {
         if (event.path && chatModeRef.current === "plan") setPlanDocPath(event.path);
         return;
+      }
+      if (event.type === "reconnect") {
+        if (event.phase === "started") {
+          setReconnectView({
+            phase: "started",
+            attempt: event.attempt ?? 1,
+            maxAttempts: event.maxAttempts ?? 5,
+          });
+        } else {
+          setReconnectView(null);
+        }
+        return;
+      }
+      if (event.type === "turn_complete" || event.type === "error") {
+        setReconnectView(null);
       }
       const compactionKey =
         event.type === "compaction_started" || event.type === "compaction_completed"
@@ -746,7 +766,13 @@ export function SideChatTab({
         onCompact={manualCompact}
         onDismiss={() => setContextWarningDismissed(true)}
       />
-      <MessageList items={timeline} canUse={Boolean(sideId)} waiting={waiting} onOpenFile={onOpenFile} />
+      <MessageList
+        items={timeline}
+        canUse={Boolean(sideId)}
+        waiting={waiting}
+        reconnect={reconnectView}
+        onOpenFile={onOpenFile}
+      />
       <Composer
         value={queuedEdit ? queuedEdit.text : input}
         onChange={(next) => {

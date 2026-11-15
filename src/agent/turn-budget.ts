@@ -1,19 +1,15 @@
 /**
- * 回合级预算：轮次上限 + token 上限 + 交替循环检测。
+ * 回合级预算：可选 token 上限 + 交替循环检测。
  *
  * `loop-guard` 只抓「连续且参数与输出逐字节相同」的调用；模型在
  * `grep A` / `read_file B` 之间来回横跳永远不触发。这里的窗口按「签名在
  * 最近 N 次只读调用里出现几次」判定，任何写类工具介入都清空窗口
  * （写之后重读同一文件是合法流程）。
  *
- * 预算只为「跑飞」兜底，不是正常工作的限制：轮次上限远高于真实任务所需，
- * 命中先注一条 wrap-up 提醒，再命中才硬停并给出可读原因。
+ * 不设轮次上限：轮次本身不产生额外开销，跑多少轮由任务和模型决定；
+ * 跑飞由交替循环检测兜底。
  */
 
-/** 单回合模型请求轮次硬上限。 */
-export const MAX_TURN_ROUNDS = 60;
-/** 软阈值：到这里注入一次 wrap-up 提醒，让模型收尾而不是被打断。 */
-export const TURN_WRAPUP_ROUNDS = 50;
 /** 交替循环窗口：只看最近这么多次只读调用。 */
 export const ALTERNATING_WINDOW = 12;
 /**
@@ -23,15 +19,8 @@ export const ALTERNATING_WINDOW = 12;
  * 话预算烧得比账单快 5~10 倍，一次正常的二十轮任务就能把「三倍窗口」耗尽。
  */
 export const CACHE_READ_WEIGHT = 0.1;
-/** 同一签名在窗口内出现 3 次 → 提醒；4 次 → 拒绝执行。 */
+/** 同一签名在窗口内出现 3 次起提醒，重复再多也只提醒、不拦截。 */
 export const ALTERNATING_REPEAT_REMIND = 3;
-export const ALTERNATING_REPEAT_BLOCK = 4;
-
-export const TURN_WRAPUP_NOTE =
-  "[meowcode] Round budget: this turn is close to its limit. Stop exploring, make the minimal change that satisfies the request, verify it once, and report — including anything you could not finish.";
-
-export const turnLimitNote = (rounds: number) =>
-  `[meowcode] Turn stopped: this turn reached its ${rounds}-round budget without finishing. Nothing further was executed. Report what is done and what remains, then continue in a new message.`;
 
 export const TURN_TOKEN_LIMIT_NOTE =
   "[meowcode] Turn stopped: this turn exceeded its token budget (roughly three context windows of billed input plus output). Nothing further was executed. Report what is done and what remains, then continue in a new message.";
@@ -39,22 +28,14 @@ export const TURN_TOKEN_LIMIT_NOTE =
 export const alternatingReminder = (tool: string, count: number) =>
   `[meowcode] Warning: ${tool} has been called with identical arguments ${count} times this turn, with no file change in between. The output cannot have changed. Use different arguments, or summarize what you have and move on.`;
 
-export const alternatingBlockedOutput = (tool: string, count: number) =>
-  `Blocked: ${tool} has already been called with identical arguments ${count} times this turn and no file changed in between, so a repeat cannot return anything new. Change the arguments or take a different approach.`;
-
 export type TurnBudgetConfig = {
-  /** 轮次上限；缺省 MAX_TURN_ROUNDS */
-  maxRounds?: number;
   /** 本回合累计 token 上限（输入 + 输出）；null / 缺省 = 不设限 */
   maxTokens?: number | null;
 };
 
-export type RoundGate = { stop?: string; note?: string };
+export type RoundGate = { stop?: string };
 
-export type CallVerdict =
-  | { blocked: string; reminder?: undefined }
-  | { blocked?: undefined; reminder: string }
-  | { blocked?: undefined; reminder?: undefined };
+export type CallVerdict = { reminder?: string };
 
 /** 稳定序列化工具参数：键排序后拼接，换键序不算新签名。 */
 function stableArgs(raw: string): string {
@@ -81,16 +62,12 @@ export function callSignature(tool: string, rawArgs: string): string {
 }
 
 export class TurnBudget {
-  private rounds = 0;
   private tokens = 0;
   /** 最近若干次「只读」调用签名；写类调用会清空它 */
   private window: string[] = [];
-  private wrapUpSent = false;
-  private readonly maxRounds: number;
   private readonly maxTokens: number | null;
 
   constructor(config: TurnBudgetConfig = {}) {
-    this.maxRounds = Math.max(1, Math.floor(config.maxRounds ?? MAX_TURN_ROUNDS));
     const maxTokens = config.maxTokens;
     this.maxTokens =
       typeof maxTokens === "number" && Number.isFinite(maxTokens) && maxTokens > 0
@@ -98,26 +75,14 @@ export class TurnBudget {
         : null;
   }
 
-  get round(): number {
-    return this.rounds;
-  }
-
   get usedTokens(): number {
     return this.tokens;
   }
 
-  /** 轮首判定：stop 为硬停原因；note 为要注入的 wrap-up 提醒。 */
+  /** 轮首判定：只有显式配置的 token 上限会硬停，轮次本身不设限。 */
   beginRound(): RoundGate {
-    this.rounds += 1;
-    if (this.rounds > this.maxRounds) return { stop: turnLimitNote(this.maxRounds) };
     if (this.maxTokens !== null && this.tokens >= this.maxTokens) {
       return { stop: TURN_TOKEN_LIMIT_NOTE };
-    }
-    // 软阈值只发一次：maxRounds 比默认值小时按 maxRounds 提前触发
-    const softAt = Math.min(TURN_WRAPUP_ROUNDS, Math.max(1, this.maxRounds - 1));
-    if (!this.wrapUpSent && this.rounds >= softAt) {
-      this.wrapUpSent = true;
-      return { note: TURN_WRAPUP_NOTE };
     }
     return {};
   }
@@ -176,9 +141,6 @@ export class TurnBudget {
     }
     const count = this.window.filter((item) => item === signature).length;
     const tool = signature.slice(0, Math.max(0, signature.indexOf(":")));
-    if (count >= ALTERNATING_REPEAT_BLOCK) {
-      return { blocked: alternatingBlockedOutput(tool, count) };
-    }
     if (count >= ALTERNATING_REPEAT_REMIND) {
       return { reminder: alternatingReminder(tool, count) };
     }

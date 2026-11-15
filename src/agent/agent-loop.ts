@@ -18,13 +18,47 @@ import {
   type ContextUsageAnchor,
 } from "./context.js";
 import { isContextOverflow } from "./compaction.js";
+import { isAbortError } from "./http.js";
 import { CONTEXT_SAFETY_TOKENS } from "./output-budget.js";
+import { providerErrorKind } from "./provider-error.js";
 import { callSignature, TurnBudget } from "./turn-budget.js";
 import type { StreamCompletionResult } from "./provider.js";
 import type { ToolCallProgress } from "./tool-progress.js";
 import type { ChatMessage, ProviderConfig, ToolCall, ToolDefinition } from "./types.js";
 
 export type ToolResultMessage = Extract<ChatMessage, { role: "tool" }>;
+
+/**
+ * 断流是否值得同服务商重连。
+ * 429/5xx 交给既有的服务商故障转移链，不在这里连撞同一个端点；
+ * 这里只接超时和适配器抛出的传输层中断（缺终止帧、error 帧、fetch 失败）。
+ */
+function isReconnectableStreamError(error: unknown): boolean {
+  if (isAbortError(error) || isContextOverflow(error)) return false;
+  if (providerErrorKind(error) === "timeout") return true;
+  const message = error instanceof Error ? error.message : "";
+  return /Model stream ended before completion|Model response failed|fetch failed|network|socket|ECONN|ETIMEDOUT|terminated|other side closed/i.test(
+    message,
+  );
+}
+
+function sleepForReconnect(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(new DOMException("Aborted", "AbortError"));
+      return;
+    }
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(new DOMException("Aborted", "AbortError"));
+    };
+    const timer = setTimeout(() => {
+      signal?.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
+}
 
 /**
  * 无副作用、可安全并发的只读工具（宿主未提供 isParallelSafe 时的回退）。
@@ -85,6 +119,17 @@ export interface AgentLoopHooks {
 
 /** turn_stop 连续拦截上限：超过则强制收尾，防止 hook 脚本无限续跑。 */
 export const MAX_TURN_STOP_BLOCKS = 3;
+/** 单回合流式请求的最大尝试次数（含首次），断流时按安全边界自动重连。 */
+export const MAX_RECONNECT_ATTEMPTS = 5;
+/** 每次重连前的等待：2s / 4s / 8s / 16s。 */
+export const RECONNECT_DELAYS_MS = [2_000, 4_000, 8_000, 16_000] as const;
+
+/** 输出被 max_tokens 截断后的自动续写次数（对齐 Claude Code 的 3 次）。 */
+export const MAX_OUTPUT_LIMIT_RECOVERIES = 3;
+/** 首次撞输出上限后，本轮后续请求升到的输出上限；仍受上下文窗口 clamp。 */
+export const ESCALATED_OUTPUT_TOKENS = 64_000;
+const OUTPUT_LIMIT_RESUME_NOTE =
+  "[meowcode] Output token limit hit. Resume directly — no apology, no recap of what you were doing. Pick up mid-thought if that is where the cut happened. Break remaining work into smaller pieces.";
 
 export type AgentStreamOptions = {
   provider: ProviderConfig;
@@ -151,6 +196,16 @@ export interface AgentLoopHost {
   ): Promise<void>;
   onMessageComplete(result: StreamCompletionResult): void;
   onError(message: string): void;
+  /** 流式请求自动重连的阶段事件；宿主转成 UI 事件。 */
+  onReconnect?(info: {
+    phase: "started" | "recovered" | "stopped";
+    attempt: number;
+    maxAttempts: number;
+    delayMs?: number;
+    reason?: string;
+  }): void;
+  /** 重连等待；缺省使用内置的可中止 sleep。测试宿主可注入即时等待。 */
+  waitForReconnect?(delayMs: number, signal?: AbortSignal): Promise<void>;
   persistMetrics(timing: AgentLoopTiming): Promise<void>;
 
   /** 溢出降级：预热采纳 → 确定性收缩 → 摘要工具输出 → 全量压缩 */
@@ -171,6 +226,8 @@ export interface AgentLoopHost {
   earlyRun(callId: string): Promise<ToolResultMessage> | undefined;
   /** user 消息落盘并追加进工作上下文（turn_stop 拦截后续跑用） */
   pushUserMessage(messages: ChatMessage[], content: string): Promise<void>;
+  /** 隐藏的运行时注记：落盘参与请求，但不显示在聊天时间线（输出上限续写用） */
+  pushContextNote?(messages: ChatMessage[], content: string): Promise<void>;
   /** 工具被门禁拦截时的 UI 事件（tool_started/output/finished ok=false） */
   onToolBlocked?(call: ToolCall, message: ToolResultMessage): void;
   /**
@@ -180,19 +237,18 @@ export interface AgentLoopHost {
   isParallelSafe?(toolName: string): boolean;
 
   /**
-   * 回合级预算：轮次上限与可选的 token 上限。未实现时用默认轮次上限、不设 token 上限。
-   * token 上限的语义是「本回合累计输入 + 输出」；当前桌面运行时只给轮次上限，
+   * 回合级预算：可选 token 上限。未实现时不设 token 上限。
+   * token 上限的语义是「本回合累计输入 + 输出」；当前桌面运行时不下发上限，
    * 避免长回合按「每轮重发整段历史」的累计口径被过早掐断。
    */
-  turnBudget?(): { maxRounds?: number; maxTokens?: number | null };
+  turnBudget?(): { maxTokens?: number | null };
 
   hooks?: AgentLoopHooks;
 }
 
 /**
- * 回合循环。工具轮次受 TurnBudget 约束（轮次上限 + token 上限 + 交替循环检测）：
- * 正常任务远达不到上限，预算只为「模型跑飞」兜底——没有它，一个失控回合
- * 只能靠用户手动点停止，代价是整段额度。
+ * 回合循环。回合级预算只管可选 token 上限与交替循环检测，轮次不设上限：
+ * 长任务跑多少轮由任务和模型决定；失控的 A/B 横跳由循环检测兜底。
  */
 export async function runAgentLoop(host: AgentLoopHost): Promise<void> {
   // 故障转移会就地替换本回合的 provider（用户的全局配置不动）
@@ -202,8 +258,46 @@ export async function runAgentLoop(host: AgentLoopHost): Promise<void> {
   let roundStartedAt: number | null = null;
   let lastSpeed: number | null = null;
   let messages: ChatMessage[] = host.initialMessages();
-  // 回合级预算：轮次 + token + 交替循环。宿主可按 provider 窗口收紧。
+  // 回合级预算：可选 token 上限 + 交替循环检测。
   const budget = new TurnBudget(host.turnBudget?.() ?? {});
+  // 输出上限恢复：首次撞限把后续请求升到 64k，之后最多自动续写 3 次
+  let outputLimitEscalated = false;
+  let outputLimitRecoveries = 0;
+  // 续写段在中途不 finalize，把文字攒到本回合最后一次 message_complete，避免 UI 裂成两个气泡
+  let carriedContent = "";
+  let carriedReasoning = "";
+  const rememberTruncatedSegment = (result: StreamCompletionResult) => {
+    carriedContent += result.message.content ?? "";
+    carriedReasoning += result.message.reasoning ?? "";
+  };
+  const withCarriedSegment = (result: StreamCompletionResult): StreamCompletionResult => {
+    if (!carriedContent && !carriedReasoning) return result;
+    const reasoning = carriedReasoning + (result.message.reasoning ?? "");
+    return {
+      ...result,
+      message: {
+        ...result.message,
+        content: carriedContent + (result.message.content ?? ""),
+        ...(reasoning ? { reasoning } : {}),
+      },
+    };
+  };
+  const carriedOnly = (result: StreamCompletionResult): StreamCompletionResult => ({
+    ...result,
+    message: {
+      ...result.message,
+      content: carriedContent,
+      ...(carriedReasoning ? { reasoning: carriedReasoning } : {}),
+    },
+  });
+  const recoverOutputLimit = async (): Promise<boolean> => {
+    if (outputLimitRecoveries >= MAX_OUTPUT_LIMIT_RECOVERIES) return false;
+    outputLimitRecoveries += 1;
+    outputLimitEscalated = true;
+    if (host.pushContextNote) await host.pushContextNote(messages, OUTPUT_LIMIT_RESUME_NOTE);
+    else await host.pushUserMessage(messages, OUTPUT_LIMIT_RESUME_NOTE);
+    return true;
+  };
   // 溢出降级档位：0 未处理 → 1 已确定性收缩 → 2 已摘要工具输出 → 3 已全量压缩
   let escalation = 0;
   // 本回合 turn_stop 拦截计数（硬上限 MAX_TURN_STOP_BLOCKS 防 hook 死循环）
@@ -216,14 +310,13 @@ export async function runAgentLoop(host: AgentLoopHost): Promise<void> {
       : READ_ONLY_PARALLEL_TOOLS.has(call.function.name);
 
   while (true) {
-    // 回合级预算：硬停靠 budget，软提醒在停手前注入一次让模型自己收尾
+    // 回合级预算：只有宿主显式下发的 token 上限会硬停
     const roundGate = budget.beginRound();
     if (roundGate.stop) {
       host.onError(roundGate.stop);
       await host.persistMetrics({ startedAt: turnStartedAt, firstDeltaAt, lastSpeed });
       return;
     }
-    if (roundGate.note) await host.pushUserMessage(messages, roundGate.note);
     // 服务商声明了上下文窗口就按窗口裁剪：永远保留 system，
     // 带 tool_calls 的 assistant 与它的 tool 结果成组丢弃，避免孤儿 tool_call_id。
     // 配对修复必须无条件执行：没配 contextWindow 时不会走 trimMessages，
@@ -243,14 +336,17 @@ export async function runAgentLoop(host: AgentLoopHost): Promise<void> {
     // 输出预算先按裁剪前的输入收紧一次；裁剪后再按实际输入放宽/收紧，
     // 保证 input + output + 余量始终落在窗口内（参考 ZCode/OpenCode 的 clamp）。
     // 输入优先用服务商真实用量锚点 + 尾部估算，锚点失效才整段字符估算。
+    const budgetProvider = outputLimitEscalated
+      ? { ...provider, maxTokens: Math.max(provider.maxTokens ?? 0, ESCALATED_OUTPUT_TOKENS) }
+      : provider;
     let outputTokens = clampOutputTokens(
-      provider,
+      budgetProvider,
       estimateRequestInputTokens(messages, host.usageAnchor(), toolTokens),
     );
     if (provider.contextWindow) {
       messages = trimMessages(messages, provider.contextWindow, outputTokens, toolTokens);
       outputTokens = clampOutputTokens(
-        provider,
+        budgetProvider,
         estimateRequestInputTokens(messages, host.usageAnchor(), toolTokens),
       );
       // 裁剪后仍然放不下：说明当前 user 回合/附件本身不可压缩，继续发只会撞服务商溢出。
@@ -268,40 +364,89 @@ export async function runAgentLoop(host: AgentLoopHost): Promise<void> {
     let lastToolProgressKey = "";
     let lastToolProgressChars = 0;
     const requestProvider = host.resolveRequestProvider({ messages, maxTokens: outputTokens });
+    let reconnectAttempts = 0;
     try {
-      result = await host.stream({
-        provider: requestProvider,
-        messages,
-        tools: roundTools,
-        toolCacheAnchor: host.toolCacheAnchor?.(),
-        signal: host.abortSignal(),
-        onToolCallComplete: (call) => host.onToolCallComplete(call, messages),
-        onDelta: (delta) => {
-          const now = Date.now();
-          if (firstDeltaAt == null) firstDeltaAt = now;
-          if (roundStartedAt == null) roundStartedAt = now;
-          host.onDelta(delta);
-        },
-        onThinking: (delta) => {
-          const now = Date.now();
-          if (firstDeltaAt == null) firstDeltaAt = now;
-          if (roundStartedAt == null) roundStartedAt = now;
-          host.onThinking(delta);
-        },
-        onToolCall: (progress) => {
-          // 工具参数可能以大量小 chunk 到达：只在数量/名字/目标路径变化或每 512 字符发一次
-          const key = `${progress.count}|${(progress.names ?? []).join(",")}|${progress.path ?? ""}`;
-          if (
-            key === lastToolProgressKey &&
-            progress.chars - lastToolProgressChars < 512
-          ) {
-            return;
+      while (true) {
+        // 每轮尝试重新判定安全边界：出过字或工具已开始执行就不自动重连
+        let roundSawOutput = false;
+        let roundSawToolCall = false;
+        try {
+          result = await host.stream({
+            provider: requestProvider,
+            messages,
+            tools: roundTools,
+            toolCacheAnchor: host.toolCacheAnchor?.(),
+            signal: host.abortSignal(),
+            onToolCallComplete: (call) => {
+              roundSawToolCall = true;
+              host.onToolCallComplete(call, messages);
+            },
+            onDelta: (delta) => {
+              if (delta) roundSawOutput = true;
+              const now = Date.now();
+              if (firstDeltaAt == null) firstDeltaAt = now;
+              if (roundStartedAt == null) roundStartedAt = now;
+              host.onDelta(delta);
+            },
+            onThinking: (delta) => {
+              if (delta) roundSawOutput = true;
+              const now = Date.now();
+              if (firstDeltaAt == null) firstDeltaAt = now;
+              if (roundStartedAt == null) roundStartedAt = now;
+              host.onThinking(delta);
+            },
+            onToolCall: (progress) => {
+              // 工具参数可能以大量小 chunk 到达：只在数量/名字/目标路径变化或每 512 字符发一次
+              const key = `${progress.count}|${(progress.names ?? []).join(",")}|${progress.path ?? ""}`;
+              if (
+                key === lastToolProgressKey &&
+                progress.chars - lastToolProgressChars < 512
+              ) {
+                return;
+              }
+              lastToolProgressKey = key;
+              lastToolProgressChars = progress.chars;
+              host.onToolCallProgress(progress);
+            },
+          });
+          if (reconnectAttempts > 0) {
+            host.onReconnect?.({
+              phase: "recovered",
+              attempt: reconnectAttempts + 1,
+              maxAttempts: MAX_RECONNECT_ATTEMPTS,
+            });
           }
-          lastToolProgressKey = key;
-          lastToolProgressChars = progress.chars;
-          host.onToolCallProgress(progress);
-        },
-      });
+          break;
+        } catch (error) {
+          const canRetry =
+            reconnectAttempts < RECONNECT_DELAYS_MS.length &&
+            !roundSawOutput &&
+            !roundSawToolCall &&
+            !host.aborted() &&
+            isReconnectableStreamError(error);
+          if (!canRetry) {
+            if (reconnectAttempts > 0) {
+              host.onReconnect?.({
+                phase: "stopped",
+                attempt: reconnectAttempts + 1,
+                maxAttempts: MAX_RECONNECT_ATTEMPTS,
+              });
+            }
+            throw error;
+          }
+          const delayMs = RECONNECT_DELAYS_MS[reconnectAttempts];
+          reconnectAttempts += 1;
+          host.onReconnect?.({
+            phase: "started",
+            attempt: reconnectAttempts + 1,
+            maxAttempts: MAX_RECONNECT_ATTEMPTS,
+            delayMs,
+            reason: error instanceof Error ? error.message : String(error),
+          });
+          if (host.waitForReconnect) await host.waitForReconnect(delayMs, host.abortSignal());
+          else await sleepForReconnect(delayMs, host.abortSignal());
+        }
+      }
     } catch (error) {
       // 1) 溢出优先：换服务商解决不了上下文太长，先走既有的压缩降级链。
       if (isContextOverflow(error)) {
@@ -368,8 +513,23 @@ export async function runAgentLoop(host: AgentLoopHost): Promise<void> {
       // 运行中插话优先于收尾：注入后继续下一轮，不占用 stop hook 次数
       const steer = await hooks?.takeSteer?.();
       if (steer) {
+        if (truncated) {
+          outputLimitEscalated = true;
+          rememberTruncatedSegment(result);
+        }
         await host.pushUserMessage(messages, steer);
         continue;
+      }
+      // 输出上限：先升档续写；截断不是正常收尾，不能交给 stop hook 结束
+      if (truncated) {
+        rememberTruncatedSegment(result);
+        if (await recoverOutputLimit()) continue;
+        host.onMessageComplete(carriedOnly(result));
+        host.onError(
+          'Response truncated: the model reached its output token limit. Send "continue" to resume.',
+        );
+        await host.persistMetrics({ startedAt: turnStartedAt, firstDeltaAt, lastSpeed });
+        return;
       }
       // 回合收尾闸（Stop hook）：拦截则 reason 作为 user 消息续跑，不落 metrics
       const stop = await hooks?.beforeTurnEnd?.({
@@ -391,26 +551,24 @@ export async function runAgentLoop(host: AgentLoopHost): Promise<void> {
         continue;
       }
       turnStopBlocks = 0;
-      host.onMessageComplete(result);
-      if (truncated) {
-        host.onError(
-          'Response truncated: the model reached its output token limit. Send "continue" to resume.',
-        );
-      }
+      host.onMessageComplete(withCarriedSegment(result));
       await host.persistMetrics({ startedAt: turnStartedAt, firstDeltaAt, lastSpeed });
       return;
     }
 
     if (truncated) {
+      rememberTruncatedSegment(result);
       // 工具参数可能只写了一半：不执行，补上配对的 tool 结果避免历史非法。
       for (const call of toolCalls) {
         await host.pushToolMessage(messages, {
           role: "tool",
-          content: "Tool call not executed: the model response was truncated.",
+          content:
+            "Tool call not executed: the model response was truncated by the output token limit.",
           tool_call_id: call.id,
           name: call.function.name,
         });
       }
+      if (await recoverOutputLimit()) continue;
       host.onError("Response truncated during a tool call; nothing was executed. Please retry.");
       await host.persistMetrics({ startedAt: turnStartedAt, firstDeltaAt, lastSpeed });
       return;
@@ -424,30 +582,14 @@ export async function runAgentLoop(host: AgentLoopHost): Promise<void> {
     });
 
     // 交替循环检测：任何可能有副作用的调用（写类 / 命令 / 子 Agent）都会清空窗口，
-    // 只有「纯只读原地打转」才计数——A/B 来回横跳是该拦的，改动后重读不是。
-    const blockedByBudget = new Map<string, string>();
+    // 只有「纯只读原地打转」才计数——A/B 来回横跳只提醒，改动后重读不打扰。
     const budgetNotes = new Map<string, string>();
     for (const call of toolCalls) {
       const verdict = budget.observeCall(
         callSignature(call.function.name, call.function.arguments ?? ""),
         !parallelSafe(call),
       );
-      if (verdict.blocked) blockedByBudget.set(call.id, verdict.blocked);
-      else if (verdict.reminder) budgetNotes.set(call.id, verdict.reminder);
-    }
-    if (blockedByBudget.size) {
-      for (const call of toolCalls) {
-        const reason = blockedByBudget.get(call.id);
-        if (!reason) continue;
-        const message: ToolResultMessage = {
-          role: "tool",
-          content: reason,
-          tool_call_id: call.id,
-          name: call.function.name,
-        };
-        host.onToolBlocked?.(call, message);
-        await host.pushToolMessage(messages, message);
-      }
+      if (verdict.reminder) budgetNotes.set(call.id, verdict.reminder);
     }
     /** 附上交替循环提醒（同一签名在窗口里反复出现时由 budget 生成）。 */
     const withBudgetNote = (call: ToolCall, message: ToolResultMessage): ToolResultMessage => {
@@ -509,8 +651,7 @@ export async function runAgentLoop(host: AgentLoopHost): Promise<void> {
       return message;
     };
 
-    // 被预算拦下的调用已经落过 tool 消息，不再进入执行分支
-    const executableCalls = toolCalls.filter((call) => !blockedByBudget.has(call.id));
+    const executableCalls = toolCalls;
     const taskCalls = executableCalls.filter((call) => call.function.name === "task");
     const otherCalls = executableCalls.filter((call) => call.function.name !== "task");
 

@@ -25,7 +25,9 @@
     "fixingBugs": "努力改BUG中",
     "waitingAnswer": "等你回答…",
     "compacting": "正在壓縮對話歷史…",
-    "writingPlan": "正在寫入計畫…"
+    "writingPlan": "正在寫入計畫…",
+    "reconnecting": "連線中斷，正在重連（{{attempt}}/{{max}}）",
+    "reconnected": "已重新連線"
   },
   "user": {
     "imageAlt": "圖片"

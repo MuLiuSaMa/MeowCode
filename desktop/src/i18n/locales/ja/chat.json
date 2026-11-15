@@ -25,7 +25,9 @@
     "fixingBugs": "バグ修正中",
     "waitingAnswer": "回答待ち…",
     "compacting": "会話履歴を圧縮中…",
-    "writingPlan": "計画を書き出し中…"
+    "writingPlan": "計画を書き出し中…",
+    "reconnecting": "接続が切れました。再接続中（{{attempt}}/{{max}}）",
+    "reconnected": "再接続しました"
   },
   "user": {
     "imageAlt": "画像"

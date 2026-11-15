@@ -25,7 +25,9 @@
     "fixingBugs": "Corrigiendo bugs",
     "waitingAnswer": "Esperando tu respuesta…",
     "compacting": "Compactando el historial…",
-    "writingPlan": "Escribiendo el plan…"
+    "writingPlan": "Escribiendo el plan…",
+    "reconnecting": "Conexión interrumpida, reconectando ({{attempt}}/{{max}})",
+    "reconnected": "Reconectado"
   },
   "user": {
     "imageAlt": "Imagen"

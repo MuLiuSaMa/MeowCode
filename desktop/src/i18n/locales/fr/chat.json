@@ -25,7 +25,9 @@
     "fixingBugs": "Correction de bugs",
     "waitingAnswer": "En attente de votre réponse…",
     "compacting": "Compaction de l'historique…",
-    "writingPlan": "Rédaction du plan…"
+    "writingPlan": "Rédaction du plan…",
+    "reconnecting": "Connexion interrompue, reconnexion ({{attempt}}/{{max}})",
+    "reconnected": "Reconnecté"
   },
   "user": {
     "imageAlt": "Image"

@@ -25,7 +25,9 @@
     "fixingBugs": "बग ठीक कर रहा है",
     "waitingAnswer": "आपके उत्तर की प्रतीक्षा…",
     "compacting": "बातचीत का इतिहास संपीड़ित हो रहा है…",
-    "writingPlan": "योजना लिखी जा रही है…"
+    "writingPlan": "योजना लिखी जा रही है…",
+    "reconnecting": "कनेक्शन टूट गया, फिर से कनेक्ट हो रहा है ({{attempt}}/{{max}})",
+    "reconnected": "फिर से कनेक्ट हो गया"
   },
   "user": {
     "imageAlt": "छवि"

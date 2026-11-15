@@ -51,8 +51,9 @@ UninstallDisplayIcon={app}\{#MyAppExeName}
 ; 安装包自身图标与版本信息
 SetupIconFile=resources\icon.ico
 ; 猫头品牌向导图（scripts/make-installer-assets.mjs 生成）
-WizardImageFile=resources\installer-wizard.bmp
-WizardSmallImageFile=resources\installer-wizard-small.bmp
+; 按 DPI 档位给多张，Setup 自动挑最接近的一张，避免高缩放下拉伸发糊
+WizardImageFile=resources\installer-wizard-100.png,resources\installer-wizard-125.png,resources\installer-wizard-150.png,resources\installer-wizard-175.png,resources\installer-wizard-200.png,resources\installer-wizard-225.png,resources\installer-wizard-250.png
+WizardSmallImageFile=resources\installer-wizard-small-100.png,resources\installer-wizard-small-125.png,resources\installer-wizard-small-150.png,resources\installer-wizard-small-175.png,resources\installer-wizard-small-200.png,resources\installer-wizard-small-225.png,resources\installer-wizard-small-250.png
 VersionInfoVersion={#MyAppVersion}
 VersionInfoCopyright=Copyright © MuLiuSaMa
 VersionInfoProductName={#MyAppName}

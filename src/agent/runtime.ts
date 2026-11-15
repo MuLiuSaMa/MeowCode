@@ -3113,11 +3113,6 @@ export class AgentRuntime {
     this.loopGuard.reset(sessionId);
   }
 
-  /** 执行前检查：连续 8 次零信息重复直接拒绝执行 —— 省掉执行本身与整轮上下文重发。 */
-  private loopBlockFor(session: SessionStore, tool: string, input: unknown): string | null {
-    return this.loopGuard.blockFor(session.id, tool, input);
-  }
-
   /** 执行后登记循环计数，返回要附加到工具结果的提醒（未达阈值返回空串）。 */
   private noteLoopResult(session: SessionStore, tool: string, input: unknown, output: string): string {
     return this.loopGuard.noteResult(session.id, tool, input, output);
@@ -5111,6 +5106,7 @@ export class AgentRuntime {
         });
       },
       onError: (message) => this.emit({ type: "error", sessionId: session.id, message }),
+      onReconnect: (info) => this.emit({ type: "reconnect", sessionId: session.id, ...info }),
       persistMetrics: (timing) =>
         this.persistTurnMetrics(session, timing.startedAt, timing.firstDeltaAt, timing.lastSpeed),
       escalateOnOverflow: (messages, stage) =>
@@ -5125,14 +5121,19 @@ export class AgentRuntime {
       earlyRun: (callId) => this.earlyToolRuns.get(callId),
       isParallelSafe: (toolName) => isToolParallelSafe(toolName),
       /**
-       * 单回合只限轮次，不再设累计 token 上限。
+       * 不设累计 token 上限，也不设轮次上限。
        *
        * 原先按「3× 上下文窗口」累计计费：每轮重发整段历史，200k 上下文跑
        * 15 轮就到 3M，正常长任务会被反复掐断；OpenCode/Codex/DSH 也都没有
-       * 这种普通回合的累计 token 硬停。跑飞由 60 轮上限和循环守卫兜底。
+       * 这种普通回合的累计 token 硬停。跑飞由交替循环检测兜底。
        */
       turnBudget: () => ({}),
       pushUserMessage: (messages, content) => this.pushUserMessage(session, messages, content),
+      pushContextNote: async (messages, content) => {
+        await session.appendContextNote(content, "output-limit");
+        await session.flush().catch(() => undefined);
+        messages.push({ role: "user", content });
+      },
       onToolBlocked: (call, message) => {
         // 门禁拦截也要有完整 UI 事件（与插件 block 的形态一致）
         this.emit({
@@ -5567,14 +5568,6 @@ export class AgentRuntime {
         return { role: "tool", content: output, tool_call_id: call.id, name: tool };
       }
       input = revalidated.input;
-    }
-
-    // 循环拦截（P1-2）：零信息重复达 8 次就不再执行
-    const blocked = this.loopBlockFor(session, tool, input);
-    if (blocked) {
-      this.emit({ type: "tool_output", sessionId: session.id, callId: call.id, output: blocked, truncated: false });
-      this.emit({ type: "tool_finished", sessionId: session.id, callId: call.id, ok: false });
-      return { role: "tool", content: blocked, tool_call_id: call.id, name: tool };
     }
 
     if (hookAsk) {
@@ -8242,20 +8235,6 @@ export class AgentRuntime {
       this.emit({ type: "tool_finished", sessionId: session.id, callId: call.id, ok: true });
       return;
     }
-    // 循环拦截（P1-2）：放在审批之前 —— 被判死的调用不该再打扰用户弹审批
-    const loopBlock = this.loopBlockFor(session, tool, input);
-    if (loopBlock) {
-      await this.pushToolMessage(session, messages, {
-        role: "tool",
-        content: loopBlock,
-        tool_call_id: call.id,
-        name: tool,
-      });
-      this.emit({ type: "tool_output", sessionId: session.id, callId: call.id, output: loopBlock, truncated: false });
-      this.emit({ type: "tool_finished", sessionId: session.id, callId: call.id, ok: false });
-      return;
-    }
-
     // plan 模式：唯一放行的是 plans/ 下的计划文档写入；子 Agent 直接拒绝（不弹审批）
     const chatMode = this.turnChatMode ?? this.chatMode;
     const planPaths =

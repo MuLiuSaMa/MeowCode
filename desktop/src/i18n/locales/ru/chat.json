@@ -25,7 +25,9 @@
     "fixingBugs": "Исправляет баги",
     "waitingAnswer": "Ждём вашего ответа…",
     "compacting": "Сжимаем историю диалога…",
-    "writingPlan": "Пишем план…"
+    "writingPlan": "Пишем план…",
+    "reconnecting": "Соединение прервано, переподключение ({{attempt}}/{{max}})",
+    "reconnected": "Соединение восстановлено"
   },
   "user": {
     "imageAlt": "Изображение"

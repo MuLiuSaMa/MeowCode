@@ -37,12 +37,12 @@ function lanczos(x) {
   return (3 * Math.sin(px) * Math.sin(px / 3)) / (px * px);
 }
 
-/** 方形重采样（源图必须是正方形）。 */
-export function resample(src, size) {
+/** Lanczos3 重采样到任意宽高（源图任意比例，保留 alpha）。 */
+export function resampleRect(src, width, height) {
   const sw = src.width;
   const sh = src.height;
-  const scale = size / sw;
-  const support = 3 / scale;
+  const scaleX = width / sw;
+  const scaleY = height / sh;
   const sr = new Float32Array(sw * sh);
   const sg = new Float32Array(sw * sh);
   const sb = new Float32Array(sw * sh);
@@ -55,7 +55,8 @@ export function resample(src, size) {
     sb[i] = src.data[i * 4 + 2] * a;
   }
 
-  const weights = (dest, sourceLength) => {
+  const weights = (dest, scale, sourceLength) => {
+    const support = 3 / scale;
     const center = (dest + 0.5) / scale - 0.5;
     const start = Math.max(0, Math.floor(center - support));
     const end = Math.min(sourceLength - 1, Math.ceil(center + support));
@@ -72,24 +73,24 @@ export function resample(src, size) {
     return list;
   };
 
-  const hr = new Float32Array(size * sh);
-  const hg = new Float32Array(size * sh);
-  const hb = new Float32Array(size * sh);
-  const ha = new Float32Array(size * sh);
+  const hr = new Float32Array(width * sh);
+  const hg = new Float32Array(width * sh);
+  const hb = new Float32Array(width * sh);
+  const ha = new Float32Array(width * sh);
   for (let y = 0; y < sh; y++) {
-    for (let x = 0; x < size; x++) {
+    for (let x = 0; x < width; x++) {
       let r = 0;
       let g = 0;
       let b = 0;
       let a = 0;
-      for (const [sx, w] of weights(x, sw)) {
+      for (const [sx, w] of weights(x, scaleX, sw)) {
         const si = y * sw + sx;
         r += sr[si] * w;
         g += sg[si] * w;
         b += sb[si] * w;
         a += sa[si] * w;
       }
-      const di = y * size + x;
+      const di = y * width + x;
       hr[di] = r;
       hg[di] = g;
       hb[di] = b;
@@ -97,21 +98,21 @@ export function resample(src, size) {
     }
   }
 
-  const out = new PNG({ width: size, height: size });
-  for (let y = 0; y < size; y++) {
-    for (let x = 0; x < size; x++) {
+  const out = new PNG({ width, height });
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
       let r = 0;
       let g = 0;
       let b = 0;
       let a = 0;
-      for (const [sy, w] of weights(y, sh)) {
-        const si = sy * size + x;
+      for (const [sy, w] of weights(y, scaleY, sh)) {
+        const si = sy * width + x;
         r += hr[si] * w;
         g += hg[si] * w;
         b += hb[si] * w;
         a += ha[si] * w;
       }
-      const di = (y * size + x) * 4;
+      const di = (y * width + x) * 4;
       a = Math.max(0, Math.min(1, a));
       if (a <= 0.0001) {
         out.data[di] = 0;
@@ -127,4 +128,9 @@ export function resample(src, size) {
     }
   }
   return out;
+}
+
+/** 方形重采样（源图必须是正方形）。 */
+export function resample(src, size) {
+  return resampleRect(src, size, size);
 }

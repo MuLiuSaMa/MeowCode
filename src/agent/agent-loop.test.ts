@@ -1,12 +1,16 @@
 import { describe, expect, it } from "vitest";
 import {
+  ESCALATED_OUTPUT_TOKENS,
+  MAX_OUTPUT_LIMIT_RECOVERIES,
+  MAX_RECONNECT_ATTEMPTS,
   MAX_TURN_STOP_BLOCKS,
   READ_ONLY_PARALLEL_TOOLS,
+  RECONNECT_DELAYS_MS,
   runAgentLoop,
   type AgentLoopHost,
   type AgentLoopHooks,
 } from "./agent-loop.js";
-import { ProviderRequestError } from "./provider-error.js";
+import { ProviderRequestError, ProviderTimeoutError } from "./provider-error.js";
 import type { ChatMessage, ProviderConfig, ToolCall } from "./types.js";
 
 function toolCall(id: string, name: string, args: Record<string, unknown> = {}): ToolCall {
@@ -28,20 +32,37 @@ type ScriptItem =
       finishReason?: string;
       usage?: { inputTokens?: number; outputTokens?: number; cacheReadTokens?: number };
     }
-  | Error;
+  | Error
+  | {
+      /** 先触发流式回调再抛错：测试重连安全边界 */
+      error: Error;
+      emitDelta?: string;
+      emitThinking?: string;
+      completeToolCall?: ToolCall;
+    };
 
 /** 可断言的循环观测记录：宿主各回调的调用轨迹。 */
 type LoopTrace = {
   streams: ChatMessage[][];
+  streamMaxTokens: number[];
   executedTools: string[];
   executedReadOnly: string[];
   executedTasks: string[];
   pushedToolMessages: Array<{ callId: string; content: string }>;
   pushedUserMessages: string[];
+  pushedContextNotes: string[];
   completed: string[];
   errors: string[];
   metrics: number;
   escalateCalls: number[];
+  reconnects: Array<{
+    phase: "started" | "recovered" | "stopped";
+    attempt: number;
+    maxAttempts: number;
+    delayMs?: number;
+    reason?: string;
+  }>;
+  reconnectWaits: number[];
 };
 
 /**
@@ -52,20 +73,24 @@ function createMockHost(options?: {
   script?: ScriptItem[];
   hooks?: AgentLoopHooks;
   isParallelSafe?: (toolName: string) => boolean;
-  turnBudget?: () => { maxRounds?: number; maxTokens?: number | null };
+  turnBudget?: () => { maxTokens?: number | null };
 }): AgentLoopHost & { trace: LoopTrace } {
   const script = [...(options?.script ?? [])];
   const trace: LoopTrace = {
     streams: [],
+    streamMaxTokens: [],
     executedTools: [],
     executedReadOnly: [],
     executedTasks: [],
     pushedToolMessages: [],
     pushedUserMessages: [],
+    pushedContextNotes: [],
     completed: [],
     errors: [],
     metrics: 0,
     escalateCalls: [],
+    reconnects: [],
+    reconnectWaits: [],
   };
   const provider = { id: "test", model: "m", baseUrl: "http://127.0.0.1" } as ProviderConfig;
 
@@ -87,9 +112,16 @@ function createMockHost(options?: {
     onToolCallComplete: () => {},
     stream: (streamOptions) => {
       trace.streams.push(streamOptions.messages);
+      trace.streamMaxTokens.push(streamOptions.provider.maxTokens ?? 0);
       const next = script.shift();
       if (!next) throw new Error("mock script exhausted");
       if (next instanceof Error) return Promise.reject(next);
+      if ("error" in next) {
+        if (next.emitDelta) streamOptions.onDelta(next.emitDelta);
+        if (next.emitThinking) streamOptions.onThinking?.(next.emitThinking);
+        if (next.completeToolCall) streamOptions.onToolCallComplete?.(next.completeToolCall);
+        return Promise.reject(next.error);
+      }
       return Promise.resolve({
         message: next.message,
         ...(next.responseId ? { responseId: next.responseId } : {}),
@@ -102,6 +134,10 @@ function createMockHost(options?: {
     recordUsage: async () => {},
     onMessageComplete: (result) => trace.completed.push(result.message.content ?? ""),
     onError: (message) => trace.errors.push(message),
+    onReconnect: (info) => trace.reconnects.push(info),
+    waitForReconnect: async (delayMs) => {
+      trace.reconnectWaits.push(delayMs);
+    },
     persistMetrics: async () => {
       trace.metrics += 1;
     },
@@ -148,6 +184,10 @@ function createMockHost(options?: {
     pushUserMessage: async (messages, content) => {
       messages.push({ role: "user", content });
       trace.pushedUserMessages.push(content);
+    },
+    pushContextNote: async (messages, content) => {
+      messages.push({ role: "user", content });
+      trace.pushedContextNotes.push(content);
     },
     earlyRun: () => undefined,
     ...(options?.isParallelSafe ? { isParallelSafe: options.isParallelSafe } : {}),
@@ -322,7 +362,7 @@ describe("runAgentLoop 薄循环", () => {
 
   it("溢出压缩后回合预算回血：已经花掉的账不再压着后续轮次", async () => {
     const host = createMockHost({
-      turnBudget: () => ({ maxRounds: 20, maxTokens: 50_000 }),
+      turnBudget: () => ({ maxTokens: 50_000 }),
       script: [
         // 首轮就攒掉大半预算
         { message: assistant("", [toolCall("c1", "read_file")]), usage: { inputTokens: 40_000 } },
@@ -351,14 +391,116 @@ describe("runAgentLoop 薄循环", () => {
     expect(host.trace.errors).toEqual([]);
   });
 
-  it("截断的工具调用：不执行，补配对结果并报错结束", async () => {
+  it("截断的工具调用：不执行半截参数，补配对结果后自动续写", async () => {
     const host = createMockHost({
-      script: [{ message: assistant("", [toolCall("c1", "edit_file")]), finishReason: "length" }],
+      script: [
+        { message: assistant("", [toolCall("c1", "edit_file")]), finishReason: "length" },
+        { message: assistant("done") },
+      ],
     });
     await runAgentLoop(host);
     expect(host.trace.executedTools).toEqual([]);
     expect(host.trace.pushedToolMessages[0]?.content).toContain("truncated");
-    expect(host.trace.errors[0]).toContain("truncated");
+    expect(host.trace.errors).toEqual([]);
+    expect(host.trace.pushedContextNotes[0]).toContain("Output token limit hit");
+    expect(host.trace.completed).toEqual(["done"]);
+    expect(host.trace.metrics).toBe(1);
+  });
+
+  it("内容被输出上限截断：先升到 64k，再自动续写", async () => {
+    const host = createMockHost({
+      script: [
+        { message: assistant("part one"), finishReason: "length" },
+        { message: assistant(" part two") },
+      ],
+    });
+    await runAgentLoop(host);
+    expect(host.trace.completed).toEqual(["part one part two"]);
+    expect(host.trace.errors).toEqual([]);
+    expect(host.trace.streams).toHaveLength(2);
+    expect(host.trace.streamMaxTokens[0]).toBe(8_192);
+    expect(host.trace.streamMaxTokens[1]).toBe(ESCALATED_OUTPUT_TOKENS);
+    expect(host.trace.pushedContextNotes[0]).toContain("Output token limit hit");
+    expect(host.trace.metrics).toBe(1);
+  });
+
+  it("断流且未出字：同服务商自动重连并恢复", async () => {
+    const host = createMockHost({
+      script: [
+        { error: new ProviderTimeoutError("Model stream stalled for 90s without data.") },
+        { message: assistant("done") },
+      ],
+    });
+    await runAgentLoop(host);
+    expect(host.trace.streams).toHaveLength(2);
+    expect(host.trace.reconnectWaits).toEqual([RECONNECT_DELAYS_MS[0]]);
+    expect(host.trace.reconnects.map((item) => item.phase)).toEqual(["started", "recovered"]);
+    expect(host.trace.reconnects[0]).toMatchObject({
+      attempt: 2,
+      maxAttempts: MAX_RECONNECT_ATTEMPTS,
+      delayMs: RECONNECT_DELAYS_MS[0],
+    });
+    expect(host.trace.errors).toEqual([]);
+    expect(host.trace.completed).toEqual(["done"]);
+  });
+
+  it("已经出字后断流：不自动重连", async () => {
+    const host = createMockHost({
+      script: [
+        { error: new ProviderTimeoutError("stalled"), emitDelta: "partial" },
+        { message: assistant("should not run") },
+      ],
+    });
+    await expect(runAgentLoop(host)).rejects.toThrow("stalled");
+    expect(host.trace.streams).toHaveLength(1);
+    expect(host.trace.reconnectWaits).toEqual([]);
+  });
+
+  it("工具调用已开始时断流：不自动重连", async () => {
+    const host = createMockHost({
+      script: [
+        {
+          error: new ProviderTimeoutError("stalled"),
+          completeToolCall: toolCall("c1", "read_file"),
+        },
+        { message: assistant("should not run") },
+      ],
+    });
+    await expect(runAgentLoop(host)).rejects.toThrow("stalled");
+    expect(host.trace.streams).toHaveLength(1);
+    expect(host.trace.reconnectWaits).toEqual([]);
+  });
+
+  it("重连达到上限后停止并抛出原错误", async () => {
+    const host = createMockHost({
+      script: Array.from(
+        { length: MAX_RECONNECT_ATTEMPTS },
+        () => ({ error: new ProviderTimeoutError("stalled") }),
+      ),
+    });
+    await expect(runAgentLoop(host)).rejects.toThrow("stalled");
+    expect(host.trace.streams).toHaveLength(MAX_RECONNECT_ATTEMPTS);
+    expect(host.trace.reconnectWaits).toHaveLength(RECONNECT_DELAYS_MS.length);
+    expect(host.trace.reconnects.map((item) => item.phase)).toEqual([
+      ...Array.from({ length: RECONNECT_DELAYS_MS.length }, () => "started"),
+      "stopped",
+    ]);
+  });
+
+  it("输出上限恢复最多 3 次，之后报错结束", async () => {
+    const host = createMockHost({
+      script: [
+        { message: assistant("a"), finishReason: "length" },
+        { message: assistant("b"), finishReason: "length" },
+        { message: assistant("c"), finishReason: "length" },
+        { message: assistant("d"), finishReason: "length" },
+      ],
+    });
+    await runAgentLoop(host);
+    expect(host.trace.streams).toHaveLength(MAX_OUTPUT_LIMIT_RECOVERIES + 1);
+    expect(host.trace.pushedContextNotes).toHaveLength(MAX_OUTPUT_LIMIT_RECOVERIES);
+    expect(host.trace.errors[0]).toContain("output token limit");
+    expect(host.trace.completed).toEqual(["abcd"]);
     expect(host.trace.metrics).toBe(1);
   });
 

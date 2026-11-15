@@ -53,6 +53,8 @@ type SessionView = {
   queued: number;
   /** 已开始回合但还没等到首个输出（思考中） */
   thinking: boolean;
+  /** 模型流断线后的自动重连状态 */
+  reconnect?: { attempt: number; maxAttempts: number } | null;
   feed: FeedItem[];
   activityAt: number;
 };
@@ -250,6 +252,17 @@ function reducer(state: State, action: Action): State {
       const sid = event.sessionId;
       if (!sid) return state;
       switch (event.type) {
+        case "reconnect":
+          return upsert(state, sid, (s) => ({
+            ...s,
+            running: true,
+            thinking: false,
+            reconnect:
+              event.phase === "started"
+                ? { attempt: event.attempt ?? 1, maxAttempts: event.maxAttempts ?? 5 }
+                : undefined,
+            activityAt: Date.now(),
+          }));
         case "message_start": {
           // 主窗口发的消息 island 没有乐观气泡：用事件文本补一条；
           // island 自己发送的已由 sent 乐观加过，末尾同文本则去重
@@ -264,7 +277,14 @@ function reducer(state: State, action: Action): State {
                 { key: nextFeedKey(), kind: "user" as const, text: clip(incoming) },
               ].slice(-MAX_FEED);
             }
-            return { ...s, running: true, thinking: true, feed, activityAt: Date.now() };
+            return {
+              ...s,
+              running: true,
+              thinking: true,
+              reconnect: undefined,
+              feed,
+              activityAt: Date.now(),
+            };
           });
         }
         case "thinking_delta": {
@@ -361,6 +381,7 @@ function reducer(state: State, action: Action): State {
             ...s,
             running: false,
             thinking: false,
+            reconnect: undefined,
             approvals: [],
             queued: 0,
             feed: finalizeStreamingAssistants(s.feed),
@@ -371,6 +392,7 @@ function reducer(state: State, action: Action): State {
             ...s,
             running: false,
             thinking: false,
+            reconnect: undefined,
             feed: [
               ...finalizeStreamingAssistants(s.feed),
               { key: nextFeedKey(), kind: "error" as const, text: clip(event.message ?? event.error ?? "") },
@@ -668,6 +690,12 @@ export default function IslandApp() {
     if (!state.connected) return t("island.connecting");
     if (!activeSession) return approvalCount > 0 ? t("island.waitingApproval") : t("island.idle");
     if (activeSession.approvals.length > 0) return t("island.approvalHint");
+    if (activeSession.reconnect) {
+      return tc("status.reconnecting", {
+        attempt: activeSession.reconnect.attempt,
+        max: activeSession.reconnect.maxAttempts,
+      });
+    }
     // 最近的一个运行中工具：人话标签（+目标 chip），与主窗口工具行同源
     for (let i = activeSession.feed.length - 1; i >= 0; i -= 1) {
       const entry = activeSession.feed[i];

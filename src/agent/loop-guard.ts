@@ -7,11 +7,11 @@ import type { ChatMessage, ToolCall } from "./types.js";
  * 循环检测（P1-2）：同一回合内「参数完全相同 且 输出逐字节相同」的连续工具调用。
  * 双条件缺一不可 —— edit 之后用相同参数重读同一文件是合法流程（文件变了输出就变，
  * 不会计数）；只有确定性工具返回相同输出时，重复调用才是零信息浪费。
- * 阈值参考 dsh repeat-tool-reminder 的 3/5/8 分级。
+ * 阈值参考 dsh repeat-tool-reminder 的 3/5/8 分级；只提醒，从不拦截执行。
  */
 export const LOOP_REMIND_AT = 3;
 export const LOOP_WARN_AT = 5;
-export const LOOP_BLOCK_AT = 8;
+export const LOOP_STRONG_REMIND_AT = 8;
 
 /** 每个文件最多保留多少段已读区间（相邻区间会合并）。 */
 export const MAX_READ_RANGES_PER_FILE = 8;
@@ -34,8 +34,8 @@ const LOOP_REMINDER_3 =
   "[meowcode] Note: this exact call (same tool and arguments) has already returned an identical result 3 times in a row. The output is deterministic — repeating it adds nothing. Change the arguments or move on.";
 const LOOP_REMINDER_5 =
   "[meowcode] Warning: 5th identical call in a row with identical output. You are in a loop. Use a different tool, different arguments, or summarize what you have and continue the task.";
-const loopBlockedOutput = (tool: string, count: number): string =>
-  `Blocked: ${tool} has been called with identical arguments and returned identical output ${count} times in a row. Repeating it is wasteful and it will not be executed again. Change the arguments (different offset/pattern/path) or take a different approach.`;
+const LOOP_REMINDER_8 =
+  "[meowcode] Warning: this exact call has returned identical output 8+ times in a row. Nothing new can come from repeating it. Change the arguments (different offset/pattern/path), take a different approach, or summarize what you have.";
 
 /** 稳定 JSON 序列化：键排序后拼接，避免模型换键序导致判重失效。 */
 function stableJson(value: unknown): string {
@@ -193,17 +193,10 @@ export class LoopGuard {
     this.turnSeq += 1;
   }
 
-  /** 执行前检查：连续 8 次零信息重复直接拒绝执行 —— 省掉执行本身与整轮上下文重发。 */
-  blockFor(sessionId: string, tool: string, input: unknown): string | null {
-    const state = this.states.get(sessionId);
-    if (!state || state.count < LOOP_BLOCK_AT) return null;
-    const key = `${tool}:${stableJson(input)}`;
-    return state.key === key ? loopBlockedOutput(tool, state.count) : null;
-  }
-
   /**
    * 执行后登记：参数键与输出指纹都相同才累计。返回要附加到工具结果的提醒
    * （未达阈值返回空串）。占位符/错误结果同样计数 —— 反复同参数失败也是循环。
+   * 无论重复多少次都只提醒，不拦截执行。
    */
   noteResult(sessionId: string, tool: string, input: unknown, output: string): string {
     const key = `${tool}:${stableJson(input)}`;
@@ -211,7 +204,7 @@ export class LoopGuard {
     const state = this.states.get(sessionId);
     if (state && state.key === key && state.outputHash === fingerprint) {
       state.count += 1;
-      if (state.count >= LOOP_BLOCK_AT) return loopBlockedOutput(tool, state.count);
+      if (state.count >= LOOP_STRONG_REMIND_AT) return LOOP_REMINDER_8;
       if (state.count >= LOOP_WARN_AT) return LOOP_REMINDER_5;
       if (state.count >= LOOP_REMIND_AT) return LOOP_REMINDER_3;
       return "";

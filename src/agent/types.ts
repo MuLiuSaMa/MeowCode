@@ -185,6 +185,16 @@ export type MeowEvent = AgentEventMeta &
       feedback?: string;
     }
   | { type: "error"; sessionId: string; message: string }
+  | {
+      /** 流式请求断线后的自动重连；只在没有出字/没有执行工具时发生 */
+      type: "reconnect";
+      sessionId: string;
+      phase: "started" | "recovered" | "stopped";
+      attempt: number;
+      maxAttempts: number;
+      delayMs?: number;
+      reason?: string;
+    }
   /**
    * 自我学习进度：观察 → 复盘 → 守卫 → 写入 → 评估。
    * 与流式响应解耦，前端只用来画一个低调的状态提示，不打断对话。
@@ -1363,7 +1373,7 @@ export type SessionEntry =
       parentId: string | null;
       timestamp: string;
       /** plugin = context_inject hook 注入（会话日志 schema v2 内向后兼容） */
-      source: "plan" | "file" | "subagent" | "workflow" | "plugin" | "style" | "job";
+      source: "plan" | "file" | "subagent" | "workflow" | "plugin" | "style" | "job" | "output-limit";
       content: string;
     }
   | {

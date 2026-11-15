@@ -802,11 +802,12 @@ export async function streamAnthropicMessages(options: {  url: string;
           const block = thinkingBlocks.get(chunk.index ?? 0);
           if (block?.type === "thinking") block.text.push(chunk.delta.thinking);
           options.onThinking?.(chunk.delta.thinking);
-          return;
+          return true;
         }
         if (chunk.delta?.type === "text_delta" && chunk.delta.text) {
           content.push(chunk.delta.text);
           options.onDelta(chunk.delta.text);
+          return true;
         }
         // input_json_delta：工具参数按增量累加
         if (chunk.delta?.type === "input_json_delta" && chunk.delta.partial_json) {
@@ -824,6 +825,7 @@ export async function streamAnthropicMessages(options: {  url: string;
               completedBlocks.add(index);
               options.onToolCallComplete({ ...current, function: { ...current.function } });
             }
+            return true;
           }
         }
       }

@@ -541,6 +541,13 @@ export default function App() {
     /** 参数里已经能完整读出的目标路径 */
     path?: string;
   } | null>(null);
+  /** 模型流断线后的自动重连状态：占用底部状态行 */
+  const [reconnectView, setReconnectView] = useState<{
+    phase: "started" | "recovered";
+    attempt: number;
+    maxAttempts: number;
+  } | null>(null);
+  const reconnectClearTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   /** 每个会话的输入草稿；切走/重启后按会话恢复 */
   const [drafts, setDrafts] = useState<Record<string, { text: string; updatedAt: string }>>({});
   const activeDraftKey = session?.id ?? null;
@@ -1656,6 +1663,7 @@ export default function App() {
         history.push({ kind: "compaction", key: nextKey("compaction"), running: true });
       }
       setTimeline(history);
+      setReconnectView(null);
       // 撤销回滚入口：当前会话最近一次可撤销的回滚（无则隐藏横幅）
       void api<{ undoable: { rewindId: string; mode: RewindMode; fileCount: number } | null }>(
         "/session/rewind/undoable",
@@ -2620,6 +2628,29 @@ export default function App() {
       event.sessionId !== mainSessionIdRef.current
     ) {
       return;
+    }
+    if (event.type === "reconnect") {
+      const phase = event.phase;
+      if (phase === "stopped") {
+        setReconnectView(null);
+      } else if (phase === "started" || phase === "recovered") {
+        setReconnectView({
+          phase,
+          attempt: event.attempt ?? 1,
+          maxAttempts: event.maxAttempts ?? 5,
+        });
+        if (reconnectClearTimer.current) clearTimeout(reconnectClearTimer.current);
+        reconnectClearTimer.current =
+          phase === "recovered" ? setTimeout(() => setReconnectView(null), 1_500) : null;
+      }
+      return;
+    }
+    if (event.type === "turn_complete" || event.type === "error") {
+      setReconnectView(null);
+      if (reconnectClearTimer.current) {
+        clearTimeout(reconnectClearTimer.current);
+        reconnectClearTimer.current = null;
+      }
     }
     // 计划文档的写入过程：先开计划页签显示「正在写入」，写完由 plan_documented 刷新内容
     if (event.type === "tool_started") {
@@ -5478,6 +5509,7 @@ export default function App() {
               preparing={toolPreparing}
               preparingTool={preparingTool}
               loading={sessionLoading}
+              reconnect={reconnectView}
               subagentsByCallId={subagentsByCallId}
               subagentsById={subagentsById}
               onOpenSubagent={openSubagentById}

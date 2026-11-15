@@ -2178,25 +2178,25 @@ describe("turn ownership", () => {
 });
 
 describe("response truncation", () => {
-  it("surfaces a length finish reason as an error", async () => {
+  it("continues after a length finish reason instead of failing", async () => {
     const dir = await mkdtemp(path.join(tmpdir(), "meowcode-runtime-"));
     const runtime = makeRuntime(dir);
     await runtime.newSession();
     const events = await collectEvents(runtime);
-    streamMock.mockResolvedValueOnce({
-      message: { role: "assistant", content: "partial" },
-      finishReason: "length",
-    });
+    streamMock
+      .mockResolvedValueOnce({
+        message: { role: "assistant", content: "partial" },
+        finishReason: "length",
+      })
+      .mockResolvedValueOnce({ message: { role: "assistant", content: " continuation" } });
 
     await runtime.prompt("go");
 
-    expect(
-      events.some((event) => event.type === "message_complete" && event.text === "partial"),
-    ).toBe(true);
-    const error = events.find(
-      (event): event is Extract<MeowEvent, { type: "error" }> => event.type === "error",
-    );
-    expect(error?.message).toContain("truncated");
+    const completed = events
+      .filter((event) => event.type === "message_complete")
+      .map((event) => event.text);
+    expect(completed).toEqual(["partial continuation"]);
+    expect(events.some((event) => event.type === "error")).toBe(false);
   });
 
   it("does not execute tool calls from a truncated response", async () => {
@@ -2206,31 +2206,30 @@ describe("response truncation", () => {
     await runtime.newSession(workspace);
     runtime.setApprovalMode("full");
     const events = await collectEvents(runtime);
-    streamMock.mockResolvedValueOnce({
-      message: {
-        role: "assistant",
-        content: null,
-        tool_calls: [
-          {
-            id: "write",
-            type: "function",
-            function: {
-              name: "write_file",
-              arguments: JSON.stringify({ path: "a.txt", content: "should not exist" }),
+    streamMock
+      .mockResolvedValueOnce({
+        message: {
+          role: "assistant",
+          content: null,
+          tool_calls: [
+            {
+              id: "write",
+              type: "function",
+              function: {
+                name: "write_file",
+                arguments: JSON.stringify({ path: "a.txt", content: "should not exist" }),
+              },
             },
-          },
-        ],
-      },
-      finishReason: "length",
-    });
+          ],
+        },
+        finishReason: "length",
+      })
+      .mockResolvedValueOnce({ message: { role: "assistant", content: "done" } });
 
     await runtime.prompt("go");
 
     await expect(readFile(path.join(workspace, "a.txt"), "utf8")).rejects.toThrow();
-    const error = events.find(
-      (event): event is Extract<MeowEvent, { type: "error" }> => event.type === "error",
-    );
-    expect(error?.message).toContain("truncated during a tool call");
+    expect(events.some((event) => event.type === "error")).toBe(false);
 
     // 截断的 tool_call 也要有配对的 tool 结果，历史才能继续使用
     const { SessionStore } = await import("./session-store.js");
@@ -3875,7 +3874,7 @@ describe("tool loop detection", () => {
     expect(request.some((m) => m.role === "tool" && m.content.includes("times in a row"))).toBe(false);
   });
 
-  it("blocks the identical call after 8 zero-information repeats", async () => {
+  it("keeps executing after 8 zero-information repeats, with reminders only", async () => {
     const dir = await mkdtemp(path.join(tmpdir(), "meowcode-runtime-"));
     const workspace = await mkdtemp(path.join(tmpdir(), "meowcode-ws-"));
     await writeFile(path.join(workspace, "a.txt"), "same content");
@@ -3890,7 +3889,7 @@ describe("tool loop detection", () => {
           tool_calls: Array.from({ length: 8 }, (_, index) => readCall(`c${index}`, "a.txt")),
         },
       })
-      // 同一回合的第二轮流：状态已累计到 8，相同调用在执行前被拦截
+      // 同一回合的第二轮流：状态已累计到 8，相同调用仍然照常执行
       .mockResolvedValueOnce({
         message: { role: "assistant", content: null, tool_calls: [readCall("c9", "a.txt")] },
       })
@@ -3898,12 +3897,11 @@ describe("tool loop detection", () => {
 
     await runtime.prompt("go");
 
-    // 第 9 次相同调用被拒绝执行：回执以 Blocked: 开头
     const third = streamMock.mock.calls[2][0].messages as ChatMessage[];
-    const blocked = third.filter(
-      (message) => message.role === "tool" && message.content.startsWith("Blocked:"),
-    );
-    expect(blocked).toHaveLength(1);
+    const toolMessages = third.filter((message) => message.role === "tool");
+    expect(toolMessages).toHaveLength(9);
+    expect(toolMessages.some((message) => message.content.startsWith("Blocked:"))).toBe(false);
+    expect(toolMessages.some((message) => message.content.includes("8+ times in a row"))).toBe(true);
   });
 });
 

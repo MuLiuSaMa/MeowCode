@@ -346,12 +346,24 @@ export async function streamResponses(options: {
       if (chunk.type === "response.reasoning_summary_text.delta" && chunk.delta) {
         reasoning.push(chunk.delta);
         options.onThinking?.(chunk.delta);
-        return;
+        return true;
+      }
+      // 原始 reasoning 增量 / reasoning output item：加密思考也算模型进展，
+      // 否则长时间思考会被无进展上限误杀
+      if (chunk.type === "response.reasoning_text.delta" && chunk.delta) {
+        return true;
+      }
+      if (
+        (chunk.type === "response.output_item.added" ||
+          chunk.type === "response.output_item.done") &&
+        chunk.item?.type === "reasoning"
+      ) {
+        return true;
       }
       if (chunk.type === "response.output_text.delta" && chunk.delta) {
         content.push(chunk.delta);
         options.onDelta(chunk.delta);
-        return;
+        return true;
       }
       if (chunk.type === "response.output_item.added" && chunk.item?.type === "function_call") {
         registerToolCall(chunk.item, false);
@@ -381,6 +393,7 @@ export async function streamResponses(options: {
             completedCalls.add(current.id);
             options.onToolCallComplete({ ...current, function: { ...current.function } });
           }
+          return true;
         }
         return;
       }

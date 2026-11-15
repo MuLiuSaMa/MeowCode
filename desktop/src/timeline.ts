@@ -201,19 +201,31 @@ export function timelineFromHistory(
     const content = typeof message.content === "string" ? message.content : "";
     const reasoning = typeof message.reasoning === "string" && message.reasoning ? message.reasoning : undefined;
     if (content || reasoning) {
-      items.push({
-        kind: "message",
-        key: nextKey("assistant"),
-        role: "assistant",
-        content,
-        ...(reasoning
-          ? {
-              thinking: reasoning,
-              ...(typeof message.thinkingMs === "number" ? { thinkingMs: message.thinkingMs } : {}),
-            }
-          : {}),
-        messageIndex: index,
-      });
+      // 输出上限续写会在存档里留下相邻的 assistant 消息：时间线上合成一个气泡
+      const previous = items[items.length - 1];
+      if (previous?.kind === "message" && previous.role === "assistant") {
+        const thinking = reasoning ? (previous.thinking ?? "") + reasoning : previous.thinking;
+        items[items.length - 1] = {
+          ...previous,
+          content: previous.content + content,
+          ...(thinking ? { thinking } : {}),
+          ...(typeof message.thinkingMs === "number" ? { thinkingMs: message.thinkingMs } : {}),
+        };
+      } else {
+        items.push({
+          kind: "message",
+          key: nextKey("assistant"),
+          role: "assistant",
+          content,
+          ...(reasoning
+            ? {
+                thinking: reasoning,
+                ...(typeof message.thinkingMs === "number" ? { thinkingMs: message.thinkingMs } : {}),
+              }
+            : {}),
+          messageIndex: index,
+        });
+      }
     }
 
     for (const raw of message.tool_calls ?? []) {
