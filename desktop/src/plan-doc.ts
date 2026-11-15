@@ -24,3 +24,22 @@ export function planDocPathOf(tool: string, input: unknown): string | null {
   );
   return inPlans ? normalized[0] : null;
 }
+
+/** 统一分隔符：工具参数是 `/`，后端 plan_documented 事件在 Windows 上是 `\`。 */
+function normalizePlanPath(value: string): string {
+  return value.replace(/\\/g, "/").replace(/^\.\//, "");
+}
+
+/**
+ * 两份计划文档路径是否指向同一份。
+ *
+ * `plan_documented` 事件的路径来自 `path.relative`（Windows 用反斜杠），
+ * 工具参数里的路径由 {@link planDocPathOf} 归一成斜杠；直接比较会永远不相等。
+ */
+export function samePlanDocPath(
+  a: string | null | undefined,
+  b: string | null | undefined,
+): boolean {
+  if (!a || !b) return false;
+  return normalizePlanPath(a) === normalizePlanPath(b);
+}
