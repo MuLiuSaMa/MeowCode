@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { LuChevronRight, LuFileText } from "react-icons/lu";
 import { api } from "../api";
@@ -11,18 +11,26 @@ import "./PlanDocCard.css";
  */
 export function PlanDocCard({
   path,
+  version,
   onOpen,
 }: {
   /** 工作区相对路径，如 plans/2026-11-14-xxx.md */
   path: string;
+  /** 计划文档版本号：每次 plan_documented 递增，用于重读被就地改写的同一份文档 */
+  version?: number;
   onOpen?: (path: string) => void;
 }) {
   const { t } = useTranslation("composer");
   const [preview, setPreview] = useState<PlanPreview | null>(null);
+  /** 只有换了一份文档才清空预览：同一份被改写时保留旧内容，避免刷新瞬间闪成路径 */
+  const loadedPathRef = useRef(path);
 
   useEffect(() => {
     let alive = true;
-    setPreview(null);
+    if (loadedPathRef.current !== path) {
+      loadedPathRef.current = path;
+      setPreview(null);
+    }
     void api<{ content: string }>(`/workspace/file?path=${encodeURIComponent(path)}`)
       .then((result) => {
         if (!alive) return;
@@ -35,7 +43,7 @@ export function PlanDocCard({
     return () => {
       alive = false;
     };
-  }, [path, t]);
+  }, [path, version, t]);
 
   const title = preview?.title || t("plan.docTitle");
   const body = preview?.body || path;
