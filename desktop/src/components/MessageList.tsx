@@ -12,7 +12,7 @@ import { useTranslation } from "react-i18next";
 import { LuCircleAlert, LuInfo } from "react-icons/lu";
 import type { SubagentRun, TimelineCompaction, TimelineItem, TimelineMessage } from "../api";
 import logo from "../assets/icon.png";
-import { planDocPathOf } from "../plan-doc";
+import { planDocPathOf, samePlanDocPath } from "../plan-doc";
 import { PlanDocCard } from "./PlanDocCard";
 import { PluginSlot, PluginSlotSingle } from "../plugins/PluginSlot";
 import { AssistantMessage, ThinkingRow } from "./AssistantMessage";
@@ -565,7 +565,9 @@ export function MessageList({
                       <PlanDocCard
                         path={turnPlanDoc}
                         version={
-                          planRevision?.path === turnPlanDoc ? planRevision.version : undefined
+                          samePlanDocPath(planRevision?.path, turnPlanDoc)
+                            ? planRevision?.version
+                            : undefined
                         }
                         onOpen={onOpenPlan}
                       />
