@@ -727,6 +727,10 @@ export default function App() {
   const [planWriting, setPlanWriting] = useState<{ callId: string; path: string } | null>(null);
   /** 每次 plan_documented 递增，强制计划页签重新读盘 */
   const [planDocVersion, setPlanDocVersion] = useState(0);
+  /** 最近一次落盘的计划文档：只让同一路径的对话卡片重读，避免历史卡片全量刷新 */
+  const [planDocRevision, setPlanDocRevision] = useState<{ path: string; version: number } | null>(
+    null,
+  );
   /** 事件回调里读当前模式（闭包里的 chatMode 会过期） */
   const chatModeRef = useRef<SessionMode>("default");
   useEffect(() => {
@@ -1588,6 +1592,8 @@ export default function App() {
       setPlanDocPath(null);
       setPlanTabPath(null);
       setPlanWriting(null);
+      // 卡片版本只对当前会话有意义：切走后清空，避免同名文档在新会话里被旧版本号触发一次重读
+      setPlanDocRevision(null);
       setRecoveredPrompts(current.recoveredPrompts ?? []);
       setLastTurn(current.lastTurn ?? null);
       const usage = current.usage;
@@ -2679,11 +2685,16 @@ export default function App() {
       return;
     }
     if (event.type === "plan_documented") {
-      if (event.path) {
+      const documentedPath = event.path;
+      if (documentedPath) {
         // 只有仍在计划模式才弹确认卡片：确认执行后模型回写文档不该再拦输入框
-        if (chatModeRef.current === "plan") setPlanDocPath(event.path);
-        setPlanTabPath(event.path);
+        if (chatModeRef.current === "plan") setPlanDocPath(documentedPath);
+        setPlanTabPath(documentedPath);
         setPlanDocVersion((current) => current + 1);
+        setPlanDocRevision((current) => ({
+          path: documentedPath,
+          version: (current?.version ?? 0) + 1,
+        }));
         setPlanWriting(null);
         sideTabsRef.current.open({ kind: "plan" });
         setShowInspector(true);
@@ -3370,6 +3381,9 @@ export default function App() {
     images?: ComposerImage[],
   ) => {
     // 附件 chip：绝对路径（不限工作区），作为首部【附件】行交给运行时注入文件内容
+    // 新问题不再沿用上一轮的计划：否则旧计划会一直挂在输入框上方，
+    // 看起来像「当前的 todo」；新的计划文档到达时会由 plan_documented 重新设置。
+    setPlanDocPath(null);
     const fileAttachmentLines = chips
       .filter((chip) => chip.kind === "file")
       .map((chip) => `【附件】${chip.name} · ${chip.path}`); // i18n-allow 消息首部协议标记，与 src/agent 解析约定一致
@@ -5533,6 +5547,7 @@ export default function App() {
                 sideTabs.open({ kind: "plan" });
                 setShowInspector(true);
               }}
+              planRevision={planDocRevision}
               focus={messageFocus}
               suggestion={promptSuggestion}
               onSuggestionUse={(text) => {

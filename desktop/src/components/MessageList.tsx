@@ -121,6 +121,7 @@ export function MessageList({
   onScrolledAwayChange,
   scrollApiRef,
   onOpenPlan,
+  planRevision,
   reconnect,
 }: {
   items: TimelineItem[];
@@ -167,6 +168,8 @@ export function MessageList({
   onSuggestionDismiss?: () => void;
   /** 打开任意一份计划文档（整卡点击） */
   onOpenPlan?: (path: string) => void;
+  /** 最近一次落盘的计划文档：只有同一路径的卡片需要重读，避免全量刷新 */
+  planRevision?: { path: string; version: number } | null;
   /** 模型流断线后的自动重连状态：占用底部状态行 */
   reconnect?: { phase: "started" | "recovered"; attempt: number; maxAttempts: number } | null;
 }) {
@@ -559,7 +562,13 @@ export function MessageList({
                       })()}
                     </div>
                     {turnPlanDoc && !(isLast && turnStartedAt != null) ? (
-                      <PlanDocCard path={turnPlanDoc} onOpen={onOpenPlan} />
+                      <PlanDocCard
+                        path={turnPlanDoc}
+                        version={
+                          planRevision?.path === turnPlanDoc ? planRevision.version : undefined
+                        }
+                        onOpen={onOpenPlan}
+                      />
                     ) : null}
                     {info?.kind === "turn-info" ? (
                       <TurnInfoBar
