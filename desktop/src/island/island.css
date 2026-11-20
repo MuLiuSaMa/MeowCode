@@ -93,6 +93,65 @@ body {
   box-shadow: 0 0 0 3px var(--accent-soft), var(--island-shadow);
 }
 
+/* 折叠态要腾位置给提示/确认文案：就地加宽，且不能带上收起态那 170ms 的宽度延迟 */
+.island[data-expanded="false"][data-drag="true"],
+.island[data-expanded="false"][data-dropping="true"],
+.island[data-expanded="false"][data-staged="true"] {
+  transition:
+    width 200ms var(--island-spring),
+    height 280ms var(--island-spring),
+    border-radius 260ms var(--island-spring),
+    background-color 200ms var(--ease);
+}
+
+/* 宽度按最长的一种语言量出来的：德语提示 137px、多文件确认 133px，都留了余量 */
+.island[data-expanded="false"][data-drag="true"],
+.island[data-expanded="false"][data-dropping="true"] {
+  width: 208px;
+}
+
+.island[data-expanded="false"][data-staged="true"] {
+  width: 208px;
+  border-color: var(--success);
+}
+
+/* 暂存确认：勾号弹入、文案上浮一档；2 秒后由渲染层退回常态状态 */
+.island-pill__check {
+  flex: none;
+  color: var(--success-strong);
+  animation: island-check-in 260ms var(--island-spring);
+}
+
+.island-pill__status[data-staged="true"] .island-pill__text {
+  animation: island-staged-rise 220ms var(--island-spring);
+}
+
+@keyframes island-check-in {
+  0% {
+    transform: scale(0.4);
+    opacity: 0;
+  }
+  60% {
+    transform: scale(1.18);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes island-staged-rise {
+  from {
+    transform: translateY(3px);
+    opacity: 0;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+
 /* ---- 顶部行：折叠态就是胶囊本体，展开后是面板标题行 ---- */
 
 .island-head {
@@ -329,4 +388,18 @@ button.mc-skillchip.island-chip {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* 减弱动效：不做加宽过渡与弹入动画，只留颜色和文案 */
+@media (prefers-reduced-motion: reduce) {
+  .island[data-expanded="false"][data-drag="true"],
+  .island[data-expanded="false"][data-dropping="true"],
+  .island[data-expanded="false"][data-staged="true"] {
+    transition: none;
+  }
+
+  .island-pill__check,
+  .island-pill__status[data-staged="true"] .island-pill__text {
+    animation: none;
+  }
 }

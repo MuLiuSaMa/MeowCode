@@ -236,7 +236,9 @@
     "send": "Envoyer",
     "inputPlaceholder": "Tapez un message, Entrée pour envoyer",
     "inputIdle": "Cette session n'est pas en cours d'exécution. Continuez dans la fenêtre principale.",
-    "dropHint": "Déposez pour joindre"
+    "dropHint": "Déposez pour joindre",
+    "staged": "Fichier prêt",
+    "stagedCount": "{{n}} fichiers prêts"
   },
   "star": {
     "title": "Mettez une étoile à MeowCode",

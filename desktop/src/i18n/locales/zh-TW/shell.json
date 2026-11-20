@@ -236,7 +236,9 @@
     "send": "傳送",
     "inputPlaceholder": "輸入訊息，Enter 傳送",
     "inputIdle": "此對話未在執行中，請在主視窗開啟後繼續",
-    "dropHint": "鬆開以附加"
+    "dropHint": "鬆開以附加",
+    "staged": "檔案已暫存",
+    "stagedCount": "{{n}} 個檔案已暫存"
   },
   "star": {
     "title": "給 MeowCode 點一個 Star",

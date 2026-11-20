@@ -5,7 +5,7 @@ import type {
   WheelEvent as ReactWheelEvent,
 } from "react";
 import { useTranslation } from "react-i18next";
-import { LuArrowUp, LuCircleAlert, LuFileText, LuPaperclip, LuSquare, LuX } from "react-icons/lu";
+import { LuArrowUp, LuCheck, LuCircleAlert, LuFileText, LuPaperclip, LuSquare, LuX } from "react-icons/lu";
 import { applyLanguage } from "../i18n";
 import { api, type ChatMessage, type MeowEvent, type TimelineItem } from "../api";
 import { timelineFromHistory } from "../timeline";
@@ -433,7 +433,13 @@ export default function IslandApp() {
     Array<{ key: string; name: string; mimeType: string; data: string; dataUrl: string }>
   >([]);
   const [dragging, setDragging] = useState(false);
+  /** 已松手但附件还在读（图片要走 FileReader）：先把胶囊宽度占住，别让它闪一下缩回去 */
+  const [dropping, setDropping] = useState(false);
   const dragDepthRef = useRef(0);
+  /** 放下文件后的「已暂存」确认态：seq 让同一数量的连续放下也能重播入场动画 */
+  const [staged, setStaged] = useState<{ count: number; seq: number } | null>(null);
+  const stagedSeqRef = useRef(0);
+  const stagedTimerRef = useRef<number | null>(null);
   const [sendError, setSendError] = useState<string | null>(null);
   const rootRef = useRef<HTMLDivElement | null>(null);
   const islandRef = useRef<HTMLDivElement | null>(null);
@@ -453,6 +459,22 @@ export default function IslandApp() {
   useEffect(() => {
     expandedRef.current = expanded;
   }, [expanded]);
+
+  /** 收起「已暂存」确认态：超时 / 展开面板 / 卸载都走这里 */
+  const clearStaged = useCallback(() => {
+    if (stagedTimerRef.current) {
+      window.clearTimeout(stagedTimerRef.current);
+      stagedTimerRef.current = null;
+    }
+    setStaged(null);
+  }, []);
+
+  // 展开后附件 chip 本身就是反馈，确认态让位给 Agent 活动状态
+  useEffect(() => {
+    if (expanded) clearStaged();
+  }, [expanded, clearStaged]);
+
+  useEffect(() => clearStaged, [clearStaged]);
 
   /** 收起并交还焦点：岛窗口可聚焦（输入框需要），不主动 blur 的话键盘会继续打进看不见的窗口 */
   const collapse = useCallback(() => {
@@ -750,14 +772,17 @@ export default function IslandApp() {
 
   // ---- 拖放附件：文件/图片/文字均可拖到岛上（与主窗口输入框同一套协议） ----
 
-  const addIslandFiles = useCallback(async (files: File[]) => {
+  const addIslandFiles = useCallback(async (files: File[]): Promise<number> => {
     const images = files.filter((file) => file.type.startsWith("image/")).slice(0, 8);
     const others = files.filter((file) => !file.type.startsWith("image/"));
+    /** 真正挂上的数量：目录、读不出路径的文件要跳过，确认态不能谎报"已暂存" */
+    let added = 0;
     for (const file of images) {
       try {
         const dataUrl = await readFileAsDataUrl(file);
         const data = dataUrl.split(",")[1] ?? "";
         if (!data) continue;
+        added += 1;
         setPendingImages((current) => [
           ...current,
           { key: nextFeedKey(), name: file.name, mimeType: file.type, data, dataUrl },
@@ -782,7 +807,11 @@ export default function IslandApp() {
         path: absolute,
       });
     }
-    if (picked.length) setPendingFiles((current) => [...current, ...picked]);
+    if (picked.length) {
+      added += picked.length;
+      setPendingFiles((current) => [...current, ...picked]);
+    }
+    return added;
   }, []);
 
   const onIslandDragEnter = useCallback((e: ReactDragEvent) => {
@@ -809,9 +838,21 @@ export default function IslandApp() {
       setDragging(false);
       const files = Array.from(e.dataTransfer?.files ?? []);
       if (files.length) {
-        // 拖文件进折叠胶囊：顺手展开，用户能看到附件挂上了
-        setPinned(true);
-        void addIslandFiles(files);
+        // 折叠胶囊放下文件：不展开面板，胶囊就地给「文件已暂存」确认（2 秒后自动退回）
+        const collapsed = !expandedRef.current;
+        setDropping(true);
+        void addIslandFiles(files)
+          .then((added) => {
+            if (!added || !collapsed || expandedRef.current) return;
+            if (stagedTimerRef.current) window.clearTimeout(stagedTimerRef.current);
+            stagedSeqRef.current += 1;
+            setStaged({ count: added, seq: stagedSeqRef.current });
+            stagedTimerRef.current = window.setTimeout(() => {
+              stagedTimerRef.current = null;
+              setStaged(null);
+            }, 2000);
+          })
+          .finally(() => setDropping(false));
         return;
       }
       // 纯文本拖入：追加进输入框
@@ -902,11 +943,27 @@ export default function IslandApp() {
     dispatch({ type: "select", sessionId: id });
   }, []);
 
+  /** 折叠胶囊的临时状态覆盖：拖入提示 / 已暂存确认。展开后由面板内容自己说话，不抢 Agent 状态位 */
+  const stagedActive = !expanded && staged !== null;
+  const pillStatus = expanded
+    ? statusText
+    : dragging
+      ? t("island.dropHint")
+      : staged
+        ? staged.count > 1
+          ? t("island.stagedCount", { n: staged.count })
+          : t("island.staged")
+        : statusText;
+
   /** 顶栏/面板头共用的状态簇：Logo 左、当前状态文字右（Agent 正在做什么） */
   const statusCluster = (
-    <span className="island-pill__status">
-      {approvalCount > 0 && <span className="island-dot" aria-hidden />}
-      <span className="island-pill__text">{statusText}</span>
+    <span className="island-pill__status" data-staged={stagedActive || undefined}>
+      {stagedActive ? (
+        <LuCheck key={staged?.seq} size={13} className="island-pill__check" aria-hidden />
+      ) : (
+        approvalCount > 0 && <span className="island-dot" aria-hidden />
+      )}
+      <span className="island-pill__text">{pillStatus}</span>
     </span>
   );
 
@@ -918,6 +975,8 @@ export default function IslandApp() {
         ref={islandRef}
         data-expanded={expanded}
         data-drag={dragging}
+        data-dropping={dropping}
+        data-staged={stagedActive}
         onDragEnter={onIslandDragEnter}
         onDragOver={onIslandDragOver}
         onDragLeave={onIslandDragLeave}
@@ -926,7 +985,7 @@ export default function IslandApp() {
           if (!expandedRef.current) onBarClick();
         }}
         role="button"
-        aria-label={statusText}
+        aria-label={pillStatus}
       >
         <div className="island-head">
           <img className="island-pill__logo" src={appIcon} alt="" draggable={false} />
@@ -1071,6 +1130,10 @@ export default function IslandApp() {
           </div>
         </div>
       </div>
+      {/* 屏幕阅读器播报暂存结果：胶囊文字是视觉反馈，拖放时光标也不一定落在岛上 */}
+      <span className="mc-sr-only" role="status" aria-live="polite" aria-atomic="true">
+        {stagedActive ? pillStatus : ""}
+      </span>
     </div>
   );
 }

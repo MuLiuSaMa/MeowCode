@@ -236,7 +236,9 @@
     "send": "送信",
     "inputPlaceholder": "メッセージを入力、Enter で送信",
     "inputIdle": "このセッションは実行中ではありません。メインウィンドウで続行してください。",
-    "dropHint": "ドロップで添付"
+    "dropHint": "ドロップで添付",
+    "staged": "ファイルを保留",
+    "stagedCount": "{{n}} 件のファイルを保留"
   },
   "star": {
     "title": "MeowCode にスターをください",

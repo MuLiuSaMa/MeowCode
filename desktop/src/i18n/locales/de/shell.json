@@ -236,7 +236,9 @@
     "send": "Senden",
     "inputPlaceholder": "Nachricht tippen, Enter zum Senden",
     "inputIdle": "Diese Sitzung läuft nicht. Im Hauptfenster fortsetzen.",
-    "dropHint": "Zum Anhängen ablegen"
+    "dropHint": "Zum Anhängen ablegen",
+    "staged": "Datei vorgemerkt",
+    "stagedCount": "{{n}} Dateien vorgemerkt"
   },
   "star": {
     "title": "Gib MeowCode einen Star",

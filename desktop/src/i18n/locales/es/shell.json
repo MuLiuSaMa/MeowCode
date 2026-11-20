@@ -236,7 +236,9 @@
     "send": "Enviar",
     "inputPlaceholder": "Escribe un mensaje, Enter para enviar",
     "inputIdle": "Esta sesión no está en ejecución. Continúa en la ventana principal.",
-    "dropHint": "Suelta para adjuntar"
+    "dropHint": "Suelta para adjuntar",
+    "staged": "Archivo preparado",
+    "stagedCount": "{{n}} archivos preparados"
   },
   "star": {
     "title": "Dale una estrella a MeowCode",

@@ -236,7 +236,9 @@
     "send": "发送",
     "inputPlaceholder": "输入消息，Enter 发送",
     "inputIdle": "该会话未在运行中，请在主窗口打开后继续",
-    "dropHint": "松开，添加到消息"
+    "dropHint": "松开，添加到消息",
+    "staged": "文件已暂存",
+    "stagedCount": "{{n}} 个文件已暂存"
   },
   "star": {
     "title": "给 MeowCode 点一个 Star",

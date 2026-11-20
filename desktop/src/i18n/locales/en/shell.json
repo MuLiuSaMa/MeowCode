@@ -236,7 +236,9 @@
     "send": "Send",
     "inputPlaceholder": "Type a message, Enter to send",
     "inputIdle": "This session is not running. Open it in the main window to continue.",
-    "dropHint": "Drop to attach"
+    "dropHint": "Drop to attach",
+    "staged": "File staged",
+    "stagedCount": "{{n}} files staged"
   },
   "star": {
     "title": "Star MeowCode on GitHub",
