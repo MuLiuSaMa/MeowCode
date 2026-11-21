@@ -19,7 +19,7 @@ import { buildAuthHeaders, fetchWithRetry, mergeExtraHeaders } from "./http.js";
 import { readSseFrames } from "./sse.js";
 import { responsesTools, streamResponses, toResponsesInput } from "./responses.js";
 import { ProviderRequestError } from "./provider-error.js";
-import { isToolCallComplete, summarizeToolCalls, type ToolCallProgress } from "./tool-progress.js";
+import { createToolProgressSampler, isToolCallComplete, type ToolCallProgress } from "./tool-progress.js";
 
 /** 明确拒绝 parallel_tool_calls 字段的 provider id：之后请求不再携带，避免每趟 400。 */
 const parallelToolCallsUnsupportedProviders = new Set<string>();
@@ -69,6 +69,8 @@ type ProviderChunk = {
   usage?: {
     prompt_tokens?: number;
     completion_tokens?: number;
+    /** 上游总用量：用于识别「缓存另加在 prompt 之上」的独占输入口径 */
+    total_tokens?: number;
     /** OpenAI / GLM 等：输入明细里的缓存命中数 */
     prompt_tokens_details?: {
       cached_tokens?: number;
@@ -76,6 +78,8 @@ type ProviderChunk = {
       cache_read_input_tokens?: number;
       cache_creation_input_tokens?: number;
     };
+    /** Responses 形状的输入明细 */
+    input_tokens_details?: { cached_tokens?: number };
     /** DeepSeek 兼容：顶层缓存命中/未命中数（prompt_tokens 已包含命中） */
     prompt_cache_hit_tokens?: number;
     prompt_cache_miss_tokens?: number;
@@ -305,6 +309,7 @@ async function streamChatCompletions(options: {
   const reasoning: string[] = [];
   const toolCalls = new Map<number, ToolCall>();
   const completedCalls = new Set<number>();
+  const sampleToolProgress = createToolProgressSampler();
   let usage: StreamCompletionResult["usage"];
   let reportedUsage: TokenUsage | undefined;
   let finishReason: string | undefined;
@@ -330,6 +335,7 @@ async function streamChatCompletions(options: {
         const cachedTokens =
           parsed.usage.prompt_tokens_details?.cached_tokens ??
           parsed.usage.prompt_tokens_details?.cache_read_input_tokens ??
+          parsed.usage.input_tokens_details?.cached_tokens ??
           parsed.usage.prompt_cache_hit_tokens ??
           parsed.usage.cached_tokens ??
           parsed.usage.cache_read_input_tokens ??
@@ -340,15 +346,46 @@ async function streamChatCompletions(options: {
         const cacheWriteTokens =
           parsed.usage.cache_creation_input_tokens ??
           parsed.usage.prompt_tokens_details?.cache_creation_input_tokens;
+        // 顶层 Anthropic 形状字段可能是「独占输入」：prompt_tokens 只是未命中部分，
+        // 缓存另加在 total_tokens 之上（或命中数大于 prompt）。按含缓存处理会把命中率
+        // 分母算小、甚至超过 100%。判定与 cc-haha #1516 对齐：只有直接缓存字段、
+        // 无嵌套/DeepSeek 命中字段、且 total 明确把缓存加在 prompt+completion 之上时，
+        // 才按独占处理；其余一律保持「prompt_tokens 已含缓存」。
+        const promptTokens = parsed.usage.prompt_tokens;
+        const directRead = parsed.usage.cache_read_input_tokens;
+        const directWrite = parsed.usage.cache_creation_input_tokens;
+        const nestedCached =
+          parsed.usage.prompt_tokens_details?.cached_tokens ??
+          parsed.usage.prompt_tokens_details?.cache_read_input_tokens ??
+          parsed.usage.input_tokens_details?.cached_tokens;
+        const exclusivePrompt =
+          promptTokens !== undefined &&
+          directRead !== undefined &&
+          nestedCached === undefined &&
+          parsed.usage.prompt_cache_hit_tokens === undefined &&
+          parsed.usage.cached_tokens === undefined &&
+          (directRead > promptTokens ||
+            (parsed.usage.total_tokens !== undefined &&
+              (parsed.usage.total_tokens ===
+                promptTokens + (parsed.usage.completion_tokens ?? 0) + directRead ||
+                parsed.usage.total_tokens ===
+                  promptTokens +
+                    (parsed.usage.completion_tokens ?? 0) +
+                    directRead +
+                    (directWrite ?? 0))));
         usage = {
-          inputTokens: parsed.usage.prompt_tokens,
-          // prompt_tokens 已含命中/写入部分，减掉才是真正没走缓存的输入
-          ...(parsed.usage.prompt_tokens !== undefined
+          inputTokens:
+            exclusivePrompt && promptTokens !== undefined
+              ? promptTokens + (directRead ?? 0) + (directWrite ?? 0)
+              : promptTokens,
+          ...(promptTokens !== undefined
             ? {
-                uncachedInputTokens: Math.max(
-                  0,
-                  parsed.usage.prompt_tokens - (cachedTokens ?? 0) - (cacheWriteTokens ?? 0),
-                ),
+                uncachedInputTokens: exclusivePrompt
+                  ? promptTokens
+                  : Math.max(
+                      0,
+                      promptTokens - (cachedTokens ?? 0) - (cacheWriteTokens ?? 0),
+                    ),
               }
             : {}),
           outputTokens: parsed.usage.completion_tokens,
@@ -390,7 +427,8 @@ async function streamChatCompletions(options: {
           progressed = true;
         }
         toolCalls.set(index, current);
-        options.onToolCall?.(summarizeToolCalls(toolCalls.values()));
+        const progress = sampleToolProgress(toolCalls.values());
+        if (progress) options.onToolCall?.(progress);
         // 参数闭合即刻回调（每个 call 只触发一次）；调用方拿快照自行决定是否提前执行
         if (
           options.onToolCallComplete &&
@@ -405,6 +443,10 @@ async function streamChatCompletions(options: {
     },
     options.signal,
   );
+
+  // 流结束强制补一次：末段参数可能没跨过 512 字符窗口，界面上的 chars 要落到完整值
+  const finalProgress = toolCalls.size ? sampleToolProgress(toolCalls.values(), true) : null;
+  if (finalProgress) options.onToolCall?.(finalProgress);
 
   if (!sawDone && !finishReason) {
     throw new Error("Model stream ended before completion; the response may be incomplete.");
@@ -448,8 +490,7 @@ export function utilityProvider(
     | "polish"
     | "memory"
     | "learning"
-    | "suggestion"
-    | "mail" = "compaction",
+    | "suggestion" = "compaction",
 ): ProviderConfig {
   return { ...provider, maxTokens, reasoningEffort: undefined, thinkingBudget: undefined };
 }

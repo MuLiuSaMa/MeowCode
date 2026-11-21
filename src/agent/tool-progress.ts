@@ -41,6 +41,28 @@ export function summarizeToolCalls(calls: Iterable<ToolCall>): ToolCallProgress 
 }
 
 /**
+ * 流式进度采样：多数 delta 只让参数变长，名字/路径并不会变。
+ * 完整摘要（逐参数正则 + JSON.parse）只在首次、数量/名字变化、或字符增量够
+ * minChars 时做一次；下游 agent-loop 的同款节流仍保留作第二层。
+ */
+export function createToolProgressSampler(
+  minChars = 512,
+): (calls: Iterable<ToolCall>, force?: boolean) => ToolCallProgress | null {
+  let lastKey = "";
+  let lastChars = 0;
+  return (calls, force = false) => {
+    const values = [...calls];
+    let chars = 0;
+    for (const call of values) chars += call.function.arguments.length;
+    const key = `${values.length}|${values.at(-1)?.function.name ?? ""}`;
+    if (!force && lastKey && key === lastKey && chars - lastChars < minChars) return null;
+    lastKey = key;
+    lastChars = chars;
+    return summarizeToolCalls(values);
+  };
+}
+
+/**
  * 流式累积中的工具调用参数是否已经完整闭合。
  * 三重校验：名字与 id 都到了、参数 JSON 可整体 parse（parse 成功已隐含括号/字符串配平）。
  * parse 失败 = 还在流式传输或被截断，绝不能提前执行。

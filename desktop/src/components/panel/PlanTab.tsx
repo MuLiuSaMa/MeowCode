@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { LuFileText, LuListChecks, LuRotateCw } from "react-icons/lu";
+import { FileIcon } from "../ui/FileIcon";
 import { api, type WorkflowRoadmap } from "../../api";
 import { deriveStage } from "../../../../src/agent/stage";
 import { MarkdownDocument } from "../ui/MarkdownDocument";
@@ -165,7 +166,7 @@ export function PlanTab({
     <div className="mc-plan" data-writing={Boolean(writing)}>
       {roadmap ? <RoadmapSection roadmap={roadmap} /> : null}
       <div className="mc-plan__head">
-        <LuFileText size={13} className="mc-plan__headicon" />
+        <FileIcon path={path} size={13} />
         <span className="mc-plan__path mc-truncate" title={path}>
           {path}
         </span>

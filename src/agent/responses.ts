@@ -1,7 +1,7 @@
 import { buildAuthHeaders, fetchWithRetry, mergeExtraHeaders, type AuthStyle } from "./http.js";
 import { parseJson, readSseFrames } from "./sse.js";
 import { ProviderRequestError } from "./provider-error.js";
-import { isToolCallComplete, summarizeToolCalls, type ToolCallProgress } from "./tool-progress.js";
+import { createToolProgressSampler, isToolCallComplete, type ToolCallProgress } from "./tool-progress.js";
 import type { ChatMessage, TokenUsage, ToolCall, ToolDefinition } from "./types.js";
 
 /**
@@ -267,6 +267,7 @@ export async function streamResponses(options: {
   const reasoning: string[] = [];
   const toolCalls = new Map<string, ToolCall>();
   const completedCalls = new Set<string>();
+  const sampleToolProgress = createToolProgressSampler();
   let usage: TokenUsage | undefined;
   let reportedUsage: TokenUsage | undefined;
   let finishReason: string | undefined;
@@ -310,7 +311,8 @@ export async function streamResponses(options: {
         },
       });
     }
-    options.onToolCall?.(summarizeToolCalls(toolCalls.values()));
+    const progress = sampleToolProgress(toolCalls.values(), complete);
+    if (progress) options.onToolCall?.(progress);
     const call = toolCalls.get(item.call_id ?? primaryId) ?? toolCalls.get(primaryId);
     // 只有拿到真实 call_id 才允许提前执行：item.id 不是 function_call_output 的配对键
     if (
@@ -383,7 +385,8 @@ export async function streamResponses(options: {
         const current = [...toolCalls.values()].at(-1);
         if (current) {
           current.function.arguments += chunk.delta;
-          options.onToolCall?.(summarizeToolCalls(toolCalls.values()));
+          const progress = sampleToolProgress(toolCalls.values());
+          if (progress) options.onToolCall?.(progress);
           // 参数闭合即刻回调（每个 call 只触发一次）
           if (
             options.onToolCallComplete &&

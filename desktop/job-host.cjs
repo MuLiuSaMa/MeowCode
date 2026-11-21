@@ -88,6 +88,22 @@ function createJobHost({ terminals, notify = () => {}, token = crypto.randomByte
         send(response, 200, result);
         return;
       }
+      if (url.pathname === "/job/wait" && request.method === "GET") {
+        const id = url.searchParams.get("id") ?? "";
+        const offsetParam = url.searchParams.get("offset");
+        const timeoutParam = Number(url.searchParams.get("timeout_ms"));
+        const result = await terminals.waitSession(id, {
+          ...(offsetParam === null ? {} : { offset: Number(offsetParam) }),
+          timeoutMs: Number.isFinite(timeoutParam) ? timeoutParam : 60_000,
+          until: url.searchParams.get("until") === "output" ? "output" : "exit",
+        });
+        if (!result) {
+          send(response, 404, { error: "job not found" });
+          return;
+        }
+        send(response, 200, result);
+        return;
+      }
       if (url.pathname === "/job/attach" && request.method === "GET") {
         const result = terminals.attachSession(url.searchParams.get("id") ?? "");
         if (!result) {
@@ -148,6 +164,8 @@ function createJobHost({ terminals, notify = () => {}, token = crypto.randomByte
       server = http.createServer((request, response) => {
         void handle(request, response);
       });
+      // job wait 会长轮询到 300s：Node 默认的 requestTimeout(5min) 会把这种请求掐掉
+      server.requestTimeout = 0;
       await new Promise((resolve, reject) => {
         server.once("error", reject);
         server.listen(0, "127.0.0.1", () => resolve(undefined));

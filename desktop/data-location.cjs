@@ -9,12 +9,19 @@ const { writeJsonAtomic } = require("./persist.cjs");
 const DATA_ENTRIES = [
   "agent",
   "fonts",
-  "mail",
   "oauth-apps.json",
   "model-profiles.json",
   "open-with-cache.json",
   "statistics-sent.json",
 ];
+
+/**
+ * Electron safeStorage 的密钥在 Windows 上落在 userData/Local State（DPAPI 包裹）。
+ * 不一起搬走，settings.json 里的 apiKeyEncrypted 等密文在新位置就解不开（401）。
+ * 旧位置保留这份文件：切回默认目录时旧数据仍能解密。
+ */
+const PROFILE_KEY_ENTRIES = ["Local State"];
+const COPY_ENTRIES = [...DATA_ENTRIES, ...PROFILE_KEY_ENTRIES];
 
 function defaultDataDir(appData) {
   return path.join(appData, "MeowCode");
@@ -60,7 +67,31 @@ function validateDataTarget({ current, target, defaultDir }) {
   return null;
 }
 
-function migrateData({ current, target, defaultDir, pointerPath }) {
+function copyEntries(from, to) {
+  fs.mkdirSync(to, { recursive: true });
+  for (const entry of COPY_ENTRIES) {
+    const source = path.join(from, entry);
+    if (!fs.existsSync(source)) continue;
+    fs.cpSync(source, path.join(to, entry), { recursive: true, force: true });
+  }
+}
+
+/** 删除旧位置里已迁移的应用数据；残留（被占用等）不影响新位置运行。 */
+function removeEntries(dir) {
+  for (const entry of DATA_ENTRIES) {
+    try {
+      fs.rmSync(path.join(dir, entry), { recursive: true, force: true });
+    } catch {
+      // 旧位置残留只是占盘，不阻塞迁移
+    }
+  }
+}
+
+function hasDataEntries(dir) {
+  return DATA_ENTRIES.some((entry) => fs.existsSync(path.join(dir, entry)));
+}
+
+function migrateData({ current, target, defaultDir, pointerPath, removeSource = false }) {
   const code = validateDataTarget({ current, target, defaultDir });
   if (code) return { ok: false, code };
 
@@ -68,21 +99,21 @@ function migrateData({ current, target, defaultDir, pointerPath }) {
   const targetDir = path.resolve(target);
   try {
     if (targetDir === path.resolve(defaultDir)) {
+      // 默认目录可能已被上次「转移」清空：没有数据时先从当前位置复制回来
+      if (removeSource || !hasDataEntries(targetDir)) copyEntries(currentDir, targetDir);
       try {
         fs.unlinkSync(pointerPath);
       } catch (error) {
         if (error.code !== "ENOENT") throw error;
       }
+      if (removeSource) removeEntries(currentDir);
       return { ok: true, resetToDefault: true };
     }
 
-    fs.mkdirSync(targetDir, { recursive: true });
-    for (const entry of DATA_ENTRIES) {
-      const source = path.join(currentDir, entry);
-      if (!fs.existsSync(source)) continue;
-      fs.cpSync(source, path.join(targetDir, entry), { recursive: true, force: true });
-    }
+    copyEntries(currentDir, targetDir);
     writeJsonAtomic(pointerPath, { version: 1, path: targetDir }, { pretty: false });
+    // 先写指针再删旧数据：删除失败时新位置仍然可用
+    if (removeSource) removeEntries(currentDir);
     return { ok: true };
   } catch (error) {
     return {

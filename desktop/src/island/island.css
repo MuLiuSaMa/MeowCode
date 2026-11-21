@@ -342,23 +342,30 @@ button.mc-skillchip.island-chip {
   max-width: 170px;
 }
 
+/* 文件 chip 的删除键与图片角标同款：同尺寸圆形徽标、同边框/底色/悬停，
+   必须显式 padding:0 —— 全局 border-box 下 UA 默认的 1px 6px 内边距会把
+   16px 的内容区挤到 4px，svg 图标被 flex 压成一个小点。 */
 .island-attach__remove {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   flex: none;
-  width: 16px;
-  height: 16px;
+  width: 18px;
+  height: 18px;
+  padding: 0;
   margin-left: 2px;
-  border: 0;
-  border-radius: 50%;
-  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  corner-shape: round;
+  background: var(--surface);
   color: var(--fg-subtle);
   cursor: pointer;
+  transition: background-color var(--dur) var(--ease), color var(--dur) var(--ease);
 }
 
 .island-attach__remove:hover {
-  color: var(--danger);
+  background: var(--surface-hover);
+  color: var(--fg);
 }
 
 .island-composer .mc-composer__input {

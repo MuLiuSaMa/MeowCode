@@ -1,7 +1,7 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
-import { LuArrowDown, LuArrowRight, LuArrowUp, LuCheck, LuChevronDown, LuChevronLeft, LuChevronRight, LuCircleAlert, LuEye, LuFileText, LuFolder, LuGitBranch, LuGitFork, LuGripVertical, LuListChecks, LuLoaderCircle, LuPaperclip, LuPlus, LuPencil, LuPuzzle, LuRotateCw, LuSearch, LuShield, LuShieldCheck, LuSparkles, LuSquare, LuTarget, LuWandSparkles, LuX } from "react-icons/lu";
+import { LuArrowDown, LuArrowRight, LuArrowUp, LuCheck, LuChevronDown, LuChevronLeft, LuChevronRight, LuCircleAlert, LuEye, LuFolder, LuGitBranch, LuGitFork, LuGripVertical, LuListChecks, LuLoaderCircle, LuPaperclip, LuPlus, LuPencil, LuPuzzle, LuRotateCw, LuSearch, LuShield, LuShieldCheck, LuSparkles, LuSquare, LuTarget, LuWandSparkles, LuX } from "react-icons/lu";
 import { effortLabel, isEffortValid } from "../effort";
 import {
   api,
@@ -25,6 +25,7 @@ import {
 } from "../api";
 import { agentProfileDisplay } from "../agentProfiles";
 import { Toggle } from "./ui/Toggle";
+import { AgentCat } from "./ui/AgentCat";
 import { PluginSlot, PluginSlotSingle, PluginWrap } from "../plugins/PluginSlot";
 import { BranchMenu } from "./BranchMenu";
 import { invalidateMarketplaceCatalog, loadMarketplaceCatalog } from "../data/marketplaceCatalog";
@@ -44,11 +45,13 @@ import { baseName } from "../util";
 import { ContextMeter } from "./ContextMeter";
 import { ContextPopover } from "./ContextPopover";
 import { AgentProfilePopover } from "./AgentProfilePopover";
+import { FileIcon } from "./ui/FileIcon";
 import { ModelPopover, levelsFor } from "./ModelPopover";
 import { findTemplate } from "../data/providerCatalog";
 import { providerModelIconKey } from "../data/providerIcons";
 import { ProviderIcon } from "./ui/ProviderIcon";
 import { SessionProgressPill } from "./SessionProgressPill";
+import { usePresence } from "./ui/usePresence";
 import { queuedPreview } from "../user-references";
 import "./Composer.css";
 
@@ -63,8 +66,9 @@ export type ComposerChip =
   /**
    * 附件：绝对路径，**不限工作区**。`id` 就是归一后的绝对路径（去重/删除键），
    * `name` 只用于展示。内容由运行时按路径注入，不写进输入框正文。
+   * `isDirectory` 标记拖入的是文件夹（展示名带尾斜杠，运行时注入目录树）。
    */
-  | { kind: "file"; id: string; name: string; path: string };
+  | { kind: "file"; id: string; name: string; path: string; isDirectory?: boolean };
 
 /** 输入框里待发送的图片（dataUrl 供缩略图预览，data 是不带前缀的 base64）。 */
 export type ComposerImage = {
@@ -378,6 +382,7 @@ export function Composer({
   onAttachPlugin,
   onAttachCommand,
   onAttachFile,
+  windowDrop = false,
   askCard,
   onAnswerAsk,
   onSend,
@@ -437,6 +442,7 @@ export function Composer({
   plan,
   changes,
   pillDismissed,
+  pillEpoch,
   showJumpBottom = false,
   onJumpBottom,
 }: {
@@ -463,8 +469,10 @@ export function Composer({
     command: string;
     iconUrl?: string;
   }) => void;
-  /** 选中/拖入非图片文件：挂附件 chip（绝对路径，工作区内外都允许） */
-  onAttachFile?: (file: { name: string; path: string }) => void;
+  /** 选中/拖入非图片文件或文件夹：挂附件 chip（绝对路径，工作区内外都允许） */
+  onAttachFile?: (file: { name: string; path: string; isDirectory?: boolean }) => void;
+  /** 监听整个窗口的拖放：拖到窗口任意位置都能添加附件（主聊天使用；侧边聊只在输入框内接收） */
+  windowDrop?: boolean;
   /** ask_user 澄清问题卡片：模型反问时整个输入框换成引导式点选（可批量多题） */
   askCard?: {
     callId: string;
@@ -562,6 +570,8 @@ export function Composer({
   changes?: SessionChangeSummary[];
   /** 信息胶囊直接收起（设置里选了「对话结束后消失」且回合已结束） */
   pillDismissed?: boolean;
+  /** 换值即重建胶囊：新建 / 切换会话时不要退场动画（旧胶囊会在空态中间淡出闪一下） */
+  pillEpoch?: number;
   /** 消息流已滚离底部：显示「返回底部」按钮（与信息胶囊是否显示无关） */
   showJumpBottom?: boolean;
   onJumpBottom?: () => void;
@@ -569,6 +579,8 @@ export function Composer({
   const projectDisplayCwd = projectCwd ?? workspace;
   const { t } = useTranslation("composer");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  /** 主输入框容器：窗口级拖放用它判断落点是否属于当前 Composer */
+  const wrapRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!focusToken) return;
     requestAnimationFrame(() => textareaRef.current?.focus());
@@ -580,6 +592,8 @@ export function Composer({
   const agentButtonRef = useRef<HTMLButtonElement>(null);
   const plusButtonRef = useRef<HTMLButtonElement>(null);
   const plusMenuRef = useRef<HTMLDivElement>(null);
+  /** 「返回底部」按钮：滚离底部时淡入，滚回底部后先收宽度再卸载，行内元素不会硬跳 */
+  const jumpBottom = usePresence(showJumpBottom, 160);
   const [menuOpen, setMenuOpen] = useState(false);
   const [ctxOpen, setCtxOpen] = useState(false);
   const [accessOpen, setAccessOpen] = useState(false);
@@ -690,28 +704,33 @@ export function Composer({
   };
 
   /**
-   * 非图片文件：每份挂一个附件 chip（卡片，与技能引用同一行），**不限工作区** ——
-   * 用户明确挑选/拖入的文件就应该能发给模型。内容由运行时按绝对路径读取注入，
-   * 输入框正文里不再插入 `@路径` 文本。
+   * 非图片文件 / 文件夹：每份挂一个附件 chip（卡片，与技能引用同一行），**不限工作区** ——
+   * 用户明确挑选/拖入的路径就应该能发给模型。内容由运行时按绝对路径读取注入，
+   * 输入框正文里不再插入 `@路径` 文本。拖入文件夹时展示名带尾斜杠，并标记 isDirectory。
    */
-  const attachFiles = (files: File[]) => {
-    const picked: Array<{ name: string; path: string }> = [];
+  const attachFiles = (entries: Array<{ file: File; isDirectory: boolean }>) => {
+    const picked: Array<{ name: string; path: string; isDirectory?: boolean }> = [];
     const seen = new Set<string>();
-    for (const file of files) {
+    for (const { file, isDirectory } of entries) {
       const absolute = window.meow.getFilePath?.(file) ?? "";
       if (!absolute.trim()) {
         onError?.(t("file.pathFailed", { name: file.name }));
         continue;
       }
-      // 拖入目录时 Chromium 给的是一条 size=0、无 type 的伪文件：挂上卡片也读不出内容
-      if (file.size === 0 && !file.type) {
+      // 普通空文件没有可读内容；目录是 Chromium 给的 size=0、无 type 的伪文件，不能跳过
+      if (!isDirectory && file.size === 0 && !file.type) {
         onError?.(t("file.skipped", { name: file.name }));
         continue;
       }
       const key = normalizeFilePath(absolute).toLowerCase();
       if (seen.has(key)) continue;
       seen.add(key);
-      picked.push({ name: file.name || baseNameOf(absolute), path: absolute });
+      const base = file.name || baseNameOf(absolute);
+      picked.push({
+        name: base,
+        path: absolute,
+        ...(isDirectory ? { isDirectory: true } : {}),
+      });
     }
     if (!picked.length) return;
     if (onAttachFile) {
@@ -727,13 +746,125 @@ export function Composer({
     requestAnimationFrame(() => textareaRef.current?.focus());
   };
 
-  /** 拖入/选择：图片走多模态缩略图，其余文件挂附件卡片 */
-  const addFiles = (files: File[]) => {
-    const pickedImages = files.filter((file) => file.type.startsWith("image/"));
-    const others = files.filter((file) => !file.type.startsWith("image/"));
+  /** 拖入/选择：图片走多模态缩略图，其余文件与文件夹挂附件卡片 */
+  const addFiles = (files: File[], directories: boolean[] = []) => {
+    const entries = files.map((file, index) => ({
+      file,
+      isDirectory: directories[index] === true,
+    }));
+    const pickedImages = entries
+      .filter((entry) => !entry.isDirectory && entry.file.type.startsWith("image/"))
+      .map((entry) => entry.file);
+    const others = entries.filter(
+      (entry) => entry.isDirectory || !entry.file.type.startsWith("image/"),
+    );
     if (pickedImages.length) void addImages(pickedImages);
     if (others.length) attachFiles(others);
   };
+
+  /**
+   * 「+ → 添加文件夹」：走系统目录选择器，不依赖 Windows 拖放通道。
+   * 管理员模式下 Explorer 的拖放会被 UIPI 阻断，这个入口仍然可用。
+   */
+  const pickFolders = async () => {
+    let picked: string[] = [];
+    try {
+      picked = (await window.meow.pickAttachmentFolders?.()) ?? [];
+    } catch {
+      picked = [];
+    }
+    if (!picked.length) return;
+    if (onAttachFile) {
+      for (const target of picked) {
+        onAttachFile({
+          name: baseNameOf(target),
+          // 保留原始绝对路径：盘符根目录（D:\）去掉尾分隔符会被解析成当前目录
+          path: target,
+          isDirectory: true,
+        });
+      }
+    } else {
+      // 没有 chip 回调的宿主：退回 @ 绝对路径引用
+      const tokens = picked.map((target) =>
+        /\s/.test(target) ? `@"${target}"` : `@${target}`,
+      );
+      const separator = value && !/\s$/.test(value) ? " " : "";
+      onChange(`${value}${separator}${tokens.join(" ")} `);
+    }
+    requestAnimationFrame(() => textareaRef.current?.focus());
+  };
+
+  /** 窗口级拖放读最新闭包（images / onAttachFile 等随渲染变化） */
+  const addFilesRef = useRef(addFiles);
+  addFilesRef.current = addFiles;
+  /** ask 卡片 / 计划确认 / 禁用时窗口拖放不生效 */
+  const windowDropActive = Boolean(
+    windowDrop && !askCard && !planDocPath && !disabled && !compacting,
+  );
+
+  useEffect(() => {
+    if (!windowDropActive) return;
+    const isFileDrag = (data: DataTransfer | null): boolean => {
+      if (!data) return false;
+      const types = [...data.types];
+      if (types.includes("Files")) return true;
+      // 有的环境拖目录时 types 为空：再用 items 的元素类型兜底
+      if (types.length) return false;
+      return [...data.items].some((item) => item.kind === "file");
+    };
+    const isHidden = () => Boolean(wrapRef.current?.closest('[data-hidden="true"]'));
+    const isOtherComposer = (target: EventTarget | null) => {
+      const element = target instanceof Element ? target : null;
+      const composer = element?.closest(".mc-composer");
+      return Boolean(composer && !wrapRef.current?.contains(composer));
+    };
+    const onDragOver = (event: DragEvent) => {
+      if (isHidden() || isOtherComposer(event.target)) return;
+      if (!isFileDrag(event.dataTransfer)) return;
+      event.preventDefault();
+      if (event.dataTransfer) event.dataTransfer.dropEffect = "copy";
+      setDragging(true);
+    };
+    const onDragLeave = (event: DragEvent) => {
+      // relatedTarget 为空 = 离开窗口；窗口内元素间移动不收起提示
+      if (event.relatedTarget === null) setDragging(false);
+    };
+    const onDrop = (event: DragEvent) => {
+      if (isHidden() || isOtherComposer(event.target)) return;
+      const data = event.dataTransfer;
+      if (!data || !isFileDrag(data)) return;
+      event.preventDefault();
+      setDragging(false);
+      const items = [...data.items].filter((item) => item.kind === "file");
+      const files = data.files.length
+        ? [...data.files]
+        : items
+            .map((item) => item.getAsFile())
+            .filter((file): file is File => file !== null);
+      if (!files.length) return;
+      const directories = files.map((_, index) => {
+        try {
+          return items[index]?.webkitGetAsEntry?.()?.isDirectory === true;
+        } catch {
+          return false;
+        }
+      });
+      addFilesRef.current(files, directories);
+    };
+    const reset = () => setDragging(false);
+    window.addEventListener("dragover", onDragOver);
+    window.addEventListener("dragleave", onDragLeave);
+    window.addEventListener("drop", onDrop);
+    window.addEventListener("dragend", reset);
+    window.addEventListener("blur", reset);
+    return () => {
+      window.removeEventListener("dragover", onDragOver);
+      window.removeEventListener("dragleave", onDragLeave);
+      window.removeEventListener("drop", onDrop);
+      window.removeEventListener("dragend", reset);
+      window.removeEventListener("blur", reset);
+    };
+  }, [windowDropActive]);
 
   /**
    * 目录作用域直接从 query 推导：`@src/ap` 列 src/ 并用 "ap" 过滤。
@@ -756,7 +887,6 @@ export function Composer({
   const activeCustomArchitecture = architectures?.find(
     (item) => item.id === activeArchitecture && !item.builtin,
   );
-  const AgentProfileIcon = agentProfileInfo.icon;
   const activeEffort = isEffortValid(effort, levels) ? effort ?? "" : "";
   /**
    * 滑杆拖动缓冲：每个 tick 只更新本地值，停手 160ms 后再提交。
@@ -1425,6 +1555,7 @@ export function Composer({
     return (
       <div className="mc-composerwrap">
         <div className="mc-composerstack">
+          <div className="mc-composer-host">
           <div className="mc-composer" data-ask="true">
             <div className="mc-planconfirm" role="dialog" aria-label={t("plan.answerAria")}>
               <p className="mc-planconfirm__title">
@@ -1512,6 +1643,7 @@ export function Composer({
               ) : null}
             </div>
           </div>
+          </div>
         </div>
       </div>
     );
@@ -1522,6 +1654,7 @@ export function Composer({
     return (
       <div className="mc-composerwrap">
         <div className="mc-composerstack">
+          <div className="mc-composer-host">
           <div className="mc-composer" data-plan="true" data-disabled={disabled || compacting}>
             <div className="mc-planconfirm" role="dialog" aria-label={t("plan.confirmAria")}>
                 <button
@@ -1582,6 +1715,7 @@ export function Composer({
                 </div>
               </div>
             </div>
+          </div>
         </div>
       </div>
     );
@@ -1626,20 +1760,31 @@ export function Composer({
         disabled: sendDisabled,
       }}
     >
-      <div className="mc-composerwrap">
+      <div className="mc-composerwrap" ref={wrapRef}>
+        {dragging ? (
+          <div className="mc-dropoverlay" role="status" aria-live="polite">
+            <div className="mc-dropoverlay__card">
+              <LuFolder size={30} className="mc-dropoverlay__icon" />
+              <span className="mc-dropoverlay__text">{t("drop.hint")}</span>
+            </div>
+          </div>
+        ) : null}
         <div className="mc-composerstack">
         {/* 输入框上方悬浮行：进度胶囊 + 返回底部按钮（胶囊隐藏时按钮仍单独显示） */}
         <div className="mc-composerstack__floating">
           <SessionProgressPill
+            key={pillEpoch ?? 0}
             plan={plan}
             changes={changes}
             streaming={streaming}
             dismissed={pillDismissed}
           />
-          {showJumpBottom ? (
+          {jumpBottom.mounted ? (
             <button
               type="button"
               className="mc-scrollbottom"
+              data-open={jumpBottom.open}
+              inert={!jumpBottom.open}
               aria-label={t("jumpToBottom")}
               title={t("jumpToBottom")}
               onClick={() => onJumpBottom?.()}
@@ -2029,7 +2174,7 @@ export function Composer({
                       ) : item.kind === "dir" ? (
                         <LuFolder size={14} className="mc-mention__icon" />
                       ) : (
-                        <LuFileText size={14} className="mc-mention__icon" />
+                        <FileIcon path={item.path} size={14} />
                       )}
                       <span className="mc-mention__name mc-truncate">{item.name}</span>
                       {item.kind === "dir" ? (
@@ -2048,12 +2193,15 @@ export function Composer({
           props={{ text: value, disabled: sendDisabled || compacting }}
         />
 
+        <div className="mc-composer-host">
         <div
           className="mc-composer"
           data-disabled={disabled || compacting}
           data-dragging={dragging}
           onDragOver={(event) => {
-            if (!event.dataTransfer?.types.includes("Files")) return;
+            // 有的环境拖目录时 types 为空：只有明确是纯文本拖拽（如排队项排序）才放行默认行为
+            const types = [...(event.dataTransfer?.types ?? [])];
+            if (types.length && !types.includes("Files")) return;
             event.preventDefault();
             setDragging(true);
           }}
@@ -2062,11 +2210,28 @@ export function Composer({
             setDragging(false);
           }}
           onDrop={(event) => {
-            if (!event.dataTransfer?.files.length) return;
+            // 主聊天由窗口级监听统一处理，避免同一次 drop 添加两遍
+            if (windowDrop) return;
+            const data = event.dataTransfer;
+            if (!data || (!data.files.length && !data.items.length)) return;
             event.preventDefault();
             setDragging(false);
             if (disabled || compacting) return;
-            addFiles([...event.dataTransfer.files]);
+            // DataTransfer 在回调返回后失效：目录标记必须同步读完
+            const items = [...data.items].filter((item) => item.kind === "file");
+            const files = data.files.length
+              ? [...data.files]
+              : items
+                  .map((item) => item.getAsFile())
+                  .filter((file): file is File => file !== null);
+            const directories = files.map((_, index) => {
+              try {
+                return items[index]?.webkitGetAsEntry?.()?.isDirectory === true;
+              } catch {
+                return false;
+              }
+            });
+            addFiles(files, directories);
           }}
         >
           {editingQueuedId ? (
@@ -2112,7 +2277,11 @@ export function Composer({
                   title={chip.kind === "file" ? chip.path : undefined}
                 >
                   {chip.kind === "file" ? (
-                    <LuFileText size={12} className="mc-skillchip__icon" />
+                    chip.isDirectory ? (
+                      <LuFolder size={12} className="mc-skillchip__icon" />
+                    ) : (
+                      <FileIcon path={chip.path || chip.name} size={12} />
+                    )
                   ) : chip.iconUrl ? (
                     <img src={chip.iconUrl} alt="" className="mc-skillchip__icon" />
                   ) : chip.kind === "skill" ? (
@@ -2324,6 +2493,19 @@ export function Composer({
                   >
                     <LuPaperclip size={15} />
                     <span className="mc-plusmenu__label">{t("action.upload")}</span>
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="mc-plusmenu__item"
+                    disabled={disabled || compacting}
+                    onClick={() => {
+                      setPlusOpen(false);
+                      void pickFolders();
+                    }}
+                  >
+                    <LuFolder size={15} />
+                    <span className="mc-plusmenu__label">{t("action.addFolder")}</span>
                   </button>
 
                   <div className="mc-plusmenu__divider" />
@@ -2537,11 +2719,7 @@ export function Composer({
                       setAgentOpen((open) => !open);
                     }}
                   >
-                    {activeCustomArchitecture ? (
-                      <LuPuzzle size={13} />
-                    ) : (
-                      <AgentProfileIcon size={13} />
-                    )}
+                    <AgentCat size={17} />
                     <span className="mc-composer__pilllabel">
                       {activeCustomArchitecture?.name ?? agentProfileInfo.label}
                     </span>
@@ -2672,6 +2850,7 @@ export function Composer({
               />
             </div>
           </div>
+        </div>
         </div>
       </div>
       </div>

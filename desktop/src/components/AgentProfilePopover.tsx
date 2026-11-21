@@ -1,8 +1,9 @@
 import { useEffect, useRef, type RefObject } from "react";
 import { useTranslation } from "react-i18next";
-import { LuCheck, LuPuzzle } from "react-icons/lu";
+import { LuCheck } from "react-icons/lu";
 import { AGENT_PROFILES, AGENT_PROFILE_ORDER } from "../agentProfiles";
 import type { AgentProfileId, HarnessArchitectureSummary } from "../api";
+import { AgentCat } from "./ui/AgentCat";
 import "./AgentProfilePopover.css";
 
 /**
@@ -62,7 +63,6 @@ export function AgentProfilePopover({
     >
       {AGENT_PROFILE_ORDER.map((id) => {
         const profile = AGENT_PROFILES[id];
-        const Icon = profile.icon;
         const active = value === id && activeArchitecture === id;
         return (
           <button
@@ -78,7 +78,7 @@ export function AgentProfilePopover({
             }}
           >
             <span className="mc-permmenu__label">
-              <Icon size={14} />
+              <AgentCat size={17} />
               {profile.label}
             </span>
             <span className="mc-permmenu__desc">
@@ -111,7 +111,7 @@ export function AgentProfilePopover({
                 }}
               >
                 <span className="mc-permmenu__label">
-                  <LuPuzzle size={14} />
+                  <AgentCat size={17} />
                   {label}
                 </span>
                 <span className="mc-permmenu__desc">{t("agentProfile.customDesc")}</span>

@@ -73,6 +73,24 @@
     "themeDesc": "「跟隨系統」會即時跟隨 Windows 的淺色 / 深色設定。切換後立即生效，不需要重新啟動。",
     "paletteSection": "配色",
     "paletteDesc": "選擇強調色與畫布色調。深淺兩種模式各自調校，切換明暗時會自動適配。",
+    "backgroundSection": "自訂背景",
+    "backgroundDesc": "用圖片或影片當背景層，鋪在所有面板下面。可以一次匯入多張，按「圖片 / 影片」分頁瀏覽、點一下切換；開啟輪播會依序自動循環。影片靜音播放；「面板不透明度」越低，桌布透出來得越多，文字可讀性也會下降。",
+    "backgroundEnable": "自訂背景",
+    "backgroundImage": "圖片",
+    "backgroundVideo": "影片",
+    "backgroundAdd": "匯入…",
+    "backgroundRemove": "移除",
+    "backgroundEmpty": "這一類還沒有背景，點「匯入」選檔案",
+    "backgroundCount": "{{count}} 張",
+    "backgroundCarousel": "自動輪播",
+    "backgroundSound": "影片聲音",
+    "backgroundInterval": "輪播間隔",
+    "backgroundSeconds": "{{count}} 秒",
+    "backgroundMinutes": "{{count}} 分鐘",
+    "backgroundOpacity": "背景不透明度",
+    "backgroundBrightness": "亮度",
+    "backgroundBlur": "模糊",
+    "backgroundPanel": "面板不透明度",
     "palette": {
       "classic": "經典色",
       "lava": "熔岩橙",
@@ -495,7 +513,7 @@
     "root": {
       "label": "工作樹根目錄",
       "hint": "留空以使用預設位置；修改後重新啟動應用程式生效。",
-      "open": "開啟資料夾"
+      "choose": "選擇資料夾"
     },
     "fetch": {
       "label": "建立工作樹前一律取得上游更新",
@@ -574,6 +592,10 @@
     "clearFailed": "清除失敗"
   },
   "general": {
+    "viewTabs": {
+      "field": "檢視切換",
+      "desc": "在主區域頂部顯示「對話 / 軌跡」懸浮切換；新會話沒有訊息時不顯示。"
+    },
     "section": "一般",
     "desc": "日常行為偏好，修改後立即生效。",
     "notify": {
@@ -593,9 +615,9 @@
       "desc": "主服務商逾時、限流或伺服器故障時，本回合自動切到其他已啟用的服務商，最多切換 2 次。",
       "toggleFailed": "儲存供應商故障轉移開關失敗"
     },
-    "mailAi": {
-      "field": "除了聊天使用的模型",
-      "follow": "跟隨聊天"
+    "defaultPermission": {
+      "field": "預設權限模式",
+      "desc": "新建對話時預設使用的工具執行權限；既有對話保留各自的選擇。"
     },
     "other": {
       "section": "常規"
@@ -723,7 +745,14 @@
       "title": "已封存的聊天",
       "hint": "還原或刪除單一已封存的聊天",
       "action": "管理"
-    }
+    },
+    "transfer": "轉移…",
+    "transferTitle": "轉移全部資料？",
+    "transferDesc": "會將全部應用程式資料複製到新資料夾，成功後刪除原位置的資料並重新啟動應用程式。",
+    "transferConfirm": "轉移並重新啟動",
+    "transferBusy": "正在轉移…",
+    "transferRestarting": "資料已轉移，正在重新啟動應用程式…",
+    "transferFailed": "轉移資料失敗。"
   },
   "connections": {
     "section": "SSH 連線",

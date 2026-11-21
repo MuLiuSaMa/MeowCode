@@ -22,7 +22,7 @@ const PLUGIN_LINE = /^【插件引用】(.+?) · ([^\n·]+)$/;
 const COMMAND_REF = /^【插件命令】(.*?)(?:\n|$)/;
 // i18n-allow-block-end
 
-export type AttachmentRef = { name: string; path: string };
+export type AttachmentRef = { name: string; path: string; isDirectory?: boolean };
 
 export type ReferenceChip =
   | { kind: "skill"; id: string; name: string }
@@ -54,10 +54,17 @@ export function parsePluginCommandHeader(content: string): PluginCommandHeader |
 function attachmentOf(line: string): AttachmentRef | null {
   const match = ATTACHMENT_LINE.exec(line);
   if (!match) return null;
-  const name = match[1].trim();
+  const rawName = match[1].trim();
   const path = match[2].trim();
   if (!path) return null;
-  return { name: name || path, path };
+  // 尾斜杠是发送时写入的「文件夹」标记；展示名去掉它
+  const isDirectory = rawName.endsWith("/");
+  const name = isDirectory ? rawName.replace(/\/+$/, "") : rawName;
+  return {
+    name: name || path,
+    path,
+    ...(isDirectory ? { isDirectory: true } : {}),
+  };
 }
 
 export function parseUserMessage(content: string): ParsedUserMessage {

@@ -15,6 +15,7 @@ import type { GitFileEntry, GitFileStatus } from "../../api";
 import type { GitGroupId, GitView } from "../../git/useGitView";
 import { formatNumber } from "../../i18n/format";
 import { ConfirmDialog } from "./ConfirmDialog";
+import { FileIcon } from "../ui/FileIcon";
 import "./git.css";
 
 /** 每组最多渲染的行数，见下方 groups 的注释 */
@@ -224,6 +225,7 @@ export function GitNav({
                       <span className="mc-git__letter" data-kind={statusKind}>
                         {STATUS_LETTER[statusKind]}
                       </span>
+                      <FileIcon path={entry.path} size={13} />
                       <span className="mc-git__filename">{baseNameOf(entry.path)}</span>
                       <span className="mc-git__dirname">{dirNameOf(entry.path)}</span>
                       {entry.added || entry.removed ? (

@@ -486,7 +486,7 @@
           emit({ type: "tool_output", callId: "c1", output: "desktop/\nsrc/\npackage.json\npnpm-workspace.yaml" });
           emit({ type: "tool_finished", callId: "c1", ok: true });
           emit({ type: "tool_started", callId: "c2", tool: "read_file", input: { path: "desktop/src/App.tsx" } });
-          emit({ type: "tool_output", callId: "c2", output: "import iconUrl from \"./assets/icon.png\";\n… 855 lines" });
+          emit({ type: "tool_output", callId: "c2", output: "import iconUrl from \"./assets/icon.webp\";\n… 855 lines" });
           emit({ type: "tool_finished", callId: "c2", ok: true });
           emit({ type: "tool_started", callId: "c3", tool: "run_command", input: { command: "pnpm typecheck" } });
           emit({ type: "tool_output", callId: "c3", output: "tsc --noEmit\n✓ 0 errors" });

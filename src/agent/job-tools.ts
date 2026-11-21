@@ -1,18 +1,18 @@
 import type { ToolDefinition, ToolResult } from "./types.js";
+import { createAnsiStripper } from "./exec/ansi.js";
 import type { JobChunk, JobManager } from "./jobs.js";
 
 const DEFAULT_JOB_OUTPUT_CHARS = 12_000;
-const JOB_WAIT_DEFAULT_MS = 20_000;
+const JOB_WAIT_DEFAULT_MS = 60_000;
 const JOB_WAIT_MIN_MS = 1_000;
-const JOB_WAIT_MAX_MS = 60_000;
-const JOB_WAIT_POLL_MS = 500;
+const JOB_WAIT_MAX_MS = 300_000;
 
 export const jobToolDefinition: ToolDefinition = {
   type: "function",
   function: {
     name: "job",
     description:
-      "Inspect or control background jobs started with run_command background=true. Jobs keep running after the turn ends; the user can also open the terminal tab and take over input. Use action=wait to block for output instead of sleeping.",
+      "Inspect or control background jobs: run_command background=true, and commands that were still running at their timeout. Jobs keep running after the turn ends; the user can also open the terminal tab and take over input. Use action=wait to block until the job exits instead of sleeping between polls.",
     parameters: {
       type: "object",
       properties: {
@@ -20,9 +20,9 @@ export const jobToolDefinition: ToolDefinition = {
           type: "string",
           enum: ["list", "output", "wait", "input", "kill"],
           description:
-            "list = all jobs; output = new text since offset; wait = block until output, exit, or timeout; input = write to stdin; kill = stop the job.",
+            "list = all jobs; output = new text since offset; wait = block until the job exits or the timeout hits (until=\"output\" returns as soon as new output arrives); input = write to stdin; kill = stop the job.",
         },
-        job_id: { type: "string", description: "Job id returned by run_command background=true." },
+        job_id: { type: "string", description: "Job id returned by run_command (background=true or after a timeout)." },
         offset: {
           type: "number",
           description:
@@ -30,7 +30,13 @@ export const jobToolDefinition: ToolDefinition = {
         },
         timeout_ms: {
           type: "number",
-          description: "wait only: block time, 1000-60000 (default 20000).",
+          description: "wait only: how long to block, 1000-300000 (default 60000).",
+        },
+        until: {
+          type: "string",
+          enum: ["exit", "output"],
+          description:
+            "wait only: exit (default) blocks until the process ends or the timeout hits and returns everything produced meanwhile; output returns as soon as there is new output.",
         },
         data: { type: "string", description: "Text to write to the job's stdin (input only)." },
         max_chars: {
@@ -64,16 +70,22 @@ function maxCharsOf(input: Record<string, unknown>): number {
     : DEFAULT_JOB_OUTPUT_CHARS;
 }
 
+/** 清掉 PTY 里的 ANSI 控制序列（终端页签要原样，模型不用看这些） */
+function cleanJobOutput(data: string): string {
+  if (!data.includes("\u001b")) return data;
+  const stripper = createAnsiStripper();
+  return stripper.push(Buffer.from(data, "utf8")).toString("utf8") + stripper.flush().toString("utf8");
+}
+
 /** output / wait 共用的增量块格式。 */
 function formatChunk(jobId: string, chunk: JobChunk, maxChars: number, note?: string): string {
-  const sliced =
-    chunk.data.length > maxChars
-      ? `[earlier output truncated]\n${chunk.data.slice(-maxChars)}`
-      : chunk.data;
+  // PTY 缓冲里是原始字节（终端页签要留着颜色）：给模型看之前先清掉 ANSI 噪音
+  const data = cleanJobOutput(chunk.data);
+  const sliced = data.length > maxChars ? `[earlier output truncated]\n${data.slice(-maxChars)}` : data;
   const status = chunk.exited ? `exited (code ${chunk.code ?? "?"})` : "running";
   const meta = [
     `[job ${jobId} · ${status} · next offset ${chunk.offset}${chunk.truncated ? " · older output dropped" : ""}${note ? ` · ${note}` : ""}]`,
-    chunk.data.length ? "" : "(no new output)",
+    data.length ? "" : "(no new output)",
   ]
     .filter(Boolean)
     .join("\n");
@@ -84,10 +96,6 @@ function clampWaitMs(value: unknown): number {
   const raw = Number(value);
   if (!Number.isFinite(raw)) return JOB_WAIT_DEFAULT_MS;
   return Math.min(JOB_WAIT_MAX_MS, Math.max(JOB_WAIT_MIN_MS, Math.floor(raw)));
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 export async function startBackgroundCommand(
@@ -101,7 +109,7 @@ export async function startBackgroundCommand(
       ok: true,
       output: [
         `Started background job ${job.id}: ${command}`,
-        "It keeps running after this turn. Read output with job {action:\"output\", job_id}, or block for new output with job {action:\"wait\", job_id, timeout_ms}; do not sleep between polls. The user can open the terminal tab to interact with it.",
+        "It keeps running after this turn. Block until it finishes with job {action:\"wait\", job_id} (returns on exit or timeout, default 60s), read what it printed with job {action:\"output\", job_id}, and never sleep between polls. The user can open the terminal tab to interact with it.",
       ].join("\n"),
     };
   } catch (error) {
@@ -138,31 +146,19 @@ export async function executeJobTool(
     if (action === "wait") {
       const timeoutMs = clampWaitMs(input.timeout_ms);
       const maxChars = maxCharsOf(input);
+      const until = input.until === "output" ? "output" : "exit";
       const raw = Number(input.offset);
-      let offset = Number.isFinite(raw) ? Math.max(0, Math.floor(raw)) : undefined;
-      if (offset === undefined) {
-        // 省略 offset = 只等当前末尾之后的新输出：用超大 offset 只探末尾，不搬运历史缓冲
-        const end = await manager.read(jobId, Number.MAX_SAFE_INTEGER);
-        if (!end) return { ok: false, output: `Job ${jobId} was not found.` };
-        if (end.exited) return { ok: true, output: formatChunk(jobId, end, maxChars) };
-        offset = end.offset;
-      }
-      const deadline = Date.now() + timeoutMs;
-      for (;;) {
-        const chunk = await manager.read(jobId, offset);
-        if (!chunk) return { ok: false, output: `Job ${jobId} was not found.` };
-        if (chunk.data.length || chunk.exited) {
-          return { ok: true, output: formatChunk(jobId, chunk, maxChars) };
-        }
-        const remaining = deadline - Date.now();
-        if (remaining <= 0) {
-          return {
-            ok: true,
-            output: formatChunk(jobId, chunk, maxChars, `no new output after ${timeoutMs}ms`),
-          };
-        }
-        await sleep(Math.min(JOB_WAIT_POLL_MS, remaining));
-      }
+      const offset = Number.isFinite(raw) ? Math.max(0, Math.floor(raw)) : undefined;
+      const startedAt = Date.now();
+      const chunk = await manager.wait(jobId, {
+        ...(offset === undefined ? {} : { offset }),
+        timeoutMs,
+        until,
+      });
+      if (!chunk) return { ok: false, output: `Job ${jobId} was not found.` };
+      const waited = Math.round((Date.now() - startedAt) / 1000);
+      const note = chunk.exited ? undefined : `still running after ${waited}s`;
+      return { ok: true, output: formatChunk(jobId, chunk, maxChars, note) };
     }
     if (action === "input") {
       const data = typeof input.data === "string" ? input.data : "";

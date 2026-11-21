@@ -6,6 +6,7 @@ import type { TimelineTool } from "../../api";
 import type { DiffRow } from "./diff";
 import type { NumberedLine } from "./parse";
 import { isAbsolutePath, panelPath } from "./paths";
+import { FileIcon } from "../ui/FileIcon";
 
 /** 单块内容的高亮/渲染上限：再大就只展示前缀，让用户去右侧看完整文件 */
 const MAX_CODE_CHARS = 80_000;
@@ -26,6 +27,7 @@ export function PathRow({
   const openable = Boolean(onOpenFile) && !isAbsolutePath(path);
   return (
     <div className="mc-tv__pathrow">
+      <FileIcon path={path} size={12} />
       <span className="mc-tv__path" title={path}>
         {path}
       </span>

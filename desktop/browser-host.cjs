@@ -1,18 +1,30 @@
 /**
- * 内嵌浏览器控制桥（主进程）：agent 的 browser_* 工具通过本地 HTTP 调这里，
- * 由主进程直接驱动渲染器里那个「agent 专属浏览器页签」的 guest webContents。
+ * 浏览器控制桥（主进程）：agent 的 browser_* 工具通过本地 HTTP 调这里。
  *
- * 链路：agent server(子进程) --HTTP(token)--> 本桥 --IPC--> 渲染器(建页签/激活)
- *                                      └--直接操作 guest: loadURL/executeJavaScript/sendInputEvent/capturePage
+ * agent 用一个「静默浏览器」：懒建的隐藏 BrowserWindow + 固定视口（AGENT_VIEWPORT），
+ * 不挂在右侧面板里 —— 面板大小、面板开不开都不影响 agent 的页面布局和截图尺寸。
+ * 链路：agent server(子进程) --HTTP(token)--> 本桥 --> 隐藏窗口的 webContents
+ *                                             (loadURL / executeJavaScript / sendInputEvent / capturePage)
  *
- * 借鉴 metis-main/desktop/browser-host.cjs，简化为单页签、8 个操作：
- * navigate / snapshot / click / type / screenshot / back / reload / shrink_image
- * （shrink_image 不碰页签：超限图片在主进程里用 nativeImage 缩图）。
+ * 9 个操作：navigate / preview / snapshot / click / type / screenshot / back / reload / shrink_image
+ * （shrink_image 不碰窗口：超限图片在主进程里用 nativeImage 缩图）。
  * 只监听 127.0.0.1 随机端口 + token 头校验。
+ *
+ * preview 服务「页面样式」：模型直接把 HTML 源码交给这个桥，它落在系统临时目录
+ * （SCRATCH_ROOT，启动与退出各清空一次，不碰用户仓库），页面只活在隐藏窗口里，界面上不弹浏览器。
+ * 传工作区里的 HTML 路径也行，这时同一路径段下的相对资源（css / js / 图片）一并加载。
  */
 const http = require("node:http");
+const fs = require("node:fs");
+const os = require("node:os");
+const path = require("node:path");
 const { randomBytes } = require("node:crypto");
-const { webContents, nativeImage } = require("electron");
+const { BrowserWindow, nativeImage } = require("electron");
+
+const fsp = fs.promises;
+
+/** agent 专属浏览器的固定视口：不跟右侧面板走，截图尺寸稳定 */
+const AGENT_VIEWPORT = { width: 1280, height: 900 };
 
 /** 快照脚本：只收可见的可交互元素（最多 200 个，文本截 120 字），ref 存 DOM 属性上（导航自动失效） */
 const SNAPSHOT_SCRIPT = String.raw`(() => {
@@ -56,46 +68,118 @@ const SNAPSHOT_SCRIPT = String.raw`(() => {
 
 const NAV_TIMEOUT_MS = 20_000;
 const OP_TIMEOUT_MS = 30_000;
-const BIND_TIMEOUT_MS = 15_000;
 const SCREENSHOT_MAX_WIDTH = 1280;
 /** base64 上限 ~2.5MB，防止超大截图打爆 HTTP/IPC */
 const SCREENSHOT_MAX_BASE64 = 2_500_000;
 
 const ALLOWED_REMOTE = new Set(["127.0.0.1", "::1", "::ffff:127.0.0.1"]);
 
+/** 预览页面的 MIME：只按扩展名给，认不出的按二进制流 */
+const PREVIEW_MIME = {
+  ".html": "text/html; charset=utf-8",
+  ".htm": "text/html; charset=utf-8",
+  ".css": "text/css; charset=utf-8",
+  ".js": "text/javascript; charset=utf-8",
+  ".mjs": "text/javascript; charset=utf-8",
+  ".json": "application/json; charset=utf-8",
+  ".svg": "image/svg+xml",
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".gif": "image/gif",
+  ".webp": "image/webp",
+  ".avif": "image/avif",
+  ".ico": "image/x-icon",
+  ".woff": "font/woff",
+  ".woff2": "font/woff2",
+  ".ttf": "font/ttf",
+  ".otf": "font/otf",
+  ".txt": "text/plain; charset=utf-8",
+};
+
 function isAllowedTarget(url) {
   return /^https?:\/\//i.test(url) || url === "about:blank";
 }
 
+/** 临时预览目录：页面样式的 HTML 写这里，用完（启动 / 退出）自动清空，不写进用户仓库 */
+const SCRATCH_ROOT = path.join(os.tmpdir(), "meowcode-previews");
+let scratchSeq = 0;
+
+/** 清空临时预览目录；目录不存在时什么都不做 */
+function cleanScratch() {
+  try {
+    for (const name of fs.readdirSync(SCRATCH_ROOT)) {
+      fs.rmSync(path.join(SCRATCH_ROOT, name), { recursive: true, force: true });
+    }
+  } catch {
+    // 目录还不存在
+  }
+}
+
+/** 把 HTML 写进临时预览目录并返回文件名（name 只用来给文件起个好认的名字） */
+function writeScratchHtml(html, name) {
+  fs.mkdirSync(SCRATCH_ROOT, { recursive: true });
+  const slug =
+    String(name || "page")
+      .toLowerCase()
+      .replace(/[^a-z0-9_-]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 40) || "page";
+  scratchSeq += 1;
+  const file = `${slug}-${scratchSeq}.html`;
+  fs.writeFileSync(path.join(SCRATCH_ROOT, file), html, "utf8");
+  return file;
+}
+
 function createBrowserHostController(options = {}) {
-  const getMainWindow = options.getMainWindow;
+  /** 预览根目录（桌面端传当前工作区）：relative 路径都从这里解析 */
+  const getWorkspaceRoot = options.getWorkspaceRoot;
+  /** 预览路径里的随机段：不知道它就取不到工作区文件 */
+  const previewToken = randomBytes(16).toString("hex");
   const token = options.token || randomBytes(24).toString("hex");
   let server = null;
   let baseUrl = "";
-  /** agent 专属浏览器页签（单例）：{ tabId, webContentsId } */
-  let agentTab = null;
-  /** 等渲染器建页签并回报绑定：{ resolve, timer } */
-  let pendingBind = null;
+  /** agent 的静默浏览器：隐藏窗口 + 固定视口（AGENT_VIEWPORT），界面上看不到也碰不到 */
+  let agentWindow = null;
 
-  function sendToRenderer(channel, payload) {
-    const win = getMainWindow();
-    if (!win || (typeof win.isDestroyed === "function" && win.isDestroyed())) {
-      throw new Error("Desktop window is not available");
-    }
-    win.webContents.send(channel, payload);
+  /** 隐藏窗口没建 / 被关掉时返回 null */
+  function guestOf() {
+    if (!agentWindow || agentWindow.isDestroyed()) return null;
+    const guest = agentWindow.webContents;
+    return guest && !guest.isDestroyed() ? guest : null;
   }
 
-  /** 渲染器可能关掉页签或重载窗口，fromId 拿不到活 guest 就返回 null */
-  function guestOf() {
-    if (!agentTab) return null;
-    const guest = webContents.fromId(agentTab.webContentsId);
-    return guest && !guest.isDestroyed() ? guest : null;
+  /** 懒建隐藏窗口：第一次用到浏览器工具时才起，避免应用启动就多一个 Chromium 窗口 */
+  function ensureAgentWindow() {
+    const alive = guestOf();
+    if (alive) return alive;
+    agentWindow = new BrowserWindow({
+      show: false,
+      useContentSize: true,
+      width: AGENT_VIEWPORT.width,
+      height: AGENT_VIEWPORT.height,
+      skipTaskbar: true,
+      webPreferences: {
+        // 隐藏窗口默认会被降频：定时器/动画停住，截图就是过期的画面
+        backgroundThrottling: false,
+        partition: "persist:meow-browser-agent",
+        contextIsolation: true,
+        nodeIntegration: false,
+        sandbox: true,
+      },
+    });
+    // 窗口边框会让 width/height 略偏：按内容区再钉一次，视口才是稳定的 1280x900
+    agentWindow.setContentSize(AGENT_VIEWPORT.width, AGENT_VIEWPORT.height);
+    agentWindow.on("closed", () => {
+      agentWindow = null;
+    });
+    return agentWindow.webContents;
   }
 
   function requireGuest() {
     const guest = guestOf();
     if (!guest) {
-      throw new Error("浏览器页签未打开，请先用 browser_navigate 打开页面");
+      throw new Error("浏览器尚未打开，请先用 browser_navigate 打开页面");
     }
     return guest;
   }
@@ -116,30 +200,94 @@ function createBrowserHostController(options = {}) {
     return { url, title };
   }
 
-  /** 渲染器回报 tabId ↔ webContentsId 绑定（浏览器页签 dom-ready 时触发） */
-  function bindTab(payload) {
-    const tabId = typeof payload?.tabId === "string" ? payload.tabId : "";
-    const webContentsId = Number(payload?.webContentsId);
-    if (!tabId || !Number.isFinite(webContentsId)) {
-      return { ok: false };
-    }
-    agentTab = { tabId, webContentsId };
-    if (pendingBind) {
-      clearTimeout(pendingBind.timer);
-      pendingBind.resolve(agentTab);
-      pendingBind = null;
-    }
-    return { ok: true, tabId };
+  /** 工作区根目录：每次现取，桌面端切换工作区后预览也跟着走 */
+  function workspaceRoot() {
+    const root = typeof getWorkspaceRoot === "function" ? getWorkspaceRoot() : "";
+    return typeof root === "string" ? root.trim() : "";
   }
 
-  function waitForBind() {
-    return new Promise((resolve, reject) => {
-      const timer = setTimeout(() => {
-        pendingBind = null;
-        reject(new Error("等待浏览器页签创建超时"));
-      }, BIND_TIMEOUT_MS);
-      pendingBind = { resolve, timer };
-    });
+  /** 相对路径 → root 内的绝对路径；越界返回 null */
+  function resolveUnder(root, relative) {
+    if (!root || !relative) return null;
+    const base = path.resolve(root);
+    const target = path.resolve(base, relative);
+    if (target !== base && !target.startsWith(`${base}${path.sep}`)) return null;
+    return target;
+  }
+
+  /** 工作区里的绝对路径 */
+  function resolveInWorkspace(relative) {
+    return resolveUnder(workspaceRoot(), relative);
+  }
+
+  /** 临时预览目录里的绝对路径 */
+  function resolveScratch(relative) {
+    return resolveUnder(SCRATCH_ROOT, relative);
+  }
+
+  /** 相对路径 → 静态预览地址（越界或根缺失时返回 null） */
+  function staticUrl(prefix, relative, resolve) {
+    if (!baseUrl || !resolve(relative)) return null;
+    const encoded = relative
+      .split(/[\\/]+/)
+      .filter(Boolean)
+      .map((segment) => encodeURIComponent(segment))
+      .join("/");
+    return `${baseUrl}${prefix}/${previewToken}/${encoded}`;
+  }
+
+  /** 工作区文件的预览地址：同前缀下的相对资源（css/js/图片）也能加载 */
+  function previewUrl(relative) {
+    return staticUrl("/preview", relative, resolveInWorkspace);
+  }
+
+  /** 临时预览文件的地址 */
+  function scratchUrl(file) {
+    return staticUrl("/scratch", file, resolveScratch);
+  }
+
+  /** 静态预览：只读指定根内的文件，路径穿越与目录一律拒绝 */
+  async function serveStatic(root, req, res, prefix) {
+    const rawPath = String(req.url || "").split("?")[0];
+    const sendText = (status, text) => {
+      res.writeHead(status, {
+        "content-type": "text/plain; charset=utf-8",
+        "cache-control": "no-store",
+      });
+      res.end(text);
+    };
+    if (!rawPath.startsWith(prefix)) {
+      sendText(404, "not found");
+      return;
+    }
+    let relative;
+    try {
+      relative = decodeURIComponent(rawPath.slice(prefix.length));
+    } catch {
+      sendText(400, "bad path");
+      return;
+    }
+    const target = resolveUnder(root, relative);
+    if (!target) {
+      sendText(403, "forbidden");
+      return;
+    }
+    try {
+      const info = await fsp.stat(target);
+      if (!info.isFile()) {
+        sendText(404, "not a file");
+        return;
+      }
+      const body = await fsp.readFile(target);
+      res.writeHead(200, {
+        "content-type": PREVIEW_MIME[path.extname(target).toLowerCase()] || "application/octet-stream",
+        "content-length": body.byteLength,
+        "cache-control": "no-store",
+      });
+      res.end(body);
+    } catch {
+      sendText(404, "not found");
+    }
   }
 
   function loadAndWait(guest, url) {
@@ -217,25 +365,11 @@ function createBrowserHostController(options = {}) {
     });
   }
 
-  /** 建页签（或复用已验证存在的）并导航；返回页面元信息 */
+  /** 在隐藏窗口里打开页面并等加载完；返回页面元信息 */
   async function ensureAgentTab(url) {
-    const alive = guestOf();
-    if (alive) {
-      try {
-        sendToRenderer("meow:browser-select-tab", { tabId: agentTab.tabId });
-      } catch {
-        // 窗口不在（理论上不可能，guest 还活着）；导航继续，激活失败无所谓
-      }
-      await navigateGuest(alive, url);
-      return { ok: true, tabId: agentTab.tabId, ...pageMeta(alive) };
-    }
-    sendToRenderer("meow:browser-ensure-tab", { requestId: `br-${Date.now()}`, url });
-    const bound = await waitForBind();
-    agentTab = bound;
-    const guest = guestOf();
-    if (!guest) throw new Error("浏览器页签创建后未能取得 webview");
+    const guest = ensureAgentWindow();
     await navigateGuest(guest, url);
-    return { ok: true, tabId: bound.tabId, ...pageMeta(guest) };
+    return { ok: true, ...pageMeta(guest) };
   }
 
   function sendInputEventSafely(guest, events) {
@@ -368,20 +502,32 @@ function createBrowserHostController(options = {}) {
 
   async function screenshot() {
     const guest = requireGuest();
-    const image = await guest.capturePage();
+    let image = null;
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      try {
+        image = await guest.capturePage();
+        break;
+      } catch (error) {
+        // 隐藏窗口第一次合成常常还没出帧（UnknownVizError）：等一帧再重试
+        if (attempt === 2) throw error;
+        await new Promise((resolve) => setTimeout(resolve, 350));
+      }
+    }
     const size = image.getSize();
     const final = size.width > SCREENSHOT_MAX_WIDTH ? image.resize({ width: SCREENSHOT_MAX_WIDTH }) : image;
     const base64 = final.toPNG().toString("base64");
     if (base64.length > SCREENSHOT_MAX_BASE64) {
       return { ok: false, error: "截图过大，请缩小页面内容或窗口后重试" };
     }
+    // 报缩放后的尺寸：模型拿到的是这张图，不是原始 device-pixel 大小
+    const finalSize = final.getSize();
     return {
       ok: true,
       screenshotBase64: base64,
       mimeType: "image/png",
       ...pageMeta(guest),
-      viewportWidth: size.width,
-      viewportHeight: size.height,
+      viewportWidth: finalSize.width,
+      viewportHeight: finalSize.height,
     };
   }
 
@@ -491,6 +637,33 @@ function createBrowserHostController(options = {}) {
         }
         return await ensureAgentTab(url);
       }
+      case "preview": {
+        const html = typeof command.html === "string" ? command.html : "";
+        if (html.trim()) {
+          try {
+            const file = writeScratchHtml(html, command.name);
+            const url = scratchUrl(file);
+            if (!url) return { ok: false, error: "预览地址生成失败" };
+            return { ...(await ensureAgentTab(url)), preview: file };
+          } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            return { ok: false, error: `写入临时预览文件失败：${message}` };
+          }
+        }
+        const relative = String(command.path || "").trim();
+        if (!relative) return { ok: false, error: "缺少预览文件路径" };
+        const target = resolveInWorkspace(relative);
+        if (!target) return { ok: false, error: "路径不在工作区内" };
+        try {
+          const info = await fsp.stat(target);
+          if (!info.isFile()) return { ok: false, error: "预览目标是目录，不是文件" };
+        } catch {
+          return { ok: false, error: `预览文件不存在：${relative}` };
+        }
+        const url = previewUrl(relative);
+        if (!url) return { ok: false, error: "预览地址生成失败" };
+        return { ...(await ensureAgentTab(url)), preview: relative };
+      }
       case "snapshot":
         return await snapshot();
       case "click":
@@ -509,9 +682,10 @@ function createBrowserHostController(options = {}) {
     }
   }
 
-  function start() {
-    if (server) return Promise.resolve({ baseUrl, token });
-    return new Promise((resolve, reject) => {
+  async function start() {
+    if (server) return { baseUrl, token };
+    cleanScratch();
+    return await new Promise((resolve, reject) => {
       server = http.createServer((req, res) => {
         const respond = (status, body) => {
           const text = JSON.stringify(body);
@@ -524,6 +698,16 @@ function createBrowserHostController(options = {}) {
         const remote = req.socket.remoteAddress || "";
         if (!ALLOWED_REMOTE.has(remote)) {
           respond(403, { ok: false, error: "forbidden" });
+          return;
+        }
+        // 页面预览：只有带随机段前缀的 GET 才走静态文件，其他请求照旧走 JSON 控制面
+        const rawUrl = String(req.url || "");
+        if (req.method === "GET" && rawUrl.startsWith(`/preview/${previewToken}/`)) {
+          void serveStatic(workspaceRoot(), req, res, `/preview/${previewToken}/`);
+          return;
+        }
+        if (req.method === "GET" && rawUrl.startsWith(`/scratch/${previewToken}/`)) {
+          void serveStatic(SCRATCH_ROOT, req, res, `/scratch/${previewToken}/`);
           return;
         }
         if (req.method === "GET" && req.url === "/health") {
@@ -573,11 +757,15 @@ function createBrowserHostController(options = {}) {
   }
 
   function stop() {
-    if (pendingBind) {
-      clearTimeout(pendingBind.timer);
-      pendingBind = null;
+    cleanScratch();
+    if (agentWindow && !agentWindow.isDestroyed()) {
+      try {
+        agentWindow.destroy();
+      } catch {
+        // 已销毁
+      }
     }
-    agentTab = null;
+    agentWindow = null;
     if (server) {
       try {
         server.close();
@@ -592,8 +780,9 @@ function createBrowserHostController(options = {}) {
   return {
     start,
     stop,
-    bindTab,
     handleCommand,
+    /** 相对路径 → 预览地址（路径越界或工作区缺失时返回 null） */
+    previewUrl,
     get baseUrl() {
       return baseUrl;
     },

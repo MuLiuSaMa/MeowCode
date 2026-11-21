@@ -17,10 +17,6 @@
   font-size: var(--fs-xs);
 }
 
-.mc-plan__headicon {
-  flex-shrink: 0;
-}
-
 .mc-plan__path {
   min-width: 0;
   flex: 1;

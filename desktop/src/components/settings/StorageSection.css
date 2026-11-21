@@ -82,12 +82,34 @@
   color: var(--fg);
 }
 
+.mc-storage__pathrow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 2px;
+}
+
 .mc-storage__path {
-  margin: 2px 0 0;
+  flex: 1;
+  min-width: 0;
+  margin: 0;
   font-family: inherit;
   font-size: var(--fs-caption);
   color: var(--fg-subtlest);
   word-break: break-all;
+}
+
+.mc-storage__target {
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  color: var(--fg-subtle);
+  font-family: inherit;
+  font-size: var(--fs-caption);
+  line-height: 1.45;
+  overflow-wrap: anywhere;
 }
 
 .mc-storage__card {

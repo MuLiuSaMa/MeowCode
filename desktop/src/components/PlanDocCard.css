@@ -27,10 +27,6 @@
   gap: 7px;
   min-width: 0;
 }
-.mc-plandoc__icon {
-  flex: none;
-  color: var(--fg-subtle);
-}
 .mc-plandoc__title {
   overflow: hidden;
   flex: 1 1 auto;

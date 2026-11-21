@@ -5,7 +5,7 @@ import type {
   WheelEvent as ReactWheelEvent,
 } from "react";
 import { useTranslation } from "react-i18next";
-import { LuArrowUp, LuCheck, LuCircleAlert, LuFileText, LuPaperclip, LuSquare, LuX } from "react-icons/lu";
+import { LuArrowUp, LuCheck, LuCircleAlert, LuFolder, LuPaperclip, LuSquare, LuX } from "react-icons/lu";
 import { applyLanguage } from "../i18n";
 import { api, type ChatMessage, type MeowEvent, type TimelineItem } from "../api";
 import { timelineFromHistory } from "../timeline";
@@ -13,7 +13,8 @@ import { AssistantMessage, ThinkingRow } from "../components/AssistantMessage";
 import { ToolGroup } from "../components/ToolGroup";
 import { ToolRow, presentTool } from "../components/ToolRow";
 import { UserBubble } from "../components/UserBubble";
-import appIcon from "../assets/icon.png";
+import { FileIcon } from "../components/ui/FileIcon";
+import appIcon from "../assets/icon.webp";
 
 /**
  * AI 悬浮岛：屏幕顶部居中的透明胶囊，聚合显示所有运行中会话的状态。
@@ -428,7 +429,9 @@ export default function IslandApp() {
   const [pinned, setPinned] = useState(false);
   const [draft, setDraft] = useState("");
   /** 拖入的待发附件：非图片走【附件】协议行，图片走 base64（与主窗口 Composer 同协议） */
-  const [pendingFiles, setPendingFiles] = useState<Array<{ key: string; name: string; path: string }>>([]);
+  const [pendingFiles, setPendingFiles] = useState<
+    Array<{ key: string; name: string; path: string; isDirectory?: boolean }>
+  >([]);
   const [pendingImages, setPendingImages] = useState<
     Array<{ key: string; name: string; mimeType: string; data: string; dataUrl: string }>
   >([]);
@@ -772,10 +775,15 @@ export default function IslandApp() {
 
   // ---- 拖放附件：文件/图片/文字均可拖到岛上（与主窗口输入框同一套协议） ----
 
-  const addIslandFiles = useCallback(async (files: File[]): Promise<number> => {
-    const images = files.filter((file) => file.type.startsWith("image/")).slice(0, 8);
-    const others = files.filter((file) => !file.type.startsWith("image/"));
-    /** 真正挂上的数量：目录、读不出路径的文件要跳过，确认态不能谎报"已暂存" */
+  const addIslandFiles = useCallback(async (files: File[], directories: boolean[] = []): Promise<number> => {
+    const isDirectory = (index: number) => directories[index] === true;
+    const images = files
+      .filter((file, index) => !isDirectory(index) && file.type.startsWith("image/"))
+      .slice(0, 8);
+    const others = files
+      .map((file, index) => ({ file, directory: isDirectory(index) }))
+      .filter((entry) => entry.directory || !entry.file.type.startsWith("image/"));
+    /** 真正挂上的数量：读不出路径的文件要跳过，确认态不能谎报"已暂存" */
     let added = 0;
     for (const file of images) {
       try {
@@ -791,20 +799,22 @@ export default function IslandApp() {
         // 读取失败的单张图片直接跳过
       }
     }
-    const picked: Array<{ key: string; name: string; path: string }> = [];
+    const picked: Array<{ key: string; name: string; path: string; isDirectory?: boolean }> = [];
     const seen = new Set<string>();
-    for (const file of others) {
-      // 拖入目录时 Chromium 给的是 size=0、无 type 的伪文件：读不出内容，跳过
-      if (file.size === 0 && !file.type) continue;
+    for (const { file, directory } of others) {
+      // 普通空文件没有可读内容；文件夹是 Chromium 给的 size=0、无 type 的伪文件，不能跳过
+      if (!directory && file.size === 0 && !file.type) continue;
       const absolute = window.meow.getFilePath?.(file) ?? "";
       if (!absolute.trim()) continue;
       const dedupeKey = absolute.toLowerCase();
       if (seen.has(dedupeKey)) continue;
       seen.add(dedupeKey);
+      const base = file.name || absolute.split(/[\\/]/).pop() || absolute;
       picked.push({
         key: nextFeedKey(),
-        name: file.name || absolute.split(/[\\/]/).pop() || absolute,
+        name: base,
         path: absolute,
+        ...(directory ? { isDirectory: true } : {}),
       });
     }
     if (picked.length) {
@@ -838,10 +848,20 @@ export default function IslandApp() {
       setDragging(false);
       const files = Array.from(e.dataTransfer?.files ?? []);
       if (files.length) {
+        // 文件夹在 Chromium 里是 size=0、无 type 的伪文件，只能靠 entry 判定；
+        // items 只在事件回调内可读，必须在调用异步附件处理前同步取完。
+        const items = Array.from(e.dataTransfer?.items ?? []).filter((item) => item.kind === "file");
+        const directories = files.map((_, index) => {
+          try {
+            return items[index]?.webkitGetAsEntry?.()?.isDirectory === true;
+          } catch {
+            return false;
+          }
+        });
         // 折叠胶囊放下文件：不展开面板，胶囊就地给「文件已暂存」确认（2 秒后自动退回）
         const collapsed = !expandedRef.current;
         setDropping(true);
-        void addIslandFiles(files)
+        void addIslandFiles(files, directories)
           .then((added) => {
             if (!added || !collapsed || expandedRef.current) return;
             if (stagedTimerRef.current) window.clearTimeout(stagedTimerRef.current);
@@ -869,7 +889,13 @@ export default function IslandApp() {
     setSendError(null);
     setDraft("");
     // 附件协议与主窗口一致：非图片文件 = 首部【附件】行（运行时按绝对路径读内容注入），图片 = 纯 base64 images 字段
-    const head = pendingFiles.map((file) => `【附件】${file.name} · ${file.path}`).join("\n"); // i18n-allow 消息首部协议标记，与 src/agent 解析约定一致
+    const head = pendingFiles
+      .map((file) => {
+        // 尾斜杠只作为协议里的「文件夹」标记，chip 上不展示
+        const name = file.isDirectory && !file.name.endsWith("/") ? `${file.name}/` : file.name;
+        return `【附件】${name} · ${file.path}`; // i18n-allow 消息首部协议标记，与 src/agent 解析约定一致
+      })
+      .join("\n");
     const message = head && text ? `${head}\n\n${text}` : head || text;
     dispatch({ type: "sent", sessionId: selected.id, text: message });
     const restoreFiles = pendingFiles;
@@ -1045,7 +1071,11 @@ export default function IslandApp() {
                       key={file.key}
                       title={file.path}
                     >
-                      <LuFileText size={12} className="mc-skillchip__icon" />
+                      {file.isDirectory ? (
+                        <LuFolder size={12} className="mc-skillchip__icon" />
+                      ) : (
+                        <FileIcon path={file.path || file.name} size={12} />
+                      )}
                       <span className="mc-skillchip__name">{file.name}</span>
                       <button
                         type="button"
@@ -1054,7 +1084,7 @@ export default function IslandApp() {
                         title={tcomp("attach.remove")}
                         onClick={() => setPendingFiles((current) => current.filter((item) => item.key !== file.key))}
                       >
-                        <LuX size={11} />
+                        <LuX size={12} />
                       </button>
                     </span>
                   ))}

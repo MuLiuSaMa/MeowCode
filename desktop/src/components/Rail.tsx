@@ -7,7 +7,6 @@ import {
   LuDownload,
   LuGitBranch,
   LuHouse,
-  LuMail,
   LuRotateCw,
   LuSettings,
   LuWorkflow,
@@ -32,7 +31,6 @@ export function Rail({
   view = "chat",
   onHome,
   onOpenGit,
-  onOpenMail,
   onOpenPlugins,
   onOpenSettings,
   onOpenArchitecture,
@@ -45,7 +43,6 @@ export function Rail({
   view?: string;
   onHome: () => void;
   onOpenGit: () => void;
-  onOpenMail: () => void;
   onOpenPlugins: () => void;
   onOpenSettings: () => void;
   onOpenArchitecture: () => void;
@@ -113,16 +110,6 @@ export function Rail({
         onClick={onOpenAutomation}
       >
         <LuAlarmClock size={18} />
-      </button>
-      <button
-        type="button"
-        className="mc-rail__btn"
-        data-active={view === "mail"}
-        aria-label={t("rail.mail")}
-        title={t("rail.mail")}
-        onClick={onOpenMail}
-      >
-        <LuMail size={18} />
       </button>
       <button
         type="button"

@@ -1,18 +1,23 @@
 import { describe, expect, it } from "vitest";
 import { executeJobTool, startBackgroundCommand } from "./job-tools.js";
-import type { JobManager } from "./jobs.js";
+import type { JobChunk, JobManager, JobWaitOptions } from "./jobs.js";
+
+const chunk = (overrides: Partial<JobChunk> = {}): JobChunk => ({
+  data: "",
+  offset: 0,
+  bufferStart: 0,
+  truncated: false,
+  exited: false,
+  code: null,
+  ...overrides,
+});
 
 function stubManager(overrides: Partial<JobManager> = {}): JobManager {
   return {
     start: async () => ({ id: "job-1" }),
-    read: async () => ({
-      data: "server listening on :5173\n",
-      offset: 26,
-      bufferStart: 0,
-      truncated: false,
-      exited: false,
-      code: null,
-    }),
+    read: async () =>
+      chunk({ data: "server listening on :5173\n", offset: 26 }),
+    wait: async () => chunk({ data: "server listening on :5173\n", offset: 26 }),
     write: async () => undefined,
     kill: async () => undefined,
     list: async () => [
@@ -46,14 +51,7 @@ describe("job tool", () => {
     const long = "x".repeat(500);
     const result = await executeJobTool(
       stubManager({
-        read: async () => ({
-          data: long,
-          offset: 500,
-          bufferStart: 0,
-          truncated: false,
-          exited: true,
-          code: 0,
-        }),
+        read: async () => chunk({ data: long, offset: 500, exited: true, code: 0 }),
       }),
       { action: "output", job_id: "job-1", max_chars: 200 },
     );
@@ -79,90 +77,97 @@ describe("job tool", () => {
     expect(result.output).toContain("job {action:\"wait\"");
   });
 
-  it("wait 有新输出立即返回", async () => {
-    const result = await executeJobTool(stubManager(), {
-      action: "wait",
-      job_id: "job-1",
-      offset: 0,
-      timeout_ms: 1000,
-    });
-    expect(result.ok).toBe(true);
-    expect(result.output).toContain("server listening");
-    expect(result.output).toContain("next offset 26");
-  });
-
-  it("wait 期间无输出时阻塞到超时再返回 running", async () => {
-    const startedAt = Date.now();
+  it("wait 默认等到退出：把整段输出和退出码一起带回", async () => {
+    const seen: JobWaitOptions[] = [];
     const result = await executeJobTool(
       stubManager({
-        read: async () => ({
-          data: "",
-          offset: 26,
-          bufferStart: 0,
-          truncated: false,
-          exited: false,
-          code: null,
-        }),
+        wait: async (_id, options) => {
+          seen.push(options);
+          return chunk({ data: "tests passed\n", offset: 13, exited: true, code: 0 });
+        },
       }),
-      { action: "wait", job_id: "job-1", offset: 26, timeout_ms: 1000 },
+      { action: "wait", job_id: "job-1" },
     );
-    expect(Date.now() - startedAt).toBeGreaterThanOrEqual(1000);
+    expect(seen[0]).toEqual({ timeoutMs: 60_000, until: "exit" });
     expect(result.ok).toBe(true);
-    expect(result.output).toContain("no new output after 1000ms");
-    expect(result.output).toContain("running");
-  });
-
-  it("wait 遇到退出立即返回退出码", async () => {
-    const result = await executeJobTool(
-      stubManager({
-        read: async () => ({
-          data: "done\n",
-          offset: 5,
-          bufferStart: 0,
-          truncated: false,
-          exited: true,
-          code: 0,
-        }),
-      }),
-      { action: "wait", job_id: "job-1", offset: 0, timeout_ms: 60000 },
-    );
-    expect(result.ok).toBe(true);
-    expect(result.output).toContain("done");
+    expect(result.output).toContain("tests passed");
     expect(result.output).toContain("exited (code 0)");
   });
 
-  it("wait 省略 offset 时只等当前末尾之后的新输出", async () => {
-    const offsets: Array<number | undefined> = [];
+  it("wait until=output 一有新输出就返回", async () => {
+    const seen: JobWaitOptions[] = [];
+    const result = await executeJobTool(
+      stubManager({
+        wait: async (_id, options) => {
+          seen.push(options);
+          return chunk({ data: "server listening\n", offset: 16 });
+        },
+      }),
+      { action: "wait", job_id: "job-1", until: "output", timeout_ms: 5000 },
+    );
+    expect(seen[0]).toEqual({ timeoutMs: 5000, until: "output" });
+    expect(result.ok).toBe(true);
+    expect(result.output).toContain("server listening");
+  });
+
+  it("wait 到点仍在跑时说明已等时长", async () => {
+    const result = await executeJobTool(
+      stubManager({ wait: async () => chunk({ offset: 26 }) }),
+      { action: "wait", job_id: "job-1", timeout_ms: 1000 },
+    );
+    expect(result.ok).toBe(true);
+    expect(result.output).toContain("running");
+    expect(result.output).toContain("still running after");
+  });
+
+  it("wait 把 offset 原样传给 manager，省略时不传", async () => {
+    const seen: JobWaitOptions[] = [];
     const manager = stubManager({
-      read: async (_id, offset) => {
-        offsets.push(offset);
-        if (offset === Number.MAX_SAFE_INTEGER) {
-          return {
-            data: "",
-            offset: 26,
-            bufferStart: 0,
-            truncated: false,
-            exited: false,
-            code: null,
-          };
-        }
-        return {
-          data: "new line\n",
-          offset: 35,
-          bufferStart: 0,
-          truncated: false,
-          exited: false,
-          code: null,
-        };
+      wait: async (_id, options) => {
+        seen.push(options);
+        return chunk({ data: "x", offset: 1 });
       },
     });
-    const result = await executeJobTool(manager, {
-      action: "wait",
-      job_id: "job-1",
-      timeout_ms: 1000,
+    await executeJobTool(manager, { action: "wait", job_id: "job-1", offset: 7 });
+    await executeJobTool(manager, { action: "wait", job_id: "job-1" });
+    expect(seen[0].offset).toBe(7);
+    expect(seen[1].offset).toBeUndefined();
+  });
+
+  it("wait 超过上限时按 300s 截断，低于下限按 1s", async () => {
+    const seen: JobWaitOptions[] = [];
+    const manager = stubManager({
+      wait: async (_id, options) => {
+        seen.push(options);
+        return chunk({ data: "x", offset: 1 });
+      },
     });
-    expect(offsets[0]).toBe(Number.MAX_SAFE_INTEGER);
-    expect(offsets).toContain(26);
-    expect(result.output).toContain("new line");
+    await executeJobTool(manager, { action: "wait", job_id: "job-1", timeout_ms: 900_000 });
+    await executeJobTool(manager, { action: "wait", job_id: "job-1", timeout_ms: 10 });
+    expect(seen[0].timeoutMs).toBe(300_000);
+    expect(seen[1].timeoutMs).toBe(1_000);
+  });
+
+  it("wait 找不到 job 时报错", async () => {
+    const result = await executeJobTool(stubManager({ wait: async () => null }), {
+      action: "wait",
+      job_id: "nope",
+    });
+    expect(result.ok).toBe(false);
+    expect(result.output).toContain("not found");
+  });
+});
+
+describe("job output 清洗", () => {
+  it("把 PTY 的 ANSI 控制序列清掉再给模型看", async () => {
+    const result = await executeJobTool(
+      stubManager({
+        wait: async () =>
+          chunk({ data: "\u001b[?9001h\u001b[2J\u001b[Hready to serve\u001b[?25h", offset: 40 }),
+      }),
+      { action: "wait", job_id: "job-1" },
+    );
+    expect(result.output).toContain("ready to serve");
+    expect(result.output).not.toContain("\u001b");
   });
 });

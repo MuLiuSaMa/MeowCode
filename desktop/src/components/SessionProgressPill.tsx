@@ -4,6 +4,7 @@ import { LuCheck, LuX } from "react-icons/lu";
 import type { PlanState, SessionChangeSummary } from "../api";
 import { deriveStage } from "../../../src/agent/stage";
 import { Spinner } from "./ui/Spinner";
+import { usePresence } from "./ui/usePresence";
 import "./SessionProgressPill.css";
 
 const STATUS_KEYS: Record<string, string> = {
@@ -12,6 +13,10 @@ const STATUS_KEYS: Record<string, string> = {
   completed: "plan.status.completed",
   cancelled: "plan.status.cancelled",
 };
+
+/** plan 为空时复用同一个空数组，避免每帧都换引用 */
+const NO_STEPS: PlanState["steps"] = [];
+const NO_CHANGES: SessionChangeSummary[] = [];
 
 type OpenPanel = "steps" | "files" | null;
 
@@ -38,16 +43,13 @@ export function SessionProgressPill({
   dismissed?: boolean;
 }) {
   const { t } = useTranslation("shell");
-  const steps = plan?.steps ?? [];
-  const fileChanges = changes ?? [];
+  const steps = plan?.steps ?? NO_STEPS;
+  const fileChanges = changes ?? NO_CHANGES;
   const total = steps.length;
-  const done = steps.filter((step) => step.status === "completed").length;
   // 阶段派生：全部完成与「完成 + 取消」都算结束，避免有取消步骤时图标永远转圈
   const planStage = deriveStage({ kind: "plan", steps, streaming });
   const allDone = planStage.stage.stage === "ended";
   const running = planStage.stage.stage === "working";
-  const added = fileChanges.reduce((sum, change) => sum + change.added, 0);
-  const removed = fileChanges.reduce((sum, change) => sum + change.removed, 0);
   const showFiles = fileChanges.length > 0;
   const [open, setOpen] = useState<OpenPanel>(null);
   const closeTimer = useRef<number | null>(null);
@@ -98,8 +100,30 @@ export function SessionProgressPill({
     };
   }, [open]);
 
-  if (dismissed) return null;
-  if (!showSteps && !showFiles) return null;
+  // 退场动画期间内容可能已经被清空（计划撤销 / 文件列表刷新），
+  // 保留最后一份非空快照，否则胶囊会先闪成「0 个文件已修改」再缩回去。
+  const lastSteps = useRef(steps);
+  const lastFiles = useRef(fileChanges);
+  useEffect(() => {
+    if (steps.length > 0) lastSteps.current = steps;
+  }, [steps]);
+  useEffect(() => {
+    if (fileChanges.length > 0) lastFiles.current = fileChanges;
+  }, [fileChanges]);
+
+  const pill = usePresence(!dismissed && (showSteps || showFiles), 150);
+  const stepsSlot = usePresence(showSteps, 180);
+  const filesSlot = usePresence(showFiles, 180);
+
+  if (!pill.mounted) return null;
+
+  // 展开 / 收起的两个态都用快照渲染，动画期间宽度和文案不会先跳变
+  const stepsShown = stepsSlot.mounted ? (steps.length > 0 ? steps : lastSteps.current) : NO_STEPS;
+  const filesShown = filesSlot.mounted ? (fileChanges.length > 0 ? fileChanges : lastFiles.current) : NO_CHANGES;
+  const shownTotal = stepsShown.length;
+  const shownDone = stepsShown.filter((step) => step.status === "completed").length;
+  const shownAdded = filesShown.reduce((sum, change) => sum + change.added, 0);
+  const shownRemoved = filesShown.reduce((sum, change) => sum + change.removed, 0);
 
   const openPanel = (panel: Exclude<OpenPanel, null>) => {
     cancelClose();
@@ -110,6 +134,7 @@ export function SessionProgressPill({
     <div
       ref={anchorRef}
       className="mc-sessionpill-anchor"
+      data-open={pill.open}
       onMouseEnter={cancelClose}
       onMouseLeave={scheduleClose}
       onBlur={(event) => {
@@ -171,57 +196,68 @@ export function SessionProgressPill({
       ) : null}
 
       <div className="mc-sessionpill" role="group" aria-label={t("plan.aria")}>
-        {showSteps ? (
-          <button
-            type="button"
-            className="mc-sessionpill__part"
-            aria-expanded={open === "steps"}
-            aria-controls={open === "steps" ? cardId : undefined}
-            aria-label={t("plan.stepsProgress", { done, total })}
-            onMouseEnter={() => openPanel("steps")}
-            onFocus={() => openPanel("steps")}
-            onClick={() => openPanel("steps")}
-          >
-            <span
-              className="mc-sessionpill__icon"
-              data-state={running ? "running" : allDone ? "done" : "idle"}
-              aria-hidden
-            >
-              {running ? (
-                <Spinner size={13} />
-              ) : allDone ? (
-                <LuCheck size={10} />
-              ) : (
-                <span className="mc-sessionpill__dot" />
-              )}
-            </span>
-            <span>{t("plan.stepsProgress", { done, total })}</span>
-          </button>
+        {stepsSlot.mounted ? (
+          <div className="mc-sessionpill__slot" data-open={stepsSlot.open} inert={!showSteps}>
+            <div className="mc-sessionpill__clip">
+              <button
+                type="button"
+                className="mc-sessionpill__part"
+                aria-expanded={open === "steps"}
+                aria-controls={open === "steps" ? cardId : undefined}
+                aria-label={t("plan.stepsProgress", { done: shownDone, total: shownTotal })}
+                onMouseEnter={() => openPanel("steps")}
+                onFocus={() => openPanel("steps")}
+                onClick={() => openPanel("steps")}
+              >
+                <span
+                  className="mc-sessionpill__icon"
+                  data-state={running ? "running" : allDone ? "done" : "idle"}
+                  aria-hidden
+                >
+                  {running ? (
+                    <Spinner size={13} />
+                  ) : allDone ? (
+                    <LuCheck size={10} />
+                  ) : (
+                    <span className="mc-sessionpill__dot" />
+                  )}
+                </span>
+                <span>{t("plan.stepsProgress", { done: shownDone, total: shownTotal })}</span>
+              </button>
+            </div>
+          </div>
         ) : null}
 
-        {showSteps && showFiles ? (
-          <span className="mc-sessionpill__sep" aria-hidden>
-            ·
-          </span>
-        ) : null}
-
-        {showFiles ? (
-          <button
-            type="button"
-            className="mc-sessionpill__part"
-            aria-expanded={open === "files"}
-            aria-controls={open === "files" ? cardId : undefined}
-            aria-label={t("plan.filesChanged", { n: fileChanges.length })}
-            onMouseEnter={() => openPanel("files")}
-            onFocus={() => openPanel("files")}
-            onClick={() => openPanel("files")}
-          >
-            <span>{t("plan.filesChanged", { n: fileChanges.length })}</span>
-            <span className="mc-sessionpill__stats">
-              <span className="mc-sessionpill__add">+{added}</span>
-              <span className="mc-sessionpill__del">-{removed}</span>
+        {/* 分隔点常驻、只做宽度收放：任何一段增减都不会有硬跳的挂载/卸载 */}
+        <div className="mc-sessionpill__slot" data-open={showSteps && showFiles}>
+          <div className="mc-sessionpill__clip">
+            <span className="mc-sessionpill__sep" aria-hidden>
+              ·
             </span>
-          </button>
+          </div>
+        </div>
+
+        {filesSlot.mounted ? (
+          <div className="mc-sessionpill__slot" data-open={filesSlot.open} inert={!showFiles}>
+            <div className="mc-sessionpill__clip">
+              <button
+                type="button"
+                className="mc-sessionpill__part"
+                aria-expanded={open === "files"}
+                aria-controls={open === "files" ? cardId : undefined}
+                aria-label={t("plan.filesChanged", { n: filesShown.length })}
+                onMouseEnter={() => openPanel("files")}
+                onFocus={() => openPanel("files")}
+                onClick={() => openPanel("files")}
+              >
+                <span>{t("plan.filesChanged", { n: filesShown.length })}</span>
+                <span className="mc-sessionpill__stats">
+                  <span className="mc-sessionpill__add">+{shownAdded}</span>
+                  <span className="mc-sessionpill__del">-{shownRemoved}</span>
+                </span>
+              </button>
+            </div>
+          </div>
         ) : null}
       </div>
     </div>

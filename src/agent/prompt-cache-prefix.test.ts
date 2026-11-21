@@ -283,6 +283,9 @@ describe("prompt cache prefix — 工具目录行为", () => {
 
     await runtime.prompt("hello");
     await runtime.newSession(workspace);
+    // 环境段里带审批档：newSession 会回到默认档，这里对齐到同一档，
+    // 本用例量的是「同一工作区第二个会话的工具/系统字节」，不是换档时的前缀代价。
+    runtime.setApprovalMode("full");
     await runtime.prompt("hello again");
 
     const bodies = streamMock.mock.calls.map((call) => serialize(call[0] as RequestOptions));

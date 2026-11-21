@@ -113,6 +113,9 @@
     "delete": "삭제"
   },
   "checkpoint": {
+    "edit": "편집 후 다시 보내기",
+    "editSend": "다시 보내기",
+    "editHint": "⌘/Ctrl + Enter 전송, Esc 취소",
     "auto": "자동 체크포인트",
     "manual": "체크포인트",
     "restore": "복원",
@@ -233,6 +236,7 @@
     "browserScreenshot": "페이지 스크린샷",
     "browserBack": "뒤로 가기",
     "browserReload": "페이지 새로고침",
+    "browserPreview": "페이지 미리보기",
     "openInPanel": "클릭하면 사이드 패널에서 파일을 열립니다",
     "computerScreenshot": "화면 캡처",
     "computerClick": "클릭",

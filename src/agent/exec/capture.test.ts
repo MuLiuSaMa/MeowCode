@@ -100,3 +100,40 @@ describe("runCapture", () => {
     expect(result.code).toBeNull();
   });
 });
+
+describe("runCapture timeout handoff", () => {
+  it("hands a still-running child to onTimeout instead of killing it", async () => {
+    let adopted: { stdout: Buffer; childPid?: number } | undefined;
+    const result = await runCapture({
+      file: process.execPath,
+      args: ["-e", "process.stdout.write('early'); setTimeout(() => { process.stdout.write('late'); }, 400)"],
+      cwd: process.cwd(),
+      env: commandEnv(),
+      timeoutMs: 150,
+      maxCaptureBytes: 1_000_000,
+      closeStdin: false,
+      onTimeout: (child, captured) => {
+        adopted = { stdout: captured.stdout, childPid: child.pid };
+      },
+    });
+    expect(result.promoted).toBe(true);
+    expect(result.timedOut).toBe(false);
+    expect(result.code).toBeNull();
+    expect(adopted?.stdout.toString()).toBe("early");
+    expect(adopted?.childPid).toBeGreaterThan(0);
+  });
+
+  it("kills and reports a timeout when no handoff is configured", async () => {
+    const result = await runCapture({
+      file: process.execPath,
+      args: ["-e", "setTimeout(() => {}, 5000)"],
+      cwd: process.cwd(),
+      env: commandEnv(),
+      timeoutMs: 150,
+      maxCaptureBytes: 1_000,
+      closeStdin: false,
+    });
+    expect(result.promoted).toBeUndefined();
+    expect(result.timedOut).toBe(true);
+  });
+});

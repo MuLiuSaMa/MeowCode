@@ -13,6 +13,7 @@ import { CustomSelect } from "../ui/CustomSelect";
 import { Dialog } from "../ui/Dialog";
 import { FieldRow, Section } from "../ui/Section";
 import { TextField } from "../ui/TextField";
+import logoCat from "../../assets/logo-cat.webp";
 import "./AgentSettingsSection.css";
 
 const PROFILE_IDS = ["standard", "minimal", "complex"] as const;
@@ -302,6 +303,7 @@ export function AgentSettingsSection({
             activeRoleNodes.map((node) => (
               <FieldRow
                 key={node.id}
+                icon={<img src={logoCat} alt="" draggable={false} />}
                 label={node.name}
                 hint={`${node.role}${node.systemPrompt ? ` · ${t("agents.customPrompt")}` : ""}`}
               >

@@ -457,7 +457,7 @@ this skill's own construction it passed while a chart title printed twice, a tab
 drew vertical rules the house style forbids, and a cover subtitle straddled the
 accent rule. None of those were detectable without looking.
 
-**First, the canary.** Read `references/canary.png` and state the exact text you see.
+**First, the canary.** Read `references/canary.webp` and state the exact text you see.
 If you read `VISUAL-CHECK-7Q2X` → vision is available, proceed below.
 
 **If you cannot read it or it is wrong** → vision is unavailable this session. Do

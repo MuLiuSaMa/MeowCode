@@ -79,7 +79,7 @@
     "root": {
       "label": "工作树根目录",
       "hint": "留空以使用默认位置；修改后重启应用生效。",
-      "open": "打开文件夹"
+      "choose": "选择文件夹"
     },
     "fetch": {
       "label": "创建工作树前始终获取上游更新",
@@ -149,6 +149,24 @@
     "themeDesc": "「跟随系统」会实时跟随 Windows 的浅色 / 深色设置。切换后会立即生效，不需要重启。",
     "paletteSection": "配色",
     "paletteDesc": "选择强调色与画布色调。深浅两种模式各自调校，切换明暗时会自动适配。",
+    "backgroundSection": "自定义背景",
+    "backgroundDesc": "用图片或视频当背景层，铺在所有面板下面。可以一次导入多张，按「图片 / 视频」分页浏览、点一下切换；打开轮播会按顺序自动循环。视频静音播放；「面板不透明度」越低，壁纸透出来得越多，文字可读性也会下降。",
+    "backgroundEnable": "自定义背景",
+    "backgroundImage": "图片",
+    "backgroundVideo": "视频",
+    "backgroundAdd": "导入…",
+    "backgroundRemove": "移除",
+    "backgroundEmpty": "这一类还没有背景，点「导入」选文件",
+    "backgroundCount": "{{count}} 张",
+    "backgroundCarousel": "自动轮播",
+    "backgroundSound": "视频声音",
+    "backgroundInterval": "轮播间隔",
+    "backgroundSeconds": "{{count}} 秒",
+    "backgroundMinutes": "{{count}} 分钟",
+    "backgroundOpacity": "背景不透明度",
+    "backgroundBrightness": "亮度",
+    "backgroundBlur": "模糊",
+    "backgroundPanel": "面板不透明度",
     "palette": {
       "classic": "经典色",
       "lava": "熔岩橙",
@@ -574,6 +592,10 @@
     "clearFailed": "清除失败"
   },
   "general": {
+    "viewTabs": {
+      "field": "视图切换",
+      "desc": "在主区域顶部显示「对话 / 轨迹」悬浮切换；新会话没有消息时不显示。"
+    },
     "section": "通用",
     "desc": "日常行为偏好，修改后立即生效。",
     "notify": {
@@ -593,9 +615,9 @@
       "desc": "主服务商超时、限流或服务端故障时，本回合自动切到其他已启用的服务商，最多切换 2 次。",
       "toggleFailed": "保存供应商故障转移开关失败"
     },
-    "mailAi": {
-      "field": "除了聊天使用的模型",
-      "follow": "跟随聊天"
+    "defaultPermission": {
+      "field": "默认权限模式",
+      "desc": "新建对话时默认使用的工具执行权限；已有对话保留各自的选择。"
     },
     "other": {
       "section": "常规"
@@ -723,7 +745,14 @@
       "title": "已归档的聊天",
       "hint": "恢复或删除单个已归档的聊天",
       "action": "管理"
-    }
+    },
+    "transfer": "转移…",
+    "transferTitle": "转移全部数据？",
+    "transferDesc": "将把全部应用数据复制到新文件夹，成功后删除原位置的数据并重启应用。",
+    "transferConfirm": "转移并重启",
+    "transferBusy": "正在转移…",
+    "transferRestarting": "数据已转移，正在重启应用…",
+    "transferFailed": "转移数据失败。"
   },
   "connections": {
     "section": "SSH 连接",

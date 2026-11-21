@@ -73,6 +73,24 @@
     "themeDesc": "\"Sistema\" acompanha em tempo real a configuração clara / escura do Windows. A mudança vale na hora, sem reiniciar.",
     "paletteSection": "Paleta de cores",
     "paletteDesc": "Escolha a cor de destaque e o tom da tela. Claro e escuro são ajustados separadamente, então se adaptam sozinhos ao trocar de modo.",
+    "backgroundSection": "Fundo personalizado",
+    "backgroundDesc": "Imagens ou vídeos como fundo atrás de todos os painéis. Importe vários de uma vez, navegue pelas abas « Imagem / Vídeo » e clique para trocar; a apresentação alterna automaticamente. Os vídeos tocam sem som; quanto menor a opacidade dos painéis, mais o fundo aparece — às custas da legibilidade.",
+    "backgroundEnable": "Fundo personalizado",
+    "backgroundImage": "Imagem",
+    "backgroundVideo": "Vídeo",
+    "backgroundAdd": "Importar…",
+    "backgroundRemove": "Remover",
+    "backgroundEmpty": "Nada nesta aba ainda — clique em « Importar »",
+    "backgroundCount": "{{count}} itens",
+    "backgroundCarousel": "Apresentação",
+    "backgroundSound": "Som do vídeo",
+    "backgroundInterval": "Intervalo",
+    "backgroundSeconds": "{{count}} s",
+    "backgroundMinutes": "{{count}} min",
+    "backgroundOpacity": "Opacidade do fundo",
+    "backgroundBrightness": "Brilho",
+    "backgroundBlur": "Desfoque",
+    "backgroundPanel": "Opacidade dos painéis",
     "palette": {
       "classic": "Clássico",
       "lava": "Laranja lava",
@@ -495,7 +513,7 @@
     "root": {
       "label": "Diretório raiz das árvores de trabalho",
       "hint": "Deixe vazio para usar o local padrão. As alterações passam a valer após reiniciar o aplicativo.",
-      "open": "Abrir pasta"
+      "choose": "Escolher pasta"
     },
     "fetch": {
       "label": "Sempre buscar o upstream antes de criar uma árvore de trabalho",
@@ -574,6 +592,10 @@
     "clearFailed": "Não foi possível apagar"
   },
   "general": {
+    "viewTabs": {
+      "field": "Seletor de vista",
+      "desc": "Mostra o seletor flutuante «Conversa / Rastro» acima da área principal. Oculto em conversas vazias."
+    },
     "section": "Geral",
     "desc": "Comportamento do dia a dia. As mudanças valem na hora.",
     "notify": {
@@ -593,9 +615,9 @@
       "desc": "Quando o provedor principal expira, atinge limite de requisições ou retorna erro de servidor, este turno muda automaticamente para outro provedor habilitado (até 2 saltos).",
       "toggleFailed": "Falha ao salvar a configuração de failover do provedor"
     },
-    "mailAi": {
-      "field": "Modelo fora do chat",
-      "follow": "Seguir o chat"
+    "defaultPermission": {
+      "field": "Modo de permissão padrão",
+      "desc": "Permissão de ferramentas para novas conversas. As conversas existentes mantêm a própria escolha."
     },
     "other": {
       "section": "Geral"
@@ -723,7 +745,14 @@
       "title": "Chats arquivados",
       "hint": "Restaure ou exclua chats arquivados individualmente.",
       "action": "Gerenciar"
-    }
+    },
+    "transfer": "Mover…",
+    "transferTitle": "Mover todos os dados?",
+    "transferDesc": "Todos os dados do aplicativo serão copiados para a nova pasta. Após a cópia, os dados do local antigo serão excluídos e o aplicativo será reiniciado.",
+    "transferConfirm": "Mover e reiniciar",
+    "transferBusy": "Movendo…",
+    "transferRestarting": "Dados movidos — reiniciando o aplicativo…",
+    "transferFailed": "Não foi possível mover os dados."
   },
   "connections": {
     "section": "Conexões SSH",

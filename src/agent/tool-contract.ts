@@ -114,6 +114,7 @@ export const BUILTIN_TOOL_CONTRACTS: Record<string, ToolContract> = {
   browser_screenshot: MUTATING_SYSTEM,
   browser_back: MUTATING_SYSTEM,
   browser_reload: MUTATING_SYSTEM,
+  browser_preview: MUTATING_SYSTEM,
 };
 
 export function builtinToolContract(name: string): ToolContract | undefined {

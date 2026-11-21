@@ -5,13 +5,63 @@ import type { ChatMessage, ProviderConfig, ToolCall, ToolDocument } from "./type
  * 粗略的 token 估算：CJK（中日韩）字符按 1 字 ≈ 1 token，其余按 4 字符 ≈ 1 token。
  * 目的是给上下文窗口做裁剪，不是精确计费；宁可高估（多裁）不可低估（溢出）。
  */
-const CJK_CHAR_PATTERN =
-  /[\u1100-\u11ff\u3000-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uac00-\ud7af\uf900-\ufaff\uff00-\uffef]/g;
+/**
+ * 粗略的 token 估算：CJK（中日韩）字符按 1 字 ≈ 1 token，其余按字符数/比值。
+ *
+ * 用逐字符比较而不是 `text.match(/[CJK]/g)`：后者会为每个汉字分配一个数组槽位，
+ * 50 万汉字就是 50 万元的临时数组，长会话里每轮要跑 6–10 次全历史扫描，
+ * 是 GC 抖动的主要来源。区间与原先的正则字符类保持一致。
+ *
+ * `charsPerToken` 只作用于非 CJK 部分（CJK 永远 1 字 1 token）。
+ */
+const DEFAULT_CHARS_PER_TOKEN = 4;
+/**
+ * 结构化载荷（JSON / 工具参数）的字符/token 比。
+ *
+ * `{` `}` `:` `,` `"` 都是独立的单字符 token，JSON 实测约 2.5–3 字符/token。
+ * 沿用文本口径 4 会系统性低估两处每次请求都带的固定开销：工具 schema 与
+ * 工具调用参数。参考 cc-haha 的 `bytesPerTokenForFileType`（json/jsonl/jsonc = 2）；
+ * 这里取 3 —— 比 2 保守，但明显高于文本口径。
+ */
+const JSON_CHARS_PER_TOKEN = 3;
+/**
+ * 每条消息的 role / 包裹开销（Anthropic 口径约 4 token/条）。
+ * 不加会让长会话的占用估算随条数线性偏低，压缩阈值也就偏晚。
+ */
+const MESSAGE_OVERHEAD_TOKENS = 4;
 
-export function estimateTokens(text: string): number {
+export function estimateTokens(text: string, charsPerToken = DEFAULT_CHARS_PER_TOKEN): number {
   if (!text) return 0;
-  const cjk = text.match(CJK_CHAR_PATTERN)?.length ?? 0;
-  return cjk + Math.ceil((text.length - cjk) / 4);
+  let cjk = 0;
+  for (let index = 0; index < text.length; index += 1) {
+    const code = text.charCodeAt(index);
+    if (
+      (code >= 0x1100 && code <= 0x11ff) ||
+      (code >= 0x3000 && code <= 0x30ff) ||
+      (code >= 0x3400 && code <= 0x4dbf) ||
+      (code >= 0x4e00 && code <= 0x9fff) ||
+      (code >= 0xac00 && code <= 0xd7af) ||
+      (code >= 0xf900 && code <= 0xfaff) ||
+      (code >= 0xff00 && code <= 0xffef)
+    ) {
+      cjk += 1;
+    }
+  }
+  return cjk + Math.ceil((text.length - cjk) / charsPerToken);
+}
+
+/**
+ * 结构化载荷的估算：同样的字符数按更密的 token 比折算。
+ * 字符串入参按「已经是 JSON 文本」处理，不再二次序列化。
+ */
+export function estimateJsonTokens(value: unknown): number {
+  if (value === null || value === undefined) return 0;
+  try {
+    const text = typeof value === "string" ? value : JSON.stringify(value);
+    return text ? estimateTokens(text, JSON_CHARS_PER_TOKEN) : 0;
+  } catch {
+    return 0;
+  }
 }
 
 /** 单张图片的 token 估算：按主流 1280–1568px 截图口径取 1500，宁可高估。 */
@@ -52,21 +102,20 @@ export class PromptTooLargeError extends Error {
 }
 
 export function estimateMessageTokens(message: ChatMessage): number {
-  let total = estimateTokens(typeof message.content === "string" ? message.content : "");
-  // 服务端原生压缩的加密 item：base64 密文按 4 字符 ≈ 1 token 计，
+  // 每条消息的 role / 包裹开销：不加会让长会话的估算随条数线性偏低
+  let total = MESSAGE_OVERHEAD_TOKENS;
+  total += estimateTokens(typeof message.content === "string" ? message.content : "");
+  // 服务端原生压缩的加密 item：base64 密文按 JSON 口径折算（非 CJK 字符更密），
   // 它是后续每次请求都要回放的固定开销，必须计入上下文占用。
   if (message.role === "native_compaction") {
-    try {
-      total += estimateTokens(JSON.stringify(message.native.items));
-    } catch {
-      // 不可序列化时按说明文本计，已经算过了
-    }
+    total += estimateJsonTokens(message.native.items);
   }
   const calls = "tool_calls" in message ? message.tool_calls : undefined;
   if (calls?.length) {
     for (const call of calls) {
       total += estimateTokens(call.function.name);
-      total += estimateTokens(call.function.arguments);
+      // 参数是模型生成的 JSON（命令、diff、文件内容），按 JSON 口径而非文本口径
+      total += estimateJsonTokens(call.function.arguments);
     }
   }
   // 图片随消息一起回传，按张数计——不按 base64 长度算，否则会高估一个数量级
@@ -189,14 +238,23 @@ export function breakdownMessages(messages: ChatMessage[], topTools = 8): Messag
   };
 }
 
-/** 工具定义的估算 token（JSON schema 按 4 字符/token 保守折算）。 */
+/**
+ * 工具定义的估算 token。
+ *
+ * 用 JSON 口径而不是文本口径：schema 里全是引号、冒号、括号，这些是独立的
+ * 单字符 token。工具越多，这段「每次请求都带」的固定开销越不能按 4 字符低估。
+ *
+ * 单槽缓存：`activeTools` 在工具集不变时是同一个引用，而 agent-loop 每轮要
+ * 在裁剪前后各调一次；几十个工具的 schema stringify 一次并不便宜。
+ */
+let toolTokensCache: { tools: unknown; tokens: number } | null = null;
+
 export function estimateToolDefinitionsTokens(tools: unknown): number {
   if (!tools || (Array.isArray(tools) && tools.length === 0)) return 0;
-  try {
-    return estimateTokens(JSON.stringify(tools));
-  } catch {
-    return 0;
-  }
+  if (toolTokensCache?.tools === tools) return toolTokensCache.tokens;
+  const tokens = estimateJsonTokens(tools);
+  toolTokensCache = { tools, tokens };
+  return tokens;
 }
 
 /**
@@ -230,7 +288,13 @@ export function estimateRequestInputTokens(
 ): number {
   const systemCount = messages.filter((message) => message.role === "system").length;
   const effectiveCount = messages.length - systemCount;
-  if (anchor && anchor.inputTokens > 0 && anchor.messageCount <= effectiveCount) {
+  if (
+    anchor &&
+    isUsableAnchorInput(anchor.inputTokens) &&
+    Number.isFinite(anchor.messageCount) &&
+    anchor.messageCount >= 0 &&
+    anchor.messageCount <= effectiveCount
+  ) {
     // 锚点里的 inputTokens 已包含 system + 工具定义；只需补算它之后新增的消息
     const trailing = estimateMessagesTokens(
       messages.slice(systemCount + anchor.messageCount),
@@ -262,6 +326,15 @@ export type ContextUsageEstimate = {
 };
 
 /**
+ * 锚点是否可用：必须是有限的非负数。
+ * 中转商在流中断时偶尔会回 `input_tokens: 0`，也有网关回 Infinity；
+ * 拿它们当锚点会让占用显示成 0 或爆炸，压缩阈值永远不触发 / 立刻触发。
+ */
+function isUsableAnchorInput(tokens: number): boolean {
+  return Number.isFinite(tokens) && tokens > 0;
+}
+
+/**
  * 计算上下文占用：优先用服务商真实用量做锚点，只估算锚点之后新增的消息。
  * 锚点失效（会话被压缩/摘要、消息数对不上、服务商没报用量）时退回全量估算。
  */
@@ -269,15 +342,18 @@ export function estimateContextTokens(
   messages: ChatMessage[],
   anchor?: ContextUsageAnchor | null,
 ): ContextUsageEstimate {
-  const estimated = estimateMessagesTokens(messages);
   if (
     !anchor ||
-    !(anchor.inputTokens > 0) ||
+    !isUsableAnchorInput(anchor.inputTokens) ||
+    !Number.isFinite(anchor.messageCount) ||
     anchor.messageCount < 0 ||
     anchor.messageCount > messages.length
   ) {
+    const estimated = estimateMessagesTokens(messages);
     return { tokens: estimated, source: "estimate", usageTokens: 0, trailingTokens: estimated };
   }
+  // 锚点有效时只算尾部 —— 全量估算必须留在 fallback 分支里，否则这条快捷路径
+  // 等于没生效（原实现在分支之前先跑了一次 estimateMessagesTokens）。
   const trailingTokens = estimateMessagesTokens(messages.slice(anchor.messageCount));
   return {
     tokens: anchor.inputTokens + trailingTokens,

@@ -3,12 +3,25 @@
 .mc-sessionpill-anchor {
   position: relative;
   z-index: 25;
+  /* 出现/消失：淡入并轻微上浮，退场反向；收起期间不吃鼠标事件 */
+  opacity: 0;
+  transform: translateY(6px) scale(0.96);
+  transform-origin: 50% 100%;
+  pointer-events: none;
+  transition:
+    opacity 160ms var(--ease),
+    transform 200ms var(--ease);
+}
+
+.mc-sessionpill-anchor[data-open="true"] {
+  opacity: 1;
+  transform: none;
+  pointer-events: auto;
 }
 
 .mc-sessionpill {
   display: flex;
   align-items: center;
-  gap: 6px;
   height: 28px;
   padding: 0 10px;
   border: 1px solid var(--border);
@@ -21,6 +34,30 @@
   line-height: 1;
   white-space: nowrap;
   user-select: none;
+}
+
+/* 段位收放：grid 0fr ↔ 1fr 让宽度随内容过渡，计划步骤 / 文件数增减时整段不会硬跳 */
+.mc-sessionpill__slot {
+  display: grid;
+  grid-template-columns: 1fr;
+  transition: grid-template-columns 180ms var(--ease);
+}
+
+.mc-sessionpill__slot[data-open="false"] {
+  grid-template-columns: 0fr;
+}
+
+.mc-sessionpill__clip {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  overflow: hidden;
+  opacity: 1;
+  transition: opacity 140ms var(--ease);
+}
+
+.mc-sessionpill__slot[data-open="false"] .mc-sessionpill__clip {
+  opacity: 0;
 }
 
 .mc-sessionpill__part {
@@ -71,6 +108,7 @@
 }
 
 .mc-sessionpill__sep {
+  padding: 0 6px;
   color: var(--fg-subtlest);
 }
 
@@ -210,4 +248,13 @@
 
 .mc-sessionpill__steptitle {
   min-width: 0;
+}
+
+/* 减弱动效：只保留显隐，不做位移与宽度过渡 */
+@media (prefers-reduced-motion: reduce) {
+  .mc-sessionpill-anchor,
+  .mc-sessionpill__slot,
+  .mc-sessionpill__clip {
+    transition: none;
+  }
 }

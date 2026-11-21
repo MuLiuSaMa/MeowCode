@@ -112,6 +112,37 @@
   transform-origin: 0 0;
 }
 
+/* 节点玻璃：只裁切到节点卡片范围，画布、工具栏和左栏保持原样 */
+.mc-harness__glassclip {
+  position: absolute;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
+
+.mc-harness__glass {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  display: none;
+  pointer-events: none;
+}
+
+:root[data-wallpaper="true"] .mc-harness__glass {
+  display: block;
+  -webkit-backdrop-filter: var(--wpg-filter);
+  backdrop-filter: var(--wpg-filter);
+}
+
+:root[data-wallpaper="true"] .mc-harness__world {
+  z-index: 1;
+}
+
+/* 换图过渡时模糊裁切和节点必须同步落位，直接取掉过渡避免两者错开 */
+:root[data-wallpaper="true"] .mc-harness__world[data-fit-anim="true"] {
+  transition: none;
+}
+
 /* 拖拽连线预览层：尺寸 = 视口，坐标靠 <g> 的 transform 对齐世界坐标。
    只在这里画正在拖的那几条线，避免每帧重绘整块大 SVG。 */
 .mc-harness__ghost {
@@ -786,4 +817,28 @@
   color: var(--fg-subtle);
   font-size: var(--fs-xs);
   line-height: 1.7;
+}
+
+:root[data-wallpaper="true"] .mc-harness__node {
+  background-color: color-mix(in srgb, var(--card) 44%, transparent);
+  -webkit-backdrop-filter: var(--wpg-filter);
+  backdrop-filter: var(--wpg-filter);
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, #fff 7%, transparent),
+    0 8px 24px rgb(0 0 0 / 16%);
+}
+
+:root[data-wallpaper="true"] .mc-harness__node:hover {
+  background-color: color-mix(in srgb, var(--card-hover) 48%, transparent);
+}
+
+:root[data-wallpaper="true"] .mc-harness__node[data-selected="true"] {
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, #fff 8%, transparent),
+    0 0 0 2px color-mix(in srgb, var(--accent, var(--fg)) 30%, transparent),
+    0 10px 28px rgb(0 0 0 / 20%);
+}
+
+:root[data-wallpaper="true"] .mc-harness__nodeicon {
+  background-color: color-mix(in srgb, var(--surface-hover) 60%, transparent);
 }

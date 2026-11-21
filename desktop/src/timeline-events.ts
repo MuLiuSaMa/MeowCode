@@ -20,23 +20,22 @@ export function finalizeStreamingAssistants(items: TimelineItem[]): void {
   }
 }
 
-/** 主对话与子 Agent 共用的流式时间线更新；调用方负责复制数组。 */
-export function applyTimelineEvent(
+/** 原地应用一条事件；调用方负责复制数组。 */
+function applyTimelineEventInPlace(
   items: TimelineItem[],
   event: MeowEvent,
   nextKey: KeyFactory,
-): TimelineItem[] {
-  const next = [...items];
+): void {
   switch (event.type) {
     case "thinking_delta": {
-      const last = next.at(-1);
+      const last = items.at(-1);
       if (last?.kind === "message" && last.role === "assistant" && last.streaming) {
-        next[next.length - 1] = {
+        items[items.length - 1] = {
           ...last,
           thinking: (last.thinking ?? "") + (event.delta ?? ""),
         };
       } else {
-        next.push({
+        items.push({
           kind: "message",
           key: nextKey("thinking"),
           role: "assistant",
@@ -48,16 +47,16 @@ export function applyTimelineEvent(
       break;
     }
     case "assistant_delta": {
-      const last = next.at(-1);
+      const last = items.at(-1);
       const thinkingMs = event.thinkingMs;
       if (last?.kind === "message" && last.role === "assistant" && last.streaming) {
-        next[next.length - 1] = {
+        items[items.length - 1] = {
           ...last,
           content: last.content + (event.delta ?? ""),
           ...(thinkingMs !== undefined ? { thinkingMs } : {}),
         };
       } else {
-        next.push({
+        items.push({
           kind: "message",
           key: nextKey("assistant"),
           role: "assistant",
@@ -70,16 +69,16 @@ export function applyTimelineEvent(
     }
     case "thinking_complete": {
       // 只有工具调用的轮次没有正文增量：思考时长在消息落盘时补一个事件
-      const last = next.at(-1);
+      const last = items.at(-1);
       if (last?.kind === "message" && last.role === "assistant") {
-        next[next.length - 1] = { ...last, thinkingMs: event.thinkingMs };
+        items[items.length - 1] = { ...last, thinkingMs: event.thinkingMs };
       }
       break;
     }
     case "message_complete": {
-      const last = next.at(-1);
+      const last = items.at(-1);
       if (last?.kind === "message" && last.role === "assistant" && last.streaming) {
-        next[next.length - 1] = {
+        items[items.length - 1] = {
           ...last,
           content: event.text ?? last.content,
           thinking: event.reasoning ?? last.thinking,
@@ -87,7 +86,7 @@ export function applyTimelineEvent(
           streaming: false,
         };
       } else {
-        next.push({
+        items.push({
           kind: "message",
           key: nextKey("assistant"),
           role: "assistant",
@@ -99,8 +98,8 @@ export function applyTimelineEvent(
       break;
     }
     case "tool_started": {
-      finalizeStreamingAssistants(next);
-      next.push({
+      finalizeStreamingAssistants(items);
+      items.push({
         kind: "tool",
         key: nextKey("tool"),
         callId: event.callId ?? "",
@@ -110,36 +109,65 @@ export function applyTimelineEvent(
       break;
     }
     case "tool_output": {
-      const index = next.findIndex(
+      const index = items.findIndex(
         (item) => item.kind === "tool" && item.callId === event.callId,
       );
       if (index >= 0) {
-        const item = next[index] as TimelineTool;
-        next[index] = {
+        const item = items[index] as TimelineTool;
+        const images = (event.images ?? [])
+          .filter((image) => image && typeof image.data === "string" && image.data)
+          .map((image) => {
+            const mimeType = image.mimeType || "image/png";
+            return { mimeType, dataUrl: `data:${mimeType};base64,${image.data}` };
+          });
+        items[index] = {
           ...item,
           output: event.output ?? "",
           truncated: event.truncated,
           ...(event.spilled ? { spilled: event.spilled } : {}),
+          ...(images.length ? { images } : {}),
         };
       }
       break;
     }
     case "tool_finished": {
-      const index = next.findIndex(
+      const index = items.findIndex(
         (item) => item.kind === "tool" && item.callId === event.callId,
       );
       if (index >= 0) {
-        const item = next[index] as TimelineTool;
-        next[index] = { ...item, ok: event.ok };
+        const item = items[index] as TimelineTool;
+        items[index] = { ...item, ok: event.ok };
       }
       break;
     }
     case "turn_complete": {
-      finalizeStreamingAssistants(next);
+      finalizeStreamingAssistants(items);
       break;
     }
     default:
       break;
   }
+}
+
+/** 主对话与子 Agent 共用的流式时间线更新；调用方负责复制数组。 */
+export function applyTimelineEvent(
+  items: TimelineItem[],
+  event: MeowEvent,
+  nextKey: KeyFactory,
+): TimelineItem[] {
+  const next = [...items];
+  applyTimelineEventInPlace(next, event, nextKey);
+  return next;
+}
+
+/** 批量版本：只拷贝一次数组，按顺序应用多条事件（流式合帧用）。 */
+export function applyTimelineEvents(
+  items: TimelineItem[],
+  events: readonly MeowEvent[],
+  nextKey: KeyFactory,
+): TimelineItem[] {
+  if (!events.length) return items;
+  const next = [...items];
+  for (const event of events) applyTimelineEventInPlace(next, event, nextKey);
   return next;
 }

@@ -34,6 +34,9 @@ export function runCapture(spec: ExecSpec): Promise<ExecResult> {
       spawnError?: string;
       /** true = 先等进程树杀干净再回执（超时/取消） */
       kill?: boolean;
+      /** true = 子进程已经交给后台任务，不要再拆它的管道 */
+      handoff?: boolean;
+      promoted?: boolean;
     }): void => {
       if (settled) return;
       settled = true;
@@ -42,8 +45,10 @@ export function runCapture(spec: ExecSpec): Promise<ExecResult> {
       const done = (): void => {
         stdoutAnsi.flush();
         stderrAnsi.flush();
-        child?.stdout?.destroy();
-        child?.stderr?.destroy();
+        if (!outcome.handoff) {
+          child?.stdout?.destroy();
+          child?.stderr?.destroy();
+        }
         resolve({
           stdout: stdout.buffer(),
           stderr: stderr.buffer(),
@@ -55,6 +60,7 @@ export function runCapture(spec: ExecSpec): Promise<ExecResult> {
           timedOut: outcome.timedOut,
           aborted: outcome.aborted,
           capped: stdout.capped || stderr.capped,
+          ...(outcome.promoted ? { promoted: true } : {}),
           ...(outcome.spawnError !== undefined ? { spawnError: outcome.spawnError } : {}),
           durationMs: Date.now() - startedAt,
           timeoutMs: spec.timeoutMs,
@@ -96,6 +102,26 @@ export function runCapture(spec: ExecSpec): Promise<ExecResult> {
       return;
     }
     timer = setTimeout(() => {
+      if (spec.onTimeout && child) {
+        // 超时不杀：先把已经采集的字节收干净，同步摘掉监听、交给后台任务接着读
+        stdoutAnsi.flush();
+        stderrAnsi.flush();
+        child.stdout?.removeAllListeners("data");
+        child.stderr?.removeAllListeners("data");
+        try {
+          spec.onTimeout(child, {
+            stdout: Buffer.concat([stdout.buffer(), stdout.tail() ?? Buffer.alloc(0)]),
+            stderr: Buffer.concat([stderr.buffer(), stderr.tail() ?? Buffer.alloc(0)]),
+            capped: stdout.capped || stderr.capped,
+          });
+        } catch {
+          // 接管失败就当普通超时处理：杀掉，避免留下没人管的进程
+          settle({ code: null, timedOut: true, aborted: false, kill: true });
+          return;
+        }
+        settle({ code: null, timedOut: false, aborted: false, handoff: true, promoted: true });
+        return;
+      }
       settle({ code: null, timedOut: true, aborted: false, kill: true });
     }, spec.timeoutMs);
   });

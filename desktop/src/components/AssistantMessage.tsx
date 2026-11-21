@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { memo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { LuChevronRight, LuCircleCheck, LuLoaderCircle } from "react-icons/lu";
 import { formatDuration } from "../i18n/format";
@@ -11,7 +11,7 @@ import "./ToolRow.css";
  * 思考过程：外观与工具行完全一致（同一套 mc-toolrow 结构、间距与折叠动画），
  * 默认收起。思考结束后显示「已思考 + 时长 + 内容预览」。
  */
-export function ThinkingRow({
+export const ThinkingRow = memo(function ThinkingRow({
   thinking,
   thinkingMs,
   streaming,
@@ -74,19 +74,22 @@ export function ThinkingRow({
       </div>
     </div>
   );
-}
+});
 
 /** 助手正文（思考过程由 ThinkingRow 单独成行，和工具行共用一套间距）。 */
-export function AssistantMessage({
+export const AssistantMessage = memo(function AssistantMessage({
   content,
   messageIndex,
   streaming,
+  onOpenFile,
 }: {
   content: string;
   /** 历史回放时的消息下标；会话全文检索跳转锚点（data-message-index）用 */
   messageIndex?: number;
   /** 正在流式输出：末段内容淡入，看起来像在“写” */
   streaming?: boolean;
+  /** 正文里的文件元素点击 → 打开右侧文件页签 */
+  onOpenFile?: (path: string) => void;
 }) {
   const slotProps = {
     content,
@@ -103,7 +106,7 @@ export function AssistantMessage({
       >
         <div className="mc-assistant__body">
           <PluginWrap name="message.assistant.body" props={slotProps}>
-            <Markdown content={content} />
+            <Markdown content={content} streaming={streaming} onOpenFile={onOpenFile} />
           </PluginWrap>
         </div>
         <div className="mc-assistant__pluginactions">
@@ -113,4 +116,4 @@ export function AssistantMessage({
       <PluginSlot name="message.assistant.after" props={slotProps} />
     </>
   );
-}
+});

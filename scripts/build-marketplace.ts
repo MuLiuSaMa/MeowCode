@@ -1253,7 +1253,7 @@ async function collectPlugins(): Promise<void> {
     },
     "feishu": {
       name: "飞书",
-      iconFile: "mcp-feishu.png",
+      iconFile: "mcp-feishu.webp",
       description:
         "五个飞书技能命令（消息 / 云文档 / 多维表格 / 日历 / 任务），把对应场景的操作指南全文交给模型，引导它调用飞书 MCP（mcp__feishu__*）完成操作。",
       category: "效率提升",
@@ -1375,7 +1375,7 @@ const MANUAL_MCPS: ManualMcp[] = [
       headers: { Authorization: "Bearer ${MEOWCODE_UNDERMIND_TOKEN}" },
     },
     requiresEnv: ["MEOWCODE_UNDERMIND_TOKEN"],
-    brandIcon: { source: "resources/brand-icons/mcp-undermind.png", file: "mcp-undermind.png" },
+    brandIcon: { source: "resources/brand-icons/mcp-undermind.webp", file: "mcp-undermind.webp" },
   },
   {
     id: "figma-context",
@@ -1405,7 +1405,7 @@ const MANUAL_MCPS: ManualMcp[] = [
       args: ["-y", "@mobilenext/mobile-mcp@1.0.12"],
       env: { MOBILEMCP_DISABLE_TELEMETRY: "1" },
     },
-    brandIcon: { source: "resources/brand-icons/mcp-mobile-mcp.png", file: "mcp-mobile-mcp.png" },
+    brandIcon: { source: "resources/brand-icons/mcp-mobile-mcp.webp", file: "mcp-mobile-mcp.webp" },
   },
   {
     id: "my-coffee",
@@ -1420,7 +1420,7 @@ const MANUAL_MCPS: ManualMcp[] = [
       headers: { Authorization: "Bearer ${LUCKIN_MCP_TOKEN}" },
     },
     requiresEnv: ["LUCKIN_MCP_TOKEN"],
-    brandIcon: { source: "resources/brand-icons/mcp-luckin-coffee.png", file: "mcp-luckin-coffee.png" },
+    brandIcon: { source: "resources/brand-icons/mcp-luckin-coffee.webp", file: "mcp-luckin-coffee.webp" },
   },
   {
     // 官方托管远程 MCP：OAuth 走飞书账号登录（accounts.feishu.cn/mcp），无需自建应用。
@@ -1434,7 +1434,7 @@ const MANUAL_MCPS: ManualMcp[] = [
     tags: ["mcp", "feishu", "lark", "飞书"],
     version: "1.0.0",
     server: { url: "https://mcp.feishu.cn/mcp" },
-    brandIcon: { source: "resources/brand-icons/mcp-feishu.png", file: "mcp-feishu.png" },
+    brandIcon: { source: "resources/brand-icons/mcp-feishu.webp", file: "mcp-feishu.webp" },
   },
 
 ];
@@ -1519,12 +1519,12 @@ async function collectManualSkills(): Promise<void> {
 /** IMAGE_BRANDS 是静态表而 PNG 资产在仓库里：构建期读文件转 data URI 填充（技能条目复用品牌 PNG）。 */
 async function loadImageBrands(): Promise<void> {
   const sources: Array<[string, string]> = [
-    ["my-coffee", "resources/brand-icons/mcp-luckin-coffee.png"],
+    ["my-coffee", "resources/brand-icons/mcp-luckin-coffee.webp"],
   ];
   for (const [id, file] of sources) {
     try {
       const raw = await readFile(path.join(REPO, file));
-      IMAGE_BRANDS[id] = `data:image/png;base64,${raw.toString("base64")}`;
+      IMAGE_BRANDS[id] = `data:image/webp;base64,${raw.toString("base64")}`;
     } catch {
       console.log(`[warn] brand image missing for ${id}; falling back to letter`);
     }

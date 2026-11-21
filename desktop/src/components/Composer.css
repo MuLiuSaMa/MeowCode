@@ -1,6 +1,75 @@
 .mc-composerwrap {
+  position: relative;
   flex-shrink: 0;
   padding: 10px 20px 18px;
+}
+
+/* 消息被滚动容器在底边裁断时，往上盖一层渐隐，避免出现一道硬边把对话割开 */
+.mc-composerwrap::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 100%;
+  height: 32px;
+  background: linear-gradient(to bottom, transparent, var(--bg));
+  pointer-events: none;
+}
+
+/* 壁纸模式不要这层渐隐：任何形式的覆盖层都会糊住壁纸 */
+:root[data-wallpaper="true"] .mc-composerwrap::before {
+  content: none;
+}
+
+/* 输入框是壁纸上的大黑块：底色调成半透明，背后先糊掉再上色，做成毛玻璃而不是实心块。
+   玻璃层挂在输入框外层的宿主上、输入框自身只留透明底 —— 输入框是 container-type 容器，
+   玻璃挂成容器内部的负层级伪元素时，切进空态（新建对话）的那次布局提交会让 Chromium
+   把这层光栅整块丢掉（玻璃消失，直到下一次点击重绘才回来）。宿主是普通块，和项目栏
+   玻璃同一种挂法；伪元素不是输入框后代的祖先，框内弹层的模糊仍能糊到壁纸。
+   模糊与不透明度走全局配方（base.css 的 --wpg-*），和卡片保持同一档 */
+:root[data-wallpaper="true"] .mc-composer {
+  background: transparent;
+  /* 壁纸上不投影：--shadow-md 是 55% 黑的大范围柔影，贴着连续曲率轮廓晕在输入框
+     背后，看起来就像玻璃底下还垫了第二层圆角背景。玻璃与壁纸直接相接，不再投影 */
+  box-shadow: none;
+}
+
+.mc-composer-host {
+  position: relative;
+}
+
+/* 宿主与项目选择条同层叠放：宿主压住项目条，输入框再压在宿主玻璃之上 */
+:root[data-wallpaper="true"] .mc-composer-host {
+  z-index: 1;
+}
+
+:root[data-wallpaper="true"] .mc-composer-host::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  /* 压到输入框内容之下、宿主透明底之上（宿主是堆叠上下文，-1 不会漏出去） */
+  z-index: -1;
+  border-radius: var(--radius-2xl);
+  /* corner-shape 不是继承属性：宿主没有圆角令牌，这里写死与输入框同一条连续曲率，
+     否则玻璃回落成普通圆弧，和输入框的 superellipse(1.5) 在同一条边走出两条曲线 */
+  corner-shape: superellipse(1.5);
+  background: color-mix(in srgb, var(--input-fill) var(--wpg-tint, 88%), transparent);
+  -webkit-backdrop-filter: var(--wpg-filter);
+  backdrop-filter: var(--wpg-filter);
+  pointer-events: none;
+}
+
+/* 发送键保留品牌色相（brand 混进小件玻璃档），禁用态单独补一档灰；
+   其余底栏控件默认透明，悬停时才出玻璃底（见 base.css） */
+:root[data-wallpaper="true"] .mc-sendbtn {
+  background-color: color-mix(in srgb, var(--brand) var(--wpg-tint-chip, 68%), transparent);
+  -webkit-backdrop-filter: var(--wpg-filter);
+  backdrop-filter: var(--wpg-filter);
+}
+
+/* 禁用态（输入为空）和其他圆钮同一档玻璃底，不再用发灰的 surface-hover */
+:root[data-wallpaper="true"] .mc-sendbtn:disabled {
+  background-color: var(--wpg-glass-chip);
 }
 
 .mc-composerstack {
@@ -35,9 +104,24 @@
   box-shadow: var(--shadow-md);
   color: var(--fg-subtle);
   cursor: pointer;
+  overflow: hidden;
+  /* 出现/消失要把占位宽度一起收放：直接卸载会让同一行的进度胶囊横向跳一下 */
   transition:
+    width 180ms var(--ease),
+    margin-left 180ms var(--ease),
+    border-width 180ms var(--ease),
+    opacity 140ms var(--ease),
+    transform 180ms var(--ease),
     background-color var(--dur) var(--ease),
     color var(--dur) var(--ease);
+}
+.mc-scrollbottom[data-open="false"] {
+  width: 0;
+  margin-left: -8px;
+  border-width: 0;
+  opacity: 0;
+  transform: translateY(4px) scale(0.85);
+  pointer-events: none;
 }
 .mc-scrollbottom:hover {
   background: var(--surface-hover);
@@ -255,6 +339,7 @@
 /* 项目标签：贴在输入框顶部、左右内缩，下半截被输入框盖住（原来那种姿位） */
 .mc-composer__context {
   position: relative;
+  z-index: 0;
   display: flex;
   align-items: center;
   margin: 0 16px -12px;
@@ -262,6 +347,25 @@
   border-radius: var(--radius-lg) var(--radius-lg) 0 0;
   corner-shape: superellipse(1.5);
   background: var(--surface);
+}
+
+/* 壁纸模式下，项目选择条与输入框同一档玻璃，但整体压到输入框下层：
+   下半截被输入框圆角盖住。玻璃同样挂在伪元素上，避免它成为毛玻璃背板根，
+   否则项目 / 分支菜单只能采样到这条内部的透明背景，看起来没有模糊。 */
+:root[data-wallpaper="true"] .mc-composer__context {
+  background: transparent;
+}
+
+:root[data-wallpaper="true"] .mc-composer__context::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  corner-shape: inherit;
+  background: color-mix(in srgb, var(--input-fill) var(--wpg-tint, 88%), transparent);
+  -webkit-backdrop-filter: var(--wpg-filter);
+  backdrop-filter: var(--wpg-filter);
 }
 
 /* 悬停 / 菜单展开时这一整段合成一枚胶囊：✕ 与名字同底，不分开 */
@@ -553,6 +657,7 @@
   /* 底栏按输入框自身宽度切换紧凑形态，而不是按窗口宽度 */
   container-type: inline-size;
 }
+
 .mc-composer[data-disabled="true"] {
   opacity: 0.7;
 }
@@ -661,9 +766,10 @@
 }
 
 .mc-composer__bar {
-  display: flex;
+  display: grid;
+  /* 左组按内容固定，右组拿剩余宽度：空间不足时只压缩模型胶囊，不会把发送按钮挤出输入框 */
+  grid-template-columns: auto minmax(0, 1fr);
   align-items: center;
-  justify-content: space-between;
   gap: 10px;
   padding: 6px 10px 10px 12px;
 }
@@ -675,71 +781,36 @@
   min-width: 0;
   flex-wrap: nowrap;
 }
+.mc-composer__right {
+  justify-content: flex-end;
+}
 
 /* 胶囊文字：低宽度下隐藏，只保留图标；title / aria-label 仍然可读 */
 .mc-composer__pilllabel {
   display: inline;
 }
 
-@container (max-width: 640px) {
-  .mc-composer__access .mc-composer__pilllabel,
-  .mc-modebadge .mc-composer__pilllabel {
-    display: none;
-  }
-  .mc-composer__access {
-    padding: 0 9px;
-    gap: 0;
-  }
-  .mc-modebadge {
-    padding: 0 8px;
-    gap: 4px;
-  }
-}
-
-@container (max-width: 540px) {
-  .mc-composer__effort {
-    display: none;
-  }
-  .mc-composer__model {
-    max-width: 210px;
-  }
-}
-
-@container (max-width: 440px) {
-  .mc-composer__modelname {
-    display: none;
-  }
-  .mc-composer__model {
-    padding: 0 9px;
-    gap: 5px;
-  }
-}
-
-@container (max-width: 360px) {
-  .mc-composer__bar {
-    gap: 6px;
-    padding: 6px 8px 8px;
-  }
-  .mc-composer__left,
-  .mc-composer__right {
-    gap: 4px;
-  }
-}
+/*
+ * 响应式规则必须放在文件末尾：与基础组件规则同优先级时按源码顺序决定胜负，
+ * 放在前面会被后面的 .mc-composer__access / .mc-composer__model 基础样式覆盖
+ * （曾导致收缩态 padding 没归零，猫头被 img{max-width:100%} 压到 10px）。
+ */
 
 /*
- * 底栏组件统一胶囊造型：圆角 = 高度一半，浅表面底 + hover 提亮。
- * 加号是 30px 圆胶囊（圆形是胶囊的退化形），权限 / 模型是横向胶囊。
+ * 底栏组件统一胶囊造型：圆角 = 高度一半，默认透明 + hover 提亮。
+ * 加号是 34px 圆胶囊（圆形是胶囊的退化形），权限 / 模型是横向胶囊。
+ * 发送/停止按钮是唯一例外，保留品牌实心底。
  */
 .mc-composer__icon {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 30px;
-  height: 30px;
+  width: 34px;
+  height: 34px;
   flex-shrink: 0;
   border: 0;
   border-radius: var(--radius-full);
-  background: var(--surface);
+  background: transparent;
   color: var(--fg-subtle);
   cursor: pointer;
   transition: background-color var(--dur) var(--ease), color var(--dur) var(--ease);
@@ -755,7 +826,7 @@
   cursor: not-allowed;
 }
 .mc-composer__polish:disabled:hover {
-  background: var(--surface);
+  background: transparent;
   color: var(--fg-subtlest);
 }
 .mc-composer__polishspin {
@@ -778,11 +849,12 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  height: 30px;
+  height: 34px;
   padding: 0 12px;
+  flex-shrink: 0;
   border: 0;
   border-radius: var(--radius-full);
-  background: var(--surface);
+  background: transparent;
   color: var(--fg-subtle);
   font-family: inherit;
   font-size: var(--fs-sm);
@@ -890,12 +962,12 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  height: 30px;
+  height: 34px;
   padding: 0 10px;
   flex-shrink: 0;
   border: 1px solid transparent;
   border-radius: var(--radius-full);
-  background: var(--surface);
+  background: transparent;
   color: var(--fg-subtle);
   font-family: inherit;
   font-size: var(--fs-sm);
@@ -907,18 +979,16 @@
 .mc-modebadge > svg {
   flex-shrink: 0;
 }
-.mc-modebadge:hover {
-  background: var(--surface-hover);
-  color: var(--fg);
-}
 .mc-modebadge[data-mode="plan"] {
   border-color: color-mix(in oklab, var(--accent) 45%, transparent);
-  background: var(--accent-soft);
   color: var(--fg);
 }
 .mc-modebadge[data-mode="goal"] {
   border-color: color-mix(in oklab, var(--accent-violet) 45%, transparent);
-  background: color-mix(in oklab, var(--accent-violet) 16%, transparent);
+  color: var(--fg);
+}
+.mc-modebadge:hover:not(:disabled) {
+  background: var(--surface-hover);
   color: var(--fg);
 }
 
@@ -1102,6 +1172,16 @@
 /* 占用圆圈外层：弹层以它为锚点（居中在圆圈正上方） */
 .mc-composer__ctxwrap {
   position: relative;
+  flex-shrink: 0;
+}
+
+/* Agent 头像尺寸锁定：胶囊展开/收起都保持同一像素尺寸，不随文字隐藏而变小 */
+.mc-composer__agent > .mc-agentcat {
+  width: 17px;
+  height: 17px;
+  flex: none;
+  /* 全局 img{max-width:100%} 会在容器内容盒变窄时把猫头压缩变形 */
+  max-width: none;
 }
 
 .mc-composer__modelwrap {
@@ -1115,11 +1195,11 @@
   gap: 7px;
   min-width: 0;
   max-width: 300px;
-  height: 30px;
+  height: 34px;
   padding: 0 12px;
   border: 0;
   border-radius: var(--radius-full);
-  background: var(--surface);
+  background: transparent;
   color: var(--fg);
   font-family: inherit;
   font-size: var(--fs-sm);
@@ -1388,6 +1468,26 @@
   max-height: none;
   overflow: visible;
 }
+/*
+ * 「+」菜单里嵌着右侧二级浮层。父级若直接挂 backdrop-filter 会成为 backdrop root，
+ * 二级浮层就采不到壁纸、只能糊到父菜单内部。把一级玻璃挪到伪元素，两层才能各采各的。
+ */
+:root[data-wallpaper="true"] .mc-composer .mc-permmenu.mc-plusmenu {
+  background: transparent !important;
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+}
+:root[data-wallpaper="true"] .mc-permmenu.mc-plusmenu::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  corner-shape: inherit;
+  background-color: var(--wpg-glass);
+  -webkit-backdrop-filter: var(--wpg-filter);
+  backdrop-filter: var(--wpg-filter);
+}
 .mc-plusmenu__row {
   position: relative;
 }
@@ -1562,3 +1662,105 @@
   background: var(--surface-hover);
   color: var(--fg);
 }
+
+/* 全窗口拖放提示：拖到窗口任意位置都能添加附件 */
+.mc-dropoverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  /* 压暗+糊屏挂在 ::before 上：自身一挂 backdrop-filter 就成了「毛玻璃背板根」，
+     卡片的玻璃（base.css 壁纸配方）只能糊到 overlay 子树内部而失效 */
+}
+.mc-dropoverlay::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: color-mix(in srgb, var(--surface) 55%, transparent);
+  -webkit-backdrop-filter: blur(3px);
+  backdrop-filter: blur(3px);
+}
+.mc-dropoverlay__card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 26px 38px;
+  border: 2px dashed var(--accent);
+  border-radius: var(--radius-2xl);
+  background: var(--surface);
+  color: var(--fg);
+  box-shadow: var(--shadow-md);
+}
+.mc-dropoverlay__icon {
+  color: var(--accent);
+}
+.mc-dropoverlay__text {
+  font-size: var(--fs-lg);
+  font-weight: var(--fw-medium);
+}
+
+/* ---- 输入框宽度响应式（必须留在文件末尾，见上方说明） ---- */
+@container (max-width: 640px) {
+  .mc-composer__access .mc-composer__pilllabel,
+  .mc-modebadge .mc-composer__pilllabel {
+    display: none;
+  }
+  .mc-composer__access {
+    /* 收起文字后是纯圆：与 + / 上下文圆钮同尺寸；padding/gap 必须归零，
+       否则内容盒只有 10px，猫头会被 img{max-width:100%} 压小 */
+    width: 34px;
+    height: 34px;
+    padding: 0;
+    gap: 0;
+    justify-content: center;
+  }
+  .mc-modebadge {
+    padding: 0 8px;
+    gap: 4px;
+  }
+}
+
+@container (max-width: 540px) {
+  .mc-composer__effort {
+    display: none;
+  }
+  .mc-composer__model {
+    max-width: 210px;
+  }
+}
+
+@container (max-width: 440px) {
+  .mc-composer__modelname {
+    display: none;
+  }
+  .mc-composer__model {
+    padding: 0 9px;
+    gap: 5px;
+  }
+}
+
+@container (max-width: 360px) {
+  .mc-composer__bar {
+    gap: 6px;
+    padding: 6px 8px 8px;
+  }
+  .mc-composer__left,
+  .mc-composer__right {
+    gap: 4px;
+  }
+}
+
+/* 减弱动效：「返回底部」只做显隐，不折叠占位宽度 */
+@media (prefers-reduced-motion: reduce) {
+  .mc-scrollbottom {
+    transition:
+      background-color var(--dur) var(--ease),
+      color var(--dur) var(--ease);
+  }
+}
+

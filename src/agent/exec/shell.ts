@@ -27,6 +27,8 @@ export async function runShellCommand(options: {
   signal?: AbortSignal;
   timeoutMs?: number;
   sandbox?: "enforce" | "bypass";
+  /** 超时不杀：把子进程交给调用方继续当后台任务跑 */
+  onTimeout?: ExecSpec["onTimeout"];
 }): Promise<ShellRunResult> {
   const executable = await resolvePowerShell();
   const legacyLabel = await getLegacyOutputLabel();
@@ -44,6 +46,7 @@ export async function runShellCommand(options: {
     // 否则只会挂满整个超时时间
     closeStdin: true,
     ...(options.signal ? { signal: options.signal } : {}),
+    ...(options.onTimeout ? { onTimeout: options.onTimeout } : {}),
   };
   let sandboxed = false;
   const settings = getSandboxSettings();

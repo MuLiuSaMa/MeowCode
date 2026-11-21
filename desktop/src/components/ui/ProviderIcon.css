@@ -19,6 +19,12 @@
   letter-spacing: 0.02em;
 }
 
+/* 自定义服务商 / 兜底猫头：保持透明底，图片自带一点透明边距，略微放大抵消 */
+.mc-provicon[data-icon="meow"] > img,
+.mc-provicon[data-icon="custom"] > img {
+  transform: scale(1.18);
+}
+
 /* 单色品牌字形：跟随文字色，两个主题都自适应 */
 .mc-provicon--glyph {
   color: var(--fg);

@@ -1,12 +1,20 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { LuFolderUp } from "react-icons/lu";
+import { LuFolderUp, LuPlus, LuX } from "react-icons/lu";
 import { Button } from "../ui/Button";
 import { CustomSelect, type CustomSelectOption } from "../ui/CustomSelect";
 import { FieldRow, Section } from "../ui/Section";
 import { SegmentedControl } from "../ui/SegmentedControl";
+import { Slider } from "../ui/Slider";
+import { Toggle } from "../ui/Toggle";
 import { PaletteSwatches } from "./PaletteSwatches";
-import type { ThemePalette, ThemePreference } from "../../api";
+import {
+  wallpaperUrl,
+  type ThemePalette,
+  type ThemePreference,
+  type WallpaperKind,
+  type WallpaperSettings,
+} from "../../api";
 import "./AppearanceSection.css";
 
 /** 表里只存值：标签在组件里查表，切语言才会跟着刷新。 */
@@ -46,6 +54,12 @@ function fontLabel(family: string, fullName?: string): string {
   return family;
 }
 
+/** 滑杆读数：透明度 / 亮度 / 面板不透明度统一按百分比显示 */
+const percent = (value: number) => `${Math.round(value * 100)}%`;
+
+/** 轮播间隔候选（秒）：够用又不至于让下拉太长 */
+const CAROUSEL_INTERVALS = [10, 30, 60, 300, 900, 1800];
+
 export function AppearanceSection({
   preference,
   onPreference,
@@ -58,6 +72,10 @@ export function AppearanceSection({
   onCodeFontChange,
   onImportFont,
   onRemoveFont,
+  wallpaper,
+  onImportWallpaper,
+  onRemoveWallpaper,
+  onWallpaperChange,
 }: {
   preference: ThemePreference;
   onPreference: (value: ThemePreference) => void;
@@ -76,8 +94,38 @@ export function AppearanceSection({
   onImportFont: () => Promise<string | null>;
   /** 删除已导入的字体；删除成功返回 true */
   onRemoveFont: (family: string) => Promise<boolean>;
+  /** 自定义背景库；null = 还没导入过 */
+  wallpaper: WallpaperSettings | null;
+  /** 弹文件选择框（可多选）导入图片 / 视频 */
+  onImportWallpaper: (kind: WallpaperKind) => void;
+  /** 从背景库删掉一项 */
+  onRemoveWallpaper: (fileName: string) => void;
+  /** 调选中项 / 开关 / 轮播 / 透明度等（立即生效，落盘节流） */
+  onWallpaperChange: (patch: Partial<WallpaperSettings>) => void;
 }) {
   const { t, i18n } = useTranslation("settings");
+  const items = wallpaper?.items ?? [];
+  /** 当前背景的类型：决定声音开关是否出现、轮播队列有多大 */
+  const activeKind =
+    items.find((item) => item.fileName === wallpaper?.active)?.kind ?? items[0]?.kind ?? null;
+  /** 背景库按类型分页：图片 / 视频（初始停在当前背景所属的那一页） */
+  const [tab, setTab] = useState<WallpaperKind>(activeKind ?? "image");
+  const visibleItems = useMemo(() => items.filter((item) => item.kind === tab), [items, tab]);
+  const carousel = wallpaper?.carousel ?? { enabled: false, intervalSec: 60 };
+  /** 轮播只在同类型内循环，所以「至少两张」要看当前项所属的那一类 */
+  const carouselPoolSize = activeKind ? items.filter((item) => item.kind === activeKind).length : 0;
+
+  /**
+   * 切 Tab 就把当前背景换成该类型的第一张（这一类没东西时保持原样）。
+   * 只改选中项，不碰 enabled：用户关掉「自定义背景」后再切 Tab 不该被悄悄打开。
+   */
+  const switchTab = (next: WallpaperKind) => {
+    setTab(next);
+    const first = items.find((item) => item.kind === next);
+    if (first && wallpaper?.active !== first.fileName) {
+      onWallpaperChange({ active: first.fileName });
+    }
+  };
   const themeOptions = useMemo(
     () => THEME_VALUES.map((value) => ({ value, label: t(`appearance.theme.${value}`) })),
     [t],
@@ -223,6 +271,179 @@ export function AppearanceSection({
               ariaLabel={t("appearance.codeFont")}
             />
           </div>
+        </FieldRow>
+      </Section>
+
+      <Section title={t("appearance.backgroundSection")} description={t("appearance.backgroundDesc")}>
+        <FieldRow label={t("appearance.backgroundEnable")}>
+          <Toggle
+            checked={wallpaper?.enabled ?? false}
+            onChange={(next) => onWallpaperChange({ enabled: next })}
+            disabled={!wallpaper}
+            label={t("appearance.backgroundEnable")}
+          />
+        </FieldRow>
+
+        <div className="mc-wallpaper">
+          <div className="mc-wallpaper__bar">
+            <SegmentedControl<WallpaperKind>
+              value={tab}
+              options={[
+                { value: "image", label: t("appearance.backgroundImage") },
+                { value: "video", label: t("appearance.backgroundVideo") },
+              ]}
+              onChange={switchTab}
+              ariaLabel={t("appearance.backgroundSection")}
+            />
+            <span className="mc-wallpaper__count">
+              {t("appearance.backgroundCount", { count: visibleItems.length })}
+            </span>
+          </div>
+
+          <div className="mc-wallpaper__grid">
+            {visibleItems.map((item) => {
+              const url = wallpaperUrl(item.fileName);
+              const isActive = wallpaper?.active === item.fileName;
+              return (
+                <div
+                  key={item.fileName}
+                  className="mc-wallpaper__tile"
+                  data-active={isActive}
+                  role="button"
+                  tabIndex={0}
+                  title={item.fileName}
+                  onClick={() => onWallpaperChange({ active: item.fileName })}
+                  onKeyDown={(event) => {
+                    if (event.key !== "Enter" && event.key !== " ") return;
+                    event.preventDefault();
+                    onWallpaperChange({ active: item.fileName });
+                  }}
+                >
+                  {item.kind === "video" ? (
+                    <video className="mc-wallpaper__thumb" src={`${url}#t=0.1`} muted preload="metadata" />
+                  ) : (
+                    <img className="mc-wallpaper__thumb" src={url} alt="" loading="lazy" />
+                  )}
+                  <span className="mc-wallpaper__kind">
+                    {item.kind === "video"
+                      ? t("appearance.backgroundVideo")
+                      : t("appearance.backgroundImage")}
+                  </span>
+                  <button
+                    type="button"
+                    className="mc-wallpaper__remove"
+                    aria-label={t("appearance.backgroundRemove")}
+                    title={t("appearance.backgroundRemove")}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      onRemoveWallpaper(item.fileName);
+                    }}
+                  >
+                    <LuX size={12} />
+                  </button>
+                </div>
+              );
+            })}
+            <button
+              type="button"
+              className="mc-wallpaper__tile mc-wallpaper__tile--add"
+              onClick={() => onImportWallpaper(tab)}
+            >
+              <LuPlus size={18} />
+              <span>{t("appearance.backgroundAdd")}</span>
+            </button>
+          </div>
+
+          {visibleItems.length === 0 ? (
+            <p className="mc-wallpaper__empty">{t("appearance.backgroundEmpty")}</p>
+          ) : null}
+        </div>
+
+        {activeKind === "video" ? (
+          <FieldRow label={t("appearance.backgroundSound")}>
+            <Toggle
+              checked={wallpaper?.videoSound ?? false}
+              onChange={(next) => onWallpaperChange({ videoSound: next })}
+              disabled={!wallpaper}
+              label={t("appearance.backgroundSound")}
+            />
+          </FieldRow>
+        ) : null}
+
+        <FieldRow label={t("appearance.backgroundCarousel")}>
+          <Toggle
+            checked={wallpaper?.carousel.enabled ?? false}
+            onChange={(next) => onWallpaperChange({ carousel: { ...carousel, enabled: next } })}
+            disabled={!wallpaper || carouselPoolSize < 2}
+            label={t("appearance.backgroundCarousel")}
+          />
+        </FieldRow>
+        {wallpaper?.carousel.enabled ? (
+          <FieldRow label={t("appearance.backgroundInterval")}>
+            <CustomSelect<string>
+              value={String(carousel.intervalSec)}
+              options={CAROUSEL_INTERVALS.map((seconds) => ({
+                value: String(seconds),
+                label:
+                  seconds < 60
+                    ? t("appearance.backgroundSeconds", { count: seconds })
+                    : t("appearance.backgroundMinutes", { count: Math.round(seconds / 60) }),
+              }))}
+              onChange={(value) =>
+                onWallpaperChange({ carousel: { ...carousel, intervalSec: Number(value) } })
+              }
+              ariaLabel={t("appearance.backgroundInterval")}
+            />
+          </FieldRow>
+        ) : null}
+
+        <FieldRow label={t("appearance.backgroundOpacity")}>
+          <Slider
+            value={wallpaper?.opacity ?? 1}
+            min={0.05}
+            max={1}
+            step={0.05}
+            onChange={(value) => onWallpaperChange({ opacity: value })}
+            ariaLabel={t("appearance.backgroundOpacity")}
+            format={percent}
+            disabled={!wallpaper}
+          />
+        </FieldRow>
+        <FieldRow label={t("appearance.backgroundBrightness")}>
+          <Slider
+            value={wallpaper?.brightness ?? 1}
+            min={0.2}
+            max={2}
+            step={0.05}
+            onChange={(value) => onWallpaperChange({ brightness: value })}
+            ariaLabel={t("appearance.backgroundBrightness")}
+            format={percent}
+            disabled={!wallpaper}
+          />
+        </FieldRow>
+        <FieldRow label={t("appearance.backgroundBlur")}>
+          <Slider
+            value={wallpaper?.blur ?? 0}
+            min={0}
+            max={40}
+            step={1}
+            onChange={(value) => onWallpaperChange({ blur: value })}
+            ariaLabel={t("appearance.backgroundBlur")}
+            format={(value) => `${Math.round(value)}px`}
+            disabled={!wallpaper}
+          />
+        </FieldRow>
+        <FieldRow label={t("appearance.backgroundPanel")}>
+          <Slider
+            value={wallpaper?.uiOpacity ?? 0.72}
+            min={0.2}
+            max={1}
+            step={0.05}
+            onChange={(value) => onWallpaperChange({ uiOpacity: value })}
+            ariaLabel={t("appearance.backgroundPanel")}
+            format={percent}
+            disabled={!wallpaper}
+          />
         </FieldRow>
       </Section>
     </div>

@@ -23,6 +23,13 @@ export type DeriveSessionOptions = {
   sessionsDir: string;
   /** 新会话标题后缀，如 "（检查点：xxx）" / "（回滚）"；空串 = 不加后缀 */
   titleSuffix?: string;
+  /**
+   * 保留截断点之前的检查点条目。默认不带入（恢复/回滚出来的是纯对话状态）；
+   * 「编辑并重跑」需要它为 true —— 否则编辑一次之后，前面每条消息的
+   * 回滚/再编辑入口都会消失，看起来就像另起了一个会话。
+   * 这些检查点的 messageIndex 仍然有效：截断只删掉了 cutIndex 之后的条目。
+   */
+  preserveCheckpoints?: boolean;
 };
 
 /**
@@ -76,13 +83,14 @@ export async function deriveSessionAtCheckpoint(
   } catch {
     // 源会话没有资产（ENOENT）属常态；其余错误同样降级
   }
-  // 只复制检查点之前的条目；检查点/子 Agent/回滚留痕不带入（恢复出的会话是纯对话状态）
+  // 只复制检查点之前的条目；检查点/子 Agent/回滚留痕默认不带入（恢复出的会话是纯对话状态）
   const copied = source.entries
     .slice(1, cutIndex)
-    .filter(
-      (entry) =>
-        entry.type !== "subagent" && entry.type !== "checkpoint" && entry.type !== "rewind",
-    );
+    .filter((entry) => {
+      if (entry.type === "subagent" || entry.type === "rewind") return false;
+      if (entry.type === "checkpoint") return options.preserveCheckpoints === true;
+      return true;
+    });
   // 尾部未配对的 turn_start 一律剔除：带进派生会话会被 switchSession 的崩溃恢复
   // 重放成假用户消息并报「上次生成被中断」——旧会话的检查点打在 turn_start 之后，
   // 回滚它们时 slice 边界天然会带上这个孤立条目，这里统一兜底。

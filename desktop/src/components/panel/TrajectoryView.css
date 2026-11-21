@@ -1,0 +1,469 @@
+/* 轨迹视图：三条泳道时间轴 + turn-aware 账本 + 右侧分区块详情 */
+
+.mc-traj {
+  /* 泳道配色：输入=绿、模型=紫、工具=橙；失败/进行中会覆盖成红/黄 */
+  --traj-input: #63b36b;
+  --traj-model: #a78bfa;
+  --traj-tool: #e0913f;
+
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  flex-direction: row;
+}
+/* 左列：工具栏 + 三行时间轴 + 账本 */
+.mc-traj__main {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+}
+
+/* 工具栏：统计 / 筛选 / 批量折叠 */
+.mc-traj__bar {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--border);
+}
+.mc-traj__stats {
+  flex: none;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--fg-subtlest);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.mc-traj__filter {
+  flex: 1;
+  min-width: 0;
+  height: 24px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--fg);
+  font-size: var(--fs-xs);
+}
+.mc-traj__filter:focus {
+  outline: none;
+  border-color: var(--border-strong);
+}
+.mc-traj__bulk {
+  flex: none;
+  padding: 3px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--fg-subtle);
+  font-size: 10px;
+  cursor: pointer;
+}
+.mc-traj__bulk:hover {
+  background: var(--surface-hover);
+  color: var(--fg);
+}
+
+/* 时间轴：输入 / 模型 / 工具 三行，共用同一批槽位保证对齐 */
+.mc-traj__strip {
+  display: flex;
+  flex-shrink: 0;
+  flex-direction: column;
+  gap: 3px;
+  padding: 6px 12px 8px;
+  border-bottom: 1px solid var(--border);
+}
+.mc-traj__lane {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 9px;
+}
+.mc-traj__lanelabel {
+  flex: none;
+  width: 26px;
+  font-size: 9px;
+  line-height: 1;
+  text-align: right;
+  color: var(--fg-subtlest);
+  user-select: none;
+}
+.mc-traj__lane[data-lane="input"] .mc-traj__lanelabel {
+  color: var(--traj-input);
+}
+.mc-traj__lane[data-lane="model"] .mc-traj__lanelabel {
+  color: var(--traj-model);
+}
+.mc-traj__lane[data-lane="tool"] .mc-traj__lanelabel {
+  color: var(--traj-tool);
+}
+.mc-traj__laneticks {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  gap: 1px;
+  align-items: center;
+  height: 100%;
+  overflow: hidden;
+}
+.mc-traj__slot {
+  display: flex;
+  flex: 1 1 0;
+  min-width: 1px;
+  height: 100%;
+  align-items: center;
+}
+/* 空槽只占位不显示：三行刻度因此能严格对齐 */
+.mc-traj__slot[data-empty="true"] {
+  visibility: hidden;
+}
+.mc-traj__tick {
+  width: 100%;
+  height: 4px;
+  padding: 0;
+  border: 0;
+  border-radius: 1px;
+  background: var(--traj-tool);
+  cursor: pointer;
+  opacity: 0.72;
+  transition: opacity 0.12s ease, height 0.12s ease;
+}
+.mc-traj__tick[data-lane="input"] {
+  background: var(--traj-input);
+}
+.mc-traj__tick[data-lane="model"] {
+  background: var(--traj-model);
+}
+.mc-traj__tick[data-lane="tool"] {
+  background: var(--traj-tool);
+}
+.mc-traj__tick[data-status="error"] {
+  background: var(--danger);
+  opacity: 1;
+}
+.mc-traj__tick[data-status="running"] {
+  background: var(--warning);
+  opacity: 1;
+}
+.mc-traj__tick:hover {
+  opacity: 1;
+  height: 6px;
+}
+.mc-traj__tick[data-active="true"] {
+  opacity: 1;
+  height: 8px;
+}
+
+.mc-traj__ledger {
+  flex: 1;
+  min-height: 0;
+  padding: 2px 0 16px;
+  overflow: auto;
+}
+.mc-traj__empty {
+  padding: 18px 12px;
+  font-size: var(--fs-sm);
+  color: var(--fg-subtle);
+}
+
+.mc-traj__turn {
+  border-bottom: 1px solid var(--border);
+}
+.mc-traj__turn:last-child {
+  border-bottom: 0;
+}
+
+/* 轮次标题：编号 + 首句 + 条数/耗时 */
+.mc-traj__turnhead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 4px 12px;
+  border: 0;
+  background: var(--surface);
+  color: var(--fg);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.mc-traj__turnhead:hover {
+  background: var(--surface-hover);
+}
+.mc-traj__turnno {
+  flex: none;
+  min-width: 18px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--fg-subtlest);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.mc-traj__turnlabel {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+}
+.mc-traj__turnmeta {
+  flex: none;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--fg-subtlest);
+  font-variant-numeric: tabular-nums;
+}
+
+/* 记录行：状态块 + 名称 + 摘要 + 耗时（单击选中，详情走右侧） */
+.mc-traj__row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 2px 12px;
+  border: 0;
+  border-left: 2px solid transparent;
+  background: transparent;
+  color: var(--fg);
+  font-size: 12px;
+  line-height: 1.6;
+  text-align: left;
+  cursor: pointer;
+}
+.mc-traj__row:hover {
+  background: var(--surface-hover);
+}
+.mc-traj__row[data-selected="true"] {
+  border-left-color: var(--brand);
+  background: var(--surface-hover);
+}
+.mc-traj__dot {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 2px;
+  background: var(--fg-subtlest);
+}
+/* 类型决定基色，状态（失败/进行中）覆盖 */
+.mc-traj__dot[data-lane="input"] {
+  background: var(--traj-input);
+}
+.mc-traj__dot[data-lane="model"] {
+  background: var(--traj-model);
+}
+.mc-traj__dot[data-lane="tool"] {
+  background: var(--traj-tool);
+}
+.mc-traj__dot[data-status="error"] {
+  background: var(--danger);
+}
+.mc-traj__dot[data-status="running"] {
+  background: var(--warning);
+}
+.mc-traj__name {
+  flex: none;
+  min-width: 72px;
+  max-width: 132px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--fg-subtle);
+}
+.mc-traj__summary {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mc-traj__dur {
+  flex: none;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--fg-subtlest);
+  font-variant-numeric: tabular-nums;
+}
+
+/* 右侧详情面板 */
+.mc-traj__inspector {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  width: 360px;
+  min-height: 0;
+  border-left: 1px solid var(--border);
+  background: var(--surface);
+}
+.mc-traj__inshead {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+}
+/* 类型徽标：与泳道同色，一眼分清输入/模型/工具 */
+.mc-traj__inskind {
+  flex: none;
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-size: 9px;
+  line-height: 1.6;
+  color: #101010;
+  background: var(--fg-subtlest);
+}
+.mc-traj__inskind[data-lane="input"] {
+  background: var(--traj-input);
+}
+.mc-traj__inskind[data-lane="model"] {
+  background: var(--traj-model);
+}
+.mc-traj__inskind[data-lane="tool"] {
+  background: var(--traj-tool);
+}
+.mc-traj__institle {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--fg);
+}
+.mc-traj__insstepmeta {
+  flex: none;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--fg-subtlest);
+  font-variant-numeric: tabular-nums;
+}
+.mc-traj__insclose {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--fg-subtle);
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+}
+.mc-traj__insclose:hover {
+  background: var(--surface-hover);
+  color: var(--fg);
+}
+
+/* 键值表：层级 / 状态 / 工具 / 开始时间 / 耗时，两列对齐 */
+.mc-traj__kv {
+  display: grid;
+  flex-shrink: 0;
+  grid-template-columns: 62px minmax(0, 1fr);
+  gap: 3px 10px;
+  margin: 0;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+  font-size: var(--fs-sm);
+}
+.mc-traj__kv dt {
+  color: var(--fg-subtlest);
+  font-size: 10px;
+  line-height: 1.7;
+}
+.mc-traj__kv dd {
+  margin: 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--fg);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  line-height: 1.7;
+}
+.mc-traj__kv dd[data-status="error"] {
+  color: var(--danger);
+}
+.mc-traj__kv dd[data-status="running"] {
+  color: var(--warning);
+}
+.mc-traj__kv dd[data-lane="tool"] {
+  color: var(--traj-tool);
+}
+
+/* 详情正文：可折叠区块（参数 / 结果 / Schema） */
+.mc-traj__insbody {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+.mc-traj__insblock {
+  border-bottom: 1px solid var(--border);
+}
+.mc-traj__insblock:last-child {
+  border-bottom: 0;
+}
+.mc-traj__insblock > summary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 10px;
+  color: var(--fg-subtle);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  cursor: pointer;
+  user-select: none;
+  list-style: none;
+}
+.mc-traj__insblock > summary::-webkit-details-marker {
+  display: none;
+}
+.mc-traj__insblock > summary::before {
+  content: "›";
+  display: inline-block;
+  color: var(--fg-subtlest);
+  transform: rotate(0deg);
+  transition: transform 0.12s ease;
+}
+.mc-traj__insblock[open] > summary::before {
+  transform: rotate(90deg);
+}
+.mc-traj__insblock > summary:hover {
+  color: var(--fg);
+}
+.mc-traj__insblock pre {
+  margin: 0;
+  padding: 0 10px 10px;
+  color: var(--fg-subtle);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.mc-traj__insdesc {
+  margin: 0;
+  padding: 0 10px 8px;
+  color: var(--fg-subtle);
+  font-size: var(--fs-sm);
+  line-height: 1.55;
+}
+.mc-traj__insblock--schema > summary {
+  color: var(--traj-tool);
+}
+.mc-traj__insempty {
+  margin: 0;
+  padding: 12px 10px;
+  font-size: var(--fs-sm);
+  color: var(--fg-subtle);
+}

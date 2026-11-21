@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { LuChevronRight, LuEllipsis, LuRotateCw, LuSparkles } from "react-icons/lu";
 import { api } from "../../api";
+import { FileIcon } from "../ui/FileIcon";
 import "./ReviewTab.css";
 
 type ReviewChange = {
@@ -19,9 +20,27 @@ function diffLineKind(line: string): "add" | "del" | "meta" | "ctx" {
   if (line.startsWith("+++") || line.startsWith("---") || line.startsWith("@@") || line.startsWith("\\")) {
     return "meta";
   }
-  if (line.startsWith("+ ")) return "add";
-  if (line.startsWith("- ")) return "del";
+  if (line.startsWith("+")) return "add";
+  if (line.startsWith("-")) return "del";
   return "ctx";
+}
+
+/** 统一 diff / git patch 的记账行（`--- a/x`、`+++ b/x`、`@@`、`diff --git`、`index`、模式与重命名行）：文件名、增删数已在行内展示，正文里不再重复 */
+function isDiffHeader(line: string): boolean {
+  return (
+    line.startsWith("---") ||
+    line.startsWith("+++") ||
+    line.startsWith("@@") ||
+    line.startsWith("diff --git ") ||
+    line.startsWith("index ") ||
+    line.startsWith("new file mode ") ||
+    line.startsWith("deleted file mode ") ||
+    line.startsWith("old mode ") ||
+    line.startsWith("new mode ") ||
+    line.startsWith("similarity index ") ||
+    line.startsWith("rename from ") ||
+    line.startsWith("rename to ")
+  );
 }
 
 function baseNameOf(filePath: string): string {
@@ -142,6 +161,7 @@ export function ReviewTab({ sessionId }: { sessionId?: string }) {
                   onClick={() => setExpanded(open ? null : change.path)}
                 >
                   <LuChevronRight size={13} className="mc-review__chevron" />
+                  <FileIcon path={change.path} size={13} />
                   <span className="mc-review__name mc-truncate" title={change.path}>
                     {baseNameOf(change.path)}
                   </span>
@@ -162,11 +182,14 @@ export function ReviewTab({ sessionId }: { sessionId?: string }) {
 
                 {open ? (
                   <div className="mc-review__diff" role="region" aria-label={t("review.diffAria", { path: change.path })}>
-                    {change.diff.split("\n").map((line, index) => (
-                      <div className="mc-review__line" data-kind={diffLineKind(line)} key={index}>
-                        {line || " "}
-                      </div>
-                    ))}
+                    {change.diff
+                      .split("\n")
+                      .filter((line) => !isDiffHeader(line))
+                      .map((line, index) => (
+                        <div className="mc-review__line" data-kind={diffLineKind(line)} key={index}>
+                          {line || " "}
+                        </div>
+                      ))}
                   </div>
                 ) : null}
               </div>

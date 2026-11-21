@@ -1,4 +1,10 @@
-import type { ChatMessage, TimelineItem, TurnDurationGroup, TurnFileChangeGroup } from "./api";
+import type {
+  ChatMessage,
+  TimelineImage,
+  TimelineItem,
+  TurnDurationGroup,
+  TurnFileChangeGroup,
+} from "./api";
 
 type KeyFactory = (prefix: string) => string;
 
@@ -71,10 +77,24 @@ export function timelineFromHistory(
 ): TimelineItem[] {
   const items: TimelineItem[] = [];
   const toolOutputs = new Map<string, string>();
+  /** 工具截图：实时走 dataUrl，历史回放走落盘 imageRefs 的 assetUrl */
+  const toolImages = new Map<string, TimelineImage[]>();
   for (const message of messages) {
-    if (message.role === "tool" && message.tool_call_id) {
-      toolOutputs.set(message.tool_call_id, message.content ?? "");
-    }
+    if (message.role !== "tool" || !message.tool_call_id) continue;
+    toolOutputs.set(message.tool_call_id, message.content ?? "");
+    const images: TimelineImage[] = [
+      ...(message.images ?? []).map((image) => ({
+        mimeType: image.mimeType,
+        dataUrl: `data:${image.mimeType};base64,${image.data}`,
+      })),
+      ...(message.imageRefs ?? [])
+        .map((ref) => ({
+          mimeType: ref.mimeType,
+          src: window.meow.assetUrl?.(ref.file) ?? null,
+        }))
+        .filter((image): image is { mimeType: string; src: string } => Boolean(image.src)),
+    ];
+    if (images.length) toolImages.set(message.tool_call_id, images);
   }
 
   const compactions = Array.isArray(compaction) ? compaction : compaction ? [compaction] : [];
@@ -232,6 +252,7 @@ export function timelineFromHistory(
       const call = readToolCall(raw);
       if (!call) continue;
       const output = call.id ? toolOutputs.get(call.id) : undefined;
+      const images = call.id ? toolImages.get(call.id) : undefined;
       items.push({
         kind: "tool",
         key: nextKey("tool"),
@@ -240,6 +261,7 @@ export function timelineFromHistory(
         input: call.input,
         replayed: true,
         ...(output !== undefined ? { output, truncated: false } : {}),
+        ...(images?.length ? { images } : {}),
       });
     }
   }
@@ -249,7 +271,22 @@ export function timelineFromHistory(
   insertCheckpoints(messages.length);
   insertTurnChanges(messages.length);
   insertTurnDurations(messages.length);
-  return items;
+
+  // 每轮工具产出的截图收到轮末（与实时路径一致）：工具组默认折叠，留在组里就看不见了
+  const withShots: TimelineItem[] = [];
+  let pendingShots: TimelineImage[] = [];
+  for (const item of items) {
+    if (item.kind === "message" && item.role === "user" && pendingShots.length) {
+      withShots.push({ kind: "turn-shots", key: nextKey("turn-shots"), images: pendingShots });
+      pendingShots = [];
+    }
+    if (item.kind === "tool" && item.images?.length) pendingShots.push(...item.images);
+    withShots.push(item);
+  }
+  if (pendingShots.length) {
+    withShots.push({ kind: "turn-shots", key: nextKey("turn-shots"), images: pendingShots });
+  }
+  return withShots;
 }
 
 /** 开始压缩：清掉残留的运行中标记，在时间线末尾插入分隔线。 */

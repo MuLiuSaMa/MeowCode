@@ -13,6 +13,7 @@ import {
 import { countDiffStats, previewDiff, renderDiff } from "./diff.js";
 import {
   buildFileMentionContext,
+  collectAttachmentRoots,
   collectInjectedPaths,
   mentionPathKey,
   mentionTokenBudget,
@@ -64,14 +65,20 @@ import { SnapshotStore, type SnapshotTarget } from "./snapshot-store.js";
 import { recoverSession } from "./session-recovery.js";
 import { TraceRecorder, type TraceSpan, type TraceSummary } from "./trace.js";
 import {
+  PromptTrajectoryRecorder,
+  type PromptTrajectoryEntry,
+} from "./prompt-trajectory.js";
+import {
   addApprovalRule,
   commandPrefix,
   matchApprovalRule,
   readApprovalRules,
   toRulePath,
 } from "./approval-rules.js";
-import { createJobManager, type JobManager } from "./jobs.js";
+import { combineJobManagers, createJobManager, type JobManager } from "./jobs.js";
 import { JobExitWatcher, type JobExit } from "./job-watch.js";
+import { createPromotedJobStore } from "./promoted-jobs.js";
+import { buildAgentSegments } from "./prompt-segments.js";
 import { isForceApprovalGitAction, isMutatingGitAction } from "./git-tools.js";
 import { patchPaths } from "./patch.js";
 import {
@@ -126,7 +133,6 @@ import {
 import { formatToolRejection } from "./tool-feedback.js";
 import { planMutationWeight, planNudge, turnEndPlanBlock } from "./plan-freshness.js";
 import { observerCopy, validateToolInput } from "./tool-input.js";
-import { dropSupersededNotes } from "./context-notes.js";
 import { FAILOVER_WALL_CLOCK_MS, failoverReason, planFallbacks } from "./provider-fallback.js";
 import { resolveThinkingPolicy, type ThinkingComplexity } from "./thinking-budget.js";
 import { projectForMainPath, projectForRequest } from "./request-projection.js";
@@ -330,6 +336,7 @@ const PLAN_MODE_PROMPT = `Plan mode is active for this session.
 Research first with read-only tools (list_dir, read_file, glob, grep, browser reads). Do not run commands.
 Then write the implementation plan as a markdown document under the workspace plans/ directory (for example plans/2026-10-17-short-slug.md). Cover: goal, current state, step-by-step changes with concrete file paths, risks, and how to verify.
 Plan mode only allows writing files under plans/: any other write, every command, and every subagent call is rejected. Keep writes focused on the plan document itself.
+If a checklist already exists, keep its steps current; if there is none, do not create one — the plan document is the deliverable.
 After the plan document is written, stop and tell the user where it is. The app shows a confirmation panel; implementation starts only after the user confirms. Do not implement anything in this mode.`;
 
 /** 目标模式指令：只调工作方式，不改权限；治理层（admit/gates）在此模式强制生效。 */
@@ -978,6 +985,8 @@ export class AgentRuntime {
   private chatMode: SessionMode = "default";
   /** 当前回合启动时的模式快照，语义同 turnApprovalMode */
   private turnChatMode: SessionMode | null = null;
+  /** 本回合用户附件（【附件】行）对应的可读根：只读工具可直接打开，工作区外也免审批 */
+  private turnReadRoots: readonly string[] = [];
   /** 主 Agent 档位（standard/minimal/complex）：决定提示词、工具白名单、子 Agent 角色与并发上限 */
   private agentProfile: AgentProfileId = "standard";
   /**
@@ -1081,6 +1090,8 @@ export class AgentRuntime {
    * 参考 codex session/async_compaction.rs 的 maybe_start / take_ready / wait_for_pending。
    */
   private warmupCompaction: WarmupCompaction | null = null;
+  /** 提示词轨迹：每次请求的 system 分段与工具目录（只驻留内存，重启即失）。 */
+  private readonly promptTrajectory = new PromptTrajectoryRecorder();
   /** 连续预热失败计数：达到上限后本会话不再预热，避免失败请求反复烧 token */
   private warmupFailures = 0;
   /** 摘要失败后的冷却截止：连续 2 次失败进 600s，避免每轮白烧全量输入。 */
@@ -1460,8 +1471,10 @@ export class AgentRuntime {
     this.subagentBudget = options.subagentBudget ?? SUBAGENT_BUDGET_PER_TURN;
     // 放在构造函数里而不是字段初始化：trackJobs 依赖上面先初始化的 jobSessions
     const baseJobs = options.jobs ?? createJobManager();
-    this.jobWatcher = new JobExitWatcher(baseJobs, (job) => this.notifyJobExit(job));
-    this.jobManager = this.trackJobs(baseJobs);
+    // 超时的前台命令被提升成本地 job：和 PTY 任务共用同一个 job 工具
+    const jobs = combineJobManagers(baseJobs, createPromotedJobStore());
+    this.jobWatcher = new JobExitWatcher(jobs, (job) => this.notifyJobExit(job));
+    this.jobManager = this.trackJobs(jobs);
   }
 
   /**
@@ -2290,6 +2303,17 @@ export class AgentRuntime {
     return this.traceRecorder.summary();
   }
 
+  /** 最近的提示词轨迹（旧 → 新）；无会话时为空数组。 */
+  getPromptTrajectory(limit = 20): PromptTrajectoryEntry[] {
+    const sessionId = this.currentSession?.id;
+    return sessionId ? this.promptTrajectory.list(sessionId, limit) : [];
+  }
+
+  /** 当前会话可用的工具定义：轨迹视图按名展示 description 与参数 Schema。 */
+  getToolDefinitions(): ToolDefinition[] {
+    return this.activeTools;
+  }
+
   get activeTurnSessionId(): string | null {
     return this.runningSessionId;
   }
@@ -2382,6 +2406,10 @@ export class AgentRuntime {
   /** 释放当前会话文件句柄（server 关停时调用）；活跃子会话一并释放。 */
   async closeSession(): Promise<void> {
     this.cancelWarmupCompaction();
+    // 关会话必须一并作废缓存保活/空闲压缩计时器：server 的 demoteActiveRuntime /
+    // pruneBackgroundRuntimes 只调 closeSession()，漏掉这里会让已丢弃的 runtime 在
+    // 290s 后拿着已关闭的会话重放 system + 全量工具 + 全量历史发 max_tokens=1。
+    this.cancelIdleTimers();
     await this.currentSession?.close();
     for (const live of this.liveSubagents.values()) {
       await live.runtime.closeSession().catch(() => undefined);
@@ -2390,7 +2418,7 @@ export class AgentRuntime {
 
   async newSession(
     cwd?: string,
-    options: { worktree?: SessionWorktree } = {},
+    options: { worktree?: SessionWorktree; approvalMode?: ApprovalModeInput } = {},
   ): Promise<SessionHeaderLike> {
     const workspace = path.resolve(cwd ?? this.currentSession?.cwd ?? process.cwd());
     let filePath = path.join(this.sessionsDir, sessionFileName(workspace, new Date()));
@@ -2428,7 +2456,11 @@ export class AgentRuntime {
     this.compactionCooldownUntil = 0;
     this.compactionFailureStreak = 0;
     this.ineffectiveCompactions = 0;
-    this.approvalMode = "auto";
+    this.approvalMode = normalizeApprovalMode(options.approvalMode);
+    if (options.approvalMode) {
+      // 新建会话就把默认权限写进会话设置：恢复会话时与当前选择一致
+      await session.appendSessionSettings({ approvalMode: this.approvalMode }).catch(() => undefined);
+    }
     // 新会话没有模式记录：显式回到 default，避免沿用上一个会话的 plan/goal
     this.chatMode = "default";
     this.turnChatMode = null;
@@ -2840,6 +2872,16 @@ export class AgentRuntime {
       const harnessPrompt = this.workflow.rootAgentPrompt;
       if (harnessPrompt) segments.unshift(harnessPrompt);
     }
+    // 主 Agent 才补行为段与环境段：子 Agent 有角色契约，叠通用段等于每个子请求多付一遍
+    if (!this.customSystemPrompt) {
+      segments.push(
+        ...buildAgentSegments({
+          workspace: this.currentSession?.cwd ?? process.cwd(),
+          platform: process.platform,
+          approvalMode: this.turnApprovalMode ?? this.approvalMode,
+        }),
+      );
+    }
     return segments;
   }
 
@@ -2919,6 +2961,21 @@ export class AgentRuntime {
         const chunk = await manager.read(id, offset);
         if (chunk?.exited) this.jobWatcher.observe(id);
         return chunk;
+      },
+      wait: async (id, options) => {
+        const chunk = await manager.wait(id, options);
+        if (chunk?.exited) this.jobWatcher.observe(id);
+        return chunk;
+      },
+      adopt: (input) => {
+        if (!manager.adopt) throw new Error("This job manager cannot adopt a running command.");
+        const id = manager.adopt(input);
+        const session = this.currentSession;
+        if (session) {
+          this.jobSessions.set(id, session);
+          this.jobWatcher.track(id);
+        }
+        return id;
       },
       write: (id, data) => manager.write(id, data),
       kill: async (id) => {
@@ -3652,6 +3709,8 @@ export class AgentRuntime {
         ...(documents?.length ? { documents } : {}),
       });
       await session.flush();
+      // 附件路径（文件/文件夹）登记为本回合可读根：工作区外也允许只读工具直接打开
+      this.turnReadRoots = collectAttachmentRoots(session.effectiveMessages);
       this.emit({
         type: "message_start",
         sessionId: session.id,
@@ -3794,6 +3853,9 @@ export class AgentRuntime {
       // 学习召回：按 trigger 命中历史经验，追加到历史尾部（不动 system[1]，缓存安全）。
       // 放在 runTurn 之前、且每个用户回合只调一次 —— 续命循环复用同一批召回。
       await this.beginLearningTurn(session, text);
+      // 新用户回合：旧清单已全部终结就归档，否则模型会把它当成“当前计划”
+      // 继续在上面追加新步骤。
+      await this.retireFinishedPlan(session).catch(() => undefined);
       await this.runTurn(session);
       // 宿主续命循环（metis _unfinishedPerformanceContinuation）：治理 run 仍活跃
       // 而模型停止了回答 → 注入 frontier 强制继续，最多 2 次；谎报完成不许蒙混过关
@@ -3835,6 +3897,7 @@ export class AgentRuntime {
       this.runningSessionId = null;
       this.turnApprovalMode = null;
       this.turnChatMode = null;
+      this.turnReadRoots = [];
       this.currentTurnId = null;
       this.partialDraft = null;
       for (const callId of this.pendingApprovals.keys()) {
@@ -4633,8 +4696,9 @@ export class AgentRuntime {
         // 主路径滞回投影：旧截图/扫描件总量越过 8MiB 触发线才裁到 4MiB（opencode 同款）。
         // 切点单调、两次裁剪之间前缀字节零变化；未变化的沿用原对象引用，增量链不受影响。
         // thinking 不投影：它的「保留最近 1 回合」边界每轮移动，逐轮投影等于每轮自爆缓存。
-        // 同一家族的旧注记在请求里只留最新一条：journal 与 UI 历史原样保留
-        const history = dropSupersededNotes(projectForMainPath(session.effectiveMessages));
+        // 注记只追加不删：删历史中段的旧注记会让其后整段前缀缓存失效；
+        // 压缩会把折叠区的旧注记物理折掉，且旧条文案本身都写了 supersedes earlier。
+        const history = projectForMainPath(session.effectiveMessages);
         const messages: ChatMessage[] = [
           ...this.systemMessages(),
           ...history,
@@ -4856,6 +4920,19 @@ export class AgentRuntime {
             requestOptions.tools,
           );
         }
+        // 提示词轨迹：记在这里是因为 hook 改写已生效，requestOptions 就是真正发出去的字节。
+        // 只做哈希与有上限的文本快照，不额外序列化整个请求。
+        this.promptTrajectory.record({
+          sessionId: session.id,
+          turnId: this.currentTurnId,
+          roundId,
+          providerId: requestOptions.provider.id,
+          model: requestOptions.provider.model,
+          protocol: requestOptions.provider.protocol ?? "openai-chat-completions",
+          promptVersion: this.promptVersion,
+          messages: requestOptions.messages,
+          tools: requestOptions.tools,
+        });
         const llmSpan = this.traceRecorder.startSpan({
           traceId: session.traceId,
           kind: "llm",
@@ -4998,6 +5075,21 @@ export class AgentRuntime {
             inputTokens: usage.inputTokens,
             messageCount: session.effectiveMessages.length,
           };
+          // 偏差自检（MEOWCODE_TOKEN_DIAGNOSTICS=1 打开）：字符估算没有真实 tokenizer，
+          // 口径是否准确只能拿服务商返回的 usage 对照。稳定在 ±15% 内说明常量合适；
+          // 某个方向持续偏 30% 以上，就该调 charsPerToken 或图片估算常量。
+          if (process.env.MEOWCODE_TOKEN_DIAGNOSTICS === "1") {
+            const estimated =
+              estimateMessagesTokens(session.effectiveMessages) +
+              estimateToolDefinitionsTokens(this.activeTools);
+            if (estimated > 0) {
+              const drift = ((usage.inputTokens - estimated) / estimated) * 100;
+              console.info(
+                `[meowcode] token estimate drift ${drift >= 0 ? "+" : ""}${drift.toFixed(1)}% ` +
+                  `(usage=${usage.inputTokens}, estimate=${estimated})`,
+              );
+            }
+          }
         }
         if (
           usage.inputTokens !== undefined ||
@@ -5254,6 +5346,7 @@ export class AgentRuntime {
       if (verdict?.block) return { block: true, reason: verdict.reason };
       // 收尾同步闸：改过文件但清单还有未完成步骤 → 拦一次让模型把完成状态写进去。
       // 否则回合结束后 todolist 停在旧的 in_progress；stopHookActive 保证每回合最多拦一次。
+      // 计划没有清单时这里天然不拦（hasOpenSteps 为假），不会硬造清单。
       if (this.enableTaskTool && !stopHookActive) {
         const plan = session.currentPlan;
         const hasOpenSteps = Boolean(
@@ -5296,9 +5389,10 @@ export class AgentRuntime {
             content:
               "[plan] You have made several file changes since the checklist was last updated. Call update_plan now: mark finished steps completed, mark the step you are working on in_progress, and keep titles current. Do not batch several finished steps into a later update.",
           });
-        } else if (nudge?.kind === "create") {
+        } else if (nudge?.kind === "create" && this.turnChatMode !== "plan") {
           // 还没有清单但已经开始改东西：轻推一次建清单（马上做完可以跳过）。
-          // 整回合只推一次，避免每一轮都啰嗦。
+          // 整回合只推一次，避免每一轮都啰嗦。plan 模式只交付计划文档，不硬造清单；
+          // 已有清单仍走上面的 update 提醒照常同步。
           this.noPlanNudged = true;
           injections.push({
             role: "user",
@@ -5632,6 +5726,7 @@ export class AgentRuntime {
     const webTools = this.webToolsForTurn(session);
     let result = await executeTool(tool, input, session.cwd, {
       allowOutsideWorkspace,
+      extraReadRoots: this.turnReadRoots,
       signal: this.turnAbort?.signal,
       vision: this.toolVisionEnabled(),
       shrinkImage: this.imageShrinker(),
@@ -7415,8 +7510,8 @@ export class AgentRuntime {
     );
     const rebuilt: ChatMessage[] = [
       ...this.systemMessages(),
-      // 与主请求同口径：旧注记在请求里只留最新，重建出来的前缀才对得上
-      ...dropSupersededNotes(session.effectiveMessages),
+      // 与主请求同口径：注记只追加不删，重建出来的前缀才对得上
+      ...session.effectiveMessages,
     ];
     const toolTokens = estimateToolDefinitionsTokens(this.activeTools);
     const outputTokens = clampOutputTokens(provider, estimateMessagesTokens(rebuilt) + toolTokens);
@@ -7482,8 +7577,8 @@ export class AgentRuntime {
     const prefix = effective.slice(0, prefixLength);
     // 复用路径发与主请求逐字节一致的全量对话（主路径带滞回投影，这里同口径，
     // 否则摘要请求与主请求前缀字节不一致、读不回刚写入的缓存）；回退路径只发投影后的旧前缀
-    const fullMessages = [...systems, ...dropSupersededNotes(projectForMainPath(effective))];
-    const summaryMessages = [...systems, ...dropSupersededNotes(projectForRequest(prefix, provider))];
+    const fullMessages = [...systems, ...projectForMainPath(effective)];
+    const summaryMessages = [...systems, ...projectForRequest(prefix, provider)];
     const controller = new AbortController();
     const warmup: WarmupCompaction = {
       session,
@@ -7650,7 +7745,7 @@ export class AgentRuntime {
     // 与主路径同口径：不带投影的保活请求会和主请求字节不一致，保活反而写不进同一条缓存
     const messages = [
       ...systems,
-      ...dropSupersededNotes(projectForMainPath(session.effectiveMessages)),
+      ...projectForMainPath(session.effectiveMessages),
     ];
     if (messages.length <= systems.length) return; // 空会话没什么可保
     this.keepalivePingsLeft -= 1;
@@ -8743,12 +8838,14 @@ export class AgentRuntime {
             images: undefined,
           };
       result = await this.applyToolResultHook(session, call.id, tool, input, result);
+      // 截图对**用户**永远可见（工具行直接展示）；是否回传给模型仍由模态决定，
+      // 纯文本模型拿到图只会被网关拒绝或白烧 token。
       await this.pushToolMessage(session, messages, {
         role: "tool",
         content: result.output,
         tool_call_id: call.id,
         name: tool,
-        ...(result.images?.length ? { images: result.images } : {}),
+        ...(keepImages && result.images?.length ? { images: result.images } : {}),
       });
       this.emit({
         type: "tool_output",
@@ -8757,6 +8854,7 @@ export class AgentRuntime {
         output: result.output,
         truncated: result.truncated ?? result.output.length > 20000,
         ...(result.spilled ? { spilled: result.spilled } : {}),
+        ...(result.images?.length ? { images: result.images } : {}),
       });
       this.emit({ type: "tool_finished", sessionId: session.id, callId: call.id, ok: result.ok });
       return;
@@ -8801,6 +8899,7 @@ export class AgentRuntime {
       (sandbox) =>
         executeTool(tool, input, session.cwd, {
           allowOutsideWorkspace,
+          extraReadRoots: this.turnReadRoots,
           signal: this.turnAbort?.signal,
           vision: this.toolVisionEnabled(),
           pdfDocuments: this.toolPdfEnabled(),
@@ -9146,6 +9245,28 @@ export class AgentRuntime {
       });
     }
     messages.push(message);
+  }
+
+  /**
+   * 新用户回合开始时归档已全部终结的清单。
+   *
+   * 旧清单留在上下文里，模型会把「更新清单」理解成在旧表上追加，新回合第一步
+   * 就带着一堆已完成的旧步骤。归档时落一条空 plan 清掉当前计划，并追加隐藏
+   * 注记要求新任务重建清单。
+   */
+  private async retireFinishedPlan(session: SessionStore): Promise<void> {
+    const plan = session.currentPlan;
+    if (!plan?.steps.length) return;
+    const finished = plan.steps.every(
+      (step) => step.status === "completed" || step.status === "cancelled",
+    );
+    if (!finished) return;
+    await session.appendContextNote(
+      "[plan] The previous checklist is fully completed and archived. If this request needs a checklist, call update_plan with a fresh list; do not carry over completed steps from the previous checklist.",
+    );
+    await session.appendPlan([]);
+    await session.flush();
+    this.emit({ type: "plan_updated", sessionId: session.id, steps: [] });
   }
 
   /** 老会话/异常中止后，确保当前计划在有效历史里可见（工具结果或压缩后的 note）。 */

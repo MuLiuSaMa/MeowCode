@@ -147,6 +147,7 @@
     "moreTitle": "첨부 추가 / 모드 전환",
     "plusMenuAria": "추가, 참조 및 명령",
     "upload": "첨부 업로드",
+    "addFolder": "폴더 추가",
     "plugins": "플러그인",
     "pluginsCount": "플러그인({{count}})",
     "skills": "스킬",
@@ -219,6 +220,9 @@
     "xhigh": "매우 높음",
     "max": "최대",
     "ultra": "울트라"
+  },
+  "drop": {
+    "hint": "놓아서 파일 또는 폴더 추가"
   },
   "jumpToBottom": "맨 아래로"
 }

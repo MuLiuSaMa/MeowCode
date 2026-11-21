@@ -54,11 +54,11 @@ img {
   max-width: 100%;
 }
 
-/* ---- scrollbars: transparent track + rounded thumb (ZCode) ---- */
-* {
-  scrollbar-width: thin;
-  scrollbar-color: var(--border-strong) transparent;
-}
+/* ---- scrollbars: transparent track + rounded thumb (ZCode) ----
+   注意：这里不能设置标准属性 scrollbar-width / scrollbar-color ——
+   Chromium 一旦看到它们就会整体忽略下面的 ::-webkit-scrollbar 样式，
+   改用系统原生滚动条（Windows 主题下带上下箭头按钮）。个别需要彻底隐藏
+   滚动条的地方在各自组件里单独声明 scrollbar-width: none */
 *::-webkit-scrollbar {
   width: 12px;
   height: 12px;
@@ -80,6 +80,12 @@ img {
 }
 *::-webkit-scrollbar-corner {
   background: transparent;
+}
+/* 自定义滚动条后 Chromium 会补出两端的箭头按钮：统一去掉，只留滑槽与滑块 */
+*::-webkit-scrollbar-button {
+  display: none;
+  width: 0;
+  height: 0;
 }
 
 /* ---- focus: white ring, never blue ---- */
@@ -143,6 +149,15 @@ img {
 }
 .mc-markdown > :first-child { margin-top: 0; }
 .mc-markdown > :last-child { margin-bottom: 0; }
+
+/*
+ * 流式正文按块渲染：每块一个包裹层，未变化的块由 React.memo 跳过。
+ * display: contents 让包裹层不产生盒子，段间距与单容器时完全一致；
+ * 代价是上面两条直接子选择器会选中包裹层本身，需要再往下钻一层。
+ */
+.mc-mdblock { display: contents; }
+.mc-markdown > .mc-mdblock:first-child > :first-child { margin-top: 0; }
+.mc-markdown > .mc-mdblock:last-child > :last-child { margin-bottom: 0; }
 
 .mc-markdown p { margin: 10px 0; }
 .mc-markdown :is(h1, h2, h3, h4, h5, h6) {
@@ -272,11 +287,6 @@ img {
   .mc-spinner,
   .mc-sendbtn,
   .mc-toggle__knob,
-  .mc-mail__avatar,
-  .mc-mail__accounterror,
-  .mc-mail__dot,
-  .mc-mail__unreaddot,
-  .mc-mail__steps li span,
   .mc-slider__particle,
   .mc-slider__thumb,
   .mc-onboarding__optioncheck,
@@ -339,10 +349,6 @@ img {
   .mc-learning__beta,
   .mc-levels__add,
   .mc-levels__chip,
-  .mc-mail__badge,
-  .mc-mail__composefile,
-  .mc-mail__steps li,
-  .mc-mail__tag,
   .mc-mkt__chip,
   .mc-mkt__dclose,
   .mc-mkt__warn,
@@ -379,4 +385,248 @@ img {
   .mc-wstree__filter
 ) {
   corner-shape: round;
+}
+
+/* ==========================================================================
+ * 壁纸模式：黑块一律换成毛玻璃
+ * ==========================================================================
+ * 壁纸铺开以后，实心深色块（卡片、统计块、工具展开体、设置分组、下拉菜单、
+ * 输入框、代码块）会变成压在图上的硬黑块；另一些块只给了 --surface 那层
+ * 5% 白的透明底（行内代码、工具行标签、设置页里的小胶囊），壁纸纹理清清楚楚
+ * 地从字缝里透过去，比黑块还难读。
+ *
+ * 这里把它们统一换成「背后模糊 + 半透明底色」，配方只有下面三个变量一份，
+ * 与对话末尾「已编辑 N 个文件」卡片（.mc-turnchanges）、输入框共用：
+ * 改一处，全应用同步。只改背景与模糊，不动排版、边框、阴影。
+ *
+ * 分两档只有一个原因 —— 面积：大块可以透得多一点（壁纸的明暗真的透上来），
+ * 小胶囊透太多就没法压住亮壁纸上的正文了。模糊半径两档一致。
+ */
+:root[data-wallpaper="true"] {
+  /*
+   * 底色保留度。原来 88% 在亮壁纸下几乎看不出背后有东西，和实心黑块没区别；
+   * 现在压到 55%（再叠上三个大面板本身的不透明度，实际观感会更透），
+   * 壁纸的明暗能明显透上来，正文对比度仍在 6:1 以上。
+   */
+  --wpg-tint: 55%;
+  --wpg-tint-chip: 68%;
+  --wpg-tint-inline: 38%;
+  --wpg-tint-inline-hover: 46%;
+  --wpg-glass: color-mix(in srgb, var(--card) var(--wpg-tint), transparent);
+  --wpg-glass-chip: color-mix(in srgb, var(--card) var(--wpg-tint-chip), transparent);
+  --wpg-glass-inline: color-mix(in srgb, var(--card) var(--wpg-tint-inline), transparent);
+  --wpg-glass-inline-hover: color-mix(
+    in srgb,
+    var(--card-hover) var(--wpg-tint-inline-hover),
+    transparent
+  );
+  --wpg-filter: blur(26px) saturate(1.08);
+  --wpg-filter-inline: blur(20px) saturate(1.16);
+}
+
+/* ---- 大块：卡片、面板、展开体、输入框、菜单 ---- */
+:root[data-wallpaper="true"] :is(
+  /* 对话区：回合信息 / 工具分组 / 工具展开体 / 计划 / 截图 / 建议 */
+  .mc-turninfo__card,
+  .mc-toolgroup__chevcard,
+  .mc-taskrow,
+  .mc-tv__pre,
+  .mc-tv__codebox,
+  .mc-tv__markdown,
+  .mc-tv__card,
+  .mc-tv__paramcode,
+  .mc-plandoc,
+  .mc-shot,
+  .mc-starprompt,
+  /* 检查器（右侧面板）：工具卡片 / 统计卡片 / 速率曲线 / 地址栏 */
+  .mc-rtp__card,
+  .mc-rtp__address,
+  .mc-rtp__tab[data-active="true"],
+  .mc-stat,
+  .mc-chartcard,
+  .mc-sessionpill,
+  .mc-sessionpill-card,
+  /* 悬浮层：提示、菜单、弹层、输入框 */
+  .mc-toast,
+  .mc-tip,
+  .mc-customselect__button,
+  .mc-customselect__menu,
+  .mc-branchmenu,
+  .mc-projmenu,
+  .mc-permmenu,
+  .mc-plusmenu__flyout,
+  .mc-mention,
+  .mc-slashmenu,
+  .mc-ctxpop,
+  .mc-ctxpop__compact,
+  .mc-ctxwarn__compact,
+  .mc-openwith__menu,
+  .mc-datepicker__menu,
+  .mc-datepicker__button,
+  .mc-wstree__menu,
+  .mc-convpanel__menu,
+  .mc-popover,
+  .mc-rtp__cmenu,
+  .mc-harness__selecttrigger,
+  .mc-harness__selectmenu,
+  .mc-harness__btn,
+  .mc-dialog__panel,
+  .mc-dialog__input,
+  .mc-field__input,
+  .mc-field__textarea,
+  .mc-fieldrow__input,
+  .mc-git__commitinput,
+  .mc-subagent__input,
+  .mc-quickopen__search,
+  .mc-sesssearch__search,
+  .mc-scrollbottom,
+  .mc-dropoverlay__card,
+  /* 设置页：分组卡片与分区内的大块控件 */
+  .mc-section__body,
+  .mc-storage__card,
+  .mc-storage__target,
+  .mc-dataloc__target,
+  .mc-about__rows,
+  .mc-about__qr,
+  .mc-dataimport__state,
+  .mc-dataimport__list,
+  .mc-hooks__state,
+  .mc-agents__prompt,
+  .mc-hooks__event,
+  .mc-modelform__provider,
+  .mc-segmented__item[data-active="true"],
+  .mc-agents__tab[data-active="true"],
+  .mc-usage__metrics,
+  .mc-usage__panel,
+  .mc-usage__tab[data-active="true"],
+  .mc-usage__empty,
+  .mc-usage__tooltip,
+  .mc-picker__item,
+  .mc-memory__textarea,
+  .mc-rules__textarea,
+  .mc-auto__row,
+  .mc-auto__textarea,
+  .mc-wallpaper__tile,
+  .mc-settings__navitem[data-active="true"],
+  .mc-convpanel__item[data-active="true"],
+  /* 其余页签的卡片块 */
+  .mc-review__result,
+  .mc-review__item[data-open="true"] .mc-review__row,
+  .mc-prompttab__entry,
+  .mc-subagents__row,
+  .mc-mkt__card,
+  .mc-mkt__ddesc,
+  .mc-mkt__row,
+  .mc-mkt__search,
+  .mc-mkt__dbody pre,
+  .mc-mkt__dbody code,
+  .mc-arch__roleitem[data-active="true"],
+  .mc-git__detailbody,
+  .mc-gitdlg__detail,
+  .mc-git__detailfile,
+  .mc-git__branchpill,
+  .mc-git__commitrow[data-active="true"],
+  .mc-git__line[data-kind="hunk"],
+  .mc-sidechat__newbtn,
+  .mc-wstree__filter,
+  .mc-traj__filter
+) {
+  background-color: var(--wpg-glass);
+  -webkit-backdrop-filter: var(--wpg-filter);
+  backdrop-filter: var(--wpg-filter);
+}
+
+/*
+ * ---- 小件：行内代码、工具行标签、技能/引用胶囊、徽标 ----
+ * 它们原来是 --surface（5% 白）的纯透明底，壁纸的线条会直接从字缝里钻过去，
+ * 所以除了模糊还要补一层底色。单独一档是因为面积小，太透就压不住正文。
+ */
+:root[data-wallpaper="true"] :is(
+  /* 只挑行内代码：.mc-markdown pre code 是代码块内部，不能再套一层玻璃 */
+  .mc-skillchip,
+  .mc-toolrow__chip,
+  .mc-badge--neutral,
+  .mc-badge--running,
+  .mc-tv__open,
+  .mc-tv__row[data-kind="hunk"],
+  .mc-queued,
+  .mc-subagent__status,
+  .mc-levels__chip,
+  .mc-dataimport__badge,
+  .mc-models__groupcount,
+  .mc-shortcuts__kbd,
+  .mc-turnchanges__icon,
+  .mc-iconbtn[data-active="true"],
+  .mc-preview__viewtoggle,
+  .mc-preview__viewtoggle button[data-active="true"]
+) {
+  background-color: var(--wpg-glass-chip);
+  -webkit-backdrop-filter: var(--wpg-filter);
+  backdrop-filter: var(--wpg-filter);
+}
+
+/*
+ * 正文里的文件胶囊与代码：面积小，沿用大卡片的底色会像实心黑块。
+ * 单独用更低的底色和 20px 模糊，壁纸的明暗与轮廓都能透进来。
+ */
+:root[data-wallpaper="true"] :is(
+  .mc-mdfile,
+  .mc-skillchip--file,
+  .mc-mdcode__copy,
+  .mc-markdown :not(pre) > code,
+  .mc-markdown pre,
+  .mc-codeblock__code
+) {
+  background-color: var(--wpg-glass-inline);
+  -webkit-backdrop-filter: var(--wpg-filter-inline);
+  backdrop-filter: var(--wpg-filter-inline);
+}
+
+/* inline 元素必须成为可采样背景的盒子，backdrop-filter 才会生效 */
+:root[data-wallpaper="true"] .mc-markdown :not(pre) > code {
+  display: inline-block;
+}
+
+/* 文件胶囊放在亮壁纸回退时压暗的不够，正文里改用主文字色 */
+:root[data-wallpaper="true"] .mc-mdfile {
+  color: var(--fg);
+}
+
+:root[data-wallpaper="true"] :is(button.mc-mdfile, .mc-mdcode__copy):hover {
+  background-color: var(--wpg-glass-inline-hover);
+}
+
+/*
+ * hover 反馈：上面两条选择器的权重是 (0,3,0) / (0,4,0)，
+ * 会把各组件自己的 :hover 背景盖掉，所以悬停态按同样的配方补一遍（提亮一档）。
+ */
+:root[data-wallpaper="true"] :is(
+  .mc-rtp__card,
+  .mc-taskrow,
+  .mc-subagents__row,
+  .mc-mkt__card,
+  .mc-mkt__ddesc,
+  .mc-mkt__row,
+  .mc-auto__row,
+  .mc-picker__item,
+  .mc-sidechat__newbtn,
+  .mc-harness__btn,
+  .mc-arch__roleitem[data-active="true"],
+  .mc-git__commitrow[data-active="true"],
+  .mc-preview__viewtoggle button
+):hover {
+  background-color: color-mix(in srgb, var(--card-hover) var(--wpg-tint), transparent);
+}
+
+/* 输入框底栏控件默认透明，壁纸模式下只在悬停时补小件玻璃底 */
+:root[data-wallpaper="true"] :is(
+  .mc-composer__icon,
+  .mc-composer__access,
+  .mc-composer__model,
+  .mc-ctxmeter,
+  .mc-modebadge
+):hover:not(:disabled) {
+  background-color: var(--wpg-glass-chip);
+  -webkit-backdrop-filter: var(--wpg-filter);
+  backdrop-filter: var(--wpg-filter);
 }

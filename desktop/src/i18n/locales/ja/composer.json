@@ -147,6 +147,7 @@
     "moreTitle": "添付を追加 / モードを切り替え",
     "plusMenuAria": "追加・参照・コマンド",
     "upload": "添付をアップロード",
+    "addFolder": "フォルダーを追加",
     "plugins": "プラグイン",
     "pluginsCount": "プラグイン（{{count}}）",
     "skills": "スキル",
@@ -219,6 +220,9 @@
     "xhigh": "非常に高い",
     "max": "最大",
     "ultra": "ウルトラ"
+  },
+  "drop": {
+    "hint": "ドロップしてファイルまたはフォルダーを追加"
   },
   "jumpToBottom": "最下部へ戻る"
 }

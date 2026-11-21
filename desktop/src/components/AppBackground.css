@@ -1,0 +1,84 @@
+/*
+ * 自定义背景层：整窗铺底，位于 body 底色之上、面板之下。
+ * 轮播切换时新旧两层叠在一起做交叉淡化：新层 data-state="in" 淡入，旧层 "out" 垫在下面等淡完再卸载。
+ * 用户的三项调节（透明度 / 亮度 / 模糊）落在媒体元素上，和交叉淡化互不干扰。
+ */
+.mc-appbg {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  overflow: hidden;
+  pointer-events: none;
+  background: var(--bg);
+}
+
+.mc-appbg__layer {
+  position: absolute;
+  inset: 0;
+}
+/* 淡入 / 淡出都用 keyframes：旧层是新挂载的元素，transition 拿不到「从 1 开始」的起点，
+   会让它一出现就是全透明，看起来像新图从底色里浮出来，而不是两张图互相叠化。 */
+.mc-appbg__layer[data-state="in"] {
+  opacity: 1;
+  animation: mc-appbg-fade-in 700ms var(--ease) both;
+}
+.mc-appbg__layer[data-state="out"] {
+  opacity: 0;
+  animation: mc-appbg-fade-out 700ms var(--ease) both;
+}
+
+@keyframes mc-appbg-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes mc-appbg-fade-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+.mc-appbg__media {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: var(--wallpaper-opacity, 1);
+  filter: var(--wallpaper-filter, none);
+  transform: var(--wallpaper-transform, none);
+}
+
+/* 视频壁纸的容器：底层垫首帧静图，上层视频在循环接缝处淡出，回绕后立即恢复 */
+.mc-appbg__still,
+.mc-appbg__clip {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* 亮度 <1 时的压暗层：纯色混合比整幅 filter 便宜，视频层可以不走滤镜合成 */
+.mc-appbg__dim {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: rgb(0 0 0 / var(--wallpaper-dim, 0));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mc-appbg__layer[data-state="in"],
+  .mc-appbg__layer[data-state="out"] {
+    animation: none;
+  }
+}

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { MeowEvent, TimelineItem } from "./api";
-import { applyTimelineEvent, finalizeStreamingAssistants } from "./timeline-events";
+import { applyTimelineEvent, applyTimelineEvents, finalizeStreamingAssistants } from "./timeline-events";
 
 let seq = 0;
 const key = (prefix: string) => `${prefix}-${(seq += 1)}`;
@@ -69,5 +69,31 @@ describe("timeline event projection", () => {
     ];
     finalizeStreamingAssistants(items);
     expect(items).toEqual([]);
+  });
+
+  it("batches deltas with the same result as applying them one by one", () => {
+    const events = [
+      { type: "thinking_delta", delta: "plan" },
+      { type: "thinking_delta", delta: " more" },
+      { type: "assistant_delta", delta: "hello", thinkingMs: 1200 },
+      { type: "assistant_delta", delta: " world" },
+    ] as MeowEvent[];
+    const stableKey = (prefix: string) => prefix;
+    const sequential = events.reduce(
+      (items, event) => applyTimelineEvent(items, event, stableKey),
+      [] as TimelineItem[],
+    );
+    const batched = applyTimelineEvents([], events, stableKey);
+    expect(batched).toEqual(sequential);
+    expect(batched).toMatchObject([
+      {
+        kind: "message",
+        role: "assistant",
+        thinking: "plan more",
+        content: "hello world",
+        thinkingMs: 1200,
+        streaming: true,
+      },
+    ]);
   });
 });

@@ -10,8 +10,8 @@ import {
   setProviderFallback,
   type CloseAction,
   type LanguagePreference,
+  type Preferences,
   type ProgressPillDismiss,
-  type ProviderSettings,
   type SpeechStyle,
 } from "../../api";
 import { UI_LANGUAGES } from "../../i18n/languages";
@@ -22,6 +22,14 @@ import { ProxyRows } from "./ProxyRows";
 const CLOSE_ACTIONS: CloseAction[] = ["ask", "tray", "quit"];
 const SPEECH_STYLES: SpeechStyle[] = ["normal", "tafei", "dazui"];
 const PILL_DISMISS_MODES: ProgressPillDismiss[] = ["commit", "turn-end"];
+type DefaultPermissionMode = NonNullable<Preferences["defaultPermissionMode"]>;
+const DEFAULT_PERMISSION_MODES: DefaultPermissionMode[] = ["read-only", "ask", "auto", "full"];
+const DEFAULT_PERMISSION_KEYS: Record<DefaultPermissionMode, string> = {
+  "read-only": "readOnly",
+  ask: "ask",
+  auto: "auto",
+  full: "full",
+};
 
 export function GeneralSection({
   closeAction,
@@ -38,11 +46,12 @@ export function GeneralSection({
   onNotificationsChange,
   announcements,
   onAnnouncementsChange,
+  showViewTabs,
+  onShowViewTabsChange,
   nextPromptSuggestions,
   onNextPromptSuggestionsChange,
-  providers,
-  mailAiProviderId,
-  onChangeMailAiProvider,
+  defaultPermissionMode,
+  onDefaultPermissionModeChange,
   onToast,
 }: {
   closeAction: CloseAction;
@@ -64,13 +73,15 @@ export function GeneralSection({
   /** 标题栏公告条：是否显示官方公告（默认开） */
   announcements: boolean;
   onAnnouncementsChange: (value: boolean) => void;
+  /** 主区域顶部「对话 / 轨迹」悬浮胶囊（默认开） */
+  showViewTabs: boolean;
+  onShowViewTabsChange: (value: boolean) => void;
   /** 输入建议：回合结束后预测下一句（默认关，开启前确认额外 token） */
   nextPromptSuggestions: boolean;
   onNextPromptSuggestionsChange: (value: boolean) => void;
-  /** 已配置模型：邮件「AI 写」可单独指定其中一个 */
-  providers: ProviderSettings[];
-  mailAiProviderId: string;
-  onChangeMailAiProvider: (providerId: string) => void;
+  /** 新建对话时默认使用的工具权限模式 */
+  defaultPermissionMode: DefaultPermissionMode;
+  onDefaultPermissionModeChange: (value: DefaultPermissionMode) => void;
   onToast: (text: string) => void;
 }) {
   const { t } = useTranslation("settings");
@@ -126,6 +137,15 @@ export function GeneralSection({
     () => PILL_DISMISS_MODES.map((value) => ({ value, label: t(`progressPill.options.${value}`) })),
     [t],
   );
+  const defaultPermissionOptions = useMemo<CustomSelectOption<DefaultPermissionMode>[]>(
+    () =>
+      DEFAULT_PERMISSION_MODES.map((value) => ({
+        value,
+        label: t(`composer:permission.${DEFAULT_PERMISSION_KEYS[value]}.label`),
+        description: t(`composer:permission.${DEFAULT_PERMISSION_KEYS[value]}.desc`),
+      })),
+    [t],
+  );
 
   return (
     <div className="mc-settings__inner">
@@ -169,6 +189,13 @@ export function GeneralSection({
             label={t("general.announcement.field")}
           />
         </FieldRow>
+        <FieldRow label={t("general.viewTabs.field")} hint={t("general.viewTabs.desc")}>
+          <Toggle
+            checked={showViewTabs}
+            onChange={onShowViewTabsChange}
+            label={t("general.viewTabs.field")}
+          />
+        </FieldRow>
         <ProxyRows onToast={onToast} />
         <FieldRow
           label={t("progressPill.field")}
@@ -184,25 +211,15 @@ export function GeneralSection({
       </Section>
 
       <Section title={t("general.other.section")}>
-        <FieldRow label={t("general.mailAi.field")}>
+        <FieldRow
+          label={t("general.defaultPermission.field")}
+          hint={t("general.defaultPermission.desc")}
+        >
           <CustomSelect
-            value={
-              mailAiProviderId &&
-              providers.some((item) => item.id === mailAiProviderId && item.enabled !== false)
-                ? mailAiProviderId
-                : ""
-            }
-            options={[
-              { value: "", label: t("general.mailAi.follow") },
-              ...providers
-                .filter((item) => item.enabled !== false)
-                .map((item) => ({
-                  value: item.id,
-                  label: `${item.displayName || item.model} · ${item.name}`,
-                })),
-            ]}
-            onChange={onChangeMailAiProvider}
-            ariaLabel={t("general.mailAi.field")}
+            value={defaultPermissionMode}
+            options={defaultPermissionOptions}
+            onChange={onDefaultPermissionModeChange}
+            ariaLabel={t("general.defaultPermission.field")}
           />
         </FieldRow>
         <FieldRow label={t("speech.field")} hint={t("speech.desc")}>

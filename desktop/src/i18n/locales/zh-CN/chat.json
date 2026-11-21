@@ -113,6 +113,9 @@
     "delete": "删除"
   },
   "checkpoint": {
+    "edit": "编辑并重新发送",
+    "editSend": "重新发送",
+    "editHint": "⌘/Ctrl + Enter 发送，Esc 取消",
     "auto": "自动检查点",
     "manual": "检查点",
     "restore": "恢复",
@@ -233,6 +236,7 @@
     "browserScreenshot": "网页截图",
     "browserBack": "网页后退",
     "browserReload": "刷新网页",
+    "browserPreview": "预览页面",
     "openInPanel": "点击在右侧查看文件",
     "computerScreenshot": "电脑截屏",
     "computerClick": "点击屏幕",

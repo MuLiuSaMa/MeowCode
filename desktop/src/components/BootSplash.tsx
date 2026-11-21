@@ -1,5 +1,7 @@
+import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
-import iconUrl from "../assets/icon.png";
+import iconUrl from "../assets/logo-cat.webp";
+import { preloadProviderIcons } from "../data/providerIcons";
 import "./BootSplash.css";
 
 /**
@@ -8,6 +10,10 @@ import "./BootSplash.css";
  */
 export function BootSplash() {
   const { t } = useTranslation("shell");
+  // 启动动画期间预热模型弹层的品牌图标：首次打开模型列表时图标不再慢半拍
+  useEffect(() => {
+    void preloadProviderIcons();
+  }, []);
   return (
     <div className="mc-splash" role="status" aria-label={t("bootSplash.aria")}>
       <span className="mc-splash__glow" aria-hidden />

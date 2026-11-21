@@ -34,6 +34,8 @@ import {
   type SshConnection,
   type ThemePalette,
   type UpdateInfo,
+  type WallpaperKind,
+  type WallpaperSettings,
 } from "../../api";
 import { AboutSection } from "./AboutSection";
 import { AgentSettingsSection } from "./AgentSettingsSection";
@@ -189,8 +191,6 @@ export function SettingsBody({
   appInfo,
   providers,
   activeProviderId,
-  mailAiProviderId,
-  onChangeMailAiProvider,
   effort,
   turnRunning,
   sessions,
@@ -223,6 +223,10 @@ export function SettingsBody({
   onCodeFontChange,
   onImportFont,
   onRemoveFont,
+  wallpaper,
+  onImportWallpaper,
+  onRemoveWallpaper,
+  onWallpaperChange,
   onToast,
   onReloadSessions,
 }: {
@@ -238,9 +242,6 @@ export function SettingsBody({
   appInfo: AppInfo | null;
   providers: ProviderSettings[];
   activeProviderId: string;
-  /** 邮件「AI 写」使用的模型 id；空串 = 跟随聊天 */
-  mailAiProviderId: string;
-  onChangeMailAiProvider: (providerId: string) => void;
   effort: string;
   /** 任意会话有回合在跑：保存模型会重启 agent 服务，需要确认 */
   turnRunning: boolean;
@@ -295,6 +296,11 @@ export function SettingsBody({
   onImportFont: () => Promise<string | null>;
   /** 删除已导入的字体；删除成功返回 true（当前选中的字体被删时外观页自行重置） */
   onRemoveFont: (family: string) => Promise<boolean>;
+  /** 自定义背景（外观页用）；null = 无背景 */
+  wallpaper: WallpaperSettings | null;
+  onImportWallpaper: (kind: WallpaperKind) => void;
+  onRemoveWallpaper: (fileName: string) => void;
+  onWallpaperChange: (patch: Partial<WallpaperSettings>) => void;
   /** 右上角轻提示（如「已是最新版本」） */
   onToast: (text: string) => void;
   /** 数据导入落盘后刷新会话列表（导入的摘要会话要立刻出现在侧栏） */
@@ -329,13 +335,16 @@ export function SettingsBody({
         onNotificationsChange={(value) => onSavePreferences({ notifications: value })}
         announcements={preferences.announcements ?? true}
         onAnnouncementsChange={(value) => onSavePreferences({ announcements: value })}
+        showViewTabs={preferences.showViewTabs ?? true}
+        onShowViewTabsChange={(value) => onSavePreferences({ showViewTabs: value })}
         nextPromptSuggestions={preferences.nextPromptSuggestions ?? false}
         onNextPromptSuggestionsChange={(value) =>
           onSavePreferences({ nextPromptSuggestions: value })
         }
-        providers={providers}
-        mailAiProviderId={mailAiProviderId}
-        onChangeMailAiProvider={onChangeMailAiProvider}
+        defaultPermissionMode={preferences.defaultPermissionMode ?? "auto"}
+        onDefaultPermissionModeChange={(value) =>
+          onSavePreferences({ defaultPermissionMode: value })
+        }
         onToast={onToast}
       />
     ),
@@ -352,6 +361,10 @@ export function SettingsBody({
         onCodeFontChange={onCodeFontChange}
         onImportFont={onImportFont}
         onRemoveFont={onRemoveFont}
+        wallpaper={wallpaper}
+        onImportWallpaper={onImportWallpaper}
+        onRemoveWallpaper={onRemoveWallpaper}
+        onWallpaperChange={onWallpaperChange}
       />
     ),
     shortcuts: <ShortcutsSection />,
@@ -452,6 +465,7 @@ export function SettingsBody({
         archivedSessions={archivedSessions}
         onDeleteSessions={onDeleteSessions}
         onOpenSection={onOpenSection}
+        onToast={onToast}
       />
     ),
     connections: (

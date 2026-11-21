@@ -57,7 +57,6 @@
   border: 1px solid var(--border);
   border-radius: var(--radius-2xl);
   border-bottom-right-radius: var(--radius-sm);
-  corner-shape: superellipse(1.5);
   background: var(--user-fill);
   color: var(--fg);
   font-size: var(--fs-base);
@@ -103,4 +102,82 @@
   font-weight: var(--fw-medium);
   line-height: 1.5;
   user-select: none;
+}
+
+/* 就地编辑：气泡内换成无边框文本域，视觉上仍是同一个气泡，不是弹出的表单。
+   强调色只用于「主按钮」且取 --brand（与发送按钮同色），边框用中性色：
+   经典色主题是黑白灰，不能在这里引入彩色描边或外发光。 */
+.mc-userbubble--editing {
+  border-color: var(--border-strong);
+}
+.mc-userbubble__edit {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+  min-width: 0;
+  white-space: normal;
+}
+.mc-userbubble__editor {
+  display: block;
+  width: 100%;
+  min-width: min(280px, 55vw);
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  line-height: inherit;
+  resize: none;
+  outline: none;
+  overflow: hidden;
+}
+.mc-userbubble__editactions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+  padding-top: 5px;
+  border-top: 1px solid var(--border);
+}
+.mc-userbubble__edithint {
+  margin-right: auto;
+  font-size: 10px;
+  color: var(--fg-subtlest);
+}
+.mc-userbubble__editbtn {
+  padding: 3px 10px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--fg-subtle);
+  font-size: var(--fs-xs);
+  line-height: 1.6;
+  cursor: pointer;
+  transition: background-color 0.12s ease, color 0.12s ease;
+}
+.mc-userbubble__editbtn:hover:not(:disabled) {
+  background: var(--surface-hover);
+  color: var(--fg);
+}
+.mc-userbubble__editbtn--primary {
+  background: var(--brand);
+  color: var(--brand-fg);
+}
+.mc-userbubble__editbtn--primary:hover:not(:disabled) {
+  background: var(--brand);
+  color: var(--brand-fg);
+  opacity: 0.85;
+}
+.mc-userbubble__editbtn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* 壁纸模式：透明底 + 背后模糊。底色仍取 --user-fill（比卡片亮一档，
+   用来区分「我说的」和卡片），模糊与不透明度跟全局配方共用一套变量 */
+:root[data-wallpaper="true"] .mc-userbubble {
+  background: color-mix(in srgb, var(--user-fill) var(--wpg-tint, 88%), transparent);
+  -webkit-backdrop-filter: var(--wpg-filter);
+  backdrop-filter: var(--wpg-filter);
 }

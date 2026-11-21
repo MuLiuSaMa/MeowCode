@@ -117,11 +117,16 @@ export async function resolveWithinWorkspace(workspace: string, target: string):
   return realTarget;
 }
 
-/** 工具路径解析：完全访问模式下允许绝对路径访问工作区外；相对路径仍按工作区解析。 */
+/**
+ * 工具路径解析：完全访问模式下允许绝对路径访问工作区外；相对路径仍按工作区解析。
+ * `extraRoots` 是用户显式附加的文件/文件夹（只读工具传入）：realpath 后仍落在根内才放行，
+ * 根内指向外部的软链接/junction 照旧被拒。
+ */
 export async function resolveToolPath(
   workspace: string,
   target: string,
   allowOutsideWorkspace = false,
+  extraRoots: readonly string[] = [],
 ): Promise<string> {
   if (allowOutsideWorkspace) return path.resolve(workspace, target);
   try {
@@ -133,6 +138,18 @@ export async function resolveToolPath(
     if (isWithinAppDataRoot(absolute)) {
       const real = await realpathWithMissingSegments(absolute);
       if (isWithinAppDataRoot(real)) return real;
+    }
+    if (extraRoots.length) {
+      const realTarget = await realpathWithMissingSegments(absolute);
+      for (const root of extraRoots) {
+        let realRoot: string;
+        try {
+          realRoot = await realpathWithMissingSegments(path.resolve(root));
+        } catch {
+          continue;
+        }
+        if (containsLexically(realRoot, realTarget)) return absolute;
+      }
     }
     throw error;
   }

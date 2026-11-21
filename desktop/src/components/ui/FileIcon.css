@@ -1,0 +1,15 @@
+/*
+ * 文件语法图标（FileIcon）：颜色全部来自 --file-tint（见 file-types.ts）。
+ * 色值已按深色画布校准过对比度，这里不再叠白；浅色画布统一压暗一档，
+ * 让同一份品牌色在两种主题下都能看清轮廓。
+ */
+.mc-fileicon {
+  flex: none;
+  /* 行内基线排版（工具列表 / 文件树）里垂直居中，和文字光标的视觉重心对齐 */
+  align-self: center;
+  color: var(--file-tint, currentColor);
+}
+
+[data-theme="light"] .mc-fileicon {
+  color: color-mix(in oklab, var(--file-tint, currentColor) 82%, black);
+}

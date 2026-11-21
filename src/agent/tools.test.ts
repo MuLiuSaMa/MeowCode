@@ -94,6 +94,33 @@ describe("tools", () => {
     }
   });
 
+  it("reads and lists an attached folder outside the workspace without full access", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "meowcode-tools-"));
+    const outside = await mkdtemp(path.join(tmpdir(), "meowcode-attached-"));
+    try {
+      const file = path.join(outside, "note.txt");
+      await writeFile(file, "attached note");
+      const blocked = await executeTool("read_file", { path: file }, root);
+      expect(blocked.ok).toBe(false);
+      expect(blocked.output).toContain("outside the workspace");
+
+      const read = await executeTool("read_file", { path: file }, root, {
+        extraReadRoots: [outside],
+      });
+      expect(read.ok).toBe(true);
+      expect(read.output).toContain("attached note");
+
+      const list = await executeTool("list_dir", { path: outside }, root, {
+        extraReadRoots: [outside],
+      });
+      expect(list.ok).toBe(true);
+      expect(list.output).toContain("note.txt");
+    } finally {
+      await rm(root, { recursive: true, force: true });
+      await rm(outside, { recursive: true, force: true });
+    }
+  });
+
   it("filters credential env vars but keeps system basics", () => {
     expect(
       commandEnv({

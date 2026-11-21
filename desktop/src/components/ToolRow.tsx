@@ -1,4 +1,4 @@
-import { useId, useMemo, useState } from "react";
+import { memo, useId, useMemo, useState } from "react";
 import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
 import { LuChevronRight, LuCircleCheck, LuCircleX, LuLoaderCircle } from "react-icons/lu";
@@ -7,6 +7,8 @@ import { ToolBody } from "./toolviews/ToolBody";
 import { hasToolBody } from "./toolviews/registry";
 import { isAbsolutePath, panelPath } from "./toolviews/paths";
 import { toolSummary } from "./toolviews/summary";
+import { FileIcon } from "./ui/FileIcon";
+import { ShotGallery } from "./ui/ShotGallery";
 import "./ToolRow.css";
 
 type ToolStatus = "running" | "ok" | "failed";
@@ -14,6 +16,8 @@ type ToolStatus = "running" | "ok" | "failed";
 type ToolPresentation = {
   label: string;
   chip?: string;
+  /** chip 是文件时的路径：按语法类型给图标（见 file-types.ts） */
+  chipIcon?: string;
   chipTitle?: string;
   note?: string;
   detail?: string;
@@ -48,6 +52,7 @@ export function presentTool(item: TimelineTool, status: ToolStatus, t: TFunction
       return {
         label: t("tool.deleteFile"),
         chip: target ? baseName(target) : undefined,
+        chipIcon: target || undefined,
         chipTitle: target || undefined,
         note: failedNote,
       };
@@ -91,11 +96,13 @@ export function presentTool(item: TimelineTool, status: ToolStatus, t: TFunction
       if (action === "wait") {
         const raw = Number(args.timeout_ms);
         const seconds = Number.isFinite(raw)
-          ? Math.min(60, Math.max(1, Math.round(raw / 1000)))
-          : 20;
+          ? Math.min(300, Math.max(1, Math.round(raw / 1000)))
+          : 60;
+        const until = textArg(args, "until") === "output" ? "output" : "exit";
+        const parts = [until === "output" ? "output" : "", `${seconds}s`, jobId].filter(Boolean);
         return {
           label: t("tool.jobWait"),
-          chip: jobId ? `${seconds}s · ${jobId}` : `${seconds}s`,
+          chip: parts.join(" · "),
           chipTitle: jobId || undefined,
           note: failedNote,
         };
@@ -142,6 +149,7 @@ export function presentTool(item: TimelineTool, status: ToolStatus, t: TFunction
       return {
         label: t(labelKeys[item.tool]),
         chip: chipPath ? baseName(chipPath) : undefined,
+        chipIcon: chipPath || undefined,
         chipTitle: chipPath || undefined,
         note:
           failedNote ??
@@ -273,6 +281,17 @@ export function presentTool(item: TimelineTool, status: ToolStatus, t: TFunction
       };
       return { label: t(labelKeys[item.tool]), note: failedNote };
     }
+    case "browser_preview": {
+      const input = (item.input ?? {}) as Record<string, unknown>;
+      const previewPath = typeof input.path === "string" ? input.path.trim() : "";
+      const previewName = typeof input.name === "string" ? input.name.trim() : "";
+      const previewLabel = previewPath || previewName;
+      return {
+        label: t("tool.browserPreview"),
+        ...(previewLabel ? { chip: previewLabel, chipTitle: previewLabel } : {}),
+        note: failedNote,
+      };
+    }
     case "browser_navigate":
     case "browser_snapshot":
     case "browser_click":
@@ -377,7 +396,11 @@ export function presentTool(item: TimelineTool, status: ToolStatus, t: TFunction
   }
 }
 
-export function ToolRow({
+/**
+ * 工具行。item 对象在历史中保持引用稳定（流式只替换最后一条），
+ * memo 后每批增量不必重跑全部历史行；onOpenFile 由调用方保证稳定。
+ */
+export const ToolRow = memo(function ToolRow({
   item,
   onOpenFile,
 }: {
@@ -389,6 +412,9 @@ export function ToolRow({
   const status: ToolStatus =
     item.ok === undefined ? (item.replayed ? "ok" : "running") : item.ok ? "ok" : "failed";
   const view = presentTool(item, status, t);
+  const shots = item.images?.length ? (
+    <ShotGallery images={item.images} label={view.label} className="mc-toolrow__shots" />
+  ) : null;
   // 不展开也能看到的关键信息：参数 + 结果计数，贴行尾显示
   const preview = useMemo(() => toolSummary(item, status, t), [item, status, t]);
   const [open, setOpen] = useState(false);
@@ -425,7 +451,8 @@ export function ToolRow({
       <span className="mc-toolrow__label">{view.label}</span>
       {view.chip ? (
         <span className="mc-toolrow__chip" title={view.chipTitle ?? view.chip}>
-          {view.chip}
+          {view.chipIcon ? <FileIcon path={view.chipIcon} size={12} /> : null}
+          <span className="mc-toolrow__chiptext">{view.chip}</span>
         </span>
       ) : null}
       {view.note || view.detail ? (
@@ -468,6 +495,7 @@ export function ToolRow({
         >
           {headCore}
         </button>
+        {shots}
       </div>
     );
   }
@@ -478,6 +506,7 @@ export function ToolRow({
         <div className="mc-toolrow__head" role="status">
           {headCore}
         </div>
+        {shots}
       </div>
     );
   }
@@ -495,6 +524,8 @@ export function ToolRow({
         <LuChevronRight size={14} className="mc-toolrow__chev" data-open={open} aria-hidden="true" />
       </button>
 
+      {shots}
+
       <div className="mc-toolrow__collapse" id={detailId} data-open={open}>
         <div className="mc-toolrow__collapse-inner">
           {bodyMounted ? (
@@ -506,4 +537,4 @@ export function ToolRow({
       </div>
     </div>
   );
-}
+});

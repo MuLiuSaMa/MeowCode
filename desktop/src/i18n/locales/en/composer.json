@@ -147,6 +147,7 @@
     "moreTitle": "Add attachments / switch mode",
     "plusMenuAria": "Add, reference and commands",
     "upload": "Upload attachment",
+    "addFolder": "Add folder",
     "plugins": "Plugins",
     "pluginsCount": "Plugins ({{count}})",
     "skills": "Skills",
@@ -219,6 +220,9 @@
     "xhigh": "Extra high",
     "max": "Max",
     "ultra": "Ultra"
+  },
+  "drop": {
+    "hint": "Drop to add files or folders"
   },
   "jumpToBottom": "Back to bottom"
 }

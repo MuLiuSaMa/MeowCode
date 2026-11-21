@@ -3,7 +3,6 @@
     "home": "Home",
     "architecture": "Agent architecture",
     "git": "Git",
-    "mail": "Mail",
     "plugins": "Marketplace",
     "automation": "Automations",
     "settings": "Settings"
@@ -250,5 +249,10 @@
     "label": "Announcement",
     "close": "Close",
     "viewSite": "Visit website"
+  },
+  "view": {
+    "label": "Switch view",
+    "chat": "Chat",
+    "trajectory": "Trajectory"
   }
 }

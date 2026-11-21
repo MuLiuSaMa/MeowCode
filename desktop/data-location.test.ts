@@ -70,6 +70,7 @@ describe("data location", () => {
     mkdirSync(path.join(current, "fonts"));
     writeFileSync(path.join(current, "fonts", "a.ttf"), "font");
     writeFileSync(path.join(current, "oauth-apps.json"), "{}");
+    writeFileSync(path.join(current, "Local State"), '{"os_crypt":{"encrypted_key":"k"}}');
     mkdirSync(path.join(current, "Cache"));
     writeFileSync(path.join(current, "Cache", "big"), "cache");
 
@@ -82,9 +83,98 @@ describe("data location", () => {
     expect(readFileSync(path.join(target, "agent", "settings.json"), "utf8")).toBe("{}");
     expect(readFileSync(path.join(target, "agent", "sessions", "s.jsonl"), "utf8")).toBe("x");
     expect(readFileSync(path.join(target, "fonts", "a.ttf"), "utf8")).toBe("font");
+    // safeStorage 的密钥跟着搬：否则新位置的 apiKeyEncrypted 解不开
+    expect(readFileSync(path.join(target, "Local State"), "utf8")).toContain("encrypted_key");
     expect(existsSync(path.join(target, "Cache"))).toBe(false);
     expect(JSON.parse(readFileSync(pointer, "utf8")).path).toBe(path.resolve(target));
     expect(readDataLocation(root)).toBe(path.resolve(target));
+  });
+
+  it("removes the copied app data from the old location when removeSource is set", () => {
+    const root = makeRoot();
+    const current = path.join(root, "current");
+    mkdirSync(path.join(current, "agent", "sessions"), { recursive: true });
+    writeFileSync(path.join(current, "agent", "settings.json"), "{}");
+    mkdirSync(path.join(current, "fonts"));
+    writeFileSync(path.join(current, "fonts", "a.ttf"), "font");
+    writeFileSync(path.join(current, "oauth-apps.json"), "{}");
+    writeFileSync(path.join(current, "Local State"), '{"os_crypt":{"encrypted_key":"k"}}');
+    mkdirSync(path.join(current, "Cache"));
+    writeFileSync(path.join(current, "Cache", "big"), "cache");
+
+    const target = path.join(root, "target");
+    const pointer = locationPointerPath(root);
+    expect(
+      migrateData({
+        current,
+        target,
+        defaultDir: defaultDataDir(root),
+        pointerPath: pointer,
+        removeSource: true,
+      }),
+    ).toEqual({ ok: true });
+
+    expect(readFileSync(path.join(target, "agent", "settings.json"), "utf8")).toBe("{}");
+    expect(readFileSync(path.join(target, "fonts", "a.ttf"), "utf8")).toBe("font");
+    expect(existsSync(path.join(current, "agent"))).toBe(false);
+    expect(existsSync(path.join(current, "fonts"))).toBe(false);
+    expect(existsSync(path.join(current, "oauth-apps.json"))).toBe(false);
+    // safeStorage 密钥旧位置保留：之后切回默认目录旧数据还能解密
+    expect(existsSync(path.join(current, "Local State"))).toBe(true);
+    // 缓存不参与迁移，也不删除
+    expect(readFileSync(path.join(current, "Cache", "big"), "utf8")).toBe("cache");
+    expect(JSON.parse(readFileSync(pointer, "utf8")).path).toBe(path.resolve(target));
+  });
+
+  it("copies back to the default dir before dropping the pointer when removeSource is set", () => {
+    const root = makeRoot();
+    const current = path.join(root, "custom");
+    mkdirSync(path.join(current, "agent", "sessions"), { recursive: true });
+    writeFileSync(path.join(current, "agent", "settings.json"), "{}");
+    writeFileSync(path.join(current, "agent", "sessions", "s.jsonl"), "x");
+    const pointer = locationPointerPath(root);
+    writeFileSync(pointer, JSON.stringify({ path: current }));
+    const defaultDir = defaultDataDir(root);
+
+    expect(
+      migrateData({
+        current,
+        target: defaultDir,
+        defaultDir,
+        pointerPath: pointer,
+        removeSource: true,
+      }),
+    ).toEqual({ ok: true, resetToDefault: true });
+
+    expect(readFileSync(path.join(defaultDir, "agent", "settings.json"), "utf8")).toBe("{}");
+    expect(readFileSync(path.join(defaultDir, "agent", "sessions", "s.jsonl"), "utf8")).toBe("x");
+    expect(existsSync(path.join(current, "agent"))).toBe(false);
+    expect(existsSync(pointer)).toBe(false);
+    expect(readDataLocation(root)).toBe(path.resolve(defaultDir));
+  });
+
+  it("restores current data into an emptied default dir even without removeSource", () => {
+    const root = makeRoot();
+    const current = path.join(root, "custom");
+    mkdirSync(path.join(current, "agent"), { recursive: true });
+    writeFileSync(path.join(current, "agent", "settings.json"), "{}");
+    writeFileSync(path.join(current, "Local State"), "current-key");
+    const pointer = locationPointerPath(root);
+    writeFileSync(pointer, JSON.stringify({ path: current }));
+    const defaultDir = defaultDataDir(root);
+    // 默认目录只剩 Chromium 的密钥文件，不算「有数据」
+    mkdirSync(defaultDir, { recursive: true });
+    writeFileSync(path.join(defaultDir, "Local State"), "stale-key");
+
+    expect(
+      migrateData({ current, target: defaultDir, defaultDir, pointerPath: pointer }),
+    ).toEqual({ ok: true, resetToDefault: true });
+
+    expect(readFileSync(path.join(defaultDir, "agent", "settings.json"), "utf8")).toBe("{}");
+    // 密钥以当前数据目录为准，密文才能解开
+    expect(readFileSync(path.join(defaultDir, "Local State"), "utf8")).toBe("current-key");
+    expect(existsSync(path.join(current, "agent", "settings.json"))).toBe(true);
+    expect(existsSync(pointer)).toBe(false);
   });
 
   it("does not copy into a non-empty target", () => {

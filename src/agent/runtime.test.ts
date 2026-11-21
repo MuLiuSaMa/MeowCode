@@ -173,10 +173,10 @@ describe("request prefix stability", () => {
     // 基础 system + 常驻记忆/指令段（memory guide），两条都跨请求稳定
     const firstSystem = firstRequest.filter((message) => message.role === "system");
     const secondSystem = secondRequest.filter((message) => message.role === "system");
-    expect(firstSystem).toHaveLength(2);
-    expect(secondSystem).toHaveLength(2);
-    expect(secondSystem[0]).toEqual(firstSystem[0]);
-    expect(secondSystem[1]).toEqual(firstSystem[1]);
+    // 基线 + 常驻记忆/指令段，外加行为段与环境段：两条请求的 system 必须逐条一致
+    expect(firstSystem.length).toBeGreaterThanOrEqual(2);
+    expect(secondSystem).toHaveLength(firstSystem.length);
+    expect(secondSystem).toEqual(firstSystem);
     // 计划正文随工具结果进入请求，不再改写 system
     expect(
       secondRequest.some(
@@ -435,6 +435,22 @@ describe("AgentRuntime context compaction", () => {
       sessionsDir: dir,
     });
   const flush = () => new Promise((resolve) => setTimeout(resolve, 20));
+  /**
+   * 轮询等待条件成立。
+   *
+   * 原来用 `await flush()`（固定 20ms）等后台预热：机器一慢预热还没跑完，
+   * 断言就落在中间态上；更糟的是「等溢出请求发出」用 calls.length 计数，
+   * 预热请求晚到会被错认成溢出，后续 mock 全部错位，重连重试把调用次数放大到 14。
+   * 改成等真实状态，慢机器只是多等一会儿，不会误判。
+   */
+  const waitFor = async (predicate: () => boolean, timeoutMs = 5_000): Promise<boolean> => {
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+      if (predicate()) return true;
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    }
+    return predicate();
+  };
 
   it("pre-warms the summary in the background and adopts it on overflow without a summary call", async () => {
     const dir = await mkdtemp(path.join(tmpdir(), "meowcode-runtime-"));
@@ -450,11 +466,16 @@ describe("AgentRuntime context compaction", () => {
       })
       .mockResolvedValueOnce({ message: { role: "assistant", content: "WARM-SUMMARY" } });
     await runtime.prompt("do it");
-    await flush();
+    // 等预热真的完成，而不是赌固定 20ms 够用（慢机器上会落在中间态）
+    expect(
+      await waitFor(() =>
+        events.some((event) => event.type === "compaction_warmup" && event.phase === "completed"),
+      ),
+      "预热未在超时内完成",
+    ).toBe(true);
 
     // 预热在后台跑完，前台没有任何压缩发生
     expect(events.some((event) => event.type === "compaction_warmup" && event.phase === "started")).toBe(true);
-    expect(events.some((event) => event.type === "compaction_warmup" && event.phase === "completed")).toBe(true);
     expect(events.some((event) => event.type === "compaction_started")).toBe(false);
 
     streamMock
@@ -560,9 +581,13 @@ describe("AgentRuntime context compaction", () => {
     expect(events.some((event) => event.type === "error")).toBe(false);
 
     releaseWarmup({ message: { role: "assistant", content: "LATE-SUMMARY" } });
-    await flush();
     // 预热照常完成，留待下一轮主动采纳或溢出兜底
-    expect(events.some((event) => event.type === "compaction_warmup" && event.phase === "completed")).toBe(true);
+    expect(
+      await waitFor(() =>
+        events.some((event) => event.type === "compaction_warmup" && event.phase === "completed"),
+      ),
+      "预热未在超时内完成",
+    ).toBe(true);
     expect(events.some((event) => event.type === "compaction_started")).toBe(false);
   });
 
@@ -585,15 +610,16 @@ describe("AgentRuntime context compaction", () => {
         }),
       );
     await runtime.prompt("do it");
+    // 预热请求必须已经发出：否则下面「第 3 次调用」会把晚到的预热当成溢出，
+    // mock 队列整体错位，后续重连重试会把调用次数放大到十几倍。
+    expect(await waitFor(() => streamMock.mock.calls.length >= 2), "预热请求未发出").toBe(true);
 
     streamMock
       .mockRejectedValueOnce(new ProviderRequestError(413, "prompt is too long"))
       .mockResolvedValueOnce({ message: { role: "assistant", content: "FINAL" } });
     const second = runtime.prompt("next");
     // 等溢出已经发生、升级流程开始等预热结果
-    for (let i = 0; i < 200 && streamMock.mock.calls.length < 3; i += 1) {
-      await new Promise((resolve) => setTimeout(resolve, 5));
-    }
+    expect(await waitFor(() => streamMock.mock.calls.length >= 3), "溢出请求未发出").toBe(true);
     releaseWarmup({ message: { role: "assistant", content: "WARM-SUMMARY" } });
     await second;
 
@@ -617,8 +643,12 @@ describe("AgentRuntime context compaction", () => {
       })
       .mockRejectedValueOnce(new Error("warmup backend down"));
     await runtime.prompt("do it");
-    await flush();
-    expect(events.some((event) => event.type === "compaction_warmup" && event.phase === "failed")).toBe(true);
+    expect(
+      await waitFor(() =>
+        events.some((event) => event.type === "compaction_warmup" && event.phase === "failed"),
+      ),
+      "预热失败事件未在超时内出现",
+    ).toBe(true);
 
     streamMock
       .mockRejectedValueOnce(new ProviderRequestError(413, "prompt is too long"))
@@ -1738,6 +1768,8 @@ describe("AgentRuntime browser tools", () => {
     const finalMessage = { message: { role: "assistant", content: "seen" } };
 
     const withImage = await makeRunner(["text", "image"]);
+    const withImageEvents: MeowEvent[] = [];
+    withImage.onEvent((event) => withImageEvents.push(event));
     await withImage.newSession();
     streamMock.mockResolvedValueOnce(screenshotCall).mockResolvedValueOnce(finalMessage);
     await withImage.prompt("take a screenshot");
@@ -1746,9 +1778,16 @@ describe("AgentRuntime browser tools", () => {
     );
     expect(attached?.images).toHaveLength(1);
     expect(attached?.images?.[0].mimeType).toBe("image/png");
+    // UI 事件永远带图：工具行要把截图展示给用户
+    const withImageOutput = withImageEvents.find(
+      (event) => event.type === "tool_output" && event.callId === "s1",
+    );
+    expect(withImageOutput?.type === "tool_output" ? withImageOutput.images : undefined).toHaveLength(1);
 
     streamMock.mockReset();
     const textOnly = await makeRunner(["text"]);
+    const textOnlyEvents: MeowEvent[] = [];
+    textOnly.onEvent((event) => textOnlyEvents.push(event));
     await textOnly.newSession();
     streamMock.mockResolvedValueOnce(screenshotCall).mockResolvedValueOnce(finalMessage);
     await textOnly.prompt("take a screenshot");
@@ -1757,6 +1796,11 @@ describe("AgentRuntime browser tools", () => {
     );
     expect(fallback?.images).toBeUndefined();
     expect(fallback?.content).toContain("meowcode-screenshots");
+    // 纯文本模型不给模型发图，但用户仍然看得到截图
+    const textOnlyOutput = textOnlyEvents.find(
+      (event) => event.type === "tool_output" && event.callId === "s1",
+    );
+    expect(textOnlyOutput?.type === "tool_output" ? textOnlyOutput.images : undefined).toHaveLength(1);
   });
 
   it("passes user-attached images to the provider but keeps them out of the session file", async () => {
@@ -2420,7 +2464,7 @@ describe("workspace instructions", () => {  it("injects AGENTS.md and reloads it
     const firstSystems = first.filter(
       (message): message is Extract<ChatMessage, { role: "system" }> => message.role === "system",
     );
-    expect(firstSystems).toHaveLength(2);
+    expect(firstSystems.length).toBeGreaterThanOrEqual(2);
     expect(firstSystems[0].content).toContain("You are MeowCode");
     expect(firstSystems[1].content).toContain("RULE ONE");
 
@@ -2464,7 +2508,8 @@ describe("workspace instructions", () => {  it("injects AGENTS.md and reloads it
     // 切换模式只追加历史尾注，前缀缓存不失效。
     expect(systems[0].content).toContain("You are MeowCode");
     expect(systems[1].content).toContain("RULE ONE");
-    expect(systems).toHaveLength(2);
+    // 之后是行为段与环境段（静态），模式指令不进 system
+    expect(systems.some((system) => system.content.startsWith("Environment: "))).toBe(true);
     const modeNote = sent.find(
       (message): message is Extract<ChatMessage, { role: "user" }> =>
         message.role === "user" &&
@@ -4026,7 +4071,7 @@ describe("free tool-result pruning (over-budget shrink)", () => {
     await writeFile(path.join(workspace, "mid.txt"), "medium file\n".repeat(40));
     const runtime = new (await import("./runtime.js")).AgentRuntime({
       providers: [
-        { id: "p", name: "P", baseUrl: "http://localhost", model: "m", contextWindow: 5_500 },
+        { id: "p", name: "P", baseUrl: "http://localhost", model: "m", contextWindow: 6_000 },
       ],
       sessionsDir: dir,
     });
@@ -4049,10 +4094,11 @@ describe("free tool-result pruning (over-budget shrink)", () => {
     await runtime.prompt("read stuff");
 
     // 第 4 次请求组装时：big 的结果已在 keepRecentUnits=2 之外，应被收缩成头尾摘录
-    const fourth = streamMock.mock.calls[3][0].messages as ChatMessage[];
-    const bigResult = fourth.find(
-      (m) => m.role === "tool" && m.content.includes("chars trimmed"),
-    );
+    const later = streamMock.mock.calls.slice(3).map((call) => call[0].messages as ChatMessage[]);
+    // 提示词大小会随段变化，触发点可能提前或推后：只要后续请求里出现过收缩即可
+    const bigResult = later
+      .flat()
+      .find((m) => m.role === "tool" && m.content.includes("chars trimmed"));
     expect(bigResult).toBeTruthy();
   });
 

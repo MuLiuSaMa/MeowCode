@@ -112,8 +112,9 @@ async function searchRoot(
   workspace: string,
   target: string,
   allowOutsideWorkspace: boolean,
+  extraRoots: readonly string[] = [],
 ): Promise<string> {
-  await resolveToolPath(workspace, target, allowOutsideWorkspace);
+  await resolveToolPath(workspace, target, allowOutsideWorkspace, extraRoots);
   return path.resolve(workspace, target);
 }
 
@@ -248,12 +249,13 @@ export async function searchGlob(  workspace: string,
   maxResults: unknown,
   signal?: AbortSignal,
   allowOutsideWorkspace = false,
+  extraRoots: readonly string[] = [],
 ): Promise<ToolResult> {
   const normalizedPattern = pattern.trim();
   if (!normalizedPattern) {
     return { output: "pattern must not be empty.", ok: false };
   }
-  const absoluteTarget = await searchRoot(workspace, target, allowOutsideWorkspace);
+  const absoluteTarget = await searchRoot(workspace, target, allowOutsideWorkspace, extraRoots);
   const limit = normalizeResults(maxResults, DEFAULT_GLOB_RESULTS);
   const executable = await resolveRipgrepPath();
   const run = await spawnRipgrep(
@@ -309,12 +311,13 @@ export async function searchGrep(
   },
   signal?: AbortSignal,
   allowOutsideWorkspace = false,
+  extraRoots: readonly string[] = [],
 ): Promise<ToolResult> {
   const normalizedPattern = String(pattern ?? "");
   if (!normalizedPattern) {
     return { output: "pattern must not be empty.", ok: false };
   }
-  const absoluteTarget = await searchRoot(workspace, target, allowOutsideWorkspace);
+  const absoluteTarget = await searchRoot(workspace, target, allowOutsideWorkspace, extraRoots);
   const limit = normalizeResults(options.maxResults, DEFAULT_GREP_RESULTS);
   const contextLines = Math.min(
     Math.max(Number(options.contextLines ?? 0) || 0, 0),

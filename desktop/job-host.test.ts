@@ -42,6 +42,10 @@ function fakeTerminals() {
         code: entry.exited ? 0 : null,
       };
     },
+    waitSession(id: string, options: { offset?: number; timeoutMs: number; until: 'exit' | 'output' }) {
+      calls.push({ method: 'wait', args: [id, options] });
+      return Promise.resolve(this.readSession(id, options.offset));
+    },
     attachSession(id: string) {
       const entry = sessions.get(id);
       if (!entry) return null;
@@ -116,6 +120,34 @@ describe("desktop job host", () => {
         body: JSON.stringify({ id: started.id }),
       });
       expect(events.at(-1)).toMatchObject({ type: "kill", id: "term-1" });
+    } finally {
+      host.close();
+    }
+  });
+
+  it("/job/wait 把 offset、超时与 until 透传给终端并回传结果", async () => {
+    const terminals = fakeTerminals();
+    const host = createJobHost({ terminals });
+    await host.start();
+    try {
+      const headers = { "x-meow-job-token": host.token };
+      const started = terminals.createSession({ command: "pnpm build" }) as { id: string };
+      terminals.writeSession(started.id, "built\n");
+
+      const result = (await (
+        await fetch(
+          `${host.baseUrl}/job/wait?id=${started.id}&offset=0&timeout_ms=5000&until=output`,
+          { headers },
+        )
+      ).json()) as { data: string; exited: boolean };
+      expect(result.data).toBe("built\n");
+      expect(terminals.calls.at(-1)).toEqual({
+        method: "wait",
+        args: [started.id, { offset: 0, timeoutMs: 5000, until: "output" }],
+      });
+
+      const missing = await fetch(`${host.baseUrl}/job/wait?id=nope`, { headers });
+      expect(missing.status).toBe(404);
     } finally {
       host.close();
     }

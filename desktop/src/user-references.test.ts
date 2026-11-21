@@ -23,6 +23,13 @@ describe("parseUserMessage", () => {
     expect(parsed.body).toBe("总结一下");
   });
 
+  it("strips the trailing slash folder marker and flags directories", () => {
+    const parsed = parseUserMessage("【附件】src/ · D:/proj/src\n\n看看这个目录");
+    expect(parsed.attachments).toEqual([
+      { name: "src", path: "D:/proj/src", isDirectory: true },
+    ]);
+  });
+
   it("keeps skills and plugins after attachments", () => {
     const parsed = parseUserMessage(
       [

@@ -39,6 +39,10 @@ export function MessageNavigator({
   const topsRef = useRef<number[]>([]);
   const messagesRef = useRef(messages);
   messagesRef.current = messages;
+  /** 滚动高亮合帧：每个 scroll 事件都 O(n) 遍历会拖慢滚动 */
+  const scrollRaf = useRef(0);
+  /** 流式期间内容每 50ms 变一次，全量测量最多每 200ms 跑一轮 */
+  const lastMeasureAt = useRef(0);
 
   const previews = useMemo(() => messages.map((message) => previewOf(message, t)), [messages, t]);
 
@@ -78,6 +82,7 @@ export function MessageNavigator({
 
   // 消息增删后重新测量（流式输出引起的高度变化走下面的 ResizeObserver）
   useLayoutEffect(() => {
+    lastMeasureAt.current = performance.now();
     measure();
     updateActive();
   }, [messages, measure, updateActive]);
@@ -86,14 +91,26 @@ export function MessageNavigator({
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
-    const onScroll = () => updateActive();
+    const onScroll = () => {
+      if (scrollRaf.current) return;
+      scrollRaf.current = requestAnimationFrame(() => {
+        scrollRaf.current = 0;
+        updateActive();
+      });
+    };
     el.addEventListener("scroll", onScroll, { passive: true });
     const content = el.firstElementChild instanceof HTMLElement ? el.firstElementChild : el;
     let raf = 0;
     const observer = new ResizeObserver(() => {
       cancelAnimationFrame(raf);
       raf = requestAnimationFrame(() => {
-        measure();
+        // 流式输出只改变尾部高度，历史用户消息位置不变，位置缓存仍然有效；
+        // 全量测量按 200ms 节流，避免每批增量都强制一轮布局。
+        const now = performance.now();
+        if (now - lastMeasureAt.current >= 200) {
+          lastMeasureAt.current = now;
+          measure();
+        }
         updateActive();
       });
     });
@@ -102,6 +119,7 @@ export function MessageNavigator({
       el.removeEventListener("scroll", onScroll);
       observer.disconnect();
       cancelAnimationFrame(raf);
+      if (scrollRaf.current) cancelAnimationFrame(scrollRaf.current);
     };
   }, [scrollRef, measure, updateActive]);
 

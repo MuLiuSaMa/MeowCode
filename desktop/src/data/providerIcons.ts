@@ -15,44 +15,44 @@ import {
   SiXiaomi,
 } from "react-icons/si";
 import { TbBrandAws, TbBrandAzure } from "react-icons/tb";
-import alibabaCloud from "../assets/provider-icons/model-provider-alibaba-cloud.png";
-import anthropic from "../assets/provider-icons/model-provider-anthropic.png";
+import alibabaCloud from "../assets/provider-icons/model-provider-alibaba-cloud.webp";
+import anthropic from "../assets/provider-icons/model-provider-anthropic.webp";
 import claude from "../assets/provider-icons/model-provider-claude.svg";
 import bigmodel from "../assets/provider-icons/logo-bigmodel.svg";
-import deepseek from "../assets/provider-icons/model-provider-deepseek.png";
-import minimax from "../assets/provider-icons/model-provider-minimax.png";
-import moonshotKimi from "../assets/provider-icons/model-provider-moonshot-kimi.png";
-import openai from "../assets/provider-icons/model-provider-openai.png";
+import deepseek from "../assets/provider-icons/model-provider-deepseek.webp";
+import minimax from "../assets/provider-icons/model-provider-minimax.webp";
+import moonshotKimi from "../assets/provider-icons/model-provider-moonshot-kimi.webp";
+import openai from "../assets/provider-icons/model-provider-openai.webp";
 import opencodeDark from "../assets/provider-icons/model-provider-opencode-dark.svg";
 import opencodeLight from "../assets/provider-icons/model-provider-opencode-light.svg";
 import openrouterDark from "../assets/provider-icons/model-provider-openrouter-dark.svg";
 import openrouterLight from "../assets/provider-icons/model-provider-openrouter-light.svg";
-import xai from "../assets/provider-icons/model-provider-xai.png";
-import grok from "../assets/provider-icons/model-provider-grok.png";
-import xiaomiMimo from "../assets/provider-icons/model-provider-xiaomi-mimo.png";
-import zai from "../assets/provider-icons/model-provider-zai.png";
-import aihubmix from "../assets/provider-icons/model-provider-aihubmix.png";
-import baichuan from "../assets/provider-icons/model-provider-baichuan.png";
-import cohere from "../assets/provider-icons/model-provider-cohere.png";
-import deepinfra from "../assets/provider-icons/model-provider-deepinfra.png";
-import doubao from "../assets/provider-icons/model-provider-doubao.png";
-import giteeai from "../assets/provider-icons/model-provider-giteeai.png";
-import hunyuan from "../assets/provider-icons/model-provider-hunyuan.png";
-import lmstudioLight from "../assets/provider-icons/model-provider-lmstudio.png";
-import lmstudioDark from "../assets/provider-icons/model-provider-lmstudio-dark.png";
-import modelscope from "../assets/provider-icons/model-provider-modelscope.png";
-import novita from "../assets/provider-icons/model-provider-novita.png";
-import ollamaLight from "../assets/provider-icons/model-provider-ollama.png";
-import ollamaDark from "../assets/provider-icons/model-provider-ollama-dark.png";
-import perplexity from "../assets/provider-icons/model-provider-perplexity.png";
-import ppio from "../assets/provider-icons/model-provider-ppio.png";
-import sensenova from "../assets/provider-icons/model-provider-sensenova.png";
-import siliconcloud from "../assets/provider-icons/model-provider-siliconcloud.png";
-import spark from "../assets/provider-icons/model-provider-spark.png";
-import stepfun from "../assets/provider-icons/model-provider-stepfun.png";
+import xai from "../assets/provider-icons/model-provider-xai.webp";
+import grok from "../assets/provider-icons/model-provider-grok.webp";
+import xiaomiMimo from "../assets/provider-icons/model-provider-xiaomi-mimo.webp";
+import zai from "../assets/provider-icons/model-provider-zai.webp";
+import aihubmix from "../assets/provider-icons/model-provider-aihubmix.webp";
+import baichuan from "../assets/provider-icons/model-provider-baichuan.webp";
+import cohere from "../assets/provider-icons/model-provider-cohere.webp";
+import deepinfra from "../assets/provider-icons/model-provider-deepinfra.webp";
+import doubao from "../assets/provider-icons/model-provider-doubao.webp";
+import giteeai from "../assets/provider-icons/model-provider-giteeai.webp";
+import hunyuan from "../assets/provider-icons/model-provider-hunyuan.webp";
+import lmstudioLight from "../assets/provider-icons/model-provider-lmstudio.webp";
+import lmstudioDark from "../assets/provider-icons/model-provider-lmstudio-dark.webp";
+import modelscope from "../assets/provider-icons/model-provider-modelscope.webp";
+import novita from "../assets/provider-icons/model-provider-novita.webp";
+import ollamaLight from "../assets/provider-icons/model-provider-ollama.webp";
+import ollamaDark from "../assets/provider-icons/model-provider-ollama-dark.webp";
+import perplexity from "../assets/provider-icons/model-provider-perplexity.webp";
+import ppio from "../assets/provider-icons/model-provider-ppio.webp";
+import sensenova from "../assets/provider-icons/model-provider-sensenova.webp";
+import siliconcloud from "../assets/provider-icons/model-provider-siliconcloud.webp";
+import spark from "../assets/provider-icons/model-provider-spark.webp";
+import stepfun from "../assets/provider-icons/model-provider-stepfun.webp";
 import volcengine from "../assets/provider-icons/model-provider-volcengine.webp";
-import wenxin from "../assets/provider-icons/model-provider-wenxin.png";
-import appIcon from "../assets/icon.png";
+import wenxin from "../assets/provider-icons/model-provider-wenxin.webp";
+import logoCat from "../assets/logo-cat.webp";
 // 小众 / 国产模型的品牌标（@lobehub/icons-static-svg）
 import longcatLight from "../assets/provider-icons/model-provider-longcat.svg";
 import longcatDark from "../assets/provider-icons/model-provider-longcat-dark.svg";
@@ -195,11 +195,55 @@ const ICONS: Record<string, IconSpec> = {
   snowflake: { kind: "single", src: snowflake },
   microsoft: { kind: "single", src: microsoft },
   aya: { kind: "single", src: aya },
-  // 自定义服务商入口：用 MeowCode 应用 Logo
-  custom: { kind: "single", src: appIcon },
-  /** 认不出的模型统一退回 MeowCode 自己的 Logo */
-  meow: { kind: "single", src: appIcon },
+  // 自定义服务商入口 / 认不出的模型：统一用 MeowCode 的猫头 Logo
+  custom: { kind: "single", src: logoCat },
+  meow: { kind: "single", src: logoCat },
 };
+
+let iconWarmup: Promise<void> | null = null;
+/** 预热后仍保留引用：避免 <img> 在解码完成前被回收，导致请求中断、缓存里没有图 */
+const warmedImages: HTMLImageElement[] = [];
+
+/**
+ * 预加载全部品牌图标。
+ *
+ * 模型弹层是打开时才挂 `<img>` 的，冷启动会先出文字、过一会儿才补上图标；
+ * 启动画面的约 1 秒正好用来把位图读入并解码，首次打开列表即可直接绘制。
+ * 幂等；不阻塞启动，失败（缺文件等）静默忽略。
+ */
+export function preloadProviderIcons(): Promise<void> {
+  if (iconWarmup) return iconWarmup;
+  if (typeof window === "undefined" || typeof Image === "undefined") {
+    iconWarmup = Promise.resolve();
+    return iconWarmup;
+  }
+  const urls = new Set<string>();
+  for (const spec of Object.values(ICONS)) {
+    if (spec.kind === "single") urls.add(spec.src);
+    else if (spec.kind === "paired") {
+      urls.add(spec.light);
+      urls.add(spec.dark);
+    }
+  }
+  iconWarmup = Promise.all(
+    [...urls].map(
+      (src) =>
+        new Promise<void>((resolve) => {
+          const img = new Image();
+          img.decoding = "async";
+          img.onload = () => {
+            const done = () => resolve();
+            if (typeof img.decode === "function") img.decode().then(done, done);
+            else done();
+          };
+          img.onerror = () => resolve();
+          img.src = src;
+          warmedImages.push(img);
+        }),
+    ),
+  ).then(() => undefined);
+  return iconWarmup;
+}
 
 export function providerIcon(key: string | undefined, theme: "light" | "dark"): ProviderIcon | undefined {
   if (!key) return undefined;

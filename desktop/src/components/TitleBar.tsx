@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { LuCopy, LuMinus, LuSquare, LuX } from "react-icons/lu";
-import wordmarkBlackUrl from "../assets/wordmark-black.png";
-import wordmarkUrl from "../assets/wordmark.png";
+import wordmarkBlackUrl from "../assets/wordmark-black.webp";
+import wordmarkUrl from "../assets/wordmark.webp";
 import { useTheme } from "../theme/theme";
 import { PluginSlot, PluginSlotSingle } from "../plugins/PluginSlot";
 import { AnnouncementBar } from "./AnnouncementBar";

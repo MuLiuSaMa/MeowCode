@@ -4,6 +4,7 @@ import {
   compactionTriggerTokens,
   estimateContextTokens,
   estimateDocumentTokens,
+  estimateJsonTokens,
   estimateMessageTokens,
   estimateMessagesTokens,
   estimateTokens,
@@ -49,8 +50,23 @@ describe("estimateTokens", () => {
         { id: "c1", type: "function", function: { name: "read_file", arguments: '{"path":"a.ts"}' } },
       ],
     };
-    // content 为 null 时只算工具名 + 参数
-    expect(estimateMessageTokens(message)).toBe(estimateTokens("read_file") + estimateTokens('{"path":"a.ts"}'));
+    // 4（消息包裹）+ ceil(9/4)=3（工具名）+ ceil(15/3)=5（JSON 参数，按 3 字符/token）
+    expect(estimateMessageTokens(message)).toBe(12);
+  });
+
+  it("结构化载荷按更密的字符/token 比折算", () => {
+    const json = '{"path":"a.ts"}'; // 15 字符
+    expect(estimateTokens(json)).toBe(4); // ceil(15/4)
+    expect(estimateJsonTokens(json)).toBe(5); // ceil(15/3)
+    expect(estimateJsonTokens({ a: 1 })).toBe(estimateTokens('{"a":1}', 3));
+    expect(estimateJsonTokens(undefined)).toBe(0);
+    expect(estimateJsonTokens(null)).toBe(0);
+  });
+
+  it("给每条消息计入固定的包裹开销", () => {
+    // 空正文也要算 role/分隔符：不加会让长会话的占用随条数线性偏低
+    expect(estimateMessageTokens(user(""))).toBe(4);
+    expect(estimateMessageTokens(user("abcd"))).toBe(5);
   });
 });
 
@@ -429,6 +445,17 @@ describe("estimateContextTokens", () => {
   it("inputTokens 非正的锚点无效", () => {
     const messages = [user("hi")];
     expect(estimateContextTokens(messages, { inputTokens: 0, messageCount: 1 }).source).toBe("estimate");
+  });
+
+  it("拒绝 NaN / Infinity 这类不可用锚点", () => {
+    const messages = [user("hi")];
+    // 中转商在流中断时可能回全零，某些网关会回 Infinity —— 都会让占用显示成 0 或爆炸
+    expect(estimateContextTokens(messages, { inputTokens: Infinity, messageCount: 1 }).source).toBe(
+      "estimate",
+    );
+    expect(estimateContextTokens(messages, { inputTokens: Number.NaN, messageCount: 1 }).source).toBe(
+      "estimate",
+    );
   });
 });
 

@@ -27,6 +27,7 @@ import {
   type HarnessNode,
   type HarnessNodeType,
 } from "../../api";
+import { AgentCat } from "../ui/AgentCat";
 import "./HarnessEditor.css";
 
 /**
@@ -241,7 +242,11 @@ const NodeCard = memo(
         }}
       >
         <span className="mc-harness__nodeicon">
-          <Icon size={15} />
+          {node.type === "agent" || node.type === "role" ? (
+            <AgentCat size={20} />
+          ) : (
+            <Icon size={15} />
+          )}
         </span>
         <span className="mc-harness__nodebody">
           <span className="mc-harness__nodeline">
@@ -914,7 +919,9 @@ export function HarnessEditor({
   /** 平移时直接改 DOM（world transform + 网格背景），绕开 React 重渲染 */
   const applyPanDom = (v: Viewport) => {
     if (worldRef.current) {
-      worldRef.current.style.transform = `translate(${v.x}px, ${v.y}px) scale(${v.zoom})`;
+      worldRef.current.style.left = `${v.x}px`;
+      worldRef.current.style.top = `${v.y}px`;
+      worldRef.current.style.zoom = String(v.zoom);
     }
     if (canvasRef.current) {
       canvasRef.current.style.backgroundPosition = `${v.x}px ${v.y}px`;
@@ -1515,7 +1522,9 @@ export function HarnessEditor({
                 style={{
                   width: WORLD_W,
                   height: WORLD_H,
-                  transform: `translate(${viewport.x}px, ${viewport.y}px) scale(${viewport.zoom})`,
+                  left: viewport.x,
+                  top: viewport.y,
+                  zoom: viewport.zoom,
                 }}
             >
               <svg className="mc-harness__svg" width={WORLD_W} height={WORLD_H}>

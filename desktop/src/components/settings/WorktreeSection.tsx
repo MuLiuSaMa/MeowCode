@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { LuFolderOpen } from "react-icons/lu";
+import { LuFolderSearch } from "react-icons/lu";
 import type { SessionSummary } from "../../api";
 import { formatDateTime } from "../../i18n/format";
 import { Button } from "../ui/Button";
@@ -97,14 +97,13 @@ export function WorktreeSection({
     if (next !== root.trim()) onRootChange(next);
   };
 
-  /** 先落盘再打开：输入框里刚改的路径也按新值开 */
-  const openRootFolder = () => {
-    commitRoot();
-    const target = rootInput.trim() || managed?.defaultRoot || "";
-    if (!target) return;
-    void window.meow.openPath(target).then((error) => {
-      if (error) onToast(error);
-    });
+  /** 选择目录后立即落盘；输入框留空仍表示使用默认位置 */
+  const chooseRootFolder = async () => {
+    const selected = await window.meow.pickWorktreeRoot().catch(() => null);
+    if (!selected) return;
+    const next = selected.trim();
+    setRootInput(next);
+    if (next !== root.trim()) onRootChange(next);
   };
 
   const remove = (itemPath: string) => {
@@ -149,10 +148,10 @@ export function WorktreeSection({
             />
             <IconButton
               size="sm"
-              label={t("worktree.root.open")}
-              onClick={openRootFolder}
+              label={t("worktree.root.choose")}
+              onClick={() => void chooseRootFolder()}
             >
-              <LuFolderOpen size={14} />
+              <LuFolderSearch size={14} />
             </IconButton>
           </div>
         </FieldRow>

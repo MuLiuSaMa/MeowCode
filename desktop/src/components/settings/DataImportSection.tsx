@@ -13,13 +13,13 @@ import {
 import { Button } from "../ui/Button";
 import { Checkbox } from "../ui/Checkbox";
 import { Section } from "../ui/Section";
-import codexLogo from "../../assets/brand-icons/import-codex.png";
-import dshLogo from "../../assets/brand-icons/import-dsh.png";
-import opencodeLogo from "../../assets/brand-icons/import-opencode.png";
-import qoderLogo from "../../assets/brand-icons/import-qoder.png";
-import workbuddyLogo from "../../assets/brand-icons/import-workbuddy.png";
-import workbuddyaiLogo from "../../assets/brand-icons/import-workbuddyai.png";
-import zcodeLogo from "../../assets/brand-icons/import-zcode.png";
+import codexLogo from "../../assets/brand-icons/import-codex.webp";
+import dshLogo from "../../assets/brand-icons/import-dsh.webp";
+import opencodeLogo from "../../assets/brand-icons/import-opencode.webp";
+import qoderLogo from "../../assets/brand-icons/import-qoder.webp";
+import workbuddyLogo from "../../assets/brand-icons/import-workbuddy.webp";
+import workbuddyaiLogo from "../../assets/brand-icons/import-workbuddyai.webp";
+import zcodeLogo from "../../assets/brand-icons/import-zcode.webp";
 import "./DataImportSection.css";
 
 const GROUP_IDS: ImportGroupId[] = ["mcp", "memory", "skills", "tasks"];

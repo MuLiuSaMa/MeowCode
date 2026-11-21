@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { SessionSummary } from "../../api";
 import { formatDateTime } from "../../i18n/format";
-import { formatBytes } from "../mail/mail-meta";
+import { formatBytes } from "../../util";
 import { Button } from "../ui/Button";
 import { Dialog } from "../ui/Dialog";
 import { FieldRow } from "../ui/Section";
@@ -35,17 +35,21 @@ export function StorageSection({
   archivedSessions,
   onDeleteSessions,
   onOpenSection,
+  onToast,
 }: {
   sessions: SessionSummary[];
   archivedSessions: string[];
   onDeleteSessions: (filePaths: string[]) => Promise<string[]>;
   onOpenSection: (section: "worktree" | "archive") => void;
+  onToast: (text: string) => void;
 }) {
   const { t } = useTranslation("settings");
   const [usage, setUsage] = useState<StorageUsage | null>(null);
   const [loading, setLoading] = useState(false);
   const [cleanOpen, setCleanOpen] = useState(false);
   const [confirming, setConfirming] = useState<string | null>(null);
+  const [target, setTarget] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
   const confirmTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const refresh = useCallback((force = false) => {
@@ -96,6 +100,38 @@ export function StorageSection({
     setCleanOpen(false);
   };
 
+  const chooseTarget = async () => {
+    if (!usage?.path || busy) return;
+    const selected = await window.meow.pickDataDirectory().catch(() => null);
+    if (selected) setTarget(selected);
+  };
+
+  const confirmTransfer = async () => {
+    if (!target || busy) return;
+    setBusy(true);
+    try {
+      const result = await window.meow.changeDataLocation(target, { removeSource: true });
+      if (!result.ok) {
+        const key =
+          result.code === "not_empty"
+            ? "dataLocation.errors.not_empty"
+            : result.code === "same_path"
+              ? "dataLocation.errors.same_path"
+              : "storage.transferFailed";
+        onToast(t(key));
+        setBusy(false);
+        setTarget(null);
+        return;
+      }
+      onToast(t("storage.transferRestarting"));
+      // 主进程随后 relaunch；保持 busy，避免重复点击
+    } catch (error) {
+      onToast(error instanceof Error ? error.message : t("storage.transferFailed"));
+      setBusy(false);
+      setTarget(null);
+    }
+  };
+
   return (
     <div className="mc-settings__inner">
       <section className="mc-storage">
@@ -141,9 +177,19 @@ export function StorageSection({
           ))}
         </ul>
 
-        <p className="mc-storage__path" title={usage?.path}>
-          {usage?.path ?? ""}
-        </p>
+        <div className="mc-storage__pathrow">
+          <p className="mc-storage__path" title={usage?.path}>
+            {usage?.path ?? ""}
+          </p>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={!usage?.path || busy}
+            onClick={() => void chooseTarget()}
+          >
+            {t("storage.transfer")}
+          </Button>
+        </div>
       </section>
 
       <div className="mc-storage__card">
@@ -207,6 +253,30 @@ export function StorageSection({
         </div>
         <div className="mc-dialog__footer">
           <Button onClick={closeClean}>{t("storage.clean.close")}</Button>
+        </div>
+      </Dialog>
+
+      <Dialog
+        open={target !== null}
+        onClose={() => {
+          if (!busy) setTarget(null);
+        }}
+        labelledBy="mc-storage-transfer-title"
+      >
+        <span className="mc-dialog__title" id="mc-storage-transfer-title">
+          {t("storage.transferTitle")}
+        </span>
+        <p className="mc-dialog__desc">{t("storage.transferDesc")}</p>
+        <p className="mc-storage__target" title={target ?? undefined}>
+          {target}
+        </p>
+        <div className="mc-dialog__footer">
+          <Button disabled={busy} onClick={() => setTarget(null)}>
+            {t("actions.cancel")}
+          </Button>
+          <Button variant="primary" disabled={busy} onClick={() => void confirmTransfer()}>
+            {busy ? t("storage.transferBusy") : t("storage.transferConfirm")}
+          </Button>
         </div>
       </Dialog>
     </div>

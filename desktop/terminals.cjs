@@ -108,6 +108,13 @@ function appendBuffer(entry, data) {
     entry.buffer = entry.buffer.slice(drop);
     entry.bufferStart += drop;
   }
+  wakeWaiters(entry);
+}
+
+/** 有新输出 / 进程退出时唤醒长轮询（agent 的 job wait 就是挂在这里） */
+function wakeWaiters(entry) {
+  // 不清空：until=exit 的等待要活到进程退出，check 自己在结束时摘掉
+  for (const check of [...entry.waiters]) check();
 }
 
 function flushPending(entry) {
@@ -184,6 +191,7 @@ function createSession(options = {}) {
     startedAt: new Date().toISOString(),
     exited: null,
     cleanupTimer: null,
+    waiters: new Set(),
   };
   terminals.set(id, entry);
 
@@ -198,6 +206,7 @@ function createSession(options = {}) {
   proc.onExit(({ exitCode }) => {
     flushPending(entry);
     entry.exited = { code: exitCode, at: Date.now() };
+    wakeWaiters(entry);
     emit("meow:term-exit", { id, code: exitCode });
     // 保留缓冲供 agent/job 读取退出码；过期再清理
     entry.cleanupTimer = setTimeout(() => {
@@ -242,6 +251,7 @@ function killSession(id) {
   if (!entry) return;
   if (entry.timer) clearTimeout(entry.timer);
   if (entry.cleanupTimer) clearTimeout(entry.cleanupTimer);
+  wakeWaiters(entry);
   terminals.delete(id);
   const pid = entry.proc.pid;
   try {
@@ -275,6 +285,47 @@ function readSession(id, offset) {
     exited: Boolean(entry.exited),
     code: entry.exited ? entry.exited.code : null,
   };
+}
+
+/**
+ * 长轮询等待：有新输出（until=output）、进程退出或到点才返回，
+ * 返回的是 from 之后的全部内容 —— agent 的 job wait 一次调用就等在这里，不再自己轮询。
+ */
+function waitSession(id, options = {}) {
+  const entry = terminals.get(id);
+  if (!entry) return Promise.resolve(null);
+  const requested = Number(options.timeoutMs);
+  const timeoutMs = Math.min(300_000, Math.max(1_000, Number.isFinite(requested) ? Math.floor(requested) : 60_000));
+  const until = options.until === "output" ? "output" : "exit";
+  const offset = Number(options.offset);
+  const from = Number.isFinite(offset)
+    ? Math.max(0, Math.floor(offset))
+    : entry.bufferStart + entry.buffer.length;
+  return new Promise((resolve) => {
+    const finish = () => {
+      clearTimeout(timer);
+      entry.waiters.delete(check);
+      resolve(readSession(id, from));
+    };
+    const check = () => {
+      const current = readSession(id, from);
+      // ConPTY 一上来就吐 \x1b[?9001h 这类模式设置：那是噪音，不算「有新输出」
+      if (!current || current.exited || (until === "output" && hasRealOutput(current.data))) finish();
+    };
+    const timer = setTimeout(finish, timeoutMs);
+    timer.unref?.();
+    entry.waiters.add(check);
+    check();
+  });
+}
+
+/** 去掉 ANSI 控制序列后还有没有实打实的内容 */
+function hasRealOutput(data) {
+  if (typeof data !== "string" || !data) return false;
+  return data
+    .replace(/\u001b\[[0-9;?]*[ -/]*[@-~]/g, "")
+    .replace(/\u001b\][^\u0007]*\u0007/g, "")
+    .trim().length > 0;
 }
 
 function attachSession(id) {
@@ -343,6 +394,7 @@ function registerTerminalIpc(ipcMain, getWindow) {
     resizeSession,
     killSession,
     readSession,
+    waitSession,
     attachSession,
     listSessions,
   };
@@ -356,6 +408,7 @@ module.exports = {
   shellCandidates,
   createSession,
   readSession,
+  waitSession,
   attachSession,
   listSessions,
   writeSession,

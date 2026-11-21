@@ -73,6 +73,24 @@
     "themeDesc": "„Systemfarben“ folgt der Hell-/Dunkel-Einstellung von Windows in Echtzeit. Die Änderung wirkt sofort, ohne Neustart.",
     "paletteSection": "Farbpalette",
     "paletteDesc": "Akzentfarbe und Farbton der Oberfläche wählen. Hell und dunkel sind separat abgestimmt und passen sich beim Moduswechsel automatisch an.",
+    "backgroundSection": "Eigener Hintergrund",
+    "backgroundDesc": "Bilder oder Videos als Hintergrund hinter allen Panels. Mehrere auf einmal importieren, über die Tabs „Bild / Video“ durchsehen und per Klick wechseln; die Diashow schaltet automatisch weiter. Videos laufen stumm; je niedriger die Panel-Deckkraft, desto mehr scheint der Hintergrund durch — auf Kosten der Lesbarkeit.",
+    "backgroundEnable": "Eigener Hintergrund",
+    "backgroundImage": "Bild",
+    "backgroundVideo": "Video",
+    "backgroundAdd": "Importieren…",
+    "backgroundRemove": "Entfernen",
+    "backgroundEmpty": "In diesem Tab gibt es noch nichts — auf „Importieren“ klicken",
+    "backgroundCount": "{{count}} Stück",
+    "backgroundCarousel": "Diashow",
+    "backgroundSound": "Videoton",
+    "backgroundInterval": "Wechselintervall",
+    "backgroundSeconds": "{{count}} s",
+    "backgroundMinutes": "{{count}} min",
+    "backgroundOpacity": "Hintergrund-Deckkraft",
+    "backgroundBrightness": "Helligkeit",
+    "backgroundBlur": "Weichzeichnen",
+    "backgroundPanel": "Panel-Deckkraft",
     "palette": {
       "classic": "Klassisch",
       "lava": "Lavaorange",
@@ -495,7 +513,7 @@
     "root": {
       "label": "Worktree-Stammverzeichnis",
       "hint": "Leer lassen, um den Standardpfad zu verwenden. Änderungen gelten nach einem App-Neustart.",
-      "open": "Ordner öffnen"
+      "choose": "Ordner auswählen"
     },
     "fetch": {
       "label": "Vor dem Erstellen immer Upstream abrufen",
@@ -574,6 +592,10 @@
     "clearFailed": "Löschen fehlgeschlagen"
   },
   "general": {
+    "viewTabs": {
+      "field": "Ansichtswechsel",
+      "desc": "Zeigt den schwebenden Wechsler „Chat / Verlauf“ über dem Hauptbereich. Bei leeren Unterhaltungen ausgeblendet."
+    },
     "section": "Allgemein",
     "desc": "Alltägliches Verhalten. Änderungen wirken sofort.",
     "notify": {
@@ -593,9 +615,9 @@
       "desc": "Bei Zeitüberschreitung, Ratenlimit oder Serverfehler des Hauptanbieters wechselt dieser Turn automatisch zu einem anderen aktivierten Anbieter (max. 2 Wechsel).",
       "toggleFailed": "Anbieter-Failover-Einstellung konnte nicht gespeichert werden"
     },
-    "mailAi": {
-      "field": "Modell außerhalb des Chats",
-      "follow": "Chat folgen"
+    "defaultPermission": {
+      "field": "Standard-Berechtigungsmodus",
+      "desc": "Tool-Berechtigung für neue Unterhaltungen. Bestehende Unterhaltungen behalten ihre eigene Auswahl."
     },
     "other": {
       "section": "Allgemein"
@@ -723,7 +745,14 @@
       "title": "Archivierte Chats",
       "hint": "Einzelne archivierte Chats wiederherstellen oder löschen.",
       "action": "Verwalten"
-    }
+    },
+    "transfer": "Verschieben…",
+    "transferTitle": "Alle Daten verschieben?",
+    "transferDesc": "Alle App-Daten werden in den neuen Ordner kopiert. Nach erfolgreichem Kopieren werden die Daten am alten Ort gelöscht und die App wird neu gestartet.",
+    "transferConfirm": "Verschieben und neu starten",
+    "transferBusy": "Wird verschoben…",
+    "transferRestarting": "Daten verschoben — App wird neu gestartet…",
+    "transferFailed": "Die Daten konnten nicht verschoben werden."
   },
   "connections": {
     "section": "SSH-Verbindungen",

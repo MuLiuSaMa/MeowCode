@@ -113,6 +113,9 @@
     "delete": "Excluir"
   },
   "checkpoint": {
+    "edit": "Editar e reenviar",
+    "editSend": "Reenviar",
+    "editHint": "⌘/Ctrl + Enter para enviar, Esc para cancelar",
     "auto": "Ponto de verificação automático",
     "manual": "Ponto de verificação",
     "restore": "Restaurar",
@@ -233,6 +236,7 @@
     "browserScreenshot": "Captura de página",
     "browserBack": "Voltar página",
     "browserReload": "Recarregar página",
+    "browserPreview": "Pré-visualizar página",
     "openInPanel": "Clique para ver o arquivo no painel lateral",
     "computerScreenshot": "Capturar tela",
     "computerClick": "Clicar",

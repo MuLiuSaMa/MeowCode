@@ -11,7 +11,7 @@ import type { TFunction } from "i18next";
 
 export type SideTab =
   | { id: "home"; kind: "home"; title: string }
-  | { id: string; kind: "browser"; title: string; url: string; agent?: boolean }
+  | { id: string; kind: "browser"; title: string; url: string }
   | { id: string; kind: "workspace"; title: string; path?: string }
   | { id: string; kind: "review" | "sidechat" | "plan" | "subagents"; title: string }
   | { id: string; kind: "terminal"; title: string; termId?: string }
@@ -311,28 +311,6 @@ export function useSideTabs() {
     );
   }, []);
 
-  /** agent 专属浏览器页签：有就复用（激活并返回 id），没有才新建；用户手动开的页签不受影响 */
-  const ensureAgentBrowserTab = useCallback(
-    (url: string): string => {
-      const existing = tabs.find((tab) => tab.kind === "browser" && tab.agent);
-      if (existing) {
-        setActiveId(existing.id);
-        return existing.id;
-      }
-      const tab: SideTab = {
-        id: nextTabId("browser"),
-        kind: "browser",
-        title: url,
-        url,
-        agent: true,
-      };
-      setTabs((current) => [...current, tab]);
-      setActiveId(tab.id);
-      return tab.id;
-    },
-    [tabs],
-  );
-
   /** 后台任务终端：按 termId 去重；已存在时只激活并刷新标题（不抢用户手动开的终端）。 */
   const openJobTerminal = useCallback((termId: string, command: string, titleOverride?: string) => {
     const id = `terminal-${termId}`;
@@ -385,7 +363,6 @@ export function useSideTabs() {
       openSubagent,
       prepareSubagent,
       prepareSubagentsDirectory,
-      ensureAgentBrowserTab,
       openJobTerminal,
       close,
       activate,
@@ -403,7 +380,6 @@ export function useSideTabs() {
       openSubagent,
       prepareSubagent,
       prepareSubagentsDirectory,
-      ensureAgentBrowserTab,
       openJobTerminal,
       close,
       activate,

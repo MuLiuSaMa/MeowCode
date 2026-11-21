@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { isToolCallComplete, summarizeToolCalls } from "./tool-progress";
+import {
+  createToolProgressSampler,
+  isToolCallComplete,
+  summarizeToolCalls,
+} from "./tool-progress";
 import type { ToolCall } from "./types";
 
 function call(name: string, args: string): ToolCall {
@@ -45,6 +49,48 @@ describe("summarizeToolCalls", () => {
   it("reports no path for tools without a path argument", () => {
     const progress = summarizeToolCalls([call("run_command", '{"command":"ls"}')]);
     expect(progress.path).toBeUndefined();
+  });
+});
+
+describe("createToolProgressSampler", () => {
+  it("emits the first chunk immediately, then waits for 512 chars", () => {
+    const sampler = createToolProgressSampler();
+    const target = call("write_file", '{"path":"a.ts","content":"');
+    expect(sampler([target])).toMatchObject({ count: 1, tool: "write_file", path: "a.ts" });
+
+    target.function.arguments += "x".repeat(100);
+    expect(sampler([target])).toBeNull();
+
+    target.function.arguments += "x".repeat(412);
+    expect(sampler([target])).toMatchObject({ count: 1, chars: target.function.arguments.length });
+  });
+
+  it("emits immediately when a new tool call starts", () => {
+    const sampler = createToolProgressSampler();
+    const first = call("read_file", '{"path":"a.ts"}');
+    expect(sampler([first])).not.toBeNull();
+
+    const second = call("grep", '{"pattern":"x');
+    expect(sampler([first, second])).toMatchObject({ count: 2, tool: "grep" });
+  });
+
+  it("emits immediately when a tool name arrives", () => {
+    const sampler = createToolProgressSampler();
+    const pending = call("", '{"path":"a.ts"}');
+    expect(sampler([pending])).not.toBeNull();
+
+    pending.function.name = "read_file";
+    expect(sampler([pending])).toMatchObject({ tool: "read_file" });
+  });
+
+  it("can force an emit before the next 512-char window", () => {
+    const sampler = createToolProgressSampler();
+    const target = call("read_file", '{"path":"a.ts"}');
+    expect(sampler([target])).not.toBeNull();
+
+    target.function.arguments = '{"path":"a.ts","limit":10}';
+    expect(sampler([target])).toBeNull();
+    expect(sampler([target], true)).toMatchObject({ count: 1 });
   });
 });
 

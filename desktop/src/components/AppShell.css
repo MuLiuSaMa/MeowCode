@@ -31,8 +31,11 @@
 }
 
 .mc-panel {
+  position: relative;
   border-radius: var(--radius-xl);
-  corner-shape: superellipse(1.5);
+  /* 面板是消息流的裁剪祖先：superellipse 会让滚动内容每帧走非矩形裁剪，
+     实测 144Hz 下滚动从 ~107fps 掉到 ~70fps。普通圆角走快速路径，视觉差异很小。 */
+  corner-shape: round;
   overflow: hidden;
 }
 .mc-panel--conversations {
@@ -245,4 +248,71 @@
  */
 .mc-chatflow:has(.mc-sessionpill) .mc-stream__list {
   padding-bottom: calc(8px + 28px + 12px);
+}
+
+/*
+ * 主区域视图切换（对话 / 轨迹）：悬浮胶囊 + 毛玻璃，浮在内容上方，
+ * 不占一行布局，也不把消息流往下挤。
+ */
+.mc-viewtabs {
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--surface) 52%, transparent);
+  backdrop-filter: blur(16px) saturate(1.5);
+  -webkit-backdrop-filter: blur(16px) saturate(1.5);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.16);
+  transform: translateX(-50%);
+}
+.mc-viewtabs__tab {
+  padding: 4px 12px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--fg-subtle);
+  font-size: 11px;
+  line-height: 1.5;
+  cursor: pointer;
+  transition: background-color 0.14s ease, color 0.14s ease;
+}
+.mc-viewtabs__tab:hover {
+  color: var(--fg);
+}
+.mc-viewtabs__tab[aria-selected="true"] {
+  background: color-mix(in oklab, var(--fg) 15%, transparent);
+  color: var(--fg);
+}
+
+/* 提示词视图占满剩余高度并自行滚动；对话区隐藏但不卸载，滚动位置不丢 */
+.mc-promptview {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+.mc-chatflow[data-hidden="true"] {
+  display: none;
+}
+
+/*
+ * 自定义背景：壁纸铺在 body 与面板之间，所以这里把面板底色让出通透度。
+ * --wallpaper-ui（0.2–1）由 AppBackground 写在 :root 上，越小壁纸透得越多；
+ * 只动三个大面板和外壳，对话框 / 弹层仍用不透明底色，保证可读性。
+ */
+:root[data-wallpaper="true"] body,
+:root[data-wallpaper="true"] .mc-root {
+  background: transparent;
+}
+:root[data-wallpaper="true"] .mc-panel--conversations,
+:root[data-wallpaper="true"] .mc-panel--content,
+:root[data-wallpaper="true"] .mc-panel--inspector {
+  background: color-mix(in srgb, var(--bg) calc(var(--wallpaper-ui, 0.72) * 100%), transparent);
 }

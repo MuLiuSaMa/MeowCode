@@ -52,7 +52,7 @@ export function ContextMeter({
       aria-label={t("contextMeter.aria")}
       onClick={onClick}
     >
-      <svg viewBox="0 0 18 18" width={16} height={16} aria-hidden>
+      <svg viewBox="0 0 18 18" width={18} height={18} aria-hidden>
         <circle className="mc-ctxmeter__track" cx="9" cy="9" r={RADIUS} />
         <circle
           className="mc-ctxmeter__fill"

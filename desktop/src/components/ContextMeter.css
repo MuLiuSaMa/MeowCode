@@ -2,13 +2,13 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 30px;
-  height: 30px;
+  width: 34px;
+  height: 34px;
   flex-shrink: 0;
   padding: 0;
   border: 0;
   border-radius: var(--radius-full);
-  background: var(--surface);
+  background: transparent;
   color: var(--fg-subtle);
   cursor: pointer;
   transition: background 0.15s ease, color 0.15s ease;

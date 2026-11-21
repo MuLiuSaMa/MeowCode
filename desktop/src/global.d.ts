@@ -1,32 +1,4 @@
 import type {
-  MailAccountSavePayload,
-  MailAccountSaveResult,
-  MailAccountTestPayload,
-  MailAccountTestResult,
-  MailAccountsResult,
-  MailAttachmentDownloadPayload,
-  MailAttachmentDownloadResult,
-  MailCounts,
-  MailDeletePayload,
-  MailDeleteResult,
-  MailDraft,
-  MailDraftSaveResult,
-  MailDraftsListResult,
-  MailEvent,
-  MailListPayload,
-  MailListResult,
-  MailMessagePayload,
-  MailMessageResult,
-  MailOutboxListResult,
-  MailOutboxResult,
-  MailPickAttachmentsResult,
-  MailSeenPayload,
-  MailSendPayload,
-  MailSendResult,
-  MailSyncPayload,
-  MailSyncResult,
-} from "./mail/types";
-import type {
   AppInfo,
   CommunitySubmitPayload,
   GithubAuthStatus,
@@ -41,6 +13,7 @@ import type {
   OauthPlatformStatus,
   OauthSaveAppPayload,
   OauthVerifyResult,
+  WallpaperSettings,
   Preferences,
   SetMcpCredentialsResult,
   Settings,
@@ -62,6 +35,12 @@ type AnnouncementPayload = {
   date: string;
   url: string;
   version: number;
+};
+
+/** 赞助者名单（主进程拉取 sponsors.json；只含昵称，不含金额） */
+type SponsorsPayload = {
+  updateTime: string;
+  names: string[];
 };
 
 /** 主进程从 ZCode 内置配置同步来的模型规则（精简后的 modelRules）。 */
@@ -91,6 +70,10 @@ declare global {
       readonly acrylic: boolean;
       /** 拖入/选中的本地文件 → 绝对路径（非 Electron 环境返回 null） */
       getFilePath(file: File): string | null;
+      /** 输入框「添加文件夹」：系统目录选择器，取消返回空数组 */
+      pickAttachmentFolders?(): Promise<string[]>;
+      /** preload 启动时同步读到的壁纸设置：设置 IPC 返回前先渲染背景 */
+      startupWallpaper: WallpaperSettings | null;
       getSettings(): Promise<Settings>;
       saveSettings(settings: Settings): Promise<Settings>;
       /** 服务商列表增删改：只写盘 + 热更新 server（不重启，不中断运行中的对话） */
@@ -165,8 +148,13 @@ declare global {
       getDataLocation(): Promise<{ path: string; defaultPath: string }>;
       /** 选择新的数据目录（原生文件夹选择框）；取消返回 null */
       pickDataDirectory(): Promise<string | null>;
-      /** 复制必要数据并重启应用；失败返回错误码 */
-      changeDataLocation(target: string): Promise<{
+      /** 选择工作树根目录（原生文件夹选择框）；取消返回 null */
+      pickWorktreeRoot(): Promise<string | null>;
+      /** 复制必要数据并重启应用；removeSource 时成功后删除旧位置的数据 */
+      changeDataLocation(
+        target: string,
+        options?: { removeSource?: boolean },
+      ): Promise<{
         ok: boolean;
         code?: "same_path" | "not_empty" | "invalid_target" | "copy_failed";
         message?: string;
@@ -219,6 +207,11 @@ declare global {
       dismissAnnouncement(id: string): Promise<null>;
       onAnnouncement(listener: (payload: AnnouncementPayload | null) => void): () => void;
 
+      /** 赞助者名单：当前缓存 / 主动刷新 / 更新广播 */
+      getSponsors(): Promise<SponsorsPayload | null>;
+      refreshSponsors(): Promise<SponsorsPayload | null>;
+      onSponsors(listener: (payload: SponsorsPayload | null) => void): () => void;
+
       /** 轻量偏好：主题 / 关闭方式（只写盘，不重启 agent server；读取走 getSettings） */
       savePreferences(prefs: Partial<Preferences>): Promise<Preferences>;
       /** 轻量偏好已保存的广播（悬浮岛据此跟随主题/语言；主窗口自身不依赖它） */
@@ -238,6 +231,21 @@ declare global {
       importFont(): Promise<{ ok: boolean; canceled?: boolean; family?: string }>;
       /** 删除已导入的自定义字体 */
       removeCustomFont(family: string): Promise<{ ok: boolean }>;
+      /** 导入一张或多张图片 / 视频到背景库；返回更新后的背景设置 */
+      importWallpapers(kind: "image" | "video"): Promise<{
+        ok: boolean;
+        canceled?: boolean;
+        error?: string;
+        imported?: number;
+        wallpaper?: WallpaperSettings | null;
+      }>;
+      /** 从背景库删掉一项（清记录 + 删文件） */
+      removeWallpaper(fileName: string): Promise<{ ok: boolean; wallpaper?: WallpaperSettings | null }>;
+      /** 保存视频壁纸首帧缩略图：下次启动先显示这一帧，避免开窗黑一段 */
+      saveWallpaperThumbnail(
+        fileName: string,
+        dataUrl: string,
+      ): Promise<{ ok: boolean; message?: string }>;
       /** 导出会话：主进程弹保存框 → 拉 server 内容 → 写盘；filePath 为最终落盘路径 */
       exportSession(payload: {
         filePath: string;
@@ -376,11 +384,6 @@ declare global {
       /** 用系统默认浏览器打开 http/https 链接 */
       openExternal(url: string): Promise<string | null>;
 
-      /** 内嵌浏览器（agent 驱动）：回报 webview 绑定，接收建页签/激活指令 */
-      bindBrowserTab(payload: { tabId: string; webContentsId: number }): Promise<{ ok: boolean; tabId?: string }>;
-      onEnsureBrowserTab(listener: (payload: { requestId: string; url: string }) => void): () => void;
-      onSelectBrowserTab(listener: (payload: { tabId: string }) => void): () => void;
-
       /** 自动化（定时任务）：列表 / 保存 / 删除 / 启停 / 立即运行 / 打开历史会话 */
       listAutomations(): Promise<Automation[]>;
       saveAutomation(input: AutomationInput): Promise<Automation>;
@@ -440,32 +443,6 @@ declare global {
       onEnsureJobTab(listener: (payload: { id: string; command: string }) => void): () => void;
       onTermData(listener: (payload: { id: string; data: string }) => void): () => void;
       onTermExit(listener: (payload: { id: string; code: number }) => void): () => void;
-
-      // ---- 邮箱聚合 ----
-      mailAccountsList(): Promise<MailAccountsResult>;
-      mailAccountSave(payload: MailAccountSavePayload): Promise<MailAccountSaveResult>;
-      mailAccountRemove(accountId: string): Promise<{ ok: boolean }>;
-      mailAccountTest(payload: MailAccountTestPayload): Promise<MailAccountTestResult>;
-      mailSync(payload: MailSyncPayload): Promise<MailSyncResult>;
-      mailCounts(accountId: string): Promise<MailCounts>;
-      mailList(payload: MailListPayload): Promise<MailListResult>;
-      mailMessage(payload: MailMessagePayload): Promise<MailMessageResult>;
-      mailSetSeen(payload: MailSeenPayload): Promise<{ ok: boolean; code?: string; detail?: string }>;
-      mailDelete(payload: MailDeletePayload): Promise<MailDeleteResult>;
-      mailDownloadAttachment(
-        payload: MailAttachmentDownloadPayload,
-      ): Promise<MailAttachmentDownloadResult>;
-      mailPickAttachments(): Promise<MailPickAttachmentsResult>;
-      mailDraftsList(accountId: string): Promise<MailDraftsListResult>;
-      mailDraftSave(payload: {
-        draft: Partial<MailDraft> & { accountId: string };
-      }): Promise<MailDraftSaveResult>;
-      mailDraftDelete(id: string): Promise<{ ok: boolean }>;
-      mailSend(payload: MailSendPayload): Promise<MailSendResult>;
-      mailOutboxList(accountId: string): Promise<MailOutboxListResult>;
-      mailOutboxRetry(id: string): Promise<MailOutboxResult>;
-      mailOutboxDelete(id: string): Promise<MailOutboxResult>;
-      onMailEvent(listener: (event: MailEvent) => void): () => void;
     };
   }
 }

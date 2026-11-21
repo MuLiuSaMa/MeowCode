@@ -28,3 +28,17 @@ export function formatCapacity(value?: number): string {
   if (value >= 1000 && value % 1000 === 0) return `${value / 1000}K`;
   return String(value);
 }
+
+/** 字节数 → 人类可读容量（1024 进制，小于 10 时保留一位小数）。 */
+export function formatBytes(size: number): string {
+  if (!Number.isFinite(size) || size <= 0) return "0 B";
+  const units = ["B", "KB", "MB", "GB"];
+  let value = size;
+  let index = 0;
+  while (value >= 1024 && index < units.length - 1) {
+    value /= 1024;
+    index += 1;
+  }
+  const text = index === 0 || value >= 10 ? Math.round(value).toString() : value.toFixed(1);
+  return `${text} ${units[index]}`;
+}

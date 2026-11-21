@@ -431,10 +431,15 @@ export function HomeTab({
         <div className="mc-rtp__stats">
           <div className="mc-stat mc-stat--hero">
             <span className="mc-stat__label">{t("home.field.cacheHitRate")}</span>
-            <div className="mc-stat__ring">
+            <div
+              className="mc-stat__ring"
+              title={metrics != null && !cacheReported ? t("home.notReported") : undefined}
+            >
               <HitRing value={metrics?.cacheHitRate ?? null} />
             </div>
-            <span className="mc-stat__hint">{t("home.sessionTotal")}</span>
+            <span className="mc-stat__hint">
+              {metrics != null && !cacheReported ? t("home.notReported") : t("home.sessionTotal")}
+            </span>
           </div>
 
           <div className="mc-stat mc-stat--tokens">

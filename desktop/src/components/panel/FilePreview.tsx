@@ -4,6 +4,7 @@ import { LuCopy } from "react-icons/lu";
 import { api } from "../../api";
 import { highlightToLines } from "../../code-highlight";
 import { formatNumber } from "../../i18n/format";
+import { FileIcon } from "../ui/FileIcon";
 import { MarkdownDocument } from "../ui/MarkdownDocument";
 import { OpenWithButton } from "./OpenWithButton";
 import "./FilePreview.css";
@@ -128,6 +129,7 @@ export function FilePreview({ path: relativePath, workspace }: { path: string; w
   return (
     <div className="mc-preview">
       <div className="mc-preview__head">
+        <FileIcon path={relativePath} size={13} />
         <span className="mc-preview__path mc-truncate" title={relativePath}>
           {relativePath}
         </span>

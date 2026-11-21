@@ -73,6 +73,24 @@
     "themeDesc": "« Système » suit en temps réel le réglage clair / sombre de Windows. Le changement s’applique immédiatement, sans redémarrage.",
     "paletteSection": "Palette de couleurs",
     "paletteDesc": "Choisissez la couleur d’accent et la teinte de l’interface. Clair et sombre sont réglés séparément et s’adaptent automatiquement au changement de mode.",
+    "backgroundSection": "Arrière-plan personnalisé",
+    "backgroundDesc": "Des images ou des vidéos comme arrière-plan derrière tous les panneaux. Importez-en plusieurs d'un coup, parcourez-les dans les onglets « Image / Vidéo » et cliquez pour changer ; le diaporama les fait défiler automatiquement. Les vidéos tournent sans son ; plus l'opacité des panneaux est basse, plus le fond transparaît, au détriment de la lisibilité.",
+    "backgroundEnable": "Arrière-plan personnalisé",
+    "backgroundImage": "Image",
+    "backgroundVideo": "Vidéo",
+    "backgroundAdd": "Importer…",
+    "backgroundRemove": "Retirer",
+    "backgroundEmpty": "Rien dans cet onglet — cliquez sur « Importer »",
+    "backgroundCount": "{{count}} éléments",
+    "backgroundCarousel": "Diaporama",
+    "backgroundSound": "Son de la vidéo",
+    "backgroundInterval": "Intervalle du diaporama",
+    "backgroundSeconds": "{{count}} s",
+    "backgroundMinutes": "{{count}} min",
+    "backgroundOpacity": "Opacité du fond",
+    "backgroundBrightness": "Luminosité",
+    "backgroundBlur": "Flou",
+    "backgroundPanel": "Opacité des panneaux",
     "palette": {
       "classic": "Classique",
       "lava": "Orange lave",
@@ -495,7 +513,7 @@
     "root": {
       "label": "Répertoire racine des arbres de travail",
       "hint": "Laisser vide pour utiliser l'emplacement par défaut. Les modifications prennent effet après redémarrage de l'application.",
-      "open": "Ouvrir le dossier"
+      "choose": "Choisir un dossier"
     },
     "fetch": {
       "label": "Toujours récupérer l'upstream avant de créer un arbre de travail",
@@ -574,6 +592,10 @@
     "clearFailed": "L'effacement a échoué"
   },
   "general": {
+    "viewTabs": {
+      "field": "Sélecteur de vue",
+      "desc": "Affiche le sélecteur flottant « Conversation / Trace » au-dessus de la zone principale. Masqué pour les conversations vides."
+    },
     "section": "Général",
     "desc": "Comportement courant. Les changements s'appliquent aussitôt.",
     "notify": {
@@ -593,9 +615,9 @@
       "desc": "En cas de délai d’attente, de limitation de débit ou d’erreur serveur du fournisseur principal, ce tour bascule automatiquement vers un autre fournisseur activé (2 sauts max).",
       "toggleFailed": "Échec de l’enregistrement du basculement du fournisseur"
     },
-    "mailAi": {
-      "field": "Modèle hors chat",
-      "follow": "Suivre le chat"
+    "defaultPermission": {
+      "field": "Mode d'autorisation par défaut",
+      "desc": "Autorisation des outils pour les nouvelles conversations. Les conversations existantes conservent leur propre choix."
     },
     "other": {
       "section": "Général"
@@ -723,7 +745,14 @@
       "title": "Discussions archivées",
       "hint": "Restaurer ou supprimer des discussions archivées individuellement.",
       "action": "Gérer"
-    }
+    },
+    "transfer": "Déplacer…",
+    "transferTitle": "Déplacer toutes les données ?",
+    "transferDesc": "Toutes les données de l'application seront copiées vers le nouveau dossier. Une fois la copie réussie, les données de l'ancien emplacement seront supprimées et l'application redémarrera.",
+    "transferConfirm": "Déplacer et redémarrer",
+    "transferBusy": "Déplacement…",
+    "transferRestarting": "Données déplacées — redémarrage de l'application…",
+    "transferFailed": "Impossible de déplacer les données."
   },
   "connections": {
     "section": "Connexions SSH",

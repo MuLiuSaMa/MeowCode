@@ -1,0 +1,72 @@
+/*
+ * 流式水墨晕染：墨滴落纸先化开、再收住 —— 新到的字从偏淡、重虚的状态在
+ * 460ms 内收干成清晰墨迹。流式每个增量都会重建尾部 DOM，Markdown.tsx 用
+ * 「每个字的出生时间 + 负 animation-delay」把进度接回去，所以既看得见晕染，
+ * 也不会因为动画重播而一直闪。已收干的字不再包这一层。
+ */
+.mc-ink {
+  animation: mc-ink-bleed 460ms var(--ease) both;
+}
+
+@keyframes mc-ink-bleed {
+  from {
+    opacity: 0.18;
+    filter: blur(4px);
+  }
+  to {
+    opacity: 1;
+    filter: blur(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mc-ink {
+    animation: none;
+  }
+}
+
+/*
+ * 聊天正文里的「文件元素」：模型把文件路径写进行内代码时，替换成
+ * 图标 + 文件名的小胶囊，点击在右侧面板打开（完整路径在 title 里）。
+ * 外观沿用行内代码的边框/底色，只多一个类型图标。
+ */
+.mc-mdfile {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  margin: 0 1px;
+  padding: 1px 6px 1px 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  corner-shape: superellipse(1.5);
+  background: var(--surface);
+  color: var(--fg-subtle);
+  font-family: var(--font-mono);
+  font-size: 0.92em;
+  line-height: 1.5;
+  text-align: left;
+  vertical-align: middle;
+}
+
+button.mc-mdfile {
+  cursor: pointer;
+}
+
+button.mc-mdfile:hover {
+  border-color: var(--border-hover);
+  background: var(--surface-hover);
+  color: var(--fg);
+}
+
+button.mc-mdfile:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.mc-mdfile__name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

@@ -19,7 +19,9 @@ import {
   getSessionChangesSummary,
   gitStatus,
   importFontFile,
+  importWallpapers as importWallpapersFromDisk,
   listCustomFonts,
+  removeWallpaper as removeWallpaperFile,
   openInstaller,
   onUpdateProgress,
   renameHarnessArchitecture,
@@ -66,12 +68,15 @@ import {
   type UiState,
   type UpdateInfo,
   type UsageSummary,
+  type WallpaperKind,
+  type WallpaperSettings,
   type WebOptionsPatch,
   type WorkflowRoadmap,
   shouldRecommendCompaction,
 } from "./api";
 import { setModelProfiles, type ModelProfile } from "./modelProfiles";
 import { planDocPathOf } from "./plan-doc";
+import { AppBackground } from "./components/AppBackground";
 import { PluginPage } from "./plugins/PluginPage";
 import { PluginPageNav } from "./plugins/PluginPageNav";
 import { PluginWrap } from "./plugins/PluginSlot";
@@ -90,6 +95,7 @@ import { RightPanel } from "./components/RightPanel";
 import { QuickOpenDialog } from "./components/panel/QuickOpenDialog";
 import { SessionSearchDialog } from "./components/SessionSearchDialog";
 import { MessageList } from "./components/MessageList";
+import { TrajectoryView } from "./components/panel/TrajectoryView";
 import { RewindDialog } from "./components/RewindDialog";
 import { Rail } from "./components/Rail";
 import { GitBody } from "./components/git/GitBody";
@@ -108,9 +114,6 @@ import { MarketplaceNav, type MarketTab } from "./components/marketplace/Marketp
 import { MarketplaceBody } from "./components/marketplace/MarketplaceBody";
 import { AutomationNav } from "./components/automation/AutomationNav";
 import { AutomationPage } from "./components/automation/AutomationPage";
-import { MailNav } from "./components/mail/MailNav";
-import { MailPage } from "./components/mail/MailPage";
-import { MailProvider } from "./components/mail/MailProvider";
 import { Onboarding } from "./components/onboarding/Onboarding";
 import { TitleBar } from "./components/TitleBar";
 import { Toast } from "./components/Toast";
@@ -130,7 +133,8 @@ import {
   markCompactionStarted,
   timelineFromHistory,
 } from "./timeline";
-import { applyTimelineEvent, finalizeStreamingAssistants } from "./timeline-events";
+import { applyTimelineEvent, applyTimelineEvents, finalizeStreamingAssistants } from "./timeline-events";
+import { collectTurnImages } from "./timeline-shots";
 import { baseName } from "./util";
 import { applyLanguage, getStoredPreference, syncLanguageFromSettings } from "./i18n";
 import {
@@ -148,7 +152,7 @@ import i18n from "./i18n";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 
-type CoreView = "chat" | "settings" | "plugins" | "architecture" | "git" | "automation" | "mail";
+type CoreView = "chat" | "settings" | "plugins" | "architecture" | "git" | "automation";
 /** 插件页面：plugin:<pluginId>:<pageId> */
 type View = CoreView | `plugin:${string}`;
 const REPO_URL = "https://github.com/MuLiuSaMa/MeowCode";
@@ -273,6 +277,9 @@ const EMPTY_TURN_METRICS: TurnMetrics = {
   cacheHitRate: null,
 };
 
+/** 流式增量合帧：首个增量立即上屏，之后最多 50ms 合并一次 setTimeline */
+const STREAM_DELTA_FLUSH_MS = 50;
+
 const EMPTY_CACHE_DIAGNOSTICS: CacheDiagnostics = {
   lastRound: null,
   lastState: null,
@@ -372,6 +379,11 @@ export default function App() {
   const [chatScrolledAway, setChatScrolledAway] = useState(false);
   /** 输入框悬浮胶囊：本会话已修改文件（只取统计，不含 diff；渲染前按 git status 过滤已提交） */
   const [sessionChanges, setSessionChanges] = useState<SessionChangeSummary[]>([]);
+  /**
+   * 会话切换 / 新建时递增：作为悬浮胶囊的 key，直接卸载重建。
+   * 否则旧胶囊会带着退场动画在空态（输入框居中）的位置淡出，看起来闪一下。
+   */
+  const [pillEpoch, setPillEpoch] = useState(0);
   /** 回合结束后预测的下一句：显示在对话末尾，点击填入输入框 */
   const [promptSuggestion, setPromptSuggestion] = useState<string | null>(null);
   const suggestionSeqRef = useRef(0);
@@ -532,6 +544,13 @@ export default function App() {
   /** 关闭确认弹窗（closeAction=ask 时主进程唤起） */
   const [closeAsk, setCloseAsk] = useState(false);
   const [timeline, setTimeline] = useState<TimelineItem[]>([]);
+  /** 主区域视图：对话 / 提示词轨迹（顶部 tab 切换，不占右侧面板） */
+  const [mainView, setMainView] = useState<"chat" | "prompt">("chat");
+  // 新会话没有消息时不显示切换胶囊；顺手把视图切回对话，
+  // 否则发第一条消息后会停在空的轨迹页。
+  useEffect(() => {
+    if (timeline.length === 0) setMainView("chat");
+  }, [timeline.length]);
   /** 当前生成轮的墙钟起点（毫秒）：消息流末尾的运行时间实时累加用；回合结束置 null（由 turn-info 定格） */
   const [turnStartedAt, setTurnStartedAt] = useState<number | null>(null);
   /** 模型正在流式生成工具调用参数（还没有 tool_started 事件） */
@@ -548,6 +567,10 @@ export default function App() {
     maxAttempts: number;
   } | null>(null);
   const reconnectClearTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** 流式增量缓冲：按帧合并后再进 timeline，避免每个 token 重渲染整棵消息列表 */
+  const pendingDeltaEvents = useRef<MeowEvent[]>([]);
+  const pendingDeltaSession = useRef<string | null>(null);
+  const deltaFlushTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   /** 每个会话的输入草稿；切走/重启后按会话恢复 */
   const [drafts, setDrafts] = useState<Record<string, { text: string; updatedAt: string }>>({});
   const activeDraftKey = session?.id ?? null;
@@ -785,16 +808,7 @@ export default function App() {
     await window.meow.termKill(termId).catch(() => undefined);
   }, []);
 
-  /** 浏览器 host 的建页签 / 激活指令：自动展开检查器并切到 agent 浏览器页签 */
   useEffect(() => {
-    const offEnsure = window.meow.onEnsureBrowserTab(({ url }) => {
-      sideTabsRef.current.ensureAgentBrowserTab(url);
-      setShowInspector(true);
-    });
-    const offSelect = window.meow.onSelectBrowserTab(({ tabId }) => {
-      sideTabsRef.current.activate(tabId);
-      setShowInspector(true);
-    });
     /** agent 启动后台任务：只在概览卡片里登记，不再自动开右侧终端页签 */
     const offJob = window.meow.onEnsureJobTab(({ id, command }) => {
       setJobTerminals((current) => {
@@ -827,8 +841,6 @@ export default function App() {
       })
       .catch(() => undefined);
     return () => {
-      offEnsure();
-      offSelect();
       offJob();
       offExit();
     };
@@ -1053,7 +1065,7 @@ export default function App() {
     if (!uiHydrated) return;
     const tabs: UiState["tabs"] = [];
     for (const tab of sideTabs.tabs) {
-      if (tab.id === "home" || tab.kind === "home" || (tab.kind === "browser" && tab.agent)) {
+      if (tab.id === "home" || tab.kind === "home") {
         continue;
       }
       if (tab.kind === "browser") {
@@ -1376,9 +1388,10 @@ export default function App() {
       silentUpdate: settings?.silentUpdate ?? true,
       notifications: settings?.notifications ?? true,
       announcements: settings?.announcements ?? true,
+      showViewTabs: settings?.showViewTabs ?? true,
       floatingIsland: settings?.floatingIsland ?? false,
       nextPromptSuggestions: settings?.nextPromptSuggestions ?? false,
-      mailAiProviderId: settings?.mailAiProviderId ?? "",
+      defaultPermissionMode: settings?.defaultPermissionMode ?? "auto",
       worktreeFetchUpstream: settings?.worktreeFetchUpstream ?? false,
       worktreeAutoCleanup: settings?.worktreeAutoCleanup ?? true,
       worktreeMaxKeep: settings?.worktreeMaxKeep ?? 15,
@@ -1402,9 +1415,10 @@ export default function App() {
       settings?.silentUpdate,
       settings?.notifications,
       settings?.announcements,
+      settings?.showViewTabs,
       settings?.floatingIsland,
       settings?.nextPromptSuggestions,
-      settings?.mailAiProviderId,
+      settings?.defaultPermissionMode,
       settings?.worktreeFetchUpstream,
       settings?.worktreeAutoCleanup,
       settings?.worktreeMaxKeep,
@@ -1419,6 +1433,7 @@ export default function App() {
       settings?.codeFontFamily,
     ],
   );
+  const defaultPermissionMode = preferences.defaultPermissionMode ?? "auto";
 
   const reloadSessions = useCallback(async () => {
     try {
@@ -2483,10 +2498,29 @@ export default function App() {
     [removeAgentApprovals, removeApproval, updateSubagentRuns, upsertApproval],
   );
 
+  /** 立即刷出缓冲的流式增量；切会话或收到非增量事件时同步调用，保证顺序 */
+  const flushPendingDeltasNow = useCallback(() => {
+    if (deltaFlushTimer.current !== null) {
+      clearTimeout(deltaFlushTimer.current);
+      deltaFlushTimer.current = null;
+    }
+    const pending = pendingDeltaEvents.current;
+    if (!pending.length) return;
+    pendingDeltaEvents.current = [];
+    const sessionId = pendingDeltaSession.current;
+    pendingDeltaSession.current = null;
+    if (!sessionId || sessionId !== mainSessionIdRef.current) return;
+    setTimeline((items) => applyTimelineEvents(items, pending, nextKey));
+  }, []);
+
   const handleEvent = useCallback((event: MeowEvent) => {
     if (event.agentId) {
       handleSubagentEvent(event);
       return;
+    }
+    // 非增量事件先刷缓冲：message_complete / tool_started / turn_complete 必须看到最新文本
+    if (event.type !== "thinking_delta" && event.type !== "assistant_delta") {
+      flushPendingDeltasNow();
     }
     // 源码管理里有动作（暂存/提交/切分支）：分支胶囊跟着刷新
     if (event.type === "git_changed") {
@@ -2633,6 +2667,38 @@ export default function App() {
       mainSessionIdRef.current &&
       event.sessionId !== mainSessionIdRef.current
     ) {
+      return;
+    }
+    if (event.type === "thinking_delta" || event.type === "assistant_delta") {
+      // 首字计时放在入队处：50ms 合帧不影响 TTFT 指标
+      const now = performance.now();
+      const start = turnStartAtRef.current;
+      if (start != null && turnFirstTokenAtRef.current == null) {
+        turnFirstTokenAtRef.current = now;
+        setTurnMetrics((prev) => ({
+          ...(prev ?? EMPTY_TURN_METRICS),
+          firstTokenMs: now - start,
+        }));
+      }
+      if (roundFirstTokenAtRef.current == null) roundFirstTokenAtRef.current = now;
+
+      if (
+        pendingDeltaSession.current &&
+        event.sessionId &&
+        pendingDeltaSession.current !== event.sessionId
+      ) {
+        pendingDeltaEvents.current = [];
+      }
+      pendingDeltaEvents.current.push(event);
+      pendingDeltaSession.current = event.sessionId ?? mainSessionIdRef.current;
+      if (deltaFlushTimer.current == null) {
+        // 首个增量立即上屏；随后窗口内的增量合并成一次 setTimeline
+        flushPendingDeltasNow();
+        deltaFlushTimer.current = setTimeout(() => {
+          deltaFlushTimer.current = null;
+          flushPendingDeltasNow();
+        }, STREAM_DELTA_FLUSH_MS);
+      }
       return;
     }
     if (event.type === "reconnect") {
@@ -2785,46 +2851,6 @@ export default function App() {
     setTimeline((items) => {
       const next = [...items];
       switch (event.type) {
-        case "thinking_delta": {
-          const last = next.at(-1);
-          if (last?.kind === "message" && last.role === "assistant" && last.streaming) {
-            next[next.length - 1] = {
-              ...last,
-              thinking: (last.thinking ?? "") + (event.delta ?? ""),
-            };
-          } else {
-            next.push({
-              kind: "message",
-              key: nextKey("thinking"),
-              role: "assistant",
-              content: "",
-              thinking: event.delta ?? "",
-              streaming: true,
-            });
-          }
-          break;
-        }
-        case "assistant_delta": {
-          const last = next.at(-1);
-          const thinkingMs = event.thinkingMs;
-          if (last?.kind === "message" && last.role === "assistant" && last.streaming) {
-            next[next.length - 1] = {
-              ...last,
-              content: last.content + (event.delta ?? ""),
-              ...(thinkingMs !== undefined ? { thinkingMs } : {}),
-            };
-          } else {
-            next.push({
-              kind: "message",
-              key: nextKey("assistant"),
-              role: "assistant",
-              content: event.delta ?? "",
-              ...(thinkingMs !== undefined ? { thinkingMs } : {}),
-              streaming: true,
-            });
-          }
-          break;
-        }
         case "thinking_complete": {
           // 只有工具调用的轮次没有正文增量：思考时长在消息落盘时补一个事件
           const last = next.at(-1);
@@ -2865,6 +2891,7 @@ export default function App() {
             callId: event.callId ?? "",
             tool: event.tool ?? "",
             input: event.input,
+            startedAt: Date.now(),
           });
           break;
         }
@@ -2872,12 +2899,19 @@ export default function App() {
           const index = next.findIndex((item) => item.kind === "tool" && item.callId === event.callId) as number;
           if (index >= 0) {
             const item = next[index] as TimelineTool;
+            const images = (event.images ?? [])
+              .filter((image) => image && typeof image.data === "string" && image.data)
+              .map((image) => {
+                const mimeType = image.mimeType || "image/png";
+                return { mimeType, dataUrl: `data:${mimeType};base64,${image.data}` };
+              });
             next[index] = {
-          ...item,
-          output: event.output ?? "",
-          truncated: event.truncated,
-          ...(event.spilled ? { spilled: event.spilled } : {}),
-        };
+              ...item,
+              output: event.output ?? "",
+              truncated: event.truncated,
+              ...(event.spilled ? { spilled: event.spilled } : {}),
+              ...(images.length ? { images } : {}),
+            };
           }
           break;
         }
@@ -2885,7 +2919,13 @@ export default function App() {
           const index = next.findIndex((item) => item.kind === "tool" && item.callId === event.callId) as number;
           if (index >= 0) {
             const item = next[index] as TimelineTool;
-            next[index] = { ...item, ok: event.ok };
+            next[index] = {
+              ...item,
+              ok: event.ok,
+              ...(item.startedAt !== undefined
+                ? { durationMs: Date.now() - item.startedAt }
+                : {}),
+            };
           }
           break;
         }
@@ -2923,6 +2963,20 @@ export default function App() {
             };
             if (existing >= 0) next[existing] = info;
             else next.push(info);
+          }
+          // 本回合工具产出的截图（浏览器截图等）：整组收到正文末尾，
+          // 工具组回合结束后默认折叠，留在组里用户就看不到了。
+          const turnImages = collectTurnImages(next);
+          if (turnImages.length) {
+            const key = event.turnId ? `turn-shots-${event.turnId}` : nextKey("turn-shots");
+            if (!next.some((item) => item.kind === "turn-shots" && item.key === key)) {
+              next.push({
+                kind: "turn-shots",
+                key,
+                ...(event.turnId ? { turnId: event.turnId } : {}),
+                images: turnImages,
+              });
+            }
           }
           break;
         }
@@ -2971,16 +3025,6 @@ export default function App() {
         }
         return items;
       });
-    }
-    // 流式增量：记录首字延迟（整回合一次）与当轮首字时间（结算速度用）
-    if (event.type === "thinking_delta" || event.type === "assistant_delta") {
-      const now = performance.now();
-      const start = turnStartAtRef.current;
-      if (start != null && turnFirstTokenAtRef.current == null) {
-        turnFirstTokenAtRef.current = now;
-        setTurnMetrics((prev) => ({ ...(prev ?? EMPTY_TURN_METRICS), firstTokenMs: now - start }));
-      }
-      if (roundFirstTokenAtRef.current == null) roundFirstTokenAtRef.current = now;
     }
     if (event.type === "turn_complete") {
       const start = turnStartAtRef.current;
@@ -3038,8 +3082,10 @@ export default function App() {
           };
         });
       }
-      // 响应统计：流中会多次上报同一轮，按 roundId 替换样本后派生累计
-      const totals = updateUsageSample(event);
+      // 响应统计：流中会多次上报同一轮，按 roundId 替换样本后派生累计。
+      // 只吃主对话：标题生成 / 联网搜索等旁路不混进会话 token 与缓存命中率
+      // （服务端 usageTotals 同样只统计 source === "chat"）。
+      const totals = isChat ? updateUsageSample(event) : usageTotalsRef.current;
       const now = performance.now();
       const roundStart = roundFirstTokenAtRef.current;
       const roundOutput = typeof event.outputTokens === "number" ? event.outputTokens : null;
@@ -3185,11 +3231,10 @@ export default function App() {
           ),
         );
       }
-      // 审阅自动展开：页签不存在才新建并激活；已存在只让 ReviewTab 自己刷新
+      // 审阅数据静默刷新；不再因为有文件改动就自动展开审阅页签
       if (!event.sessionId || event.sessionId === sessionIdRef.current) {
         scheduleSessionChangesRefresh();
       }
-      if (sideTabsRef.current.openIfAbsent("review")) setShowInspector(true);
     }
     if (event.type === "files_rewound") {
       // 仅回滚代码完成：审阅面板与 git 面板的数据源（磁盘）已变化，自动展开审阅
@@ -3252,6 +3297,7 @@ export default function App() {
     removeOwnApprovals,
     removeAgentApprovals,
     handleSubagentEvent,
+    flushPendingDeltasNow,
     mergeSubagentSummaries,
     hydrateSubagent,
   ]);
@@ -3333,7 +3379,10 @@ export default function App() {
         if (!active && loadedSettings.workspace) {
           await api("/session/new", {
             method: "POST",
-            body: JSON.stringify({ cwd: loadedSettings.workspace }),
+            body: JSON.stringify({
+              cwd: loadedSettings.workspace,
+              approvalMode: loadedSettings.defaultPermissionMode ?? "auto",
+            }),
           });
           await loadCurrentSession();
         }
@@ -3368,6 +3417,12 @@ export default function App() {
     });
     return () => {
       disposed = true;
+      if (deltaFlushTimer.current !== null) {
+        clearTimeout(deltaFlushTimer.current);
+        deltaFlushTimer.current = null;
+      }
+      pendingDeltaEvents.current = [];
+      pendingDeltaSession.current = null;
       unsubscribe();
       unsubscribeIslandPrompt();
       unsubscribeSettings();
@@ -3386,7 +3441,12 @@ export default function App() {
     setPlanDocPath(null);
     const fileAttachmentLines = chips
       .filter((chip) => chip.kind === "file")
-      .map((chip) => `【附件】${chip.name} · ${chip.path}`); // i18n-allow 消息首部协议标记，与 src/agent 解析约定一致
+      .map((chip) => {
+        // 尾斜杠只作为协议里的「文件夹」标记，界面展示不带它
+        const name =
+          chip.isDirectory && !chip.name.endsWith("/") ? `${chip.name}/` : chip.name;
+        return `【附件】${name} · ${chip.path}`; // i18n-allow 消息首部协议标记，与 src/agent 解析约定一致
+      });
     // 拖入/选择的图片带原始路径：同样给模型一行路径引用；剪贴板图片没有来源路径
     const imageAttachmentLines = (images ?? [])
       .filter((image) => image.path?.trim())
@@ -3485,6 +3545,7 @@ export default function App() {
           method: "POST",
           body: JSON.stringify({
             cwd: projectCwd,
+            approvalMode: defaultPermissionMode,
             worktree: true,
             worktreeSettings: {
               fetchUpstream: settings?.worktreeFetchUpstream ?? false,
@@ -3618,6 +3679,7 @@ export default function App() {
     worktreeIntent,
     worktreeBusy,
     projectCwd,
+    defaultPermissionMode,
     loadCurrentSession,
     refreshContextUsage,
     showToast,
@@ -3727,13 +3789,11 @@ export default function App() {
     if (nextAnnouncements !== undefined) {
       setSettings((prev) => (prev ? { ...prev, announcements: nextAnnouncements } : prev));
     }
-    // 邮件 AI 模型：下拉立即显示新选择，不等 IPC 回执
-    const nextMailAiProviderId = prefs.mailAiProviderId;
-    const previousMailAiProviderId = settings?.mailAiProviderId ?? "";
-    if (nextMailAiProviderId !== undefined) {
-      setSettings((prev) =>
-        prev ? { ...prev, mailAiProviderId: nextMailAiProviderId } : prev,
-      );
+    // 视图切换胶囊同理：点一下立刻隐藏/显示，落盘失败再回滚
+    const nextShowViewTabs = prefs.showViewTabs;
+    const previousShowViewTabs = settings?.showViewTabs ?? true;
+    if (nextShowViewTabs !== undefined) {
+      setSettings((prev) => (prev ? { ...prev, showViewTabs: nextShowViewTabs } : prev));
     }
     // 网页搜索/抓取：下拉/开关立即反映，落盘失败再回滚
     const nextWebSearchProvider = prefs.webSearchProvider;
@@ -3770,6 +3830,10 @@ export default function App() {
               progressPillDismiss: saved?.progressPillDismiss ?? prev.progressPillDismiss,
               onboardingCompleted: saved?.onboardingCompleted ?? prev.onboardingCompleted,
               silentUpdate: typeof saved?.silentUpdate === "boolean" ? saved.silentUpdate : prev.silentUpdate,
+              showViewTabs:
+                typeof saved?.showViewTabs === "boolean"
+                  ? saved.showViewTabs
+                  : prev.showViewTabs,
               notifications:
                 typeof saved?.notifications === "boolean"
                   ? saved.notifications
@@ -3780,10 +3844,8 @@ export default function App() {
                 typeof saved?.nextPromptSuggestions === "boolean"
                   ? saved.nextPromptSuggestions
                   : prev.nextPromptSuggestions,
-              mailAiProviderId:
-                typeof saved?.mailAiProviderId === "string"
-                  ? saved.mailAiProviderId
-                  : nextMailAiProviderId ?? prev.mailAiProviderId,
+              defaultPermissionMode:
+                saved?.defaultPermissionMode ?? prev.defaultPermissionMode,
               worktreeFetchUpstream:
                 typeof saved?.worktreeFetchUpstream === "boolean"
                   ? saved.worktreeFetchUpstream
@@ -3893,10 +3955,8 @@ export default function App() {
       if (nextAnnouncements !== undefined) {
         setSettings((prev) => (prev ? { ...prev, announcements: previousAnnouncements } : prev));
       }
-      if (nextMailAiProviderId !== undefined) {
-        setSettings((prev) =>
-          prev ? { ...prev, mailAiProviderId: previousMailAiProviderId } : prev,
-        );
+      if (nextShowViewTabs !== undefined) {
+        setSettings((prev) => (prev ? { ...prev, showViewTabs: previousShowViewTabs } : prev));
       }
       if (nextWebSearchProvider !== undefined) {
         setSettings((prev) =>
@@ -3922,8 +3982,8 @@ export default function App() {
     settings?.speechStyle,
     settings?.notifications,
     settings?.announcements,
+    settings?.showViewTabs,
     settings?.palette,
-    settings?.mailAiProviderId,
     settings?.webSearchProvider,
     settings?.webFetchProvider,
     settings?.webSearchSendOriginalQuestion,
@@ -4004,6 +4064,60 @@ export default function App() {
     [reloadCustomFonts],
   );
 
+  // ---- 自定义背景（外观）：文件由主进程拷到 userData，调节参数立即生效、落盘节流 ----
+
+  const wallpaper = settings
+    ? (settings.wallpaper ?? null)
+    : (window.meow.startupWallpaper ?? null);
+  /** 滑杆连发时用的是最新值，不依赖闭包里的 settings */
+  const wallpaperRef = useRef<WallpaperSettings | null>(null);
+  wallpaperRef.current = wallpaper;
+  const wallpaperSaveTimer = useRef<number | null>(null);
+  const cancelWallpaperSave = () => {
+    if (wallpaperSaveTimer.current === null) return;
+    window.clearTimeout(wallpaperSaveTimer.current);
+    wallpaperSaveTimer.current = null;
+  };
+
+  const importWallpapers = useCallback(async (kind: WallpaperKind): Promise<void> => {
+    try {
+      // 导入会改写背景库，先掐掉待落盘的调节参数，别用旧快照把刚导入的写回去
+      cancelWallpaperSave();
+      const result = await importWallpapersFromDisk(kind);
+      if (!result.ok) return;
+      setSettings((prev) => (prev ? { ...prev, wallpaper: result.wallpaper ?? null } : prev));
+    } catch {
+      // 取消选择 / 拷贝失败：保持原样
+    }
+  }, []);
+
+  const removeWallpaper = useCallback(async (fileName: string): Promise<void> => {
+    try {
+      cancelWallpaperSave();
+      const result = await removeWallpaperFile(fileName);
+      if (!result.ok) return;
+      setSettings((prev) => (prev ? { ...prev, wallpaper: result.wallpaper ?? null } : prev));
+    } catch {
+      // 保持原样
+    }
+  }, []);
+
+  const updateWallpaper = useCallback(
+    (patch: Partial<WallpaperSettings>): void => {
+      const current = wallpaperRef.current;
+      if (!current) return;
+      const next = { ...current, ...patch };
+      setSettings((prev) => (prev ? { ...prev, wallpaper: next } : prev));
+      // 拖滑杆时每帧都写盘太重：停手 200ms 才落一次
+      cancelWallpaperSave();
+      wallpaperSaveTimer.current = window.setTimeout(() => {
+        wallpaperSaveTimer.current = null;
+        void savePreferences({ wallpaper: next });
+      }, 200);
+    },
+    [savePreferences],
+  );
+
   // ---- 侧栏项目（工作区）操作 ----
 
   /** 编辑显示名（只改侧栏标签；空名恢复文件夹名） */
@@ -4078,7 +4192,7 @@ export default function App() {
         setLastTurn(null);
         const created = await api<{ id?: string }>("/session/new", {
           method: "POST",
-          body: JSON.stringify({ cwd: target }),
+          body: JSON.stringify({ cwd: target, approvalMode: defaultPermissionMode }),
         });
         // 立即切换事件过滤目标：否则新会话正在流式时，开头事件会被当成别的会话丢掉
         if (created?.id) mainSessionIdRef.current = created.id;
@@ -4090,6 +4204,11 @@ export default function App() {
         setTimeline([]);
         setSessionTitle(null); // 新会话还没有标题
         setPlan(null);
+        // 新会话 id 要等 loadCurrentSession 才到：先清变更统计，否则旧会话的
+        // 「已修改文件」胶囊会在空态输入框上方闪一下；正在进行中的旧请求一并作废
+        changesRequestSeq.current += 1;
+        setSessionChanges([]);
+        setPillEpoch((value) => value + 1);
         setContextWarningDismissed(false);
         setView("chat");
         await loadCurrentSession();
@@ -4104,6 +4223,7 @@ export default function App() {
     [
       settings?.workspace,
       settings?.removedProjects,
+      defaultPermissionMode,
       savePreferences,
       loadCurrentSession,
       refreshContextUsage,
@@ -4129,6 +4249,10 @@ export default function App() {
         setTimeline([]);
         setSessionTitle(null); // 切换后由 loadCurrentSession 恢复
         setPlan(null);
+        // 同新建会话：目标会话 id 到达前旧会话的变更胶囊会残留（切到空会话时闪在中间）
+        changesRequestSeq.current += 1;
+        setSessionChanges([]);
+        setPillEpoch((value) => value + 1);
         setContextWarningDismissed(false);
         await loadCurrentSession();
         void refreshContextUsage();
@@ -4362,6 +4486,88 @@ export default function App() {
       reloadSessions,
       archiveSession,
       renameSessionByPath,
+    ],
+  );
+
+  /**
+   * 就地编辑历史用户消息并从该点重跑。
+   *
+   * 截断复用「恢复检查点」：纯对话派生，不要求文件快照，也不碰工作区文件。
+   * 两个关键点：
+   *  - 本地先做乐观截断再请求，失败可原样还原。不能 setTimeline([]) 后重新
+   *    加载 —— 那样会把前面的上下文一起抹掉，观感像新开了一个对话。
+   *  - 重跑显式带 sessionId，且 mainSessionIdRef 提前同步：setSession 是异步的，
+   *    读 state 会拿到旧会话，新会话的流式事件也会被 sessionId 过滤丢掉。
+   */
+  const editUserMessage = useCallback(
+    async (checkpointId: string, content: string) => {
+      const source = session;
+      const sourceTitle = sessionTitle?.trim() || null;
+      const previous = timeline;
+      const targetIndex = previous.findIndex(
+        (item) =>
+          item.kind === "message" && item.role === "user" && item.checkpointId === checkpointId,
+      );
+      // 乐观截断：保留被编辑消息之前的所有内容，只替换这一条与它之后的部分
+      if (targetIndex >= 0) {
+        setTimeline([
+          ...previous.slice(0, targetIndex),
+          { kind: "message", key: nextKey("user"), role: "user", content },
+        ]);
+      }
+      setSessionLoading(true);
+      setSessionSwitching(true);
+      try {
+        clearQueuedPrompts();
+        setRecoveredPrompts([]);
+        setLastTurn(null);
+        const restored = await api<{ id?: string; filePath?: string }>(
+          "/session/checkpoints/restore",
+          {
+            method: "POST",
+            body: JSON.stringify({ checkpointId, preserveCheckpoints: true }),
+          },
+        );
+        if (!restored?.id) throw new Error("Edit failed: no derived session id returned.");
+        const nextId = restored.id;
+        // 先同步 id，再做任何 await：流式事件可能随时到达
+        mainSessionIdRef.current = nextId;
+        // 只换会话身份，cwd / 模式 / 标题沿用，避免整页重建
+        setSession((prev) =>
+          prev ? { ...prev, id: nextId, filePath: restored.filePath ?? prev.filePath } : prev,
+        );
+        if (nextId !== source?.id && source?.filePath) archiveSession(source.filePath);
+        if (nextId !== source?.id && sourceTitle && restored.filePath) {
+          // restore 会给派生会话加「（检查点）」后缀，改回原标题
+          void renameSessionByPath(restored.filePath, sourceTitle).catch(() => undefined);
+        }
+        await api("/session/prompt", {
+          method: "POST",
+          body: JSON.stringify({ message: content, sessionId: nextId }),
+        });
+        addRunningSession(nextId);
+        void refreshContextUsage();
+        void reloadSessions();
+      } catch (err) {
+        // 请求没成功：时间线还原成编辑前，正文随错误提示交还给用户
+        setTimeline(previous);
+        pushError(err instanceof Error ? err.message : String(err));
+      } finally {
+        setSessionLoading(false);
+        setSessionSwitching(false);
+      }
+    },
+    [
+      session,
+      sessionTitle,
+      timeline,
+      refreshContextUsage,
+      pushError,
+      clearQueuedPrompts,
+      reloadSessions,
+      archiveSession,
+      renameSessionByPath,
+      addRunningSession,
     ],
   );
 
@@ -5268,8 +5474,8 @@ export default function App() {
           mode: chatMode,
         }}
       >
-      <MailProvider onToast={showToast} aiProviderId={preferences.mailAiProviderId ?? ""}>
       <AppShell
+        background={<AppBackground wallpaper={wallpaper} />}
         view={view}
         announcements={settings?.announcements ?? true}
         listWidth={listWidthLive.current}
@@ -5292,7 +5498,6 @@ export default function App() {
             onHome={() => setView("chat")}
             onOpenView={(next) => setView(next as View)}
             onOpenGit={() => setView("git")}
-            onOpenMail={() => setView("mail")}
             onOpenPlugins={() => setView("plugins")}
             onOpenSettings={() => setView("settings")}
             onOpenArchitecture={() => setView("architecture")}
@@ -5340,8 +5545,6 @@ export default function App() {
             />
           ) : view === "automation" ? (
             <AutomationNav />
-          ) : view === "mail" ? (
-            <MailNav />
           ) : (
             <ConversationPanel
               sessions={sessions}
@@ -5467,6 +5670,29 @@ export default function App() {
               />
             }
           />
+          {/* 空对话不显示：新会话还没发消息时，这个胶囊只会挡住标题 */}
+          {settings?.showViewTabs !== false && timeline.length > 0 ? (
+            <div className="mc-viewtabs" role="tablist" aria-label={i18n.t("shell:view.label")}>
+              <button
+                type="button"
+                role="tab"
+                className="mc-viewtabs__tab"
+                aria-selected={mainView === "chat"}
+                onClick={() => setMainView("chat")}
+              >
+                {i18n.t("shell:view.chat")}
+              </button>
+              <button
+                type="button"
+                role="tab"
+                className="mc-viewtabs__tab"
+                aria-selected={mainView === "prompt"}
+                onClick={() => setMainView("prompt")}
+              >
+                {i18n.t("shell:view.trajectory")}
+              </button>
+            </div>
+          ) : null}
           <ContextWarningBanner
             usage={contextUsage}
             streaming={streaming}
@@ -5511,6 +5737,7 @@ export default function App() {
           <div
             className="mc-chatflow"
             data-empty={emptyConversation ? "true" : undefined}
+            data-hidden={mainView !== "chat" ? "true" : undefined}
             ref={chatflowRef}
           >
             <MessageList
@@ -5533,6 +5760,7 @@ export default function App() {
               }}
               onRestoreCheckpoint={(checkpointId) => void restoreCheckpoint(checkpointId)}
               onRewindCheckpoint={(checkpointId, mode) => void rewindCheckpoint(checkpointId, mode)}
+              onEditUserMessage={(checkpointId, content) => void editUserMessage(checkpointId, content)}
               onOpenReview={() => {
                 sideTabs.open({ kind: "review" });
                 setShowInspector(true);
@@ -5579,9 +5807,16 @@ export default function App() {
               onAttachSkill={(chip) => addChip({ kind: "skill", ...chip })}
               onAttachPlugin={(chip) => addChip({ kind: "plugin", ...chip })}
               onAttachCommand={(chip) => addChip({ kind: "command", ...chip })}
-              onAttachFile={({ name, path }) =>
-                addChip({ kind: "file", id: path, name, path })
+              onAttachFile={({ name, path, isDirectory }) =>
+                addChip({
+                  kind: "file",
+                  id: path,
+                  name,
+                  path,
+                  ...(isDirectory ? { isDirectory: true } : {}),
+                })
               }
+              windowDrop
               askCard={pendingAsk}
               onAnswerAsk={answerAsk}
               onSend={(images, overrideText) => void sendPrompt(overrideText, undefined, images)}
@@ -5633,7 +5868,10 @@ export default function App() {
               onConfirmPlan={() => void confirmPlan()}
               onDismissPlan={dismissPlan}
               contextUsage={contextUsage}
-              showContext={hasSentMessage}
+              showContext={
+                // 切会话加载期间时间线是空的：照旧显示占用位，别让项目栏在底部输入框上闪一下
+                hasSentMessage || sessionLoading
+              }
               compacting={compacting}
               cacheDiagnostics={cacheDiagnostics}
               onManualCompact={manualCompact}
@@ -5645,11 +5883,17 @@ export default function App() {
               plan={plan}
               changes={uncommittedSessionChanges}
               pillDismissed={progressPillDismissed}
+              pillEpoch={pillEpoch}
               showJumpBottom={chatScrolledAway}
               onJumpBottom={() => chatScrollApiRef.current?.scrollToBottom()}
             />
           </div>
           </PluginWrap>
+          {mainView === "prompt" ? (
+            <div className="mc-promptview">
+              <TrajectoryView items={timeline} sessionId={session?.id} />
+            </div>
+          ) : null}
         </div>
 
         {view === "git" ? (
@@ -5697,8 +5941,6 @@ export default function App() {
             appInfo={appInfo}
             providers={providers}
             activeProviderId={activeProviderId}
-            mailAiProviderId={preferences.mailAiProviderId ?? ""}
-            onChangeMailAiProvider={(id) => void savePreferences({ mailAiProviderId: id })}
             effort={activeProvider?.reasoningEffort ?? ""}
             turnRunning={runningSessionIds.length > 0}
             sessions={sessions}
@@ -5733,6 +5975,10 @@ export default function App() {
             onCodeFontChange={(value) => void savePreferences({ codeFontFamily: value })}
             onImportFont={importFont}
             onRemoveFont={removeCustomFont}
+            wallpaper={wallpaper}
+            onImportWallpaper={(kind: WallpaperKind) => void importWallpapers(kind)}
+            onRemoveWallpaper={(fileName: string) => void removeWallpaper(fileName)}
+            onWallpaperChange={updateWallpaper}
             onToast={showToast}
             onReloadSessions={() => void reloadSessions()}
           />
@@ -5785,9 +6031,7 @@ export default function App() {
           <AutomationPage workspace={settings?.workspace ?? null} projects={projects} />
         ) : null}
 
-        {view === "mail" ? <MailPage /> : null}
       </AppShell>
-      </MailProvider>
       </PluginRuntimeProvider>
 
       {starPromptOpen ? (

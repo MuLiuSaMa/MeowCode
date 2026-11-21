@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { LuChevronDown, LuFilePen } from "react-icons/lu";
 import type { TimelineTurnChanges } from "../api";
+import { FileIcon } from "./ui/FileIcon";
 import "./TurnChangesCard.css";
 
 /** 默认收起时展示的文件数（对齐 Claude Code 的三行） */
@@ -78,8 +79,11 @@ export function TurnChangesCard({
       <ul className="mc-turnchanges__list">
         {visible.map((file) => (
           <li className="mc-turnchanges__row" key={file.path}>
-            <span className="mc-turnchanges__path" title={file.path}>
-              {file.path}
+            <span className="mc-turnchanges__file">
+              <FileIcon path={file.path} size={14} />
+              <span className="mc-turnchanges__path" title={file.path}>
+                {file.path}
+              </span>
             </span>
             <span className="mc-turnchanges__delta">
               {file.added > 0 ? (

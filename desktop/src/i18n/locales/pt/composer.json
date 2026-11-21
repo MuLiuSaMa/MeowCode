@@ -147,6 +147,7 @@
     "moreTitle": "Adicionar anexos / trocar de modo",
     "plusMenuAria": "Adicionar, referenciar e comandos",
     "upload": "Enviar anexo",
+    "addFolder": "Adicionar pasta",
     "plugins": "Plugins",
     "pluginsCount": "Plugins ({{count}})",
     "skills": "Habilidades",
@@ -219,6 +220,9 @@
     "xhigh": "Muito alto",
     "max": "Máximo",
     "ultra": "Ultra"
+  },
+  "drop": {
+    "hint": "Solte para adicionar arquivos ou pastas"
   },
   "jumpToBottom": "Voltar ao fim"
 }

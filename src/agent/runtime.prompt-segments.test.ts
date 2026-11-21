@@ -122,3 +122,36 @@ describe("prompt segments", () => {
     expect(texts.some((text) => text.includes("Custom workflow rules"))).toBe(false);
   });
 });
+
+describe("agent segments (behavior + environment)", () => {
+  it("主 Agent 在 instructions 之后拿到行为段与环境段", async () => {
+    const workspace = await workspaceWithHarness("Custom workflow rules for this repo.");
+    const runtime = await createRuntime(workspace);
+    const texts = await systemTexts(runtime);
+
+    const behaviorIndex = texts.findIndex((text) => text.startsWith("Working rules beyond the baseline:"));
+    const envIndex = texts.findIndex((text) => text.startsWith("Environment: "));
+    expect(behaviorIndex).toBeGreaterThan(0);
+    expect(envIndex).toBe(behaviorIndex + 1);
+    expect(texts[envIndex]).toContain(workspace);
+    expect(texts[envIndex]).toContain("approval full access");
+  });
+
+  it("显式 systemPrompt 的子 Agent 不叠加通用段", async () => {
+    const workspace = await workspaceWithHarness("Custom workflow rules for this repo.");
+    const sessionsDir = await mkdtemp(path.join(tmpdir(), "meowcode-segments-child-"));
+    const runtime = new AgentRuntime({
+      providers: [{ id: "p", name: "P", baseUrl: "http://localhost", model: "m" }],
+      sessionsDir,
+      homeDir: sessionsDir,
+      workspace,
+      systemPrompt: "Child agent contract.",
+    });
+    await runtime.newSession(workspace);
+    runtime.setApprovalMode("full");
+    const texts = await systemTexts(runtime);
+
+    expect(texts.some((text) => text.startsWith("Working rules beyond the baseline:"))).toBe(false);
+    expect(texts.some((text) => text.startsWith("Environment: "))).toBe(false);
+  });
+});

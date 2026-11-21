@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type RefObject } from "react";
+import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import { LuCheck, LuChevronRight, LuSettings2 } from "react-icons/lu";
 import { findTemplate } from "../data/providerCatalog";
@@ -138,7 +139,7 @@ export function ModelPopover({
     };
   }, [onClose, anchorRef]);
 
-  return (
+  return createPortal(
     <div className="mc-popover" style={fixedStyle} ref={ref} role="dialog" aria-label={t("modelPopover.aria")}>
       {showList ? (
         <>
@@ -272,6 +273,7 @@ export function ModelPopover({
           </div>
         </>
       )}
-    </div>
+    </div>,
+    document.body,
   );
 }

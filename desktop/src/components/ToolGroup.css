@@ -37,7 +37,6 @@
   flex: none;
   border: 1px solid var(--border);
   border-radius: var(--radius-xs);
-  corner-shape: superellipse(1.5);
   background: var(--surface);
   color: var(--fg-subtle);
   transition:
@@ -63,6 +62,15 @@
   grid-template-rows: 0fr;
   transition: grid-template-rows var(--dur) var(--ease);
   width: 100%;
+}
+/* 大组直接切换高度：几十行同时挂载时逐帧动画会加重卡顿 */
+.mc-toolgroup__collapse[data-instant="true"] {
+  transition: none;
+}
+/* 大组展开过一次后保留在 DOM：收起时直接 display:none，不参与布局与绘制，
+   展开时只做一次布局，避免每次重新挂载几十行 */
+.mc-toolgroup__collapse[data-instant="true"][data-open="false"] > .mc-toolgroup__inner {
+  display: none;
 }
 .mc-toolgroup__collapse[data-open="true"] {
   grid-template-rows: 1fr;

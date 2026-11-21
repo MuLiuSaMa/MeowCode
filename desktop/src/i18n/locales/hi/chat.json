@@ -113,6 +113,9 @@
     "delete": "हटाएँ"
   },
   "checkpoint": {
+    "edit": "संपादित करें और फिर भेजें",
+    "editSend": "फिर भेजें",
+    "editHint": "भेजने के लिए ⌘/Ctrl + Enter, रद्द करने के लिए Esc",
     "auto": "स्वचालित चेकपॉइंट",
     "manual": "चेकपॉइंट",
     "restore": "पुनर्स्थापित करें",
@@ -233,6 +236,7 @@
     "browserScreenshot": "पेज स्क्रीनशॉट",
     "browserBack": "पीछे जाएँ",
     "browserReload": "पेज पुनः लोड करें",
+    "browserPreview": "पेज पूर्वावलोकन",
     "openInPanel": "फ़ाइल को साइड पैनल में देखने के लिए क्लिक करें",
     "computerScreenshot": "स्क्रीनशॉट लें",
     "computerClick": "क्लिक करें",

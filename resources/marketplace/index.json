@@ -2631,7 +2631,7 @@
       "version": "1.0.0",
       "entry": "plugins/feishu.ts",
       "entryKind": "file",
-      "icon": "icons/mcp-feishu.png",
+      "icon": "icons/mcp-feishu.webp",
       "usage": "包含技能：`feishu-im`（搜群/读消息）、`feishu-doc`（云文档搜索/创建/更新）、`feishu-base` / `feishu-calendar` / `feishu-task`（官方 OAuth 版暂不支持，需自建应用 lark-mcp）。\n\n对话中输入对应命令（如 `/feishu-doc 帮我建一篇周报文档`），插件会把技能全文随需求一起发给模型，引导它调用飞书 MCP 完成操作。\n\n前置条件：安装市场里的「飞书」MCP 并点「授权」登录飞书账号。"
     },
     {
@@ -2806,7 +2806,7 @@
       "version": "1.0.12",
       "entry": "mcp/mobile-mcp.json",
       "entryKind": "file",
-      "icon": "icons/mcp-mobile-mcp.png"
+      "icon": "icons/mcp-mobile-mcp.webp"
     },
     {
       "id": "undermind",
@@ -2826,7 +2826,7 @@
       "version": "1.0.0",
       "entry": "mcp/undermind.json",
       "entryKind": "file",
-      "icon": "icons/mcp-undermind.png",
+      "icon": "icons/mcp-undermind.webp",
       "requiresEnv": [
         "MEOWCODE_UNDERMIND_TOKEN"
       ]
@@ -2847,7 +2847,7 @@
       "version": "1.0.0",
       "entry": "mcp/feishu.json",
       "entryKind": "file",
-      "icon": "icons/mcp-feishu.png"
+      "icon": "icons/mcp-feishu.webp"
     },
     {
       "id": "my-coffee",
@@ -2865,7 +2865,7 @@
       "version": "1.0.0",
       "entry": "mcp/my-coffee.json",
       "entryKind": "file",
-      "icon": "icons/mcp-luckin-coffee.png",
+      "icon": "icons/mcp-luckin-coffee.webp",
       "requiresEnv": [
         "LUCKIN_MCP_TOKEN"
       ]

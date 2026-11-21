@@ -7,7 +7,6 @@ import { readFile, readdir, rm, stat, unlink, writeFile, cp } from "node:fs/prom
 import { randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import { AgentRuntime, isApprovalMode, isSessionMode } from "../agent/runtime.js";
 import { listProviderModels, resolveProviderModelsOptions } from "../agent/models-list.js";
-import { composeMail, type MailComposeContext } from "../agent/mail-compose.js";
 import { MAX_POLISH_INPUT_CHARS } from "../agent/prompt-polish.js";
 import { AGENT_ROLE_NAMES, BUILTIN_AGENTS } from "../agent/agent-definition.js";
 import {
@@ -204,7 +203,7 @@ import type {
   TurnStatus,
 } from "../agent/types.js";
 
-const APP_VERSION = "1.4.1";
+const APP_VERSION = "1.5.0";
 const DEFAULT_SESSIONS_DIR = path.join(os.homedir(), "AppData", "Roaming", "MeowCode", "agent", "sessions");
 
 /** 插件命令 chip 的展示标记：首行是名称/插件/命令，空行后才是实际 `/command` 文本 */
@@ -1387,6 +1386,33 @@ export async function startServer(options: { port?: number; token?: string } = {
         return;
       }
 
+      // 提示词轨迹：每次请求的 system 分段与工具目录，供桌面端「提示词」页签查看。
+      // 只读内存环形缓冲（不落盘）：重启即失，避免把工作区规则持久化到磁盘。
+      if (pathname === "/diagnostics/prompt" && request.method === "GET") {
+        const target = resolveRuntime(url.searchParams.get("session") ?? undefined) ?? runtime;
+        const raw = Number(url.searchParams.get("limit"));
+        const limit = Number.isFinite(raw) ? Math.min(50, Math.max(1, Math.floor(raw))) : 20;
+        sendJson(response, 200, {
+          traceId: target.getTraceId(),
+          promptVersion: target.promptVersion,
+          entries: target.getPromptTrajectory(limit),
+        });
+        return;
+      }
+
+      // 工具目录：轨迹视图展示每个工具的描述与参数 Schema（只读，不缺省暴露给模型）
+      if (pathname === "/session/tools" && request.method === "GET") {
+        const target = resolveRuntime(url.searchParams.get("session") ?? undefined) ?? runtime;
+        sendJson(response, 200, {
+          tools: target.getToolDefinitions().map((tool) => ({
+            name: tool.function.name,
+            description: tool.function.description ?? "",
+            parameters: tool.function.parameters ?? {},
+          })),
+        });
+        return;
+      }
+
       // 一键审查：把未提交改动交给 reviewer 子 Agent，返回 findings 文本
       if (pathname === "/review/start" && request.method === "POST") {
         const body = await readJsonBody<{ sessionId?: string }>(request);
@@ -2247,7 +2273,12 @@ export async function startServer(options: { port?: number; token?: string } = {
       }
 
       if (pathname === "/session/checkpoints/restore" && request.method === "POST") {
-        const body = await readJsonBody<{ filePath?: string; checkpointId?: string }>(request);
+        const body = await readJsonBody<{
+          filePath?: string;
+          checkpointId?: string;
+          /** 编辑重跑：保留截断点之前的检查点，前面每条消息仍可再编辑/回滚 */
+          preserveCheckpoints?: boolean;
+        }>(request);
         const checkpointId =
           typeof body.checkpointId === "string" ? body.checkpointId.trim() : "";
         if (!checkpointId) {
@@ -2291,6 +2322,7 @@ export async function startServer(options: { port?: number; token?: string } = {
             source,
             checkpointId,
             sessionsDir,
+            ...(body.preserveCheckpoints === true ? { preserveCheckpoints: true } : {}),
           });
 
           const next = createFreshRuntime();
@@ -2827,12 +2859,22 @@ export async function startServer(options: { port?: number; token?: string } = {
         const body = await readJsonBody<{
           cwd?: string;
           worktree?: boolean;
+          approvalMode?: string;
           worktreeSettings?: {
             fetchUpstream?: boolean;
             autoCleanup?: boolean;
             maxKeep?: number;
           };
         }>(request);
+        if (body.approvalMode !== undefined && !isApprovalMode(body.approvalMode)) {
+          sendError(
+            response,
+            400,
+            "invalid_request",
+            `approvalMode must be "read-only", "ask", "auto", or "full", got ${body.approvalMode}`,
+          );
+          return;
+        }
         const sourceCwd = path.resolve(
           body.cwd ?? runtime.current?.cwd ?? workspace ?? process.cwd(),
         );
@@ -2889,10 +2931,10 @@ export async function startServer(options: { port?: number; token?: string } = {
         const next = createFreshRuntime();
         let session;
         try {
-          session = await next.newSession(
-            created?.cwd ?? sourceCwd,
-            created ? { worktree: created.worktree } : {},
-          );
+          session = await next.newSession(created?.cwd ?? sourceCwd, {
+            ...(created ? { worktree: created.worktree } : {}),
+            ...(body.approvalMode ? { approvalMode: body.approvalMode } : {}),
+          });
         } catch (error) {
           if (created) await removeSessionWorktree(created.worktree).catch(() => undefined);
           throw error;
@@ -3037,82 +3079,6 @@ export async function startServer(options: { port?: number; token?: string } = {
           )
           .catch(() => undefined);
         sendJson(response, 202, { accepted: true });
-        return;
-      }
-
-      // 写信页 AI 写：不属于任何会话，直接复用当前激活的模型服务商。
-      if (pathname === "/mail/compose" && request.method === "POST") {
-        type MailComposeBody = {
-          mode?: unknown;
-          instruction?: unknown;
-          to?: unknown;
-          subject?: unknown;
-          original?: unknown;
-          draft?: unknown;
-          from?: unknown;
-          providerId?: unknown;
-        };
-        const body = await readJsonBody<MailComposeBody>(request).catch(
-          () => ({}) as MailComposeBody,
-        );
-        const fromRaw =
-          body.from && typeof body.from === "object" ? (body.from as Record<string, unknown>) : {};
-        const context: MailComposeContext = {
-          mode: body.mode === "reply" || body.mode === "forward" ? body.mode : "new",
-          instruction: typeof body.instruction === "string" ? body.instruction : "",
-          to: typeof body.to === "string" ? body.to : "",
-          subject: typeof body.subject === "string" ? body.subject : "",
-          original: typeof body.original === "string" ? body.original : "",
-          draft: typeof body.draft === "string" ? body.draft : "",
-          from: {
-            name: typeof fromRaw.name === "string" ? fromRaw.name : "",
-            email: typeof fromRaw.email === "string" ? fromRaw.email : "",
-          },
-        };
-        if (
-          !(context.instruction ?? "").trim() &&
-          !(context.subject ?? "").trim() &&
-          !(context.original ?? "").trim() &&
-          !(context.draft ?? "").trim()
-        ) {
-          sendError(response, 400, "empty_context", "请先填写主题、写作要求或正文，再使用 AI 写作。");
-          return;
-        }
-        const requestedProviderId =
-          typeof body.providerId === "string" ? body.providerId.trim() : "";
-        const requestedProvider = requestedProviderId
-          ? runtime.providersConfig.find(
-              (item) => item.id === requestedProviderId && item.enabled !== false,
-            )
-          : undefined;
-        const provider =
-          requestedProvider ??
-          runtime.providersConfig.find((item) => item.id === runtime.activeProviderId) ??
-          runtime.providersConfig[0];
-        if (!provider) {
-          sendError(response, 400, "no_provider", "请先在设置中配置模型服务商。");
-          return;
-        }
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 60_000);
-        try {
-          const text = await composeMail({ provider, context, signal: controller.signal });
-          sendJson(response, 200, { text });
-        } catch (error) {
-          const aborted = controller.signal.aborted;
-          sendError(
-            response,
-            aborted ? 504 : 502,
-            aborted ? "timeout" : "provider_error",
-            aborted
-              ? "AI 写作超时（60 秒），请重试。"
-              : error instanceof Error
-                ? error.message
-                : String(error),
-          );
-        } finally {
-          clearTimeout(timeout);
-        }
         return;
       }
 

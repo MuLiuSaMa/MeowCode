@@ -34,6 +34,7 @@ import type {
 } from "../api";
 import { normalizeAddress } from "../panel/address";
 import type { SideTab, SideTabOpen } from "../panel/useSideTabs";
+import { FileIcon } from "./ui/FileIcon";
 import { PluginPageIcon } from "../plugins/PluginPage";
 import { PluginTabView } from "../plugins/PluginTabView";
 import { BrowserTab } from "./panel/BrowserTab";
@@ -56,7 +57,7 @@ function tabIcon(tab: SideTab): ReactNode {
     case "browser":
       return <LuGlobe size={12} />;
     case "workspace":
-      return <LuFile size={12} />;
+      return tab.path ? <FileIcon path={tab.path} size={12} /> : <LuFile size={12} />;
     case "review":
       return <LuListChecks size={12} />;
     case "plan":
@@ -362,7 +363,7 @@ export function RightPanel({
             ) : tab.kind === "workspace" ? (
               <WorkspaceTab file={tab.path} workspace={workspace} onSelect={onOpenFile} />
             ) : tab.kind === "browser" ? (
-              <BrowserTab tabId={tab.id} url={tab.url} agent={tab.agent} onMeta={handleBrowserMeta} />
+              <BrowserTab tabId={tab.id} url={tab.url} onMeta={handleBrowserMeta} />
             ) : tab.kind === "terminal" ? (
               <TerminalTab active={tab.id === activeId} cwd={workspace} termId={tab.termId} />
             ) : tab.kind === "subagents" ? (

@@ -8,17 +8,18 @@ const {
   ipcMain,
   nativeImage,
   nativeTheme,
+  protocol,
   safeStorage,
   screen,
   session,
   shell,
 } = require("electron");
 const { registerTerminalIpc } = require("./terminals.cjs");
-const { createMailHost } = require("./mail-host.cjs");
 const { createJobHost } = require("./job-host.cjs");
 const { createBrowserHostController } = require("./browser-host.cjs");
 const { createComputerHostController } = require("./computer-host.cjs");
 const { createNoticeController } = require("./notice.cjs");
+const { createSponsorsController } = require("./sponsors.cjs");
 const { mainStrings } = require("./main-i18n.cjs");
 // 拖动窗口的位置计算（钉死尺寸，见文件头注释）
 const { dragBounds } = require("./window-drag.cjs");
@@ -37,6 +38,15 @@ const {
   shouldNotify,
 } = require("./notifications.cjs");
 const { readJsonWithBackup, writeJsonAtomic } = require("./persist.cjs");
+const {
+  WALLPAPER_IMAGE_EXTENSIONS,
+  WALLPAPER_MAX_ITEMS,
+  WALLPAPER_MIME,
+  WALLPAPER_VIDEO_EXTENSIONS,
+  normalizeWallpaper,
+  registerWallpaperProtocol,
+  wallpaperFile,
+} = require("./wallpaper.cjs");
 const {
   MAGPIE_FILE_NAME,
   isMagpieProviderId,
@@ -59,6 +69,7 @@ const {
   validateDataTarget,
 } = require("./data-location.cjs");
 const { createEventBatcher } = require("./event-batcher.cjs");
+const { createPerfMonitor } = require("./perf-monitor.cjs");
 const {
   DEFAULT_CLIENT_ID: GITHUB_OAUTH_CLIENT_ID,
   startDeviceFlow: startGithubDeviceFlow,
@@ -228,6 +239,8 @@ const CLOSE_ACTIONS = ["ask", "tray", "quit"];
 const SPEECH_STYLES = ["normal", "tafei", "dazui"];
 /** 输入框上方信息胶囊的收起时机：提交后（跟随工作区未提交状态）/ 对话结束后 */
 const PROGRESS_PILL_DISMISS = ["commit", "turn-end"];
+/** 新建对话的默认工具权限：只读 / 每次询问 / 工作区内自动 / 完全访问 */
+const DEFAULT_PERMISSION_MODES = ["read-only", "ask", "auto", "full"];
 const PROXY_MODES = ["direct", "system", "manual"];
 
 /**
@@ -303,11 +316,22 @@ let islandWindow = null;
 const ISLAND_WINDOW_WIDTH = 480;
 const ISLAND_WINDOW_HEIGHT = 680;
 /** 内嵌浏览器的 agent 控制桥：随窗口起停，agent server 通过 env 拿到地址与 token */
-const browserHost = createBrowserHostController({ getMainWindow: () => mainWindow });
+const browserHost = createBrowserHostController({
+  /** 页面预览的根目录：agent 传相对路径，预览按当前工作区解析 */
+  getWorkspaceRoot: () => {
+    try {
+      return readSettings().workspace ?? "";
+    } catch {
+      return "";
+    }
+  },
+});
 /** 电脑控制桥（computer_* 工具）：截图走 desktopCapturer，输入走常驻 PowerShell 助手 */
 const computerHost = createComputerHostController();
 /** 公告控制器：拉取 NexBox 数据仓的 notice_meowcode.json（见 notice.cjs） */
 let noticeController = null;
+/** 赞助者名单控制器：拉取 NexBox 数据仓的 sponsors.json（见 sponsors.cjs） */
+let sponsorsController = null;
 let tray = null;
 /** 真退出（托盘菜单 / before-quit）时为 true，此时 close 事件直接放行 */
 let isQuitting = false;
@@ -318,6 +342,8 @@ let eventLoopActive = false;
 /** SSE 已处理到的序号：重连时通过 Last-Event-ID 让服务端补发漏掉的事件 */
 let lastEventId = 0;
 let settingsDir = null;
+/** 性能采样器（见 perf-monitor.cjs）：app ready 后创建，before-quit 时落盘退出 */
+let perfMonitor = null;
 let settingsPath = null;
 let sessionsDir = null;
 let windowStatePath = null;
@@ -581,6 +607,8 @@ function defaultSettings() {
     speechStyle: "normal",
     // 信息胶囊：默认「提交后消失」，与引入这个设置之前的行为一致
     progressPillDismiss: "commit",
+    // 新建对话的默认权限模式：保持引入设置之前的「工作区内自动」
+    defaultPermissionMode: "auto",
     // 记忆总开关：开 = 自动蒸馏 + 注入记忆索引 + 下发记忆工具；关 = 全部停用（记忆文件仍保留）
     memoryEnabled: true,
     // 自我学习（技能 / 项目经验 / 用户模型）：实验性能力，默认关闭，设置页可开
@@ -597,8 +625,6 @@ function defaultSettings() {
     projectNames: {},
     pinnedProjects: [],
     removedProjects: [],
-    // 邮件「AI 写」使用的模型 id；空串 = 跟随聊天模型
-    mailAiProviderId: "",
     githubAuth: {},
     mcpCredentials: {},
     oauthApps: {},
@@ -681,6 +707,10 @@ function migrateSettings(raw) {
     progressPillDismiss: PROGRESS_PILL_DISMISS.includes(parsed.progressPillDismiss)
       ? parsed.progressPillDismiss
       : "commit",
+    // 新建对话的默认权限：缺字段的老用户补 auto（保持原行为）
+    defaultPermissionMode: DEFAULT_PERMISSION_MODES.includes(parsed.defaultPermissionMode)
+      ? parsed.defaultPermissionMode
+      : "auto",
     // 全新安装走 defaultSettings() 回退（显式 false）；已有 settings.json 缺字段的老用户补 true
     onboardingCompleted:
       typeof parsed.onboardingCompleted === "boolean" ? parsed.onboardingCompleted : true,
@@ -706,8 +736,6 @@ function migrateSettings(raw) {
         : {},
     pinnedProjects: Array.isArray(parsed.pinnedProjects) ? parsed.pinnedProjects : [],
     removedProjects: Array.isArray(parsed.removedProjects) ? parsed.removedProjects : [],
-    mailAiProviderId:
-      typeof parsed.mailAiProviderId === "string" ? parsed.mailAiProviderId.trim() : "",
     // 界面字体：空串 = 默认 MiSans；customFonts = 导入的自定义字体文件
     fontFamily: typeof parsed.fontFamily === "string" ? parsed.fontFamily : "",
     // 代码字体：空串 = 默认等宽栈
@@ -715,6 +743,8 @@ function migrateSettings(raw) {
     customFonts: Array.isArray(parsed.customFonts)
       ? parsed.customFonts.filter((item) => item && typeof item.fileName === "string")
       : [],
+    // 自定义背景：缺字段 / 文件被删 = 无背景
+    wallpaper: normalizeWallpaper(parsed.wallpaper),
     githubAuth: normalizeGithubAuth(parsed.githubAuth),
     mcpCredentials: normalizeMcpCredentials(parsed.mcpCredentials),
     oauthApps: normalizeOauthApps(parsed.oauthApps),
@@ -745,18 +775,59 @@ function withMagpieOverlay(settings) {
   return mergeMagpieSettings(settings, loaded ? loaded.overlay : null);
 }
 
+/**
+ * settings.json 的读取缓存。
+ *
+ * 全文件有 44 处 readSettings()，其中几处落在热路径上：SSE 每个终态事件都会走
+ * shouldNotifyNow()、托盘菜单每次会话变化都会重建并取 uiStrings()、系统主题切换也要读。
+ * 原始实现每次都 readFileSync + JSON.parse + migrateSettings，正是 Electron 官方性能
+ * 指南点名要避免的「阻塞主进程」。
+ *
+ * 失效判定用 stat（mtimeMs + size）而不是 fs.watch：settings.json 是 tmp+rename 落盘
+ * （见 persist.cjs），Windows 上 watch 单个文件在 rename 之后会失联。
+ * 读失败也写缓存 —— ENOENT 时缓存「不存在」，文件被创建后 stat 成功会自动失配。
+ */
+let settingsCache = null; // { path, mtimeMs, size, missing, value }
+
+function settingsSignature(filePath) {
+  try {
+    const stat = fs.statSync(filePath);
+    return { mtimeMs: stat.mtimeMs, size: stat.size, missing: false };
+  } catch {
+    return { mtimeMs: 0, size: 0, missing: true };
+  }
+}
+
 function readSettings() {
-  return withMagpieOverlay(
+  const signature = settingsSignature(settingsPath);
+  const cache = settingsCache;
+  if (
+    cache &&
+    cache.path === settingsPath &&
+    cache.missing === signature.missing &&
+    cache.mtimeMs === signature.mtimeMs &&
+    cache.size === signature.size
+  ) {
+    return cache.value;
+  }
+  const value = withMagpieOverlay(
     migrateSettings(readJsonWithBackup(settingsPath, () => defaultSettings())),
   );
+  settingsCache = { path: settingsPath, ...signature, value };
+  return value;
 }
 
 function writeSettings(settings) {
   const migrated = migrateSettings(settings);
-  writeJsonAtomic(settingsPath, {
-    ...migrated,
-    providers: stripMagpieProviders(migrated.providers),
-  });
+  const persisted = { ...migrated, providers: stripMagpieProviders(migrated.providers) };
+  writeJsonAtomic(settingsPath, persisted);
+  // 写后直接回填：快速连写时 mtime 可能是同一毫秒，只靠 stat 会命中旧值。
+  // 回填走与读取完全相同的变换（migrate + overlay），保证等价于重新读盘。
+  settingsCache = {
+    path: settingsPath,
+    ...settingsSignature(settingsPath),
+    value: withMagpieOverlay(migrateSettings(persisted)),
+  };
 }
 
 function encryptApiKey(value) {
@@ -880,6 +951,10 @@ function publicSettings(settings) {
     progressPillDismiss: PROGRESS_PILL_DISMISS.includes(settings.progressPillDismiss)
       ? settings.progressPillDismiss
       : "commit",
+    /** 新建对话的默认工具权限模式 */
+    defaultPermissionMode: DEFAULT_PERMISSION_MODES.includes(settings.defaultPermissionMode)
+      ? settings.defaultPermissionMode
+      : "auto",
     onboardingCompleted: typeof settings.onboardingCompleted === "boolean" ? settings.onboardingCompleted : true,
     /** 记忆总开关：默认开（关掉后不蒸馏、不注入、不下发记忆工具） */
     memoryEnabled:
@@ -908,8 +983,6 @@ function publicSettings(settings) {
     floatingIsland: typeof settings.floatingIsland === "boolean" ? settings.floatingIsland : false,
     nextPromptSuggestions:
       typeof settings.nextPromptSuggestions === "boolean" ? settings.nextPromptSuggestions : false,
-    mailAiProviderId:
-      typeof settings.mailAiProviderId === "string" ? settings.mailAiProviderId : "",
     webSearchProvider: ["auto", "provider-native", "deepseek-search-api", "off"].includes(
       settings.webSearchProvider,
     )
@@ -944,6 +1017,8 @@ function publicSettings(settings) {
       includeWorkspace: settings.hooks?.includeWorkspace === true,
     },
     sandbox: normalizeSandbox(settings.sandbox),
+    // 自定义背景：渲染层要拿它渲染背景层，漏在这里等于「选了没反应」
+    wallpaper: normalizeWallpaper(settings.wallpaper),
     fontFamily: typeof settings.fontFamily === "string" ? settings.fontFamily : "",
     codeFontFamily: typeof settings.codeFontFamily === "string" ? settings.codeFontFamily : "",
     providers: (settings.providers ?? []).map((provider) => ({
@@ -2599,45 +2674,103 @@ let islandCursorInside = false;
 let islandPollTimer = null;
 
 /**
- * 60ms 轮询光标位置直接切换穿透（NexBox 灵动岛同款）。
+ * 轮询光标位置直接切换穿透（NexBox 灵动岛同款）。
  * 不用渲染层 mousemove + IPC：快速点击时穿透还没切回来，点击会穿到下层窗口——这就是「有时展不开」的根源。
+ *
+ * 但恒定 60ms 在空闲时也要每秒跑 16 次 GetCursorPos + getContentBounds。改成自适应节奏：
+ *   - 光标在岛附近（外扩 96px）→ 60ms，保证点开的手感不变；
+ *   - 光标在远处但在动 → 180ms，用户朝岛移动时会先经过近距离圈；
+ *   - 光标静止 2.5s 以上 → 240ms，这是真正的空闲态；
+ *   - 岛不可见（托盘/隐藏）→ 600ms，只做恢复探测。
  */
+const ISLAND_POLL_NEAR_MS = 60;
+const ISLAND_POLL_FAR_MS = 180;
+const ISLAND_POLL_IDLE_MS = 240;
+const ISLAND_POLL_HIDDEN_MS = 600;
+const ISLAND_POLL_NEAR_RADIUS = 96;
+const ISLAND_POLL_IDLE_AFTER_MS = 2500;
+
+/** 上一帧光标位置与最近移动时间：用来区分「在动」和「静止」 */
+let islandLastCursor = null;
+let islandLastMoveAt = 0;
+
+function scheduleIslandPoll(delay) {
+  if (islandPollTimer) clearTimeout(islandPollTimer);
+  islandPollTimer = setTimeout(runIslandPollTick, delay);
+}
+
+function runIslandPollTick() {
+  islandPollTimer = null;
+  // 默认慢速：任何一步抛错都从这条出口恢复，保证轮询链不断。
+  // 原来的 setInterval 即使单次回调抛错也会继续，改成递归 setTimeout 后
+  // 必须自己兜住异常，否则岛会永久停在某个穿透状态里。
+  let delay = ISLAND_POLL_HIDDEN_MS;
+  try {
+    const win = islandWindow;
+    // 岛还没上报交互矩形、或正在销毁：慢速空转，等矩形上报后自动恢复全速
+    if (win && !win.isDestroyed() && islandLocalRect && win.isVisible()) {
+      const now = Date.now();
+      const pt = screen.getCursorScreenPoint();
+      const bounds = win.getContentBounds();
+      const rect = {
+        x: bounds.x + islandLocalRect.x,
+        y: bounds.y + islandLocalRect.y,
+        width: islandLocalRect.width,
+        height: islandLocalRect.height,
+      };
+      // 进入只留 4px（给轮询一点提前量），离开 8px 回差避免边缘抖动。
+      // 旧值 14/26 会在胶囊周围形成一圈可拦截点击的透明区域。
+      const margin = islandCursorInside ? 8 : 4;
+      const inside =
+        pt.x >= rect.x - margin &&
+        pt.x <= rect.x + rect.width + margin &&
+        pt.y >= rect.y - margin &&
+        pt.y <= rect.y + rect.height + margin;
+
+      // 光标到矩形的欧氏距离（矩形内为 0）：只用平方比较，避免每帧开根号
+      const dx = Math.max(rect.x - pt.x, 0, pt.x - (rect.x + rect.width));
+      const dy = Math.max(rect.y - pt.y, 0, pt.y - (rect.y + rect.height));
+      const near = dx * dx + dy * dy <= ISLAND_POLL_NEAR_RADIUS * ISLAND_POLL_NEAR_RADIUS;
+
+      if (!islandLastCursor || islandLastCursor.x !== pt.x || islandLastCursor.y !== pt.y) {
+        islandLastMoveAt = now;
+        islandLastCursor = pt;
+      }
+
+      if (inside !== islandCursorInside) {
+        islandCursorInside = inside;
+        win.setIgnoreMouseEvents(!inside, { forward: true });
+        // 同步给渲染层：离开岛体时收起展开面板
+        win.webContents.send("meow:island-cursor", inside);
+      }
+
+      const idle = now - islandLastMoveAt >= ISLAND_POLL_IDLE_AFTER_MS;
+      delay = near ? ISLAND_POLL_NEAR_MS : idle ? ISLAND_POLL_IDLE_MS : ISLAND_POLL_FAR_MS;
+    }
+  } catch (error) {
+    // 窗口在 tick 中途销毁、显示器热插拔都可能抛错：吞掉继续跑
+    console.warn("[MeowCode] island poll tick failed:", error?.message ?? error);
+    delay = ISLAND_POLL_IDLE_MS;
+  }
+  scheduleIslandPoll(delay);
+}
+
 function startIslandPoll() {
   if (islandPollTimer) return;
-  islandPollTimer = setInterval(() => {
-    const win = islandWindow;
-    if (!win || win.isDestroyed() || !islandLocalRect) return;
-    const pt = screen.getCursorScreenPoint();
-    const bounds = win.getContentBounds();
-    const rect = {
-      x: bounds.x + islandLocalRect.x,
-      y: bounds.y + islandLocalRect.y,
-      width: islandLocalRect.width,
-      height: islandLocalRect.height,
-    };
-    // 进入只留 4px（给 60ms 轮询一点提前量），离开 8px 回差避免边缘抖动。
-    // 旧值 14/26 会在胶囊周围形成一圈可拦截点击的透明区域。
-    const margin = islandCursorInside ? 8 : 4;
-    const inside =
-      pt.x >= rect.x - margin &&
-      pt.x <= rect.x + rect.width + margin &&
-      pt.y >= rect.y - margin &&
-      pt.y <= rect.y + rect.height + margin;
-    if (inside === islandCursorInside) return;
-    islandCursorInside = inside;
-    win.setIgnoreMouseEvents(!inside, { forward: true });
-    // 同步给渲染层：离开岛体时收起展开面板
-    win.webContents.send("meow:island-cursor", inside);
-  }, 60);
+  islandLastCursor = null;
+  islandLastMoveAt = 0;
+  scheduleIslandPoll(ISLAND_POLL_NEAR_MS);
 }
 
 function stopIslandPoll() {
   if (islandPollTimer) {
-    clearInterval(islandPollTimer);
+    clearTimeout(islandPollTimer);
     islandPollTimer = null;
   }
   islandCursorInside = false;
   islandLocalRect = null;
+  islandLastCursor = null;
+  islandLastMoveAt = 0;
 }
 
 /** 贴住主显示器工作区顶部居中；分辨率变化 / 插拔显示器时由 screen 事件回调自动校正 */
@@ -2720,7 +2853,24 @@ function destroyIslandWindow() {
   }
 }
 
+let nativeThemeListenerInstalled = false;
+
+/** 系统主题切换时，跟随系统的窗口底色也跟着变。模块级只注册一次，避免窗口重建时叠加。 */
+function ensureNativeThemeListener() {
+  if (nativeThemeListenerInstalled) return;
+  nativeThemeListenerInstalled = true;
+  nativeTheme.on("updated", () => {
+    if (!mainWindow || mainWindow.isDestroyed()) return;
+    const current = readSettings();
+    if ((current.theme ?? "system") !== "system") return;
+    // 亚克力模式下窗口底色是透明的，不能覆盖
+    if (ACRYLIC_BACKDROP) return;
+    mainWindow.setBackgroundColor(windowBackground("system", current.palette));
+  });
+}
+
 function createWindow() {
+  ensureNativeThemeListener();
   const settings = readSettings();
   // 新窗口的渲染层还没跑起来：托盘动作先排队，did-finish-load 后再补发
   rendererReady = false;
@@ -2728,12 +2878,30 @@ function createWindow() {
   applyWindowTheme(settings.theme);
   const savedWindow = readWindowState();
   const restoreBounds = boundsAreVisible(savedWindow.bounds) ? savedWindow.bounds : null;
+  // 最小窗口按屏幕分辨率自适应：以 2K（2560×1440）下 1600×1000 为基准等比缩放，
+  // 小屏保底 1100×700，且永远不超过当前屏幕工作区。
+  const { workAreaSize } = screen.getPrimaryDisplay();
+  const minWidth = Math.max(
+    1100,
+    Math.min(workAreaSize.width, Math.round((workAreaSize.width * 1600) / 2560)),
+  );
+  const minHeight = Math.max(
+    700,
+    Math.min(workAreaSize.height, Math.round((workAreaSize.height * 1000) / 1440)),
+  );
+  const defaultWidth = Math.max(1320, minWidth);
+  const defaultHeight = Math.max(880, minHeight);
+  const width = Math.min(Math.max(restoreBounds?.width ?? defaultWidth, minWidth), workAreaSize.width);
+  const height = Math.min(
+    Math.max(restoreBounds?.height ?? defaultHeight, minHeight),
+    workAreaSize.height,
+  );
   mainWindow = new BrowserWindow({
-    width: restoreBounds?.width ?? 1320,
-    height: restoreBounds?.height ?? 880,
+    width,
+    height,
     ...(restoreBounds ? { x: restoreBounds.x, y: restoreBounds.y } : {}),
-    minWidth: 960,
-    minHeight: 640,
+    minWidth,
+    minHeight,
     title: "MeowCode",
     show: false,
     // ZCode 同款：禁用原生标题栏，窗口操作由渲染层自绘（见 preload 的 window* API）。
@@ -2810,15 +2978,8 @@ function createWindow() {
     rendererReady = false;
   });
 
-  // 系统主题切换时，跟随系统的窗口底色也跟着变
-  nativeTheme.on("updated", () => {
-    if (!mainWindow || mainWindow.isDestroyed()) return;
-    const current = readSettings();
-    if ((current.theme ?? "system") !== "system") return;
-    // 亚克力模式下窗口底色是透明的，不能覆盖
-    if (ACRYLIC_BACKDROP) return;
-    mainWindow.setBackgroundColor(windowBackground("system", current.palette));
-  });
+  // 系统主题切换的监听在模块级只注册一次（见 ensureNativeThemeListener）：
+  // 注册在 createWindow 内部时，activate / second-instance 重建窗口会不断叠加监听器。
 
   // 关闭方式：直接放行（真退出）/ 询问 / 托盘
   mainWindow.on("close", (event) => {
@@ -3500,6 +3661,15 @@ ipcMain.handle("meow:pick-workspace", async () => {
   return result.canceled || !result.filePaths.length ? null : result.filePaths[0];
 });
 
+/** 输入框「+ → 添加文件夹」：原生目录选择器（管理员模式下系统拖放会被 UIPI 阻断） */
+ipcMain.handle("meow:pick-attachment-folders", async () => {
+  const result = await dialog.showOpenDialog(mainWindow, {
+    properties: ["openDirectory", "multiSelections"],
+    title: uiStrings().addFolder,
+  });
+  return result.canceled ? [] : result.filePaths;
+});
+
 ipcMain.handle("meow:get-data-location", () => ({
   path: app.getPath("userData"),
   defaultPath: DEFAULT_DATA_DIR,
@@ -3512,7 +3682,14 @@ ipcMain.handle("meow:pick-data-directory", async () => {
   return result.canceled || !result.filePaths.length ? null : result.filePaths[0];
 });
 
-ipcMain.handle("meow:change-data-location", async (_event, target) => {
+ipcMain.handle("meow:pick-worktree-root", async () => {
+  const result = await dialog.showOpenDialog(mainWindow, {
+    properties: ["openDirectory", "createDirectory"],
+  });
+  return result.canceled || !result.filePaths.length ? null : result.filePaths[0];
+});
+
+ipcMain.handle("meow:change-data-location", async (_event, target, options) => {
   const current = app.getPath("userData");
   const invalid = validateDataTarget({ current, target, defaultDir: DEFAULT_DATA_DIR });
   if (invalid) return { ok: false, code: invalid };
@@ -3526,6 +3703,7 @@ ipcMain.handle("meow:change-data-location", async (_event, target) => {
       target,
       defaultDir: DEFAULT_DATA_DIR,
       pointerPath: locationPointerPath(APP_DATA_DIR),
+      removeSource: options?.removeSource === true,
     });
     if (!result.ok) {
       // 迁移失败不把应用留在「server 已停」状态
@@ -4522,9 +4700,6 @@ ipcMain.handle("meow:open-external", async (_event, url) => {
   return null;
 });
 
-/** agent 浏览器页签的 webview 就绪后，渲染器回报 tabId ↔ webContentsId 绑定 */
-ipcMain.handle("meow:browser-bind-tab", (_event, payload) => browserHost.bindTab(payload || {}));
-
 // 内嵌浏览器（webview guest）的导航约束：http/https 放行，其余拦截；
 // 页面里 window.open / target=_blank 交系统浏览器，不开新的 Electron 窗口。
 app.on("web-contents-created", (_event, contents) => {
@@ -4540,15 +4715,6 @@ app.on("web-contents-created", (_event, contents) => {
 
 /** 终端 PTY 管理器（右侧面板终端页签）；退出前全量释放，防止 conpty 残留阻塞退出 */
 const terminalManager = registerTerminalIpc(ipcMain, () => mainWindow);
-/** 邮箱聚合：IMAP/SMTP、轮询同步与发送队列都在主进程；数据落在 userData/mail */
-const mailHost = createMailHost({
-  ipcMain,
-  getWindow: () => mainWindow,
-  dataDir: app.getPath("userData"),
-  encrypt: encryptApiKey,
-  decrypt: decryptApiKey,
-});
-mailHost.start();
 /**
  * agent 后台任务控制面：与浏览器桥同款 loopback HTTP + token。
  * 任务在同一个终端 PTY 里跑，渲染层收到 ensure-tab 后按 id 打开终端页签即可接管输入。
@@ -4571,7 +4737,6 @@ void jobHost.start().catch((error) => {
 });
 app.on("before-quit", () => {
   terminalManager.disposeAll();
-  void mailHost.dispose();
   jobHost.close();
   clearGithubRefresh();
   githubFlows.clear();
@@ -4665,6 +4830,9 @@ ipcMain.handle("meow:get-preferences", () => {
     progressPillDismiss: PROGRESS_PILL_DISMISS.includes(settings.progressPillDismiss)
       ? settings.progressPillDismiss
       : "commit",
+    defaultPermissionMode: DEFAULT_PERMISSION_MODES.includes(settings.defaultPermissionMode)
+      ? settings.defaultPermissionMode
+      : "auto",
     onboardingCompleted:
       typeof settings.onboardingCompleted === "boolean" ? settings.onboardingCompleted : true,
     archivedSessions: Array.isArray(settings.archivedSessions) ? settings.archivedSessions : [],
@@ -4682,8 +4850,6 @@ ipcMain.handle("meow:get-preferences", () => {
     // 输入建议：每轮回合后预测下一句（默认关闭，开启前会提示额外 token）
     nextPromptSuggestions:
       typeof settings.nextPromptSuggestions === "boolean" ? settings.nextPromptSuggestions : false,
-    mailAiProviderId:
-      typeof settings.mailAiProviderId === "string" ? settings.mailAiProviderId : "",
     webSearchProvider: ["auto", "provider-native", "deepseek-search-api", "off"].includes(
       settings.webSearchProvider,
     )
@@ -4753,6 +4919,13 @@ ipcMain.handle("meow:save-preferences", (_event, prefs) => {
   ) {
     next.progressPillDismiss = prefs.progressPillDismiss;
   }
+  // 新建对话的默认权限模式：只决定下一次 /session/new 的初始值
+  if (
+    prefs?.defaultPermissionMode !== undefined &&
+    DEFAULT_PERMISSION_MODES.includes(prefs.defaultPermissionMode)
+  ) {
+    next.defaultPermissionMode = prefs.defaultPermissionMode;
+  }
   // 工作区只决定「新建会话的默认目录」（/session/new 每次都会带 cwd）。
   // 绝不能走 meow:save-settings：那条路会 startServer() 重启 agent server，
   // 把运行中的回合和后台会话一起杀掉——这正是「换工作区后对话就结束」的根因。
@@ -4789,6 +4962,10 @@ ipcMain.handle("meow:save-preferences", (_event, prefs) => {
   if (typeof prefs?.announcements === "boolean") {
     next.announcements = prefs.announcements;
   }
+  // 主区域「对话 / 轨迹」悬浮切换胶囊：纯渲染层偏好，只写盘
+  if (typeof prefs?.showViewTabs === "boolean") {
+    next.showViewTabs = prefs.showViewTabs;
+  }
   // 界面字体：空串 = 默认 MiSans
   if (typeof prefs?.fontFamily === "string") {
     next.fontFamily = prefs.fontFamily.slice(0, 120);
@@ -4804,10 +4981,6 @@ ipcMain.handle("meow:save-preferences", (_event, prefs) => {
   // 输入建议：默认关闭；只影响渲染层是否在回合后请求预测
   if (typeof prefs?.nextPromptSuggestions === "boolean") {
     next.nextPromptSuggestions = prefs.nextPromptSuggestions;
-  }
-  // 邮件 AI 写作模型：空串 = 跟随聊天模型；只写盘，不重启 agent server
-  if (typeof prefs?.mailAiProviderId === "string") {
-    next.mailAiProviderId = prefs.mailAiProviderId.trim();
   }
   // 网页搜索与获取：搜索/抓取分别选提供方；运行中经 /config/web-options 热切换
   if (
@@ -4924,6 +5097,10 @@ ipcMain.handle("meow:save-preferences", (_event, prefs) => {
     }
     next.plugins = { ...(next.plugins ?? {}), approvals };
   }
+  // 自定义背景的调节参数（透明度 / 亮度 / 模糊 / 面板不透明度）；换文件走 meow:pick-wallpaper
+  if (prefs?.wallpaper !== undefined) {
+    next.wallpaper = normalizeWallpaper(prefs.wallpaper);
+  }
   // 读-改-写：保留 providers 里的 apiKeyEncrypted
   writeSettings(next);
   if (prefs?.language !== undefined) {
@@ -4965,6 +5142,9 @@ ipcMain.handle("meow:save-preferences", (_event, prefs) => {
     progressPillDismiss: PROGRESS_PILL_DISMISS.includes(next.progressPillDismiss)
       ? next.progressPillDismiss
       : "commit",
+    defaultPermissionMode: DEFAULT_PERMISSION_MODES.includes(next.defaultPermissionMode)
+      ? next.defaultPermissionMode
+      : "auto",
     onboardingCompleted:
       typeof next.onboardingCompleted === "boolean" ? next.onboardingCompleted : true,
     archivedSessions: Array.isArray(next.archivedSessions) ? next.archivedSessions : [],
@@ -5064,6 +5244,144 @@ ipcMain.handle("meow:list-custom-fonts", async () => {
     });
   }
   return out;
+});
+
+// ---- 自定义背景：图片 / 视频（拷到 userData/wallpapers，用 meow-media:// 流式读取）----
+
+function wallpaperDir() {
+  return path.join(app.getPath("userData"), "wallpapers");
+}
+
+/**
+ * 背景媒体协议。scheme 必须在 app ready 之前登记为 privileged，
+ * 否则 <video> 拿不到可寻址的流（响应实现在 wallpaper.cjs，有单测）。
+ */
+protocol.registerSchemesAsPrivileged([
+  {
+    scheme: "meow-media",
+    privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true, corsEnabled: true },
+  },
+]);
+
+app.whenReady().then(() => {
+  registerWallpaperProtocol({ protocol, dir: wallpaperDir() });
+});
+
+/** 导入背景：一次可多选，拷进 userData/wallpapers，追加到背景库并设为当前 */
+ipcMain.handle("meow:import-wallpapers", async (_event, payload) => {
+  const wanted = payload?.kind === "video" ? "video" : "image";
+  const ui = uiStrings();
+  const picked = await dialog.showOpenDialog(mainWindow, {
+    title: wanted === "video" ? ui.pickWallpaperVideo : ui.pickWallpaperImage,
+    properties: ["openFile", "multiSelections"],
+    filters: [
+      {
+        name: wanted === "video" ? ui.wallpaperVideoFiles : ui.wallpaperImageFiles,
+        extensions: wanted === "video" ? WALLPAPER_VIDEO_EXTENSIONS : WALLPAPER_IMAGE_EXTENSIONS,
+      },
+    ],
+  });
+  if (picked.canceled || !picked.filePaths.length) return { ok: false, canceled: true };
+  const settings = readSettings();
+  const previous = settings.wallpaper;
+  const dir = wallpaperDir();
+  await fs.promises.mkdir(dir, { recursive: true });
+  const items = previous ? [...previous.items] : [];
+  let imported = 0;
+  let firstImported = "";
+  for (const source of picked.filePaths) {
+    if (items.length >= WALLPAPER_MAX_ITEMS) break;
+    const extension = path.extname(source).toLowerCase();
+    const mime = WALLPAPER_MIME[extension];
+    if (!mime) continue;
+    const kind = mime.startsWith("video/") ? "video" : "image";
+    // 文件名带时间戳 + 序号：同名文件不会被 Windows 拒绝写，也天然避开缓存
+    const fileName = `wallpaper-${Date.now()}-${imported}${extension}`;
+    try {
+      await fs.promises.copyFile(source, path.join(dir, fileName));
+    } catch {
+      continue;
+    }
+    items.push({ kind, fileName });
+    if (!firstImported) firstImported = fileName;
+    imported += 1;
+  }
+  if (!imported) return { ok: false, error: "unsupported" };
+  const wallpaper = normalizeWallpaper({
+    items,
+    active: firstImported,
+    opacity: previous?.opacity,
+    brightness: previous?.brightness,
+    blur: previous?.blur,
+    uiOpacity: previous?.uiOpacity,
+    carousel: previous?.carousel,
+  });
+  writeSettings({ ...settings, wallpaper });
+  return { ok: true, imported, wallpaper };
+});
+
+/** 从背景库里删掉一项：清记录 + 删文件；删的是当前项就顺位选下一张 */
+ipcMain.handle("meow:remove-wallpaper", async (_event, payload) => {
+  const target = typeof payload?.fileName === "string" ? path.basename(payload.fileName) : "";
+  const settings = readSettings();
+  const current = settings.wallpaper;
+  if (!current || !target) return { ok: true, wallpaper: current ?? null };
+  const rest = current.items.filter((item) => item.fileName !== target);
+  const removedActive = current.active === target;
+  const wallpaper = rest.length
+    ? normalizeWallpaper({
+        items: rest,
+        active: removedActive ? "" : current.active,
+        opacity: current.opacity,
+        brightness: current.brightness,
+        blur: current.blur,
+        uiOpacity: current.uiOpacity,
+        carousel: current.carousel,
+      })
+    : null;
+  writeSettings({ ...settings, wallpaper });
+  await fs.promises
+    .rm(wallpaperFile(wallpaperDir(), target), { force: true })
+    .catch(() => undefined);
+  await fs.promises
+    .rm(path.join(wallpaperDir(), `${target}.thumb.jpg`), { force: true })
+    .catch(() => undefined);
+  return { ok: true, wallpaper };
+});
+
+/**
+ * 视频壁纸首帧缩略图：启动时先秒出这一帧，再让视频在后台解码，避免开窗黑一段。
+ * 文件名固定为 <原文件>.thumb.jpg，和视频一样不可变，可长期缓存。
+ */
+ipcMain.handle("meow:save-wallpaper-thumbnail", async (_event, fileName, dataUrl) => {
+  ensureDirs();
+  const name = typeof fileName === "string" ? path.basename(fileName) : "";
+  if (!name || name !== fileName) return { ok: false };
+  if (!fs.existsSync(path.join(wallpaperDir(), name))) return { ok: false };
+  const prefix = "data:image/jpeg;base64,";
+  if (typeof dataUrl !== "string" || !dataUrl.startsWith(prefix)) return { ok: false };
+  const base64 = dataUrl.slice(prefix.length);
+  if (!base64 || base64.length > 8_000_000) return { ok: false };
+  const target = path.join(wallpaperDir(), `${name}.thumb.jpg`);
+  const tmp = `${target}.${process.pid}.tmp`;
+  try {
+    await fs.promises.writeFile(tmp, Buffer.from(base64, "base64"));
+    await fs.promises.rename(tmp, target);
+    return { ok: true };
+  } catch (error) {
+    await fs.promises.rm(tmp, { force: true }).catch(() => undefined);
+    return { ok: false, message: error instanceof Error ? error.message : String(error) };
+  }
+});
+
+/** 渲染层 preload 同步读取当前壁纸：首帧就挂背景，不用等设置 IPC 往返。 */
+ipcMain.on("meow:startup-wallpaper", (event) => {
+  try {
+    ensureDirs();
+    event.returnValue = readSettings().wallpaper ?? null;
+  } catch {
+    event.returnValue = null;
+  }
 });
 
 // ---- 会话导出：选路径 → 主进程拉内容 → 写盘 ----
@@ -5272,7 +5590,16 @@ ipcMain.handle("meow:island-rect", (_event, rect) => {
   const width = Number(rect.width);
   const height = Number(rect.height);
   if (![x, y, width, height].every(Number.isFinite)) return;
+  // 首次上报（或几何变化）时立即补一次轮询：否则要等下一个慢速 tick 才恢复全速，
+  // 岛刚展开的头 600ms 里点击会穿透到下层窗口。
+  const geometryChanged =
+    !islandLocalRect ||
+    islandLocalRect.x !== x ||
+    islandLocalRect.y !== y ||
+    islandLocalRect.width !== width ||
+    islandLocalRect.height !== height;
   islandLocalRect = { x, y, width, height };
+  if (geometryChanged && islandPollTimer) scheduleIslandPoll(0);
 });
 
 /** 悬浮岛发出的 prompt 广播给主窗口：当前会话命中时由渲染层补用户气泡（服务端事件不带用户消息文本） */
@@ -5315,6 +5642,14 @@ if (!hasSingleInstanceLock) {
 
   app.whenReady().then(async () => {
     ensureDirs();
+    // 最小性能观测：10s 采样各进程 CPU/内存，60s 异步落盘；崩溃与无响应单独记录。
+    // 设置里 performanceTelemetry 显式为 false 时关闭（缺字段按开启处理）。
+    perfMonitor = createPerfMonitor({
+      app,
+      dir: path.join(app.getPath("userData"), "perf"),
+      isEnabled: () => readSettings().performanceTelemetry !== false,
+    });
+    perfMonitor.start();
     automationScheduler.start();
     ensureDefaultWorkspace();
     reportStartupStatistics();
@@ -5358,6 +5693,25 @@ if (!hasSingleInstanceLock) {
       return null;
     });
     noticeController.start();
+    // 赞助者名单：先读缓存再后台拉取；关于页打开时会主动刷新一次
+    sponsorsController = createSponsorsController({
+      cachePath: path.join(settingsDir, "sponsors.json"),
+      onUpdate: (sponsors) => {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          try {
+            mainWindow.webContents.send("meow:sponsors", sponsors);
+          } catch {
+            // 窗口正在销毁
+          }
+        }
+      },
+    });
+    ipcMain.handle("meow:sponsors", () => sponsorsController?.get() ?? null);
+    ipcMain.handle(
+      "meow:sponsors-refresh",
+      async () => (await sponsorsController?.refresh()) ?? null,
+    );
+    sponsorsController.start();
     try {
       await browserHost.start();
     } catch (error) {
@@ -5400,6 +5754,9 @@ let appShutdownInFlight = false;
 app.on("before-quit", (event) => {
   flushWindowState();
   flushUiState();
+  // 把采样缓冲刷盘（最多丢最近 60s，异步失败不影响退出）
+  void perfMonitor?.stop();
+  perfMonitor = null;
   // 悬浮岛先于窗口关闭流程销毁，避免 WebView 销毁时闪现原生边框
   destroyIslandWindow();
   if (quitAfterShutdown) return;
@@ -5416,6 +5773,7 @@ app.on("before-quit", (event) => {
     browserHost.stop();
     computerHost.stop();
     noticeController?.stop();
+    sponsorsController?.stop();
     void stopServer().finally(() => {
       quitAfterShutdown = true;
       app.quit();
@@ -5427,4 +5785,5 @@ app.on("before-quit", (event) => {
   browserHost.stop();
   computerHost.stop();
   noticeController?.stop();
+  sponsorsController?.stop();
 });

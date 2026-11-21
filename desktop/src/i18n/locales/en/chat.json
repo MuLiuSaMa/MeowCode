@@ -113,6 +113,9 @@
     "delete": "Delete"
   },
   "checkpoint": {
+    "edit": "Edit and resend",
+    "editSend": "Resend",
+    "editHint": "⌘/Ctrl + Enter to send, Esc to cancel",
     "auto": "Auto checkpoint",
     "manual": "Checkpoint",
     "restore": "Restore",
@@ -233,6 +236,7 @@
     "browserScreenshot": "Page screenshot",
     "browserBack": "Go back",
     "browserReload": "Reload page",
+    "browserPreview": "Preview page",
     "openInPanel": "Click to view the file in the side panel",
     "computerScreenshot": "Take screenshot",
     "computerClick": "Click on screen",

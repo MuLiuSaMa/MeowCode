@@ -25,15 +25,15 @@ It avoids commercial advertising layouts, glossy mockups, cinematic lighting, 3D
 
 | Night Door | Yellow Step |
 | --- | --- |
-| ![Night Door](examples/night-door.jpeg) | ![Yellow Step](examples/yellow-step.jpeg) |
+| ![Night Door](examples/night-door.webp) | ![Yellow Step](examples/yellow-step.webp) |
 
 | Shore Pause | Pause Map |
 | --- | --- |
-| ![Shore Pause](examples/shore-pause.jpeg) | ![Pause Map](examples/pause-map.jpeg) |
+| ![Shore Pause](examples/shore-pause.webp) | ![Pause Map](examples/pause-map.webp) |
 
 | Typhoon Memory | Moon Tide |
 | --- | --- |
-| ![Typhoon Memory](examples/typhoon-memory.jpeg) | ![Moon Tide](examples/moon-tide.jpeg) |
+| ![Typhoon Memory](examples/typhoon-memory.webp) | ![Moon Tide](examples/moon-tide.webp) |
 
 ## Installation
 

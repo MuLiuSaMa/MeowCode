@@ -46,7 +46,7 @@ export function ProviderIcon({
   }
 
   return (
-    <span className="mc-provicon" style={style}>
+    <span className="mc-provicon" style={style} data-icon={key}>
       <img
         src={icon.src}
         alt=""

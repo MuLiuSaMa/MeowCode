@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import appIcon from "../assets/icon.png";
 import { formatDuration } from "../i18n/format";
+import { StatusLogoParticles } from "./ui/StatusLogoParticles";
 import "./AssistantStatusLine.css";
 
 export type AssistantStatus = {
@@ -58,7 +58,7 @@ export function AssistantStatusLine({
 
   return (
     <div className="mc-statusline">
-      <img src={appIcon} alt="" draggable={false} className="mc-statusline__logo" aria-hidden="true" />
+      <StatusLogoParticles />
       <span className="mc-statusline__text" aria-hidden="true">
         {text}
       </span>

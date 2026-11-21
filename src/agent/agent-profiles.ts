@@ -62,7 +62,7 @@ Delegate broad independent work to subagents (task); parallel starts are capped,
  * 写文件的指引必须与 run_command 的工具描述一致：Set-Content / Out-File / '>'
  * 会改行尾、加 BOM、写 UTF-16 甚至清空目标文件 —— 旧提示词正好在教模型做那件事。
  */
-const MINIMAL_SYSTEM_PROMPT = `You are MeowCode in minimal mode, a local coding agent on Windows.
+export const MINIMAL_SYSTEM_PROMPT = `You are MeowCode in minimal mode, a local coding agent on Windows.
 You have exactly two tools: read_file (text and images) and run_command (PowerShell).
 Search with Select-String and Get-ChildItem; slice with Get-Content -TotalCount / -Tail.
 Write files with [System.IO.File]::WriteAllText($p, $text, (New-Object System.Text.UTF8Encoding $false)) — never Set-Content, Out-File or '>': they change line endings, add a BOM, emit UTF-16, or truncate the target.
@@ -75,7 +75,7 @@ Reply in the user's language. Keep answers short, cite paths and line numbers.`;
  * 复杂档：标准提示词 + 编排要求（不改变权限与门禁，只改工作方式）。
  * 门禁序列不再抄一遍：架构图是唯一真源，提示词只说明「怎么读图、怎么用图」。
  */
-const COMPLEX_SYSTEM_PROMPT = `${BASE_SYSTEM_PROMPT}
+export const COMPLEX_SYSTEM_PROMPT = `${BASE_SYSTEM_PROMPT}
 
 Complex mode is active (gated governance): structure over speed.
 Turn non-trivial work into ordered lanes with concrete file paths; use a planner subagent when scope is unclear and update_plan to keep the lane list current.

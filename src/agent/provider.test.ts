@@ -563,6 +563,59 @@ describe("streamChatCompletion cache usage buckets", () => {
     });
   });
 
+  it("treats top-level Anthropic cache fields as exclusive input when total includes them on top", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        sseResponse([
+          {
+            choices: [{ delta: { content: "ok" }, finish_reason: "stop" }],
+            usage: {
+              prompt_tokens: 800,
+              completion_tokens: 5,
+              total_tokens: 1_405,
+              cache_read_input_tokens: 600,
+            },
+          },
+        ]),
+      ),
+    );
+
+    const result = await streamChatCompletion(baseOptions);
+    expect(result.usage).toEqual({
+      inputTokens: 1_400,
+      uncachedInputTokens: 800,
+      outputTokens: 5,
+      cacheReadTokens: 600,
+    });
+  });
+
+  it("keeps top-level cache fields inclusive when there is no exclusive evidence", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        sseResponse([
+          {
+            choices: [{ delta: { content: "ok" }, finish_reason: "stop" }],
+            usage: {
+              prompt_tokens: 800,
+              completion_tokens: 5,
+              cache_read_input_tokens: 600,
+            },
+          },
+        ]),
+      ),
+    );
+
+    const result = await streamChatCompletion(baseOptions);
+    expect(result.usage).toEqual({
+      inputTokens: 800,
+      uncachedInputTokens: 200,
+      outputTokens: 5,
+      cacheReadTokens: 600,
+    });
+  });
+
   it("derives cache read when the gateway reports only prompt_cache_miss_tokens", async () => {
     vi.stubGlobal(
       "fetch",

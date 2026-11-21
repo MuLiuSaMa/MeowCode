@@ -2,7 +2,7 @@ import { useMemo, type CSSProperties } from "react";
 import { useTranslation } from "react-i18next";
 import { LuCircleAlert } from "react-icons/lu";
 import type { GitDiffResult } from "../../api";
-import { parsePatch } from "../../git/patch";
+import { isPatchNoiseRow, parsePatch } from "../../git/patch";
 import "./git.css";
 
 /** 猫爪印：4 趾 + 肉垫，颜色跟随 currentColor。 */
@@ -43,6 +43,8 @@ export function DiffView({
 }) {
   const { t } = useTranslation("git");
   const parsed = useMemo(() => (diff?.patch ? parsePatch(diff.patch) : { rows: [], omitted: 0 }), [diff?.patch]);
+  // git 的 patch 头（diff --git / index / 模式 / --- +++ / @@）在正文里只是噪声
+  const rows = useMemo(() => parsed.rows.filter((row) => !isPatchNoiseRow(row)), [parsed]);
 
   if (loading) return <div className="mc-git__placeholder">{t("diff.loading")}</div>;
   if (!diff)
@@ -53,7 +55,7 @@ export function DiffView({
       </div>
     );
   if (diff.binary) return <div className="mc-git__placeholder">{t("diff.binary")}</div>;
-  if (!diff.patch.trim()) return <div className="mc-git__placeholder">{t("diff.empty")}</div>;
+  if (!diff.patch.trim() || rows.length === 0) return <div className="mc-git__placeholder">{t("diff.empty")}</div>;
 
   return (
     <div className="mc-git__diff">
@@ -76,7 +78,7 @@ export function DiffView({
         ) : null}
       </div>
       <pre className="mc-git__patch">
-        {parsed.rows.map((row, index) => (
+        {rows.map((row, index) => (
           <div key={index} className="mc-git__line" data-kind={row.kind}>
             <span className="mc-git__ln">{row.oldNo ?? ""}</span>
             <span className="mc-git__ln">{row.newNo ?? ""}</span>

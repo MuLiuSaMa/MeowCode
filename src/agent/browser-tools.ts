@@ -18,7 +18,7 @@ export const browserToolDefinitions: ToolDefinition[] = [
     function: {
       name: "browser_navigate",
       description:
-        "Open a URL in the embedded browser panel and wait for it to load. Use it to preview local dev servers, read documentation, or verify a page visually. Only http(s) URLs or about:blank are allowed. Opens/reuses the agent browser tab automatically.",
+        "Open a URL in the agent's own browser (a hidden window with a fixed 1280x900 viewport) and wait for it to load. Use it to preview local dev servers, read documentation, or verify a page visually. Only http(s) URLs or about:blank are allowed. Nothing opens in the app UI; call browser_screenshot to see the page.",
       parameters: {
         type: "object",
         properties: {
@@ -81,8 +81,9 @@ export const browserToolDefinitions: ToolDefinition[] = [
     function: {
       name: "browser_screenshot",
       description:
-        "Capture the visible browser page as a PNG. Returns the image when the active model supports image input; otherwise the PNG is saved to a temp file and its path is returned. " +
-        "Do not take screenshots to verify code or UI changes you just made; ask the user to look instead.",
+        "Capture the visible browser page as a PNG and show it to the user in the conversation. " +
+        "After a UI change, open the page and take one screenshot so the user can see the result; " +
+        "do not take screenshots repeatedly just to check your own work.",
       parameters: {
         type: "object",
         properties: {},
@@ -110,6 +111,37 @@ export const browserToolDefinitions: ToolDefinition[] = [
       parameters: {
         type: "object",
         properties: {},
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "browser_preview",
+      description:
+        "Render a page in the agent's own hidden browser (fixed 1280x900 viewport) to check page styles and design mockups. " +
+        "Pass html with the whole page source: it is written to a temp folder outside the workspace and cleaned up automatically, " +
+        "so never create scratch HTML files in the repository. Pass path instead to open an HTML file that already exists in the " +
+        "workspace (its relative css/js/images load too). Nothing opens in the app UI: call browser_screenshot to show the user the " +
+        "result, browser_reload after a change, and never screenshot the desktop window to show page styling.",
+      parameters: {
+        type: "object",
+        properties: {
+          html: {
+            type: "string",
+            description: "Full HTML source of the page (self-contained, inline CSS/JS). Stored in a temp folder, not the repo.",
+          },
+          path: {
+            type: "string",
+            description: "Workspace-relative path of an existing HTML file to open, for example dist/index.html",
+          },
+          name: {
+            type: "string",
+            description: "Optional short name for the temp file, for example pricing-page",
+          },
+        },
+        required: [],
         additionalProperties: false,
       },
     },
@@ -149,6 +181,20 @@ export async function executeBrowserTool(
     case "browser_navigate":
       command = { op: "navigate", url: String(args.url ?? "").trim() };
       break;
+    case "browser_preview": {
+      const html = typeof args.html === "string" ? args.html : "";
+      const previewPath = String(args.path ?? "").trim();
+      if (!html.trim() && !previewPath) {
+        return { ok: false, output: "Browser error: browser_preview needs html or path." };
+      }
+      const name = typeof args.name === "string" ? args.name.trim() : "";
+      command = {
+        op: "preview",
+        ...(html.trim() ? { html } : { path: previewPath }),
+        ...(name ? { name } : {}),
+      };
+      break;
+    }
     case "browser_snapshot":
       command = { op: "snapshot" };
       break;
@@ -186,6 +232,15 @@ export async function executeBrowserTool(
       const text = [`Opened page.`, pageFooter(result)].filter(Boolean).join("\n");
       return { ok: true, output: truncateOutput(text).output };
     }
+    case "browser_preview": {
+      const text = [
+        "Opened page.",
+        result.preview ? `preview: ${result.preview}` : "",
+        pageFooter(result),
+        "Call browser_screenshot to show this page to the user.",
+      ].filter(Boolean).join("\n");
+      return { ok: true, output: truncateOutput(text).output };
+    }
     case "browser_snapshot": {
       return { ok: true, output: truncateOutput(result.snapshot || "(empty snapshot)").output };
     }
@@ -212,19 +267,23 @@ export async function executeBrowserTool(
         `Screenshot captured (${result.viewportWidth ?? "?"}x${result.viewportHeight ?? "?"}).`,
         pageFooter(result),
       ].filter(Boolean).join("\n");
+      // 图永远交给运行时：工具行会直接展示给用户；是否回传给模型由 keepImages 决定。
+      const images = [{ data: result.screenshotBase64, mimeType }];
       if (options.keepImages) {
         return {
           ok: true,
           output: `${meta}\nThe screenshot is attached as an image.`,
-          images: [{ data: result.screenshotBase64, mimeType }],
+          images,
         };
       }
+      // 纯文本模型看不到图：额外落一份临时文件，让它能引用路径；图仍会展示给用户
       const file = await saveScreenshot(result.screenshotBase64).catch(() => null);
       return {
         ok: true,
         output: file
           ? `${meta}\nThe active model does not accept image input, so the screenshot was saved to:\n${file}`
-          : `${meta}\nThe active model does not accept image input and saving the screenshot failed.`,
+          : `${meta}\nThe active model does not accept image input.`,
+        images,
       };
     }
     default: {

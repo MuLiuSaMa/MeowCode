@@ -1,24 +1,9 @@
 import { useTranslation } from "react-i18next";
 import { useEffect, useState } from "react";
-import {
-  LuBadgeCheck,
-  LuEye,
-  LuGavel,
-  LuListTree,
-  LuMicroscope,
-  LuPlus,
-  LuPuzzle,
-  LuRecycle,
-  LuRuler,
-  LuSearch,
-  LuShieldCheck,
-  LuSparkles,
-  LuTarget,
-  LuTrash2,
-  LuWrench,
-} from "react-icons/lu";
+import { LuPlus, LuTrash2 } from "react-icons/lu";
 import { HarnessEditor, type HarnessAgentEntry } from "./HarnessEditor";
 import { AGENT_PROFILES, AGENT_PROFILE_ORDER } from "../../agentProfiles";
+import { AgentCat } from "../ui/AgentCat";
 import {
   fetchHarness,
   type AgentProfileId,
@@ -33,22 +18,6 @@ export type { HarnessAgentEntry } from "./HarnessEditor";
 function isBuiltinProfileId(id: string): id is AgentProfileId {
   return id === "standard" || id === "minimal" || id === "complex";
 }
-
-const ROLE_ICONS: Record<string, typeof LuSparkles> = {
-  general: LuSparkles,
-  explore: LuSearch,
-  planner: LuListTree,
-  scoper: LuRuler,
-  "depth-prober": LuMicroscope,
-  implementer: LuWrench,
-  reviewer: LuEye,
-  verifier: LuShieldCheck,
-  "fresh-verifier": LuBadgeCheck,
-  juror: LuGavel,
-  sweeper: LuRecycle,
-  "goal-checker": LuTarget,
-  custom: LuPuzzle,
-};
 
 const READ_ONLY_ROLES = new Set([
   "explore",
@@ -200,7 +169,6 @@ export function ArchitectureNav({
         {items.map((item) => {
           const builtin = item.builtin && isBuiltinProfileId(item.id);
           const info = builtin ? AGENT_PROFILES[item.id as AgentProfileId] : null;
-          const Icon = info?.icon ?? LuPuzzle;
           const label = info?.label ?? item.name ?? item.id;
           const tagline = info?.tagline ?? t("nav.customTagline");
           const isActive = builtin && activeProfile === item.id;
@@ -221,7 +189,7 @@ export function ArchitectureNav({
                 }}
               >
                 <span className="mc-arch__roleicon">
-                  <Icon size={14} />
+                  <AgentCat size={20} />
                 </span>
                 <span className="mc-arch__roletext">
                   {editing ? (
@@ -280,7 +248,6 @@ export function ArchitectureNav({
       {roleAgents.length ? (
         <ul className="mc-arch__roles">
           {roleAgents.map((entry) => {
-            const Icon = ROLE_ICONS[entry.roleType] ?? LuSparkles;
             const numbered = entry.count > 1;
             return (
               <li key={entry.id}>
@@ -292,7 +259,7 @@ export function ArchitectureNav({
                   onClick={() => onSelect(entry.id)}
                 >
                   <span className="mc-arch__roleicon">
-                    <Icon size={14} />
+                    <AgentCat size={20} />
                   </span>
                   <span className="mc-arch__roletext">
                     <span className="mc-arch__rolelabel">

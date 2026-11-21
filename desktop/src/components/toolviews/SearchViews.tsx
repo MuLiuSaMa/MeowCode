@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { LuFile, LuFolder } from "react-icons/lu";
+import { LuFolder } from "react-icons/lu";
 import type { ToolViewProps } from "./types";
 import {
   asRecord,
@@ -10,6 +10,7 @@ import {
   textArg,
 } from "./parse";
 import { OutputText, PathRow, ToolNote } from "./parts";
+import { FileIcon } from "../ui/FileIcon";
 import { panelPath } from "./paths";
 
 function pathOf(item: ToolViewProps["item"]): string {
@@ -44,7 +45,7 @@ export function ListDirView({ item, status, t, onOpenFile }: ToolViewProps) {
               {entry.kind === "dir" ? (
                 <LuFolder size={13} className="mc-tv__icon" aria-hidden="true" />
               ) : (
-                <LuFile size={13} className="mc-tv__icon" aria-hidden="true" />
+                <FileIcon path={entry.name} size={13} />
               )}
               <span className="mc-tv__entryname">{entry.name}</span>
             </div>
@@ -80,7 +81,7 @@ export function GlobView({ item, status, onOpenFile }: ToolViewProps) {
                 disabled={!onOpenFile}
                 onClick={() => onOpenFile?.(panelPath(file))}
               >
-                <LuFile size={13} className="mc-tv__icon" aria-hidden="true" />
+                <FileIcon path={file} size={13} />
                 <span className="mc-tv__entryname">{nameOf(file)}</span>
                 {dir ? <span className="mc-tv__entrydir">{dir}</span> : null}
               </button>

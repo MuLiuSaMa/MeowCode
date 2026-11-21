@@ -1,34 +1,5 @@
 import { marked } from "marked";
 import DOMPurify from "dompurify";
-import type {
-  MailAccountSavePayload,
-  MailAccountSaveResult,
-  MailAccountTestPayload,
-  MailAccountTestResult,
-  MailAccountsResult,
-  MailAttachmentDownloadPayload,
-  MailAttachmentDownloadResult,
-  MailCounts,
-  MailDeletePayload,
-  MailDeleteResult,
-  MailDraft,
-  MailDraftSaveResult,
-  MailDraftsListResult,
-  MailEvent,
-  MailListPayload,
-  MailListResult,
-  MailMessagePayload,
-  MailMessageResult,
-  MailOutboxListResult,
-  MailOutboxResult,
-  MailPickAttachmentsResult,
-  MailSeenPayload,
-  MailSendPayload,
-  MailSendResult,
-  MailSyncPayload,
-  MailSyncResult,
-} from "./mail/types";
-
 export type SubagentStatus = "running" | "completed" | "failed" | "aborted" | "interrupted";
 
 export type SubagentType =
@@ -134,6 +105,8 @@ export type MeowEvent = {
   truncated?: boolean;
   /** 完整内容已落盘的相对路径 */
   spilled?: string;
+  /** tool_output：工具返回的图片（截图类），工具行直接展示给用户 */
+  images?: Array<{ data: string; mimeType: string }>;
   /** assistant_delta / message_complete：思考时长（毫秒） */
   thinkingMs?: number;
   ok?: boolean;
@@ -735,12 +708,14 @@ export type Preferences = {
   notifications?: boolean;
   /** 标题栏公告：显示官方公告条（默认开） */
   announcements?: boolean;
+  /** 主区域顶部「对话 / 轨迹」悬浮切换胶囊（默认开；关掉后不显示） */
+  showViewTabs?: boolean;
   /** AI 悬浮岛：屏幕顶部胶囊显示所有运行中会话状态（默认关） */
   floatingIsland?: boolean;
   /** 输入建议：回合结束后额外请求一次，预测下一句（默认关） */
   nextPromptSuggestions?: boolean;
-  /** 邮件「AI 写」使用的模型 id；空串 = 跟随聊天模型 */
-  mailAiProviderId?: string;
+  /** 新建对话的默认工具权限模式（默认 auto） */
+  defaultPermissionMode?: "read-only" | "ask" | "auto" | "full";
   /** Worktrees：创建前先 fetch 上游更新（默认关） */
   worktreeFetchUpstream?: boolean;
   /** Worktrees：自动清理旧 worktree（默认开） */
@@ -775,6 +750,8 @@ export type Preferences = {
   includeAgentsMd?: boolean;
   /** 将 CLAUDE.md / CLAUDE.local.md 包含在上下文中（默认开） */
   includeClaudeMd?: boolean;
+  /** 自定义背景（图片 / 视频 + 透明度等调节）；缺省 = 无背景 */
+  wallpaper?: WallpaperSettings | null;
   /** 界面字体：空串或缺省 = 默认 MiSans */
   fontFamily?: string;
   /** 代码字体（等宽表面）：空串或缺省 = 默认等宽栈 */
@@ -855,6 +832,56 @@ export async function listCustomFonts(): Promise<Array<{ family: string; url: st
 /** 弹系统对话框选一个字体文件导入；取消时返回 { ok:false, canceled:true } */
 export async function importFontFile(): Promise<{ ok: boolean; canceled?: boolean; family?: string }> {
   return window.meow.importFont();
+}
+
+/** 自定义背景库：条目是 userData/wallpapers 下的一个文件 */
+export type WallpaperKind = "image" | "video";
+export type WallpaperItem = {
+  kind: WallpaperKind;
+  fileName: string;
+};
+export type WallpaperSettings = {
+  items: WallpaperItem[];
+  /** 当前显示的文件名；不在 items 里时主进程兜底成第一张 */
+  active: string;
+  /** false = 保留背景库但不显示 */
+  enabled: boolean;
+  /** 背景层自身不透明度 0.05–1 */
+  opacity: number;
+  /** 亮度 0.2–2 */
+  brightness: number;
+  /** 模糊像素 0–40 */
+  blur: number;
+  /** 面板不透明度 0.2–1：越小壁纸透得越多 */
+  uiOpacity: number;
+  /** 视频背景是否放出声音（默认静音） */
+  videoSound: boolean;
+  /** 自动轮播：同类型内按 items 顺序循环切换 */
+  carousel: { enabled: boolean; intervalSec: number };
+};
+
+/** 背景媒体走主进程的自有协议（file:// 被同源策略拦，视频又没法 base64） */
+export function wallpaperUrl(fileName: string): string {
+  return `meow-media://wallpaper/${encodeURIComponent(fileName)}`;
+}
+
+/** 弹系统对话框导入一张或多张图片 / 视频；取消时返回 { ok:false, canceled:true } */
+export async function importWallpapers(kind: WallpaperKind): Promise<{
+  ok: boolean;
+  canceled?: boolean;
+  error?: string;
+  imported?: number;
+  wallpaper?: WallpaperSettings | null;
+}> {
+  return window.meow.importWallpapers(kind);
+}
+
+/** 从背景库删掉一项（主进程会一并删文件） */
+export async function removeWallpaper(fileName: string): Promise<{
+  ok: boolean;
+  wallpaper?: WallpaperSettings | null;
+}> {
+  return window.meow.removeWallpaper(fileName);
 }
 
 /** 下载更新包：主进程流式下载，进度通过 onUpdateProgress 回调 */
@@ -1046,12 +1073,14 @@ export type Settings = {
   notifications?: boolean;
   /** 标题栏公告：显示官方公告条（缺省视为开启） */
   announcements?: boolean;
+  /** 主区域顶部「对话 / 轨迹」悬浮切换胶囊（缺省视为开启） */
+  showViewTabs?: boolean;
   /** AI 悬浮岛：屏幕顶部胶囊显示所有运行中会话状态（默认关） */
   floatingIsland?: boolean;
   /** 输入建议：回合结束后额外请求一次，预测下一句（默认关） */
   nextPromptSuggestions?: boolean;
-  /** 邮件「AI 写」使用的模型 id；空串 = 跟随聊天模型 */
-  mailAiProviderId?: string;
+  /** 新建对话的默认工具权限模式（默认 auto） */
+  defaultPermissionMode?: "read-only" | "ask" | "auto" | "full";
   /** Worktrees：创建前先 fetch 上游更新（默认关） */
   worktreeFetchUpstream?: boolean;
   /** Worktrees：自动清理旧 worktree（默认开） */
@@ -1078,6 +1107,8 @@ export type Settings = {
   includeAgentsMd?: boolean;
   /** 将 CLAUDE.md / CLAUDE.local.md 包含在上下文中（默认开） */
   includeClaudeMd?: boolean;
+  /** 自定义背景（图片 / 视频 + 透明度等调节）；null = 无背景 */
+  wallpaper?: WallpaperSettings | null;
   /** 界面字体：空串或缺省 = 默认 MiSans */
   fontFamily?: string;
   /** 代码字体（等宽表面）：空串或缺省 = 默认等宽栈 */
@@ -2380,6 +2411,12 @@ type TimelineTool = {
   /** 本次写/改文件新增、删除行数（来自 file_changed 事件，回合内实时显示） */
   added?: number;
   removed?: number;
+  /** 工具开始的本地墙钟（毫秒）：轨迹视图算耗时；历史回放没有 */
+  startedAt?: number;
+  /** 工具耗时（毫秒）：tool_started → tool_finished 的本地差值，含 SSE 延迟 */
+  durationMs?: number;
+  /** 工具返回的截图（浏览器截图等）：工具行直接展示，点击放大 */
+  images?: TimelineImage[];
 };
 
 /** 报错条目：跟在消息流里展示（类似模型发出的报错），不再是顶部横幅 */
@@ -2477,6 +2514,17 @@ type TimelineTurnChanges = {
   files: TurnFileChangeStat[];
 };
 
+/**
+ * 回合结果图：本回合工具产出的截图（浏览器截图等）整组收到正文末尾。
+ * 工具组回合结束后默认折叠，截图留在组里就看不见了，所以单独成项。
+ */
+type TimelineTurnShots = {
+  kind: "turn-shots";
+  key: string;
+  turnId?: string;
+  images: TimelineImage[];
+};
+
 /** 回合运行耗时：每轮末尾一条，hover 该轮区域才淡入显示（可延展更多信息）。 */
 type TimelineTurnInfo = {
   kind: "turn-info";
@@ -2499,6 +2547,7 @@ type TimelineItem =
   | TimelineCompaction
   | TimelineCheckpoint
   | TimelineTurnChanges
+  | TimelineTurnShots
   | TimelineTurnInfo;
 
 /** 子 Agent 在渲染层累积的只读运行状态 */
@@ -2812,6 +2861,81 @@ export async function getDiagnostics(sessionId?: string): Promise<DiagnosticsSum
   return api<DiagnosticsSummary>(`/diagnostics/summary${query}`);
 }
 
+// ---- 提示词轨迹（诊断 → 提示词页签）----
+
+export type PromptSegmentRecord = {
+  index: number;
+  /** baseline / instructions / segment[i]：段本身没有名字，按装配顺序推断 */
+  label: string;
+  length: number;
+  sha1: string;
+  text: string;
+  truncated?: boolean;
+};
+
+export type PromptToolRecord = {
+  index: number;
+  name: string;
+  descriptionLength: number;
+  schemaLength: number;
+  sha1: string;
+};
+
+export type PromptTrajectoryDiff = {
+  system: number[];
+  tools: boolean;
+  countChanged: boolean;
+  toolChanges?: Array<{ index: number; name: string }>;
+  addedTools: string[];
+  removedTools: string[];
+};
+
+export type PromptTrajectoryEntry = {
+  id: string;
+  sessionId: string;
+  turnId: string | null;
+  roundId: string;
+  providerId: string;
+  model: string;
+  protocol: string;
+  createdAt: number;
+  promptVersion: { baseline: string; instructions: string | null; segments: string[] };
+  segments: PromptSegmentRecord[];
+  tools: PromptToolRecord[];
+  diff: PromptTrajectoryDiff | null;
+};
+
+export type PromptTrajectory = {
+  traceId: string | null;
+  promptVersion: { baseline: string; instructions: string | null; segments: string[] };
+  entries: PromptTrajectoryEntry[];
+};
+
+export async function getPromptTrajectory(
+  sessionId?: string,
+  limit = 20,
+): Promise<PromptTrajectory> {
+  const query = new URLSearchParams();
+  if (sessionId) query.set("session", sessionId);
+  query.set("limit", String(limit));
+  return api<PromptTrajectory>(`/diagnostics/prompt?${query.toString()}`);
+}
+
+// ---- 工具目录（轨迹视图展示 description / 参数 Schema）----
+
+export type ToolCatalogEntry = {
+  name: string;
+  description: string;
+  parameters: unknown;
+};
+
+export async function getToolCatalog(
+  sessionId?: string,
+): Promise<{ tools: ToolCatalogEntry[] }> {
+  const query = sessionId ? `?session=${encodeURIComponent(sessionId)}` : "";
+  return api<{ tools: ToolCatalogEntry[] }>(`/session/tools${query}`);
+}
+
 // ---- 项目级审批规则（设置 → 审批规则）----
 
 export type ApprovalRuleKind = "tool" | "path" | "command-exact" | "command-prefix";
@@ -2972,111 +3096,4 @@ export function onAutomationsChanged(listener: (list: Automation[]) => void): ()
   return window.meow.onAutomationsChanged(listener);
 }
 
-// ---- 邮箱聚合 ----
 
-export async function mailAccounts(): Promise<MailAccountsResult> {
-  return window.meow.mailAccountsList();
-}
-
-export async function mailSaveAccount(payload: MailAccountSavePayload): Promise<MailAccountSaveResult> {
-  return window.meow.mailAccountSave(payload);
-}
-
-export async function mailRemoveAccount(accountId: string): Promise<{ ok: boolean }> {
-  return window.meow.mailAccountRemove(accountId);
-}
-
-export async function mailTestAccount(payload: MailAccountTestPayload): Promise<MailAccountTestResult> {
-  return window.meow.mailAccountTest(payload);
-}
-
-export async function mailSync(payload: MailSyncPayload): Promise<MailSyncResult> {
-  return window.meow.mailSync(payload);
-}
-
-export async function mailCounts(accountId: string): Promise<MailCounts> {
-  return window.meow.mailCounts(accountId);
-}
-
-export async function mailList(payload: MailListPayload): Promise<MailListResult> {
-  return window.meow.mailList(payload);
-}
-
-export async function mailMessage(payload: MailMessagePayload): Promise<MailMessageResult> {
-  return window.meow.mailMessage(payload);
-}
-
-export async function mailSetSeen(payload: MailSeenPayload): Promise<{ ok: boolean; code?: string; detail?: string }> {
-  return window.meow.mailSetSeen(payload);
-}
-
-export async function mailDelete(payload: MailDeletePayload): Promise<MailDeleteResult> {
-  return window.meow.mailDelete(payload);
-}
-
-export async function mailDownloadAttachment(
-  payload: MailAttachmentDownloadPayload,
-): Promise<MailAttachmentDownloadResult> {
-  return window.meow.mailDownloadAttachment(payload);
-}
-
-export async function mailPickAttachments(): Promise<MailPickAttachmentsResult> {
-  return window.meow.mailPickAttachments();
-}
-
-export async function mailDrafts(accountId: string): Promise<MailDraftsListResult> {
-  return window.meow.mailDraftsList(accountId);
-}
-
-export async function mailSaveDraft(
-  draft: Partial<MailDraft> & { accountId: string },
-): Promise<MailDraftSaveResult> {
-  return window.meow.mailDraftSave({ draft });
-}
-
-export async function mailDeleteDraft(id: string): Promise<{ ok: boolean }> {
-  return window.meow.mailDraftDelete(id);
-}
-
-export async function mailSend(payload: MailSendPayload): Promise<MailSendResult> {
-  return window.meow.mailSend(payload);
-}
-
-export async function mailOutbox(accountId: string): Promise<MailOutboxListResult> {
-  return window.meow.mailOutboxList(accountId);
-}
-
-export async function mailRetryOutbox(id: string): Promise<MailOutboxResult> {
-  return window.meow.mailOutboxRetry(id);
-}
-
-export async function mailRemoveOutbox(id: string): Promise<MailOutboxResult> {
-  return window.meow.mailOutboxDelete(id);
-}
-
-export function onMailEvent(listener: (event: MailEvent) => void): () => void {
-  return window.meow.onMailEvent?.(listener) ?? (() => {});
-}
-
-export type MailAiComposePayload = {
-  mode: "new" | "reply" | "forward";
-  instruction?: string;
-  to?: string;
-  subject?: string;
-  original?: string;
-  draft?: string;
-  /** 发件人身份，供模型正确署名 */
-  from?: { name?: string; email?: string };
-  /** 指定模型；缺省 = 跟随聊天当前激活模型 */
-  providerId?: string;
-};
-
-/** 写信页「AI 写」：由 agent server 使用当前激活的模型生成正文。 */
-export async function composeMailWithAi(payload: MailAiComposePayload): Promise<string> {
-  const result = await api<{ text: string }>("/mail/compose", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(payload),
-  });
-  return result.text;
-}

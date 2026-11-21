@@ -7,7 +7,7 @@ This is that look, made structured and honest.
 
 ## Step 0 — The canary (run before any page review)
 
-Read `references/canary.png`. State the exact text you see.
+Read `references/canary.webp`. State the exact text you see.
 
 - If you read **`VISUAL-CHECK-7Q2X`** → vision is available → proceed to
   Step 1.

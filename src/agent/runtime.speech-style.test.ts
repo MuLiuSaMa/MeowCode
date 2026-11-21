@@ -25,8 +25,15 @@ async function makeRuntime(speechStyle?: SpeechStyle, systemPrompt?: string) {
   });
 }
 
+/** 只数「会被语色污染」的 system 段：行为段与环境段是常驻静态段，不属于本测试范围 */
 function systems(runtime: AgentRuntime) {
-  return (runtime as unknown as RuntimeAccess).systemMessages();
+  return (runtime as unknown as RuntimeAccess)
+    .systemMessages()
+    .filter(
+      (message) =>
+        !message.content.startsWith("Working rules beyond the baseline:") &&
+        !message.content.startsWith("Environment: "),
+    );
 }
 
 async function makeSession() {

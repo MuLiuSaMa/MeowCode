@@ -80,3 +80,26 @@ export function parsePatch(patch: string): { rows: PatchRow[]; omitted: number }
   return { rows: rows.slice(0, MAX_ROWS), omitted: rows.length - MAX_ROWS };
 }
 
+/**
+ * patch 的记账行：`diff --git` / `index` / 文件模式 / 重命名 / `---` `+++` 文件头 / `@@` 段头。
+ * 界面里文件名和增删数已经在外面展示，正文再画一遍这些只会在每段 diff 顶部扎一排灰字。
+ * `\ No newline at end of file`、`Binary files ...` 这类真正描述内容的保留。
+ */
+export function isPatchNoiseRow(row: PatchRow): boolean {
+  if (row.kind === "hunk") return true;
+  if (row.kind !== "meta") return false;
+  return (
+    row.text.startsWith("diff --git ") ||
+    row.text.startsWith("index ") ||
+    row.text.startsWith("new file mode ") ||
+    row.text.startsWith("deleted file mode ") ||
+    row.text.startsWith("old mode ") ||
+    row.text.startsWith("new mode ") ||
+    row.text.startsWith("similarity index ") ||
+    row.text.startsWith("rename from ") ||
+    row.text.startsWith("rename to ") ||
+    row.text.startsWith("--- ") ||
+    row.text.startsWith("+++ ")
+  );
+}
+

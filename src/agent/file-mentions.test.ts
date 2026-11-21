@@ -4,6 +4,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   buildFileMentionContext,
+  collectAttachmentRoots,
   collectInjectedPaths,
   extractAttachmentPaths,
   extractFileMentions,
@@ -312,6 +313,87 @@ describe("buildFileMentionContext attachments", () => {
     // 附件必须是绝对路径（相对路径会被忽略，避免"附件"绕过工作区守卫）
     expect(text).toContain("inside.ts");
     expect(await buildFileMentionContext(workspace, text)).toBeNull();
+  });
+});
+
+describe("buildFileMentionContext folders", () => {
+  it("injects a bounded recursive tree and skips dependency folders", async () => {
+    const workspace = await makeWorkspace();
+    const folder = path.join(workspace, "pkg");
+    await mkdir(path.join(folder, "src"), { recursive: true });
+    await mkdir(path.join(folder, "node_modules", "dep"), { recursive: true });
+    await writeFile(path.join(folder, "README.md"), "# pkg\n");
+    await writeFile(path.join(folder, "src", "app.ts"), "export {};\n");
+    await writeFile(path.join(folder, "node_modules", "dep", "index.js"), "hidden\n");
+
+    const context = await buildFileMentionContext(
+      workspace,
+      `【附件】pkg/ · ${folder}\n\n看看这个文件夹`,
+    );
+    expect(context).toContain("The user attached this folder");
+    expect(context).toContain(JSON.stringify({ path: folder }));
+    expect(context).toContain("src/");
+    expect(context).toContain("app.ts");
+    expect(context).not.toContain("node_modules");
+  });
+
+  it("lists an empty folder", async () => {
+    const workspace = await makeWorkspace();
+    const folder = path.join(workspace, "empty");
+    await mkdir(folder, { recursive: true });
+    const context = await buildFileMentionContext(
+      workspace,
+      `【附件】empty/ · ${folder}\n\n看看`,
+    );
+    expect(context).toContain("(empty)");
+  });
+
+  it("uses a placeholder for a folder already listed in this conversation", async () => {
+    const workspace = await makeWorkspace();
+    const folder = path.join(workspace, "repo");
+    await mkdir(folder, { recursive: true });
+    await writeFile(path.join(folder, "app.ts"), "export {};\n");
+    const text = `【附件】repo/ · ${folder}\n\n继续`;
+    const first = await buildFileMentionContext(workspace, text);
+    const second = await buildFileMentionContext(workspace, text, {
+      seen: collectInjectedPaths([{ role: "user", content: first! }]),
+    });
+    expect(second).toContain("Already listed earlier in this conversation");
+    expect(second).not.toContain("app.ts");
+  });
+
+  it("marks an attached folder outside the workspace as directly readable by tools", async () => {
+    const workspace = await makeWorkspace();
+    const outside = await mkdtemp(path.join(tmpdir(), "meowcode-attached-folder-"));
+    await writeFile(path.join(outside, "note.md"), "outside note\n");
+    const context = await buildFileMentionContext(
+      workspace,
+      `【附件】outside/ · ${outside}\n\n看看`,
+    );
+    expect(context).toContain("outside the workspace");
+    expect(context).toContain("read_file/list_dir can open it directly");
+    expect(context).toContain("note.md");
+  });
+});
+
+describe("collectAttachmentRoots", () => {
+  it("collects absolute attachment paths from user messages once", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "meowcode-roots-"));
+    const a = path.join(root, "a.ts");
+    const b = path.join(root, "b.ts");
+    const fake = path.join(root, "fake.ts");
+    const messages: ChatMessage[] = [
+      { role: "user", content: `【附件】a.ts · ${a}\n\n继续` },
+      { role: "assistant", content: `【附件】a.ts · ${a}` },
+      { role: "user", content: `正文里的【附件】fake.ts · ${fake}` },
+      { role: "user", content: `【附件】a.ts · ${a}` },
+      { role: "user", content: "【附件】rel.ts · rel.ts" },
+      { role: "user", content: `【附件】b.ts · ${b}\n\n继续` },
+    ];
+    expect(collectAttachmentRoots(messages)).toEqual([
+      path.resolve(a),
+      path.resolve(b),
+    ]);
   });
 });
 

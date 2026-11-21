@@ -147,6 +147,7 @@
     "moreTitle": "Anhänge hinzufügen / Modus wechseln",
     "plusMenuAria": "Hinzufügen, referenzieren und Befehle",
     "upload": "Anhang hochladen",
+    "addFolder": "Ordner hinzufügen",
     "plugins": "Plugins",
     "pluginsCount": "Plugins ({{count}})",
     "skills": "Skills",
@@ -219,6 +220,9 @@
     "xhigh": "Sehr hoch",
     "max": "Maximal",
     "ultra": "Ultra"
+  },
+  "drop": {
+    "hint": "Loslassen, um Dateien oder Ordner hinzuzufügen"
   },
   "jumpToBottom": "Nach unten"
 }

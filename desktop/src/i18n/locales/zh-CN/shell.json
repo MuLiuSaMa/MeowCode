@@ -3,7 +3,6 @@
     "home": "主页",
     "architecture": "Agent 架构",
     "git": "Git 管理",
-    "mail": "邮箱",
     "plugins": "插件市场",
     "automation": "自动化",
     "settings": "设置"
@@ -250,5 +249,10 @@
     "label": "公告",
     "close": "关闭",
     "viewSite": "查看网站"
+  },
+  "view": {
+    "label": "视图切换",
+    "chat": "对话",
+    "trajectory": "轨迹"
   }
 }

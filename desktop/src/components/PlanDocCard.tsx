@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { LuChevronRight, LuFileText } from "react-icons/lu";
+import { LuChevronRight } from "react-icons/lu";
 import { api } from "../api";
 import { extractPlanPreview, type PlanPreview } from "../plan-preview";
+import { FileIcon } from "./ui/FileIcon";
 import "./PlanDocCard.css";
 
 /**
@@ -64,7 +65,7 @@ export function PlanDocCard({
       }}
     >
       <div className="mc-plandoc__head">
-        <LuFileText size={14} className="mc-plandoc__icon" aria-hidden="true" />
+        <FileIcon path={path} size={14} />
         <span className="mc-plandoc__title">{title}</span>
         <LuChevronRight size={13} className="mc-plandoc__chev" aria-hidden="true" />
       </div>

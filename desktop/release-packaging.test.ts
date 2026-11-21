@@ -78,6 +78,10 @@ describe("release packaging", () => {
     expect(pkg.build.beforePack).toBe("./brand-packaged.cjs");
     expect(pkg.build.afterPack).toBe("./brand-packaged.cjs");
     expect(pkg.build.files).toContain("*.cjs");
+    // 渲染层依赖由 Vite 打进 renderer/，不能再留在 dependencies：electron-builder 会
+    // 自动把 production deps 复制进 asar，等于双份（实测多出 289.8MB）。只有主进程
+    // 真正 require 的包才该留在这里。
+    expect(Object.keys(pkg.dependencies).sort()).toEqual(["cron-parser", "node-pty"]);
     const agentResource = pkg.build.extraResources.find(
       (entry: { to?: string }) => entry.to === "agent-server",
     );

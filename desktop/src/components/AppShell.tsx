@@ -11,6 +11,7 @@ import "./AppShell.css";
  *  - 左栏（对话/设置/架构导航）宽度可拖拽，和右侧检查器同一套交互。
  */
 export function AppShell({
+  background,
   rail,
   conversations,
   children,
@@ -21,6 +22,8 @@ export function AppShell({
   listColRef,
   view = "chat",
 }: {
+  /** 自定义背景层：渲染在最底下，面板半透明时透出来 */
+  background?: ReactNode;
   rail: ReactNode;
   conversations: ReactNode;
   children: ReactNode;
@@ -39,6 +42,7 @@ export function AppShell({
   return (
     <PluginWrap name="shell.root" props={{}}>
       <div className="mc-root">
+        {background}
         <PluginWrap name="shell.titlebar" props={{ announcements }}>
           <TitleBar announcements={announcements} />
         </PluginWrap>

@@ -19,7 +19,7 @@ function makeHost(
 }
 
 describe("browser tool definitions", () => {
-  it("exposes the seven browser tools", () => {
+  it("exposes the eight browser tools", () => {
     expect(browserToolDefinitions.map((definition) => definition.function.name)).toEqual([
       "browser_navigate",
       "browser_snapshot",
@@ -28,8 +28,10 @@ describe("browser tool definitions", () => {
       "browser_screenshot",
       "browser_back",
       "browser_reload",
+      "browser_preview",
     ]);
     expect(isBrowserTool("browser_click")).toBe(true);
+    expect(isBrowserTool("browser_preview")).toBe(true);
     expect(isBrowserTool("read_file")).toBe(false);
   });
 });
@@ -55,6 +57,50 @@ describe("executeBrowserTool", () => {
       { op: "back" },
       { op: "reload" },
     ]);
+  });
+
+  it("maps browser_preview to the preview command and echoes the file", async () => {
+    const { host, commands } = makeHost({
+      ok: true,
+      url: "http://127.0.0.1:9/preview/token/design/home.html",
+      title: "Home",
+      preview: "design/home.html",
+    });
+    const result = await executeBrowserTool(
+      "browser_preview",
+      { path: " design/home.html " },
+      host,
+      { keepImages: false },
+    );
+    expect(commands).toEqual([{ op: "preview", path: "design/home.html" }]);
+    expect(result.ok).toBe(true);
+    expect(result.output).toContain("preview: design/home.html");
+    expect(result.output).toContain("browser_screenshot");
+  });
+
+  it("sends inline html to the temp preview file instead of the repo", async () => {
+    const { host, commands } = makeHost({
+      ok: true,
+      url: "http://127.0.0.1:9/scratch/token/pricing-1.html",
+      title: "pricing-1.html",
+      preview: "pricing-1.html",
+    });
+    const result = await executeBrowserTool(
+      "browser_preview",
+      { html: "<h1>hi</h1>", name: " pricing " },
+      host,
+      { keepImages: false },
+    );
+    expect(commands).toEqual([{ op: "preview", html: "<h1>hi</h1>", name: "pricing" }]);
+    expect(result.ok).toBe(true);
+    expect(result.output).toContain("preview: pricing-1.html");
+  });
+
+  it("rejects browser_preview without html or path", async () => {
+    const { host, commands } = makeHost();
+    const result = await executeBrowserTool("browser_preview", {}, host, { keepImages: false });
+    expect(result.ok).toBe(false);
+    expect(commands).toEqual([]);
   });
 
   it("returns page metadata and truncates large snapshots", async () => {
@@ -87,7 +133,10 @@ describe("executeBrowserTool", () => {
     });
     const result = await executeBrowserTool("browser_screenshot", {}, host, { keepImages: false });
     expect(result.ok).toBe(true);
-    expect(result.images).toBeUndefined();
+    // 纯文本模型不收图，但截图仍要交给 UI 展示给用户
+    expect(result.images).toEqual([
+      { data: Buffer.from("png").toString("base64"), mimeType: "image/png" },
+    ]);
     expect(result.output).toContain("meowcode-screenshots");
     const file = result.output.split("\n").at(-1) ?? "";
     expect(file).toContain("meowcode-screenshots");

@@ -206,7 +206,8 @@ export const computerControlPlugin: PluginFactory = (api: PluginAPI): void => {
       "are interpreted in the pixel space of the MOST RECENT screenshot. Take another screenshot after each " +
       "action to verify the result before continuing. On multi-monitor setups use `display` (0-based index, " +
       "default = primary display) to capture a specific screen. " +
-      "Do not take screenshots to verify code or UI changes you just made; ask the user to look instead.",
+      "Do not take screenshots to verify code or UI changes you just made; ask the user to look instead. " +
+      "For page styles or a design mockup, pass the HTML to browser_preview instead of capturing this window.",
     parameters: {
       type: "object",
       properties: {

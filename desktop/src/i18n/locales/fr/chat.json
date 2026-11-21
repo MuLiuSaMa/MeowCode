@@ -113,6 +113,9 @@
     "delete": "Supprimer"
   },
   "checkpoint": {
+    "edit": "Modifier et renvoyer",
+    "editSend": "Renvoyer",
+    "editHint": "⌘/Ctrl + Enter pour envoyer, Échap pour annuler",
     "auto": "Point de contrôle automatique",
     "manual": "Point de contrôle",
     "restore": "Restaurer",
@@ -233,6 +236,7 @@
     "browserScreenshot": "Capture de page",
     "browserBack": "Page précédente",
     "browserReload": "Recharger la page",
+    "browserPreview": "Aperçu de la page",
     "openInPanel": "Cliquez pour afficher le fichier dans le panneau latéral",
     "computerScreenshot": "Capture d’écran",
     "computerClick": "Cliquer",

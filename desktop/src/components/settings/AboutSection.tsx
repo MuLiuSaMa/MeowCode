@@ -1,11 +1,11 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { LuArrowUpRight, LuRotateCw } from "react-icons/lu";
 import alipayQrUrl from "../../assets/sponsor/alipay.webp";
-import wechatQrUrl from "../../assets/sponsor/wechat.png";
-import logoUrl from "../../assets/icon.png";
-import wordmarkBlackUrl from "../../assets/wordmark-black.png";
-import wordmarkUrl from "../../assets/wordmark.png";
+import wechatQrUrl from "../../assets/sponsor/wechat.webp";
+import logoUrl from "../../assets/icon.webp";
+import wordmarkBlackUrl from "../../assets/wordmark-black.webp";
+import wordmarkUrl from "../../assets/wordmark.webp";
 import { useTheme } from "../../theme/theme";
 import { SPONSOR_NAMES } from "../../data/sponsors";
 import { checkForUpdates, type AppInfo, type UpdateInfo } from "../../api";
@@ -50,6 +50,22 @@ export function AboutSection({
   const [checking, setChecking] = useState(false);
   /** 防止连点触发多次请求 */
   const busyRef = useRef(false);
+  /** 赞助名单：先亮内置兜底，再切到主进程缓存 / 最新拉取结果 */
+  const [sponsorNames, setSponsorNames] = useState<string[]>([...SPONSOR_NAMES]);
+  useEffect(() => {
+    let cancelled = false;
+    const apply = (payload: { names: string[] } | null) => {
+      if (!cancelled && payload?.names.length) setSponsorNames(payload.names);
+    };
+    const off = window.meow.onSponsors(apply);
+    void window.meow.getSponsors().then(apply).catch(() => undefined);
+    // 每次打开关于页都拉一次最新名单；失败时主进程保留旧名单
+    void window.meow.refreshSponsors().then(apply).catch(() => undefined);
+    return () => {
+      cancelled = true;
+      off();
+    };
+  }, []);
 
   const runCheck = useCallback(async () => {
     if (busyRef.current) return;
@@ -178,7 +194,7 @@ export function AboutSection({
               role="list"
               aria-label={t("about.sponsorList")}
             >
-              {SPONSOR_NAMES.map((name, index) => (
+              {sponsorNames.map((name, index) => (
                 <span className="mc-about__sponsorname" role="listitem" key={`${name}-${index}`}>
                   {name}
                 </span>

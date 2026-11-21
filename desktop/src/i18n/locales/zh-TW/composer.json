@@ -147,6 +147,7 @@
     "moreTitle": "新增附件 / 切換模式",
     "plusMenuAria": "新增、引用與命令",
     "upload": "上傳附件",
+    "addFolder": "新增資料夾",
     "plugins": "外掛",
     "pluginsCount": "外掛（{{count}}）",
     "skills": "技能",
@@ -219,6 +220,9 @@
     "xhigh": "極高",
     "max": "最高",
     "ultra": "極致"
+  },
+  "drop": {
+    "hint": "放開以新增檔案或資料夾"
   },
   "jumpToBottom": "返回底部"
 }

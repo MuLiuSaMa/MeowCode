@@ -1,5 +1,16 @@
 # MeowCode 优化清单（基于 dsh-superagent 调研）
 
+> **状态（2026-11-20 核验）：本文四项已全部落地**，保留作设计与验收记录，不要当待办清单读。
+>
+> | 项 | 落地位置 |
+> |---|---|
+> | P0-1 工具集合一致测试 | `src/agent/tool-sets.test.ts`（双向契约 + 策略集合 + 写类口径 + 治理门禁覆盖） |
+> | P0-2 截断可续读指针 | `tools.ts` 的 `truncateWithSpill` / `isInsideToolOutput` + `tool-output.test.ts`；三个调用点已接（`tools.ts` 动态工具、`runtime.ts` 两处 task） |
+> | P1 任务阶段派生 | `src/agent/stage.ts` 的 `deriveStage`；`desktop` 的 PlanTab / TaskToolRow / SubagentsTab / SessionProgressPill 已统一消费；`PlanCard.tsx` 已删除 |
+> | P2 自动化决策与 observe 档 | `desktop/scheduler.cjs` 的 `AUTONOMY_MODES` / `triggerId` / `DECISION_OUTCOMES` + `scheduler.test.ts` |
+>
+> 新问题请另开文档，不要在本清单上追加。
+
 > 来源：`docs/reference/dsh-superagent.md` 的四项结论，落到 MeowCode 的具体改法。
 > 原则：只做有明确收益、能独立验收的项；每项都标清改动面与验收方式。
 > 本文不含代码改动，开工时按 §1 → §2 → §3 → §4 顺序推进。

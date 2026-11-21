@@ -1,21 +1,10 @@
-export type ToolName =
-  | "list_dir"
-  | "read_file"
-  | "glob"
-  | "grep"
-  | "write_file"
-  | "edit_file"
-  | "multi_edit"
-  | "run_command"
-  | "update_plan"
-  | "task"
-  | "browser_navigate"
-  | "browser_snapshot"
-  | "browser_click"
-  | "browser_type"
-  | "browser_screenshot"
-  | "browser_back"
-  | "browser_reload";
+import type { BUILTIN_TOOL_CONTRACTS } from "./tool-contract.js";
+
+/**
+ * 内置工具名：从契约表派生，加/删工具时自动同步。
+ * 曾手写成 17 个的联合（实际 36 个），与契约表长期漂移且无人使用。
+ */
+export type ToolName = keyof typeof BUILTIN_TOOL_CONTRACTS;
 
 export type SubagentStatus = "running" | "completed" | "failed" | "aborted" | "interrupted";
 

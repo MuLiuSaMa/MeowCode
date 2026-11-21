@@ -117,6 +117,14 @@
   background: var(--surface);
 }
 
+.mc-turnchanges__file {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+
 .mc-turnchanges__path {
   flex: 1 1 auto;
   min-width: 0;
@@ -159,4 +167,11 @@
 
 .mc-turnchanges__chevron[data-open="true"] {
   transform: rotate(180deg);
+}
+
+/* 壁纸模式：与全局统一配方（base.css 的 --wpg-*）保持一致，改一处全应用同步 */
+:root[data-wallpaper="true"] .mc-turnchanges {
+  background-color: var(--wpg-glass);
+  -webkit-backdrop-filter: var(--wpg-filter);
+  backdrop-filter: var(--wpg-filter);
 }

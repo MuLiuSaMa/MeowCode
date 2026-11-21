@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="./assets/MeowCode.png" alt="MeowCode — A programming agent whose architecture you can tweak freely" width="100%">
+  <img src="./assets/MeowCode.webp" alt="MeowCode — A programming agent whose architecture you can tweak freely" width="100%">
 </p>
 
 <h1 align="center">MeowCode —— 可自由修改架构的Agent</h1>
@@ -23,7 +23,7 @@ Electron + React 负责界面，Agent 内核跑在本地 HTTP/SSE 服务里，UI
 -   **内核与界面彻底解耦**：`pnpm dev:server` 就能脱离 Electron 单独跑，任何 HTTP 客户端都能接入。
 -   **不是黑盒**：工具调用、审批、压缩、缓存策略全是 `src/agent/` 里的普通 TypeScript，改完即生效，没有打包魔法。
 -   **认真对待 Token**：服务端原生压缩 + 本地摘要 + 工具输出三层治理 + 输出预算预检，长会话不容易崩。
--   **桌面不是壳**：终端、浏览器、邮件、文件预览、Git、Diff 审阅、悬浮岛都在同一个窗口，不用在编辑器和终端之间来回切。
+-   **桌面不是壳**：终端、浏览器、文件预览、Git、Diff 审阅、悬浮岛都在同一个窗口，不用在编辑器和终端之间来回切。
 -   **本地优先**：会话、密钥、日志都留在本机；密钥进内存即从环境变量抹除，不落盘。
 
 ## 功能特性
@@ -38,8 +38,9 @@ Electron + React 负责界面，Agent 内核跑在本地 HTTP/SSE 服务里，UI
 **工具与审批**
 
 -   文件与搜索：`list_dir` / `read_file` / `glob` / `grep`（内置 ripgrep）/ `write_file` / `edit_file` / `multi_edit`。
--   命令执行：`run_command` 运行 PowerShell（5.1 与 7 的行为对齐）；退出码如实上报，失败不再被当成成功；没有 stdin 通道，交互式命令直接失败而不是空等超时；彩色码与进度噪音在采集层清掉，超长输出保留头 + 尾，报错不会随尾部一起被截掉；高危命令给出风险提示。
--   浏览器：`browser_navigate` / `browser_click` / `browser_type` / `browser_screenshot` / `browser_snapshot` / `browser_back` / `browser_reload`；直接驱动内嵌页签的 guest webContents，快照只收可见可交互元素（最多 200 个）。
+-   命令执行：`run_command` 运行 PowerShell（5.1 与 7 的行为对齐）；退出码如实上报，失败不再被当成成功；没有 stdin 通道，交互式命令直接失败而不是空等超时；彩色码与进度噪音在采集层清掉，超长输出保留头 + 尾，报错不会随尾部一起被截掉；高危命令给出风险提示。`timeout_ms` 默认 120 秒、上限 10 分钟：到点仍在跑的命令**不杀**，直接转成后台任务并回 job id，模型用 `job wait` 接着等。
+-   后台任务：`run_command background=true` 起 dev server / watcher，`job` 工具负责 `list` / `output` / `wait` / `input` / `kill`。`job wait` 默认阻塞到进程退出或超时（默认 60 秒、上限 5 分钟），一次拿回这段时间的全部输出和退出码，`until:"output"` 才是「有新输出就返回」；桌面端的 PTY 走 `/job/wait` 长轮询，有数据或退出立刻返回，不再由 agent 每 500ms 轮询。任务结束而模型已经收工的话，结果写成上下文注记，下一轮自动带上。
+-   浏览器：`browser_navigate` / `browser_click` / `browser_type` / `browser_screenshot` / `browser_snapshot` / `browser_back` / `browser_reload` / `browser_preview`；agent 用一个懒建的隐藏窗口（固定 1280x900 视口）当浏览器，不占右侧面板、不受面板大小影响，快照只收可见可交互元素（最多 200 个）。`browser_preview` 给源码或工作区里的 HTML 路径都能渲染：页面样式的 HTML 直接写进系统临时目录（启动 / 退出各清一次，不落仓库），路径模式则连带加载旁边的相对 css/js/图片；页面只在隐藏窗口里渲染、界面上不弹浏览器，要给你看就靠 `browser_screenshot`，不必再截桌面窗口。
 -   网络与文档：`web_search` / `web_fetch`；PDF 直接解析（pdfjs-dist）；视频走 ffprobe + 9 帧 storyboard（约 1.5k token），长视频不硬塞上下文。
 -   电脑控制（内置插件，Windows）：`computer_screenshot` / `click` / `drag` / `scroll` / `key` / `type` / `wait` / `window_list` / `window_activate` / `clipboard`；截图走 desktopCapturer，输入走 PowerShell SendInput。
 -   审批四档：`read-only` / `ask` / `auto` / `full`；写文件与命令默认弹出 diff 审批，审批期间文件被外部改动会自动刷新 diff。批准过的操作可以沉淀成项目级规则（`.meowcode/approvals.json`），文件一改规则自动失效。
@@ -61,13 +62,6 @@ Electron + React 负责界面，Agent 内核跑在本地 HTTP/SSE 服务里，UI
 -   导出：会话可导出为 HTML 或 Markdown。
 -   项目指令：自动读取工作区根目录与 `.meowcode/AGENTS.md` 作为项目级指引。
 
-**邮件**
-
--   侧栏内置邮件客户端：多账号 IMAP 收件 / SMTP 发件，文件夹、HTML 正文与附件。
--   发件箱独立排队：发送失败留在发件箱由你手动重试，重启不会自动重发，避免重复投递。
--   AI 起草正文：说出要点即可生成邮件，区分新写 / 回复 / 转发三种语境；只产出正文，不带主题行和客套模板。
--   复用已配置的模型与代理，不需要为邮件单独填一套密钥。
-
 **Token 效率**
 
 -   服务端原生压缩（Anthropic `compact_20260112` / OpenAI `/responses/compact`）。
@@ -87,7 +81,8 @@ Electron + React 负责界面，Agent 内核跑在本地 HTTP/SSE 服务里，UI
 -   多项目工作区切换；设置页覆盖模型与服务商、审批、沙箱、Hooks、项目规则、记忆、自我学习、Worktree、外观、快捷键、数据位置与归档。
 -   标题栏公告：更新动态显示在 Logo 右侧，点开看全文；关闭状态按公告 id 记录，换新公告才会再提示。
 -   AI 悬浮岛：屏幕顶部胶囊聚合所有运行中会话，待审批亮琥珀点，悬停展开迷你聊天窗，空闲时鼠标穿透。
--   外观：6 套配色（经典色 / 熔岩橙 / 蜜蜂黄 / 薄荷绿 / 羊皮纸 / 和谐蓝）× 明暗 / 跟随系统；11 种界面语言。
+-   外观：6 套配色（经典色 / 熔岩橙 / 蜜蜂黄 / 薄荷绿 / 羊皮纸 / 和谐蓝）× 明暗 / 跟随系统；11 种界面语言。
+-   自定义背景：图片或视频铺在面板下层，可调透明度 / 亮度 / 模糊与面板不透明度；视频静音循环，媒体走 `meow-media://` 协议按 Range 流式读取。
 -   托盘会话、系统通知、自动更新检查与下载。
 -   侧边聊天 `Ctrl+Alt+S`、文件快开 `Ctrl+P`、终端 `` Ctrl+` ``。
 -   图片输入：用户附图与截图回传，取决于所配模型的输入模态。
@@ -123,7 +118,7 @@ Electron + React 负责界面，Agent 内核跑在本地 HTTP/SSE 服务里，UI
 
 ### 编排可视化
 
-![](./assets/agent-architecture.png)
+![](./assets/agent-architecture.webp)
 
 Agent 架构编辑器
 
@@ -157,7 +152,7 @@ Agent 架构编辑器
 
 同一道「前后端综合代码 BUG 修复」任务，六款 Agent 在同一模型（DeepSeek-V4.1-Flash-1017，思考强度 Max，上下文 1M）下的对比：
 
-![图片](assets/benchmark-token-cache.png)
+![图片](assets/benchmark-token-cache.webp)
 
 -   **总 Token**：5,123,379，最高比DeepSeek Harness减少了61.36%
     

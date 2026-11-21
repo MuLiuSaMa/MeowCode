@@ -113,6 +113,9 @@
     "delete": "Удалить"
   },
   "checkpoint": {
+    "edit": "Изменить и отправить снова",
+    "editSend": "Отправить снова",
+    "editHint": "⌘/Ctrl + Enter — отправить, Esc — отмена",
     "auto": "Автоматическая контрольная точка",
     "manual": "Контрольная точка",
     "restore": "Восстановить",
@@ -233,6 +236,7 @@
     "browserScreenshot": "Скриншот страницы",
     "browserBack": "Назад",
     "browserReload": "Перезагрузить страницу",
+    "browserPreview": "Предпросмотр страницы",
     "openInPanel": "Нажмите, чтобы открыть файл в боковой панели",
     "computerScreenshot": "Скриншот",
     "computerClick": "Клик мышью",

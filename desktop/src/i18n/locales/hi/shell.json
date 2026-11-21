@@ -3,7 +3,6 @@
     "home": "होम",
     "architecture": "Agent आर्किटेक्चर",
     "git": "Git प्रबंधन",
-    "mail": "मेल",
     "plugins": "मार्केटप्लेस",
     "automation": "ऑटोमेशन",
     "settings": "सेटिंग्स"
@@ -250,5 +249,10 @@
     "label": "घोषणा",
     "close": "बंद करें",
     "viewSite": "वेबसाइट देखें"
+  },
+  "view": {
+    "label": "दृश्य बदलें",
+    "chat": "चैट",
+    "trajectory": "ट्रेस"
   }
 }

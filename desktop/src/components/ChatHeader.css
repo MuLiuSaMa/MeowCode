@@ -49,3 +49,12 @@
   display: flex;
   align-items: center;
 }
+
+/*
+ * 自定义背景：标题栏直接不画底。
+ * 它和消息流是同一条 flex 列里的两块，内容不会滚到它下面，所以透明是安全的；
+ * 再叠一层半透明底色会让标题区比下面更暗，在壁纸上又是一条可见的黑边。
+ */
+:root[data-wallpaper="true"] .mc-header {
+  background: transparent;
+}

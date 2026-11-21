@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { memo, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { LuPanelRightOpen } from "react-icons/lu";
 import { deriveStage } from "../../../src/agent/stage";
@@ -14,7 +14,7 @@ function asRecord(input: unknown): Record<string, unknown> {
     : {};
 }
 
-export function TaskToolRow({
+export const TaskToolRow = memo(function TaskToolRow({
   item,
   agent,
   onOpen,
@@ -70,4 +70,4 @@ export function TaskToolRow({
       <LuPanelRightOpen size={14} className="mc-taskrow__open" aria-hidden="true" />
     </button>
   );
-}
+});

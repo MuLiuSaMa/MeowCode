@@ -172,6 +172,28 @@ describe("agent server auth", () => {
     });
   });
 
+  it("applies the requested default approval mode to a new session", async () => {
+    const headers = { authorization: `Bearer ${TOKEN}`, "content-type": "application/json" };
+    const created = await fetch(`${baseUrl}/session/new`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ cwd: sessionsDir, approvalMode: "read-only" }),
+    });
+    expect(created.status).toBe(200);
+
+    const current = (await (
+      await fetch(`${baseUrl}/session`, { headers: { authorization: `Bearer ${TOKEN}` } })
+    ).json()) as { approvalMode: string };
+    expect(current.approvalMode).toBe("read-only");
+
+    const invalid = await fetch(`${baseUrl}/session/new`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ cwd: sessionsDir, approvalMode: "bogus" }),
+    });
+    expect(invalid.status).toBe(400);
+  });
+
   it("fails closed when no token is configured", async () => {
     await expect(startServer({ port: 0 })).rejects.toThrow("MEOWCODE_SERVER_TOKEN is required");
   });

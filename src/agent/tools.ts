@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import type { ChildProcess } from "node:child_process";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import {
@@ -45,7 +46,11 @@ import type { WebFetchOutcome } from "./web-fetch.js";
 import { classifySandboxDenial } from "./sandbox/denial.js";
 import { getSandboxSettings } from "./sandbox/policy.js";
 import { runShellCommand } from "./exec/shell.js";
-import { MAX_COMMAND_OUTPUT_BYTES, DEFAULT_COMMAND_TIMEOUT_MS } from "./exec/types.js";
+import {
+  MAX_COMMAND_OUTPUT_BYTES,
+  DEFAULT_COMMAND_TIMEOUT_MS,
+  MAX_COMMAND_TIMEOUT_MS,
+} from "./exec/types.js";
 import {
   builtinToolContract,
   isParallelSafeContract,
@@ -543,7 +548,7 @@ export const toolDefinitions: ToolDefinition[] = [
     function: {
       name: "run_command",
       description:
-        "Run a PowerShell command in the workspace. Routine commands run automatically; only destructive ones (disk, registry, shutdown) ask first. Long output keeps head and tail; full log is saved under .meowcode/tool-output/. When the command sandbox is enabled, writes outside the workspace and configured extra roots are blocked; a blocked command may ask once to retry outside the sandbox. background=true starts a long-running job (dev server, watcher) in a terminal and returns immediately; read it with the job tool (job wait blocks for output). " +
+        "Run a PowerShell command in the workspace. Routine commands run automatically; only destructive ones (disk, registry, shutdown) ask first. Long output keeps head and tail; full log is saved under .meowcode/tool-output/. When the command sandbox is enabled, writes outside the workspace and configured extra roots are blocked; a blocked command may ask once to retry outside the sandbox. A command that is still running at its timeout is not killed: it becomes a background job and you get its id, so long builds and test suites can be waited on with job wait. background=true starts a long-running job (dev server, watcher) in a terminal and returns immediately. " +
         // 这段是给模型看的写法约束：系统提示词按 token 预算只留了「怎么搜/怎么读」，
         // 只在真要下命令时才需要读到的东西放这里。
         "This is PowerShell, not bash: no rm -rf / export / cat / grep -r — use Remove-Item -Recurse -Force, $env:NAME='value', Get-Content, Select-String. Windows PowerShell 5.1 has no && or ||: chain with ';'. There is no stdin, so interactive prompts (Read-Host, pause, git commit without -m) hang until the timeout. " +
@@ -557,6 +562,11 @@ export const toolDefinitions: ToolDefinition[] = [
             type: "boolean",
             description:
               "Start as a background job in a terminal and return immediately (default false). Use job wait to block for output. The user can take over in the terminal tab.",
+          },
+          timeout_ms: {
+            type: "number",
+            description:
+              "How long to wait before handing the command to a background job: 1000-600000 (default 120000). On timeout nothing is killed — you get a job id and keep waiting with job wait. Raise it for long builds instead of guessing.",
           },
         },
         required: ["command"],
@@ -1236,6 +1246,8 @@ export function isDynamicToolRequiringApproval(name: string): boolean {
 export type ToolRunOptions = {
   /** 完全访问：允许工作区外的绝对路径 */
   allowOutsideWorkspace?: boolean;
+  /** 用户显式附加的根（工作区外也可读；只传给只读工具） */
+  extraReadRoots?: readonly string[];
   signal?: AbortSignal;
   /** run_command 的单次沙箱覆盖：bypass 只用于「用户批准后沙箱外重试一次」 */
   sandbox?: "enforce" | "bypass";
@@ -1483,7 +1495,12 @@ export async function executeTool(
         };
       }
       case "list_dir":
-        return await listDir(workspace, typeof args.path === "string" ? args.path : ".", allowOutsideWorkspace);
+        return await listDir(
+          workspace,
+          typeof args.path === "string" ? args.path : ".",
+          allowOutsideWorkspace,
+          options.extraReadRoots,
+        );
       case "read_file":
         return await readFile({
           workspace,
@@ -1492,6 +1509,7 @@ export async function executeTool(
           limit: args.limit,
           pages: args.pages,
           allowOutsideWorkspace,
+          extraReadRoots: options.extraReadRoots,
           vision,
           pdfDocuments: options.pdfDocuments === true,
           shrinkImage: options.shrinkImage,
@@ -1508,7 +1526,12 @@ export async function executeTool(
       case "read_video": {
         const target = typeof args.path === "string" ? args.path.trim() : "";
         if (!target) return { ok: false, output: "read_video requires a \"path\"." };
-        const file = await resolveToolPath(workspace, target, allowOutsideWorkspace);
+        const file = await resolveToolPath(
+          workspace,
+          target,
+          allowOutsideWorkspace,
+          options.extraReadRoots,
+        );
         const name = path.basename(file);
         const mode = typeof args.mode === "string" ? args.mode : "meta";
         // 视频会给模型回图片：模型不吃图时 meta 仍然有用，另外两种模式明确拒绝，
@@ -1552,6 +1575,7 @@ export async function executeTool(
           args.maxResults,
           signal,
           allowOutsideWorkspace,
+          options.extraReadRoots,
         );
         if (!result.ok) return result;
         const degraded = await degradeStructuredOutput(
@@ -1580,6 +1604,7 @@ export async function executeTool(
           },
           signal,
           allowOutsideWorkspace,
+          options.extraReadRoots,
         );
         if (!result.ok) return result;
         const degraded = await degradeStructuredOutput(
@@ -1631,7 +1656,10 @@ export async function executeTool(
           }
           return await startBackgroundCommand(options.jobs, String(args.command ?? ""), workspace);
         }
-        return await runCommand(workspace, String(args.command ?? ""), signal, options.sandbox);
+        return await runCommand(workspace, String(args.command ?? ""), signal, options.sandbox, {
+          timeoutMs: args.timeout_ms,
+          ...(options.jobs ? { jobs: options.jobs } : {}),
+        });
       case "job":
         if (!options.jobs) {
           return { ok: false, output: "Background jobs are not available in this environment." };
@@ -1789,8 +1817,13 @@ export async function executeTool(
   }
 }
 
-async function listDir(workspace: string, target: string, allowOutsideWorkspace = false): Promise<ToolResult> {
-  const dir = await resolveToolPath(workspace, target, allowOutsideWorkspace);
+async function listDir(
+  workspace: string,
+  target: string,
+  allowOutsideWorkspace = false,
+  extraReadRoots: readonly string[] = [],
+): Promise<ToolResult> {
+  const dir = await resolveToolPath(workspace, target, allowOutsideWorkspace, extraReadRoots);
   const entries = await fs.readdir(dir, { withFileTypes: true });
   const visible = entries
     .filter((entry) => !IGNORED_ENTRY_NAMES.has(entry.name))
@@ -1902,6 +1935,8 @@ async function readFile(options: {
   /** PDF 页范围表达式 */
   pages?: unknown;
   allowOutsideWorkspace?: boolean;
+  /** 用户显式附加的根：工作区外也可读 */
+  extraReadRoots?: readonly string[];
   vision?: boolean;
   /** 模型接受 PDF 文档块：扫描件回退成原生 document */
   pdfDocuments?: boolean;
@@ -1915,11 +1950,12 @@ async function readFile(options: {
     limit,
     pages,
     allowOutsideWorkspace = false,
+    extraReadRoots = [],
     vision = false,
     shrinkImage,
     signal,
   } = options;
-  const file = await resolveToolPath(workspace, target, allowOutsideWorkspace);
+  const file = await resolveToolPath(workspace, target, allowOutsideWorkspace, extraReadRoots);
   const name = path.basename(file);
   // PDF 走独立的文本层通道：不进"按行切片"的文本路径（二进制会被读成乱码）
   if (path.extname(file).toLowerCase() === ".pdf") {
@@ -2167,9 +2203,12 @@ async function readMany(
   const seenFiles = new Set<string>();
   for (const target of paths) {
     const remaining = totalBudget - used;
-    const file = await resolveToolPath(workspace, target, allowOutsideWorkspace).catch(
-      () => null,
-    );
+    const file = await resolveToolPath(
+      workspace,
+      target,
+      allowOutsideWorkspace,
+      options?.extraReadRoots,
+    ).catch(() => null);
     const name = path.basename(file ?? target);
     if (!file) {
       const section = `=== ${target} ===\nError: path is outside the workspace.`;
@@ -2575,11 +2614,43 @@ function shellMisuseHint(output: string): string | undefined {
 const TIMEOUT_HINT =
   "If it was waiting for input (Read-Host, pause, a password prompt, git commit without -m), there is no stdin — pass the flags instead. If it is a dev server or watcher, use background=true.";
 
+/**
+ * 命令里拿 sleep 当等待手段：不拦，但给一行改写建议。
+ * 对齐 Claude Code 的 sleep 拦截（那里直接 block，这里只提示，避免误伤固定节流的脚本）。
+ */
+const SLEEP_HINTS: Array<{ pattern: RegExp; seconds: (match: RegExpMatchArray) => number }> = [
+  { pattern: /\bStart-Sleep\b[^\n;|]*?-Seconds\s+(\d+)/i, seconds: (m) => Number(m[1]) },
+  { pattern: /\bStart-Sleep\b[^\n;|]*?-Milliseconds\s+(\d+)/i, seconds: (m) => Number(m[1]) / 1000 },
+  { pattern: /\bStart-Sleep\s+(\d+)\b/i, seconds: (m) => Number(m[1]) },
+  { pattern: /\bsleep\s+(\d+)(?:\.\d+)?s?\b/i, seconds: (m) => Number(m[1]) },
+  { pattern: /\btimeout\s+\/t\s+(\d+)/i, seconds: (m) => Number(m[1]) },
+];
+
+function sleepHint(command: string): string | undefined {
+  for (const { pattern, seconds } of SLEEP_HINTS) {
+    const match = command.match(pattern);
+    if (!match) continue;
+    const value = seconds(match);
+    if (Number.isFinite(value) && value > 2) {
+      return "Sleeping inside a command blocks the whole turn. For a server or long job use background=true and job {action:\"wait\"}; for a deliberate short delay keep it under 2s.";
+    }
+  }
+  return undefined;
+}
+
+/** 模型给的超时：1s–10min，缺省 120s（对齐 Claude Code 的默认值与上限）。 */
+function clampCommandTimeout(value: unknown): number {
+  const raw = Number(value);
+  if (!Number.isFinite(raw) || raw <= 0) return DEFAULT_COMMAND_TIMEOUT_MS;
+  return Math.min(MAX_COMMAND_TIMEOUT_MS, Math.max(1_000, Math.floor(raw)));
+}
+
 async function runCommand(
   workspace: string,
   command: string,
   signal?: AbortSignal,
   sandbox?: "enforce" | "bypass",
+  options: { timeoutMs?: unknown; jobs?: JobManager } = {},
 ): Promise<ToolResult> {
   if (!command.trim()) {
     return { output: "command is empty.", ok: false };
@@ -2587,11 +2658,28 @@ async function runCommand(
   if (signal?.aborted) {
     return { output: "Command aborted by the user.", ok: false };
   }
+  const timeoutMs = clampCommandTimeout(options.timeoutMs);
+  let adoptedId: string | undefined;
+  const adopt = options.jobs?.adopt;
   const result = await runShellCommand({
     workspace,
     command,
+    timeoutMs,
     ...(signal ? { signal } : {}),
     ...(sandbox ? { sandbox } : {}),
+    ...(adopt
+      ? {
+          onTimeout: (child: ChildProcess, captured: { stdout: Buffer; stderr: Buffer }) => {
+            adoptedId = adopt.call(options.jobs, {
+              command,
+              cwd: workspace,
+              child,
+              stdout: captured.stdout,
+              stderr: captured.stderr,
+            });
+          },
+        }
+      : {}),
   });
   if (result.sandboxUnavailable) {
     return {
@@ -2620,10 +2708,30 @@ async function runCommand(
     !result.timedOut && !result.aborted ? shellMisuseHint(result.combined) : undefined;
   const report = (output: string): string => {
     const base = denied(output);
-    return misuse ? `${base}\n[hint] ${misuse}` : base;
+    const hints = [misuse, result.promoted ? undefined : sleepHint(command)].filter(Boolean);
+    return hints.length ? `${base}\n[hint] ${hints.join("\n[hint] ")}` : base;
   };
   if (result.aborted) {
     return { output: "Command aborted by the user.", ok: false, ...sandboxField };
+  }
+  if (result.promoted) {
+    // 超时不杀：进程还在跑，只是从「等它结束」换成「后台任务」
+    const partial = truncateMiddle(result.combined);
+    const seconds = Math.round(timeoutMs / 1000);
+    const id = adoptedId ?? "(unknown)";
+    return {
+      output: denied(
+        [
+          `Command is still running after ${seconds}s, so it was moved to background job ${id}. Nothing was killed and no output is lost.`,
+          partial.output ? `Output so far:\n${partial.output}` : "",
+          `Wait for it with job {action:"wait", job_id:"${id}"} (returns when it exits or the wait times out), read more with job {action:"output", job_id:"${id}"}, or stop it with job {action:"kill", job_id:"${id}"}.`,
+        ]
+          .filter(Boolean)
+          .join("\n"),
+      ),
+      ok: true,
+      ...sandboxField,
+    };
   }
   if (result.timedOut) {
     const partial = truncateMiddle(result.combined);

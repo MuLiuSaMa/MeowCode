@@ -6,6 +6,11 @@
 
 export type BrowserHostCommand =
   | { op: "navigate"; url: string }
+  /**
+   * 把 HTML 当页面打开：html 直接写进桌面端的临时预览目录（不落仓库，退出即清），
+   * path 则打开工作区里已有的 HTML 文件（相对资源一并加载）。
+   */
+  | { op: "preview"; path?: string; html?: string; name?: string }
   | { op: "snapshot" }
   | { op: "click"; ref: string }
   | { op: "type"; text: string; ref?: string; submit?: boolean }
@@ -52,6 +57,8 @@ export type BrowserHostResult = {
   trusted?: boolean;
   typed?: string;
   submitted?: boolean;
+  /** preview 命令回带的文件名：工作区相对路径，或临时目录里的文件名 */
+  preview?: string;
 };
 
 export interface BrowserHostClient {

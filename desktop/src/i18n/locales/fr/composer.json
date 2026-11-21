@@ -147,6 +147,7 @@
     "moreTitle": "Ajouter des pièces jointes / changer de mode",
     "plusMenuAria": "Ajouter, référencer et commandes",
     "upload": "Téléverser une pièce jointe",
+    "addFolder": "Ajouter un dossier",
     "plugins": "Plugins",
     "pluginsCount": "Plugins ({{count}})",
     "skills": "Compétences",
@@ -219,6 +220,9 @@
     "xhigh": "Très élevé",
     "max": "Maximal",
     "ultra": "Ultra"
+  },
+  "drop": {
+    "hint": "Déposez pour ajouter des fichiers ou des dossiers"
   },
   "jumpToBottom": "Retour en bas"
 }

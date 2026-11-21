@@ -3,7 +3,6 @@
     "home": "홈",
     "architecture": "Agent 아키텍처",
     "git": "Git 관리",
-    "mail": "메일",
     "plugins": "마켓플레이스",
     "automation": "자동화",
     "settings": "설정"
@@ -250,5 +249,10 @@
     "label": "공지",
     "close": "닫기",
     "viewSite": "웹사이트 보기"
+  },
+  "view": {
+    "label": "보기 전환",
+    "chat": "대화",
+    "trajectory": "궤적"
   }
 }

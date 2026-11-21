@@ -2,7 +2,7 @@ import { safeParse } from "./context.js";
 import { buildAuthHeaders, fetchWithRetry, mergeExtraHeaders, type AuthStyle } from "./http.js";
 import { parseJson, readSseFrames } from "./sse.js";
 import { ProviderRequestError } from "./provider-error.js";
-import { isToolCallComplete, summarizeToolCalls, type ToolCallProgress } from "./tool-progress.js";
+import { createToolProgressSampler, isToolCallComplete, type ToolCallProgress } from "./tool-progress.js";
 import {
   cacheControlFor,
   gatewayUsesMinimalCache,
@@ -667,6 +667,7 @@ export async function streamAnthropicMessages(options: {  url: string;
   const reasoning: string[] = [];
   const toolCalls = new Map<number, ToolCall>();
   const completedBlocks = new Set<number>();
+  const sampleToolProgress = createToolProgressSampler();
   // thinking 块按 content block index 累积；带签名的整块才能在下一次请求里回灌
   const thinkingBlocks = new Map<
     number,
@@ -785,7 +786,8 @@ export async function streamAnthropicMessages(options: {  url: string;
             type: "function",
             function: { name: chunk.content_block.name ?? "", arguments: "" },
           });
-          options.onToolCall?.(summarizeToolCalls(toolCalls.values()));
+          const progress = sampleToolProgress(toolCalls.values());
+          if (progress) options.onToolCall?.(progress);
         }
         return;
       }
@@ -815,7 +817,8 @@ export async function streamAnthropicMessages(options: {  url: string;
           const current = toolCalls.get(index);
           if (current) {
             current.function.arguments += chunk.delta.partial_json;
-            options.onToolCall?.(summarizeToolCalls(toolCalls.values()));
+            const progress = sampleToolProgress(toolCalls.values());
+            if (progress) options.onToolCall?.(progress);
             // 只对 tool_use 块触发；参数闭合即刻回调（每个块只触发一次）
             if (
               options.onToolCallComplete &&

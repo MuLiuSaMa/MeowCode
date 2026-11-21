@@ -132,7 +132,7 @@ const MAX_HIGHLIGHT_CHARS = 512 * 1024;
 const AUTO_SAMPLE_CHARS = 4_096;
 const AUTO_MIN_RELEVANCE = 5;
 
-function escapeHtml(text: string): string {
+export function escapeHtml(text: string): string {
   return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 

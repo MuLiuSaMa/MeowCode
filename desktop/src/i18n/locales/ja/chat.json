@@ -113,6 +113,9 @@
     "delete": "削除"
   },
   "checkpoint": {
+    "edit": "編集して再送信",
+    "editSend": "再送信",
+    "editHint": "⌘/Ctrl + Enter で送信、Esc でキャンセル",
     "auto": "自動チェックポイント",
     "manual": "チェックポイント",
     "restore": "復元",
@@ -233,6 +236,7 @@
     "browserScreenshot": "ページのスクリーンショット",
     "browserBack": "ページを戻る",
     "browserReload": "ページを再読み込み",
+    "browserPreview": "ページをプレビュー",
     "openInPanel": "クリックでサイドパネルにファイルを表示",
     "computerScreenshot": "スクリーンショット",
     "computerClick": "クリック",

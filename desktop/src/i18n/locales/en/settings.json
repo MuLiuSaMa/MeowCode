@@ -79,7 +79,7 @@
     "root": {
       "label": "Worktree root directory",
       "hint": "Leave empty to use the default location. Restart the app for changes to take effect.",
-      "open": "Open folder"
+      "choose": "Choose folder"
     },
     "fetch": {
       "label": "Always fetch upstream before creating a worktree",
@@ -149,6 +149,24 @@
     "themeDesc": "“System” follows the Windows light / dark setting in real time. Changes apply immediately, no restart needed.",
     "paletteSection": "Palette",
     "paletteDesc": "Pick the accent and canvas tint. Light and dark are tuned separately, so the colors adapt when you switch modes.",
+    "backgroundSection": "Custom background",
+    "backgroundDesc": "Use images or videos as a background layer behind all panels. Import several at once, browse them under the Image / Video tabs and click one to switch; turn on the slideshow to cycle through them. Videos play muted; the lower Panel opacity, the more the wallpaper shows through — at the cost of text legibility.",
+    "backgroundEnable": "Custom background",
+    "backgroundImage": "Image",
+    "backgroundVideo": "Video",
+    "backgroundAdd": "Import…",
+    "backgroundRemove": "Remove",
+    "backgroundEmpty": "Nothing here yet — click Import to add files",
+    "backgroundCount": "{{count}} items",
+    "backgroundCarousel": "Slideshow",
+    "backgroundSound": "Video sound",
+    "backgroundInterval": "Slideshow interval",
+    "backgroundSeconds": "{{count}}s",
+    "backgroundMinutes": "{{count}} min",
+    "backgroundOpacity": "Background opacity",
+    "backgroundBrightness": "Brightness",
+    "backgroundBlur": "Blur",
+    "backgroundPanel": "Panel opacity",
     "palette": {
       "classic": "Classic",
       "lava": "Lava Orange",
@@ -574,6 +592,10 @@
     "clearFailed": "Could not clear learned items"
   },
   "general": {
+    "viewTabs": {
+      "field": "View switcher",
+      "desc": "Show the floating Chat / Trajectory switcher above the main area. Hidden for empty conversations."
+    },
     "section": "General",
     "desc": "Everyday behaviour. Changes apply immediately.",
     "notify": {
@@ -593,9 +615,9 @@
       "desc": "When the primary provider times out, is rate-limited, or returns a server error, this turn automatically switches to another enabled provider (up to 2 hops).",
       "toggleFailed": "Failed to save the provider failover setting"
     },
-    "mailAi": {
-      "field": "Model other than the chat model",
-      "follow": "Follow chat"
+    "defaultPermission": {
+      "field": "Default permission mode",
+      "desc": "Tool permission used for new conversations. Existing conversations keep their own choice."
     },
     "other": {
       "section": "General"
@@ -723,7 +745,14 @@
       "title": "Archived chats",
       "hint": "Restore or delete individual archived chats.",
       "action": "Manage"
-    }
+    },
+    "transfer": "Move…",
+    "transferTitle": "Move all data?",
+    "transferDesc": "All app data will be copied to the new folder. After a successful copy, the data in the old location will be deleted and the app will restart.",
+    "transferConfirm": "Move and restart",
+    "transferBusy": "Moving…",
+    "transferRestarting": "Data moved — restarting the app…",
+    "transferFailed": "Couldn't move the data."
   },
   "connections": {
     "section": "SSH connections",

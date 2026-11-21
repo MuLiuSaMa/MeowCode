@@ -73,4 +73,15 @@ describe("工具集合一致性", () => {
     // 审批面 = 写类 + 命令；命令走独立的高危判定，不进可写根
     expect(sorted(APPROVAL_TOOLS)).toEqual(sorted([...WRITABLE_ROOT_TOOLS, "run_command"]));
   });
+
+  it("治理门禁覆盖全部写类工具", () => {
+    // 漏一个写工具 = admit 之前就能静默改工作区：delete_file / move_file /
+    // apply_patch 曾经正好漏在集合外，写工具只有一个子集被拦。
+    for (const name of WRITE_TOOLS) {
+      expect(
+        GOVERNANCE_GATED_TOOLS.has(name),
+        `GOVERNANCE_GATED_TOOLS 漏了写工具：${name}`,
+      ).toBe(true);
+    }
+  });
 });

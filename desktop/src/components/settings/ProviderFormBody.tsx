@@ -213,8 +213,8 @@ export function useProviderForm({
         setError(t("models.form.fetchEmpty"));
         return;
       }
-      // 拉到的模型全部进列表，但默认不勾选（= 不显示在输入框的模型列表里）。
-      // 还没填内容的空行直接丢掉：不要拉取后还留一个空 Model ID。
+      // 拉到的模型全部进列表，但默认不勾选：没勾选的保存时不落库，
+      // 不会出现在设置页的模型列表里。还没填内容的空行直接丢掉。
       setRows((prev) => {
         const kept = prev.filter((row) => row.form.model.trim().length > 0);
         const known = new Set(kept.map((row) => row.form.model.trim()));
@@ -277,6 +277,8 @@ export function useProviderForm({
     const built: ProviderSettings[] = [];
     const usedIds = new Set<string>();
     for (const row of rows) {
+      // 弹窗里没勾选的模型不落库：设置页的模型列表只显示勾选过的
+      if (row.form.enabled === false) continue;
       const result = buildProvider(
         { ...mergeProviderRow(row.form, base), extraHeaders, extraBody },
         row.contextInput,
@@ -299,6 +301,10 @@ export function useProviderForm({
       usedIds.add(provider.id);
       labels.push(providerLabel(provider));
       built.push(provider);
+    }
+    if (!built.length) {
+      setError(t("models.form.modelsRequired"));
+      return;
     }
     setError(null);
     onSave(built);

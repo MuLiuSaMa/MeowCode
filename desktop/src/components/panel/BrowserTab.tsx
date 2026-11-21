@@ -25,14 +25,11 @@ type WebviewTitleEvent = Event & { title?: string };
 export function BrowserTab({
   tabId,
   url,
-  agent,
   onMeta,
 }: {
   tabId: string;
   /** 初始地址 */
   url: string;
-  /** agent 专属页签：webview 就绪后把 webContentsId 绑给主进程 browser host */
-  agent?: boolean;
   onMeta: (id: string, meta: { title?: string; url?: string }) => void;
 }) {
   const { t } = useTranslation("panel");
@@ -79,29 +76,6 @@ export function BrowserTab({
     }
   };
 
-  /**
-   * agent 页签绑定：主进程的 browser host 靠 webContentsId 直接驱动这个 guest。
-   * 页面刷新/进程重建后 dom-ready 会再次触发 → 自动重绑；纯浏览器预览里
-   * getWebContentsId 不存在，静默跳过（只是无法被 agent 控制）。
-   */
-  useEffect(() => {
-    const element = ref.current;
-    if (!element || !agent) return;
-    const bind = () => {
-      try {
-        const webContentsId = element.getWebContentsId?.();
-        if (typeof webContentsId === "number") {
-          void window.meow.bindBrowserTab({ tabId, webContentsId });
-        }
-      } catch {
-        // webview 未就绪：等 dom-ready 再试
-      }
-    };
-    element.addEventListener("dom-ready", bind);
-    bind();
-    return () => element.removeEventListener("dom-ready", bind);
-  }, [agent, tabId]);
-
   const submit = () => {
     const value = address.trim();
     if (!value) return;
@@ -134,7 +108,7 @@ export function BrowserTab({
         ref={setRef}
         className="mc-rtp__webview"
         src={initialUrl}
-        partition={agent ? "persist:meow-browser-agent" : "persist:meow-browser"}
+        partition="persist:meow-browser"
         allowpopups
       />
     </div>

@@ -234,6 +234,86 @@ describe("计划清单新鲜度提醒", () => {
     await runtime.closeSession();
   }, 60_000);
 
+  it("plan 模式已有清单：写完计划文档后仍走收尾闸同步清单", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "meowcode-plan-"));
+    const workspace = await mkdtemp(path.join(tmpdir(), "meowcode-planws-"));
+    const runtime = makeRuntime(dir);
+    await runtime.newSession(workspace);
+    await runtime.setApprovalMode("full");
+    await runtime.setSessionMode("plan");
+
+    const rounds: ChatMessage[][] = [];
+    streamMock.mockImplementation(async ({ messages }: { messages: ChatMessage[] }) => {
+      rounds.push([...messages]);
+      if (rounds.length === 1) {
+        return assistantCalls(
+          call("w1", "write_file", { path: "plans/demo.md", content: "# plan" }),
+          call("p1", "update_plan", {
+            steps: [
+              { title: "research", status: "completed" },
+              { title: "waiting approval", status: "pending" },
+            ],
+          }),
+        );
+      }
+      if (rounds.length === 3) {
+        return assistantCalls(
+          call("p2", "update_plan", {
+            steps: [
+              { title: "research", status: "completed" },
+              { title: "waiting approval", status: "completed" },
+            ],
+          }),
+        );
+      }
+      return assistantText("plan written");
+    });
+
+    await runtime.prompt("plan it");
+
+    // 清单还有未完成步骤：收尾闸照常拦一次，模型把状态补齐后才结束
+    expect(rounds.length).toBe(4);
+    expect(
+      rounds[2].some((message) =>
+        String(message.content ?? "").startsWith("[plan] The turn is ending"),
+      ),
+    ).toBe(true);
+    await runtime.closeSession();
+  }, 60_000);
+
+  it("plan 模式没有清单：写计划文档后不推「建清单」提醒，也不硬造清单", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "meowcode-plan-"));
+    const workspace = await mkdtemp(path.join(tmpdir(), "meowcode-planws-"));
+    const runtime = makeRuntime(dir);
+    await runtime.newSession(workspace);
+    await runtime.setApprovalMode("full");
+    await runtime.setSessionMode("plan");
+
+    const rounds: ChatMessage[][] = [];
+    streamMock.mockImplementation(async ({ messages }: { messages: ChatMessage[] }) => {
+      rounds.push([...messages]);
+      if (rounds.length === 1) {
+        return assistantCalls(
+          call("w1", "write_file", { path: "plans/demo.md", content: "# plan" }),
+        );
+      }
+      return assistantText("plan written");
+    });
+
+    await runtime.prompt("plan it");
+
+    expect(rounds.length).toBe(2);
+    expect(
+      rounds.some((messages) =>
+        messages.some((message) =>
+          String(message.content ?? "").startsWith("[plan] No checklist"),
+        ),
+      ),
+    ).toBe(false);
+    expect(runtime.current?.currentPlan).toBeNull();
+    await runtime.closeSession();
+  }, 60_000);
+
   it("收尾提醒每回合最多拦一次：模型不照做也不再硬拦", async () => {
     const dir = await mkdtemp(path.join(tmpdir(), "meowcode-plan-"));
     const workspace = await mkdtemp(path.join(tmpdir(), "meowcode-planws-"));

@@ -147,6 +147,7 @@
     "moreTitle": "添加附件 / 切换模式",
     "plusMenuAria": "添加、引用与命令",
     "upload": "上传附件",
+    "addFolder": "添加文件夹",
     "plugins": "插件",
     "pluginsCount": "插件（{{count}}）",
     "skills": "技能",
@@ -219,6 +220,9 @@
     "xhigh": "极高",
     "max": "最高",
     "ultra": "极致"
+  },
+  "drop": {
+    "hint": "松开以添加文件或文件夹"
   },
   "jumpToBottom": "返回底部"
 }

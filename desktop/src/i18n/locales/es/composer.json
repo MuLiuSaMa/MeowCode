@@ -147,6 +147,7 @@
     "moreTitle": "Añadir adjuntos / cambiar de modo",
     "plusMenuAria": "Añadir, referenciar y comandos",
     "upload": "Subir adjunto",
+    "addFolder": "Añadir carpeta",
     "plugins": "Plugins",
     "pluginsCount": "Plugins ({{count}})",
     "skills": "Habilidades",
@@ -219,6 +220,9 @@
     "xhigh": "Muy alto",
     "max": "Máximo",
     "ultra": "Ultra"
+  },
+  "drop": {
+    "hint": "Suelta para añadir archivos o carpetas"
   },
   "jumpToBottom": "Volver abajo"
 }

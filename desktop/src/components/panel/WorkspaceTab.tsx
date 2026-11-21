@@ -6,52 +6,21 @@ import {
   LuClipboardPaste,
   LuCopy,
   LuExternalLink,
-  LuFile,
-  LuFileCode,
-  LuFilm,
   LuFolder,
   LuFolderOpen,
-  LuImage,
   LuLink,
-  LuMusic,
   LuSearch,
   LuTrash2,
 } from "react-icons/lu";
 import { api } from "../../api";
 import { PluginSlot } from "../../plugins/PluginSlot";
 import { usePluginSlot } from "../../plugins/runtime";
+import { FileIcon } from "../ui/FileIcon";
 import { FilePreview } from "./FilePreview";
 import { formatNumber } from "../../i18n/format";
 import "./WorkspaceTab.css";
 
 type DirEntry = { name: string; path: string; dir: boolean };
-
-const IMAGE_EXTS = new Set(["png", "jpg", "jpeg", "gif", "webp", "bmp", "ico", "svg", "avif"]);
-const VIDEO_EXTS = new Set(["mp4", "webm", "mov", "m4v", "ogv"]);
-const AUDIO_EXTS = new Set(["mp3", "wav", "ogg", "m4a", "flac"]);
-const CODE_EXTS = new Set([
-  "ts",
-  "tsx",
-  "js",
-  "jsx",
-  "mjs",
-  "cjs",
-  "json",
-  "css",
-  "html",
-  "py",
-  "rs",
-  "go",
-  "java",
-  "c",
-  "cpp",
-  "h",
-  "sh",
-  "yml",
-  "yaml",
-  "toml",
-  "md",
-]);
 
 /** 单层目录最多渲染的条目数（node_modules 这类超大目录给出提示） */
 const MAX_ENTRIES_PER_DIR = 1_000;
@@ -73,10 +42,6 @@ function clampTreeWidth(value: number, available?: number): number {
   return Math.min(Math.max(FILE_TREE_MIN, value), upper);
 }
 
-function extOf(name: string): string {
-  return name.split(".").pop()?.toLowerCase() ?? "";
-}
-
 function baseNameOf(filePath: string): string {
   const parts = filePath.split("/");
   return parts[parts.length - 1] || filePath;
@@ -92,16 +57,6 @@ function joinWorkspacePath(workspace: string, relative: string): string {
   const base = workspace.replace(/[\\/]+$/, "");
   const separator = base.includes("\\") ? "\\" : "/";
   return `${base}${separator}${relative.replace(/[\\/]+/g, separator)}`;
-}
-
-/** 文件类型图标（图片给主题色，音视频紫色，其余中性色） */
-function fileIcon(name: string) {
-  const ext = extOf(name);
-  if (IMAGE_EXTS.has(ext)) return <LuImage size={13} className="mc-wstree__icon" data-cat="image" />;
-  if (VIDEO_EXTS.has(ext)) return <LuFilm size={13} className="mc-wstree__icon" data-cat="media" />;
-  if (AUDIO_EXTS.has(ext)) return <LuMusic size={13} className="mc-wstree__icon" data-cat="media" />;
-  if (CODE_EXTS.has(ext)) return <LuFileCode size={13} className="mc-wstree__icon" />;
-  return <LuFile size={13} className="mc-wstree__icon" />;
 }
 
 /**
@@ -434,7 +389,7 @@ export function WorkspaceTab({
               onContextMenu={(event) => openMenu(event, entry)}
             >
               <span className="mc-wstree__chevron" />
-              {fileIcon(entry.name)}
+              <FileIcon path={entry.name} size={13} />
               <span className="mc-wstree__name mc-truncate">{entry.name}</span>
             </button>
           ),
@@ -499,7 +454,7 @@ export function WorkspaceTab({
                     openMenu(event, { name: baseNameOf(item), path: item, dir: false })
                   }
                 >
-                  {fileIcon(baseNameOf(item))}
+                  <FileIcon path={item} size={13} />
                   <span className="mc-wstree__name mc-truncate">{baseNameOf(item)}</span>
                   {dirNameOf(item) ? (
                     <span className="mc-wstree__dir mc-truncate">{dirNameOf(item)}</span>

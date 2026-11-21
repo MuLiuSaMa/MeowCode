@@ -26,6 +26,7 @@ const KNOWN_TOOLS = new Set([
   "browser_screenshot",
   "browser_back",
   "browser_reload",
+  "browser_preview",
   "web_search",
   "web_fetch",
   "git",

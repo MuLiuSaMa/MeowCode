@@ -15,7 +15,6 @@ export const NAMESPACES = [
   "marketplace",
   "automation",
   "architecture",
-  "mail",
   "settings",
   "onboarding",
   "errors",

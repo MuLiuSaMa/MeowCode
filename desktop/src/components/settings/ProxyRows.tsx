@@ -3,7 +3,6 @@ import { useTranslation } from "react-i18next";
 import { getProxy, setProxy, type ProxyMode } from "../../api";
 import { CustomSelect, type CustomSelectOption } from "../ui/CustomSelect";
 import { FieldRow } from "../ui/Section";
-import "./ProxyRows.css";
 
 const PROXY_MODES: ProxyMode[] = ["direct", "system", "manual"];
 
@@ -74,7 +73,6 @@ export function ProxyRows({ onToast }: { onToast: (text: string) => void }) {
           options={modeOptions}
           onChange={changeMode}
           ariaLabel={t("proxy.title")}
-          className="mc-proxy__mode"
         />
       </FieldRow>
       {mode === "manual" ? (

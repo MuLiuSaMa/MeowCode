@@ -1,18 +1,22 @@
 import {
   Fragment,
+  useCallback,
   useEffect,
   useLayoutEffect,
   useMemo,
   useRef,
+  useState,
   type ReactNode,
   type RefObject,
-  type WheelEvent,
 } from "react";
 import { useTranslation } from "react-i18next";
 import { LuCircleAlert, LuInfo } from "react-icons/lu";
 import type { SubagentRun, TimelineCompaction, TimelineItem, TimelineMessage } from "../api";
-import logo from "../assets/icon.png";
+import { wallpaperUrl } from "../api";
+import logo from "../assets/logo-cat.webp";
 import { planDocPathOf, samePlanDocPath } from "../plan-doc";
+import { attachWallpaperLoopFade, bindWallpaperVideoReplica, captureVideoFirstFrame } from "../wallpaper-video";
+import { useActiveWallpaperVideo } from "./AppBackground";
 import { PlanDocCard } from "./PlanDocCard";
 import { PluginSlot, PluginSlotSingle } from "../plugins/PluginSlot";
 import { AssistantMessage, ThinkingRow } from "./AssistantMessage";
@@ -21,6 +25,7 @@ import { CheckpointMarker } from "./CheckpointMarker";
 import { CompactionBanner } from "./CompactionBanner";
 import { MessageNavigator } from "./MessageNavigator";
 import { PromptSuggestion } from "./PromptSuggestion";
+import { ShotGallery } from "./ui/ShotGallery";
 import { Spinner } from "./ui/Spinner";
 import { ToolGroup } from "./ToolGroup";
 import { TaskToolRow } from "./TaskToolRow";
@@ -63,6 +68,7 @@ export function pickTrailingCompactions(items: TimelineItem[]): TimelineCompacti
       kind === "compaction" ||
       kind === "turn-info" ||
       kind === "turn-changes" ||
+      kind === "turn-shots" ||
       kind === "checkpoint"
     ) {
       continue;
@@ -92,7 +98,7 @@ function EmptyState({ canUse }: { canUse: boolean }) {
 
   return (
     <div className="mc-empty" aria-label={text}>
-      <img src={logo} alt="" className="mc-empty__logo" />
+      <img src={logo} alt="" className="mc-empty__logo" draggable={false} />
       <p className="mc-empty__text">{text}</p>
     </div>
   );
@@ -112,6 +118,7 @@ export function MessageList({
   onOpenFile,
   onRestoreCheckpoint,
   onRewindCheckpoint,
+  onEditUserMessage,
   onOpenReview,
   onBranchSession,
   focus,
@@ -156,6 +163,8 @@ export function MessageList({
   onRestoreCheckpoint?: (checkpointId: string) => void;
   /** 预览式回滚（对话与代码 / 仅代码）：先出预览对话框再执行 */
   onRewindCheckpoint?: (checkpointId: string, mode: "both" | "code") => void;
+  /** 就地编辑历史用户消息并从该点重跑（仅对话截断，不动文件） */
+  onEditUserMessage?: (checkpointId: string, content: string) => void;
   /** 编辑汇总卡片的「审阅」：打开右侧审阅页签 */
   onOpenReview?: () => void;
   /** 每轮操作行的「创建新分支」：复制当前会话为新分支并切过去 */
@@ -175,15 +184,158 @@ export function MessageList({
 }) {
   const { t } = useTranslation("chat");
   const scrollRef = useRef<HTMLDivElement>(null);
+  /* 视频壁纸当前文件：非空时在蒙版根里渲染 <video> 副本，供流内玻璃的 backdrop-filter 采样 */
+  const wallpaperVideo = useActiveWallpaperVideo();
   const stickRef = useRef(true);
+  /** 缓存的滚动上限（scrollHeight - clientHeight）：滚动回调里读它，避免每个 scroll 事件都强制布局 */
+  const maxScrollRef = useRef(0);
+
+  /** 稳定引用：ToolRow 已 memo，这个回调必须保持不变，否则每批增量都会让历史行重渲染 */
+  const onOpenFileRef = useRef(onOpenFile);
+  onOpenFileRef.current = onOpenFile;
+  const openFile = useCallback((path: string) => {
+    onOpenFileRef.current?.(path);
+  }, []);
   /** 上次上报的「是否滚离底部」，只在状态变化时通知宿主 */
   const scrolledAwayRef = useRef(false);
+  const syncScrollBounds = (el: HTMLDivElement) => {
+    const max = Math.max(0, el.scrollHeight - el.clientHeight);
+    maxScrollRef.current = max;
+    return max;
+  };
   const reportScrolledAway = (el: HTMLDivElement | null) => {
     if (!el) return;
-    const away = el.scrollHeight - el.scrollTop - el.clientHeight > 200;
+    // 平滑吸底过程中滚动位置本来就在追内容，别把「暂时落后」当成用户滚走
+    if (smoothFollowRef.current) return;
+    const away = maxScrollRef.current - el.scrollTop > 200;
     if (away === scrolledAwayRef.current) return;
     scrolledAwayRef.current = away;
     onScrolledAwayChange?.(away);
+  };
+
+  /**
+   * 平滑吸底：内容每长出一行，用几帧把 scrollTop 追到新的底部。
+   * 不用原生 scrollTo(smooth) —— 流式每 50ms 就会有新目标，原生动画每次
+   * 都从静止重启，看起来还是一跳一跳的。这里持续朝最新上限收敛（速度连续），
+   * 收敛到半像素内立即停，不空转。
+   * 帧内不再读 el.scrollTop（读滚动位置会触发布局）：位置只在循环内追踪，
+   * 需要时一次性写回。
+   */
+  const smoothFollowRef = useRef(false);
+  /** 追帧循环自己写入的 scrollTop：滚动事件据此区分程序滚动和用户拖动 */
+  const autoScrollTopRef = useRef(0);
+  const followRafRef = useRef<number | null>(null);
+  const scrollIdleTimerRef = useRef<number | null>(null);
+  const stopFollow = useCallback(() => {
+    if (followRafRef.current !== null) {
+      cancelAnimationFrame(followRafRef.current);
+      followRafRef.current = null;
+    }
+    smoothFollowRef.current = false;
+  }, []);
+  /**
+   * 用户滚动期间给滚动容器挂 data-scrolling：CSS 会把流内毛玻璃的
+   * backdrop-filter 和水墨动画暂时停掉，滚动停下 140ms 后恢复。
+   * 滚动的每一帧都要给可见玻璃重新采样背景，是掉帧的大头。
+   */
+  const markScrolling = (el: HTMLDivElement) => {
+    if (el.dataset.scrolling !== "true") el.dataset.scrolling = "true";
+    if (scrollIdleTimerRef.current !== null) window.clearTimeout(scrollIdleTimerRef.current);
+    scrollIdleTimerRef.current = window.setTimeout(() => {
+      scrollIdleTimerRef.current = null;
+      delete el.dataset.scrolling;
+    }, 140);
+  };
+  useEffect(
+    () => () => {
+      stopFollow();
+      if (scrollIdleTimerRef.current !== null) window.clearTimeout(scrollIdleTimerRef.current);
+    },
+    [stopFollow],
+  );
+  /**
+   * 状态行「贴底时离滚动区底边」的真实距离：流的底部内边距 + 列表底部内边距
+   * （有进度胶囊时会被 :has 规则加大）+ 行后内容的实际高度与外边距。
+   * 进度胶囊出现/消失、尾部横幅增减时都要重算，否则 sticky 钉位和流内位置
+   * 对不上，贴/放会平移一段。
+   */
+  const syncStatusStick = (el: HTMLDivElement) => {
+    const line = el.querySelector<HTMLElement>(".mc-statusline");
+    if (!line) return;
+    let gap = parseFloat(getComputedStyle(el).paddingBottom) || 0;
+    if (line.parentElement) {
+      gap += parseFloat(getComputedStyle(line.parentElement).paddingBottom) || 0;
+    }
+    for (let sibling = line.nextElementSibling; sibling; sibling = sibling.nextElementSibling) {
+      const style = getComputedStyle(sibling);
+      gap +=
+        (sibling as HTMLElement).getBoundingClientRect().height +
+        (parseFloat(style.marginTop) || 0) +
+        (parseFloat(style.marginBottom) || 0);
+    }
+    line.style.setProperty("--status-stick", `${Math.max(0, Math.round(gap))}px`);
+  };
+  /**
+   * 贴底期间给滚动容器挂 data-follow（状态行 sticky 钉底）。
+   * 不能只在追帧循环运行时挂：循环在增量间隙会收敛停下，下一行内容到来时
+   * 状态行会先被推下去、再被吸底拉回来——就是那一下“往下跳”。
+   * 只要处于贴底状态就挂着，和流内位置重合，不产生视觉差异。
+   * requireAtBottom：用户滚动的路径用严格判定（离底 2px 就摘），
+   * 不沿用吸底的 80px 滞回，否则要往上滚一段它才消失。
+   */
+  const syncFollowAttr = (el: HTMLDivElement, requireAtBottom = false) => {
+    const atBottom = maxScrollRef.current - el.scrollTop < 2;
+    const pinned = stickRef.current && (!requireAtBottom || atBottom);
+    if (pinned) {
+      if (el.dataset.follow !== "true") {
+        syncStatusStick(el);
+        el.dataset.follow = "true";
+      }
+    } else if (el.dataset.follow === "true") {
+      delete el.dataset.follow;
+    }
+  };
+  const followBottom = (el: HTMLDivElement) => {
+    // 已经在追就让循环自己读最新上限，不要重启动画（重启会从静止开始，发顿）
+    if (followRafRef.current !== null) return;
+    smoothFollowRef.current = true;
+    // 连续下滚期间状态行 sticky 钉底，不被每行内容推着上下漂
+    syncStatusStick(el);
+    el.dataset.follow = "true";
+    let pos = el.scrollTop;
+    /** 速度：一阶追帧每来一行字速度会从 0 跳变，看起来“顿”一下；这里带速度积分 */
+    let velocity = 0;
+    const step = () => {
+      if (!stickRef.current) {
+        stopFollow();
+        return;
+      }
+      const target = maxScrollRef.current;
+      // 内容变短时浏览器已把 scrollTop 钳回上限：本地位置同步，别反向追
+      if (pos > target) pos = target;
+      const delta = target - pos;
+      // 到站且已停稳
+      if (Math.abs(delta) < 0.4 && Math.abs(velocity) < 0.4) {
+        pos = target;
+        el.scrollTop = pos;
+        autoScrollTopRef.current = pos;
+        stopFollow();
+        reportScrolledAway(el);
+        return;
+      }
+      /*
+       * 临界阻尼追帧：速度连续 —— 增量到来时只是目标变了，速度不会瞬间跳变，
+       * 表现为起步加速、匀速跟随、停笔减速，而不是每行“顿”一下。
+       */
+      velocity = (velocity + delta * 0.14) * 0.76;
+      pos += velocity;
+      // 永不超过目标（浏览器越界钳位会造成一次硬跳）
+      if (pos > target) pos = target;
+      el.scrollTop = pos;
+      autoScrollTopRef.current = pos;
+      followRafRef.current = requestAnimationFrame(step);
+    };
+    followRafRef.current = requestAnimationFrame(step);
   };
 
   /** 回合进行中才显示：具体进度 > 压缩 > 等你回答 > 思考中 > 等待模型响应 > 随机文案；回合结束隐藏。 */
@@ -263,8 +415,31 @@ export function MessageList({
 
   useLayoutEffect(() => {
     const el = scrollRef.current;
-    if (!el || !stickRef.current) return;
-    el.scrollTop = el.scrollHeight;
+    if (!el) return;
+    // 内容变了才重新量一次滚动上限；滚动回调随后只读缓存，不再强制布局
+    const max = syncScrollBounds(el);
+    // 新建/切换会话时时间线会先清空：吸底状态必须回到「贴底」，
+    // 否则上一个会话里往上滚过的状态会带进新会话，第一句话都不跟底。
+    if (!items.length) {
+      stickRef.current = true;
+      stopFollow();
+      return;
+    }
+    syncFollowAttr(el);
+    if (!stickRef.current) return;
+    const delta = max - el.scrollTop;
+    if (delta <= 0.5) {
+      el.scrollTop = max;
+      return;
+    }
+    // 切会话 / 首屏回填这类大位移直接到位；流式的一行一行平滑追。
+    if (delta > 240 || window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) {
+      stopFollow();
+      el.scrollTop = max;
+      return;
+    }
+    followBottom(el);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [items, waiting, preparing, suggestion]);
 
   // 检索跳转：滚到命中消息并触发描边。deps 只放 focus——
@@ -299,35 +474,82 @@ export function MessageList({
   const handleScroll = () => {
     const el = scrollRef.current;
     if (!el) return;
+    // 追帧循环自己写的滚动不算用户操作；用户拖动/滚轮拖走它时停掉跟随
+    if (smoothFollowRef.current) {
+      if (Math.abs(el.scrollTop - autoScrollTopRef.current) < 2) return;
+      stopFollow();
+    }
+    // 用户/惯性滚动：滚动期间先关掉流里的毛玻璃和动画（见 MessageList.css）
+    markScrolling(el);
     // 只有真正贴底才重新吸底：中间区间保持用户上一次的选择，
-    // 否则向上滚一点（仍在 80px 内）会被下一次流式更新直接拽回底部
-    const distance = el.scrollHeight - el.scrollTop - el.clientHeight;
+    // 否则向上滚一点（仍在 80px 内）会被下一次流式更新直接拽回底部。
+    // 这里必须同步判定（拖滚动条不会先来 wheel）；滚动上限用缓存值，
+    // 不读 scrollHeight，避免流式输出期间每个 scroll 事件都强制布局。
+    const distance = maxScrollRef.current - el.scrollTop;
     if (distance > 80) stickRef.current = false;
     else if (distance < 1) stickRef.current = true;
+    // 用户滚动：离底 2px 就摘状态行 sticky，不等 80px 的吸底滞回
+    syncFollowAttr(el, true);
     reportScrolledAway(el);
   };
 
   /**
    * 流式输出时内容更新可能抢在 scroll 事件之前：滚轮一向上就同步解除吸底，
    * 否则下一次 delta 到达时 stick 还是 true，会把用户刚滚上去的视图拽回底部。
+   * 用原生 passive 监听：React 的 onWheel 在根节点上非 passive，主线程忙时会拖住滚动。
    */
-  const handleWheel = (event: WheelEvent<HTMLDivElement>) => {
-    if (event.deltaY < 0) stickRef.current = false;
-  };
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const onWheel = (event: globalThis.WheelEvent) => {
+      if (event.deltaY >= 0) return;
+      stickRef.current = false;
+      // 用户要往上滚：立刻停掉正在进行的平滑吸底，别和用户抢滚动条
+      stopFollow();
+      syncFollowAttr(el);
+      markScrolling(el);
+    };
+    el.addEventListener("wheel", onWheel, { passive: true });
+    return () => el.removeEventListener("wheel", onWheel);
+  }, [stopFollow]);
 
   // 滚到底 / 切换会话后重新上报一次（内容变化导致滚动位置被重置时同步按钮显隐）
   useLayoutEffect(() => {
-    reportScrolledAway(scrollRef.current);
+    const el = scrollRef.current;
+    if (!el) return;
+    syncScrollBounds(el);
+    reportScrolledAway(el);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [items]);
 
-  // 展开/折叠工具组会改变内容高度但不产生 scroll 事件：用 ResizeObserver 同步「是否离开底部」
+  /*
+   * 展开/折叠工具组、思考行逐行变高、图片/懒加载回填都会改变内容高度，
+   * 但这些变化不经过 React 更新，只靠 items 的 layout effect 驱动吸底会漏掉，
+   * 表现为「行数一变页面直接跳」。ResizeObserver 里同样接上平滑跟随。
+   */
   useEffect(() => {
     const el = scrollRef.current;
     const inner = el?.firstElementChild;
     if (!el || !(inner instanceof HTMLElement)) return;
-    const observer = new ResizeObserver(() => reportScrolledAway(el));
+    const observer = new ResizeObserver(() => {
+      const max = syncScrollBounds(el);
+      // 底部留白（进度胶囊）、尾部横幅变化时同步钉位，贴/放不再平移
+      syncStatusStick(el);
+      reportScrolledAway(el);
+      if (!stickRef.current) return;
+      // 追帧循环在跑时不用管，它会读最新上限
+      if (followRafRef.current !== null) return;
+      const delta = max - el.scrollTop;
+      if (delta <= 0.5) return;
+      if (delta > 240 || window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) {
+        stopFollow();
+        el.scrollTop = max;
+        return;
+      }
+      followBottom(el);
+    });
     observer.observe(inner);
+    observer.observe(el);
     return () => observer.disconnect();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -371,6 +593,13 @@ export function MessageList({
         onUndo={onRewindCheckpoint}
         onReview={onOpenReview}
       />
+    ) : item.kind === "turn-shots" ? (
+      <ShotGallery
+        key={item.key}
+        images={item.images}
+        label={t("user.imageAlt")}
+        className="mc-turnshots"
+      />
     ) : item.kind === "tool" ? (
       (() => {
         const args =
@@ -388,7 +617,7 @@ export function MessageList({
         return agent && onOpenSubagent ? (
           <TaskToolRow key={item.key} item={item} agent={agent} onOpen={onOpenSubagent} />
         ) : (
-          <ToolRow key={item.key} item={item} onOpenFile={onOpenFile} />
+          <ToolRow key={item.key} item={item} onOpenFile={openFile} />
         );
       })()
     ) : item.kind === "notice" ? (
@@ -423,6 +652,7 @@ export function MessageList({
               }
             : undefined
         }
+        onEdit={onEditUserMessage}
       />
     ) : (
       <Fragment key={item.key}>
@@ -442,6 +672,7 @@ export function MessageList({
             content={item.content}
             messageIndex={item.messageIndex}
             streaming={item.streaming}
+            onOpenFile={openFile}
           />
         ) : null}
       </Fragment>
@@ -449,7 +680,12 @@ export function MessageList({
 
   return (
     <div className="mc-streamwrap">
-      <div className="mc-stream" ref={scrollRef} onScroll={handleScroll} onWheel={handleWheel}>
+      {/* 视频壁纸副本：蒙版根内玻璃要糊的「背景」，与 AppBackground 的真视频同源播放（强制静音，
+          声音归真视频）。图片壁纸没有这层 —— 由 MessageList.css 的 ::before 位图副本承担 */}
+      {wallpaperVideo ? (
+        <WallpaperVideoReplica fileName={wallpaperVideo.fileName} />
+      ) : null}
+      <div className="mc-stream" ref={scrollRef} onScroll={handleScroll}>
         <div className="mc-stream__inner">
           <PluginSlot
             name="message.list.before"
@@ -628,6 +864,82 @@ export function MessageList({
       {userNavItems.length >= 2 ? (
         <MessageNavigator scrollRef={scrollRef} messages={userNavItems} />
       ) : null}
+    </div>
+  );
+}
+
+/** 蒙版根里的全屏视频副本：挂载后一直跟随 AppBackground 的主视频，避免两边各播各的。 */
+function WallpaperVideoReplica({ fileName }: { fileName: string }) {
+  const ref = useRef<HTMLVideoElement | null>(null);
+  const thumbUrl = wallpaperUrl(`${fileName}.thumb.jpg`);
+  const [firstFrame, setFirstFrame] = useState<string | null>(thumbUrl);
+  /** 首帧抓完、可以开始跟随主视频播放 */
+  const [ready, setReady] = useState(false);
+
+  useEffect(() => {
+    setFirstFrame(thumbUrl);
+    setReady(false);
+    const video = ref.current;
+    if (!video) return;
+    video.pause();
+    let cancelled = false;
+    let captured = false;
+    /** 先抓首帧再让副本起播：淡化时垫在下面的必须是 0 秒画面 */
+    const start = () => {
+      if (cancelled) return;
+      if (!captured) {
+        captured = true;
+        const frame = captureVideoFirstFrame(video);
+        if (frame) setFirstFrame(frame);
+      }
+      setReady(true);
+    };
+    if (video.readyState >= 2) start();
+    else video.addEventListener("loadeddata", start, { once: true });
+    return () => {
+      cancelled = true;
+      video.removeEventListener("loadeddata", start);
+    };
+  }, [fileName, thumbUrl]);
+
+  useEffect(() => {
+    if (!ready) return;
+    const video = ref.current;
+    if (!video) return;
+    return bindWallpaperVideoReplica(video);
+  }, [fileName, ready]);
+
+  useEffect(() => {
+    if (!ready || !firstFrame) return;
+    const video = ref.current;
+    if (!video) return;
+    return attachWallpaperLoopFade(video);
+  }, [fileName, ready, firstFrame]);
+
+  return (
+    <div className="mc-stream__bgvideo">
+      {firstFrame ? (
+        <img
+          className="mc-stream__bgstill"
+          src={firstFrame}
+          alt=""
+          draggable={false}
+          onError={() => setFirstFrame((current) => (current === thumbUrl ? null : current))}
+        />
+      ) : null}
+      <video
+        ref={ref}
+        className="mc-stream__bgclip"
+        src={wallpaperUrl(fileName)}
+        poster={thumbUrl}
+        crossOrigin="anonymous"
+        muted
+        loop
+        playsInline
+        preload="auto"
+        disablePictureInPicture
+      />
+      <span className="mc-stream__bgdim" aria-hidden="true" />
     </div>
   );
 }

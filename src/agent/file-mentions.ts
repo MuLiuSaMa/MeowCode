@@ -1,7 +1,7 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { estimateTokens } from "./context.js";
-import { isWithinWorkspace, resolveWithinWorkspace } from "./paths.js";
+import { IGNORED_ENTRY_NAMES, isWithinWorkspace, resolveWithinWorkspace } from "./paths.js";
 import { readPdfText } from "./pdf.js";
 import { sliceLinesForModel } from "./read-slice.js";
 import type { ChatMessage } from "./types.js";
@@ -43,6 +43,11 @@ const INJECTED_PATH_PATTERN = /\{"path":"((?:[^"\\]|\\.)*)"\}/g;
  */
 const BINARY_FILE_PATTERN =
   /^\.(7z|a|avi|bin|bmp|bz2|class|db|dll|docx?|dylib|eot|exe|flac|gif|gz|ico|jar|jpeg|jpg|m4a|mkv|mov|mp3|mp4|o|odt|otf|pdf|png|pptx?|pyc|so|sqlite3?|tar|tiff?|ttf|wav|webm|webp|woff2?|xlsx?|xz|zip)$/i;
+
+/** 拖入文件夹时注入的目录树上限：够模型规划读取路径，又不至于把上下文吃满。 */
+const MAX_DIR_TREE_ENTRIES = 300;
+const MAX_DIR_TREE_DEPTH = 4;
+const MAX_DIR_TREE_TOKENS = 2_500;
 
 export interface MentionOptions {
   /** 单轮 @ 注入的总 token 预算；不传用 8k。 */
@@ -97,6 +102,27 @@ export function extractAttachmentPaths(text: string): string[] {
   return paths;
 }
 
+/**
+ * 历史消息里显式附加过的路径（`【附件】` 首部行）→ 只读工具的可读根。
+ * 用户拖入文件夹后，模型无需审批即可在后续回合直接 list_dir / read_file 该目录。
+ */
+export function collectAttachmentRoots(messages: readonly ChatMessage[]): string[] {
+  const roots: string[] = [];
+  const seen = new Set<string>();
+  for (const message of messages) {
+    if (message.role !== "user" || typeof message.content !== "string") continue;
+    for (const value of extractAttachmentPaths(message.content)) {
+      if (!path.isAbsolute(value)) continue;
+      const resolved = path.resolve(value);
+      const key = mentionPathKey(resolved);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      roots.push(resolved);
+    }
+  }
+  return roots;
+}
+
 /** 首部引用块的四种行前缀（与 desktop/src/user-references.ts 保持一致）。 */
 const REFERENCE_PREFIXES = [ATTACHMENT_PREFIX, "【技能引用】", "【插件引用】", "【插件命令】"];
 
@@ -137,7 +163,9 @@ export function referenceLabel(text: string): string {
   for (const line of parsed.head.split("\n")) {
     const attachment = ATTACHMENT_LINE.exec(line.trim());
     if (attachment) {
-      groups[0].names.push(attachment[1].trim() || attachment[2].trim());
+      groups[0].names.push(
+        attachment[1].trim().replace(/\/+$/, "") || attachment[2].trim(),
+      );
       continue;
     }
     const skill = /^【技能引用】(.+?) · [^\n·]+$/.exec(line.trim());
@@ -239,20 +267,37 @@ export async function buildFileMentionContext(
   for (const { mention, target } of entries) {
     const key = mentionPathKey(target);
     const inside = isWithinWorkspace(workspace, target);
-    // 工作区外的附件工具读不到（read_file 有路径守卫），提示语要说清这层限制
+    // 附件路径会登记为本回合的可读根，工作区外也能直接用只读工具打开
     const outsideNote = inside
       ? undefined
-      : "outside the workspace, so file tools cannot open it — ask the user to copy it into the workspace if you need more";
+      : "outside the workspace, but attached by the user, so read_file/list_dir can open it directly";
     const wasMutated = options.mutated?.has(key) === true;
-    // 「已读过」占位只对工具能重新打开的文件成立：工作区外的附件模型没法自己再读，
-    // 占位等于让它凭空回忆内容 —— 这类附件每轮都重新注入（预算按 perFile 封顶）。
-    if (inside && !wasMutated && seen.has(normalizePath(mention))) {
-      sections.push(renderAlreadyLoaded(mention));
-      continue;
-    }
     try {
       const info = await fs.stat(target);
+      if (info.isDirectory()) {
+        // 目录树可能不小：同一会话重复附加时只留占位，模型需要时自己 list_dir
+        if (seen.has(normalizePath(mention))) {
+          sections.push(renderDirectoryListed(mention));
+        } else {
+          sections.push(
+            await renderDirectorySection(
+              mention,
+              target,
+              Math.min(perFile, MAX_DIR_TREE_TOKENS),
+              outsideNote,
+            ),
+          );
+        }
+        options.mutated?.delete(key);
+        continue;
+      }
       if (!info.isFile()) continue;
+      // 「已读过」占位只对工具能重新打开的文件成立：工作区外的附件模型没法自己再读，
+      // 占位等于让它凭空回忆内容 —— 这类附件每轮都重新注入（预算按 perFile 封顶）。
+      if (inside && !wasMutated && seen.has(normalizePath(mention))) {
+        sections.push(renderAlreadyLoaded(mention));
+        continue;
+      }
       // PDF 走文本层抽取（与 read_file 同一条链路），扫描件只交付路径
       if (path.extname(target).toLowerCase() === ".pdf") {
         const pdf = await readPdfText({
@@ -300,6 +345,85 @@ export async function buildFileMentionContext(
   }
   if (!sections.length) return null;
   return [INTRO, "", sections.join("\n\n")].join("\n");
+}
+
+/**
+ * 附加文件夹的目录树：深度/条目/token 三重上限，跳过依赖与构建目录、符号链接。
+ * 模型据此规划后续 read_file / list_dir，而不是一上来把整个文件夹塞进上下文。
+ */
+async function buildDirectoryTree(target: string, tokenBudget: number): Promise<string> {
+  const lines: string[] = [];
+  let entries = 0;
+  let used = 0;
+  let truncated = false;
+
+  const walk = async (dir: string, depth: number, indent: string): Promise<void> => {
+    if (depth > MAX_DIR_TREE_DEPTH) {
+      truncated = true;
+      return;
+    }
+    let items;
+    try {
+      items = await fs.readdir(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    const visible = items
+      .filter((item) => !IGNORED_ENTRY_NAMES.has(item.name) && !item.isSymbolicLink())
+      .sort(
+        (a, b) =>
+          Number(b.isDirectory()) - Number(a.isDirectory()) ||
+          a.name.localeCompare(b.name, undefined, { sensitivity: "base" }),
+      );
+    for (const item of visible) {
+      if (entries >= MAX_DIR_TREE_ENTRIES || used >= tokenBudget) {
+        truncated = true;
+        return;
+      }
+      const isDirectory = item.isDirectory();
+      const line = `${indent}${item.name}${isDirectory ? "/" : ""}`;
+      lines.push(line);
+      entries += 1;
+      used += estimateTokens(line) + 1;
+      if (isDirectory) await walk(path.join(dir, item.name), depth + 1, `${indent}  `);
+    }
+  };
+
+  await walk(target, 0, "");
+  if (!lines.length) lines.push("(empty)");
+  if (truncated) lines.push("... [truncated; use list_dir on this folder to see the rest]");
+  return lines.join("\n");
+}
+
+async function renderDirectorySection(
+  mention: string,
+  target: string,
+  tokenBudget: number,
+  outsideNote?: string,
+): Promise<string> {
+  const listing = await buildDirectoryTree(target, tokenBudget);
+  const intro = outsideNote
+    ? `The user attached this folder: ${JSON.stringify({ path: mention })} — ${outsideNote}.`
+    : `The user attached this folder: ${JSON.stringify({ path: mention })}.`;
+  return [
+    "<system-reminder>",
+    intro,
+    "</system-reminder>",
+    "<system-reminder>",
+    `Recursive listing (build/dependency folders skipped; depth ≤ ${MAX_DIR_TREE_DEPTH}, up to ${MAX_DIR_TREE_ENTRIES} entries):`,
+    listing,
+    "</system-reminder>",
+  ].join("\n");
+}
+
+/** 同会话已列过：只留锚点，省掉重复的目录树开销。 */
+function renderDirectoryListed(mention: string): string {
+  return [
+    "<system-reminder>",
+    `Already listed earlier in this conversation: ${JSON.stringify({ path: mention })}`,
+    "Use list_dir / read_file on it if you need its current contents.",
+    "</system-reminder>",
+  ].join("\n");
 }
 
 /**

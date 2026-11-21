@@ -33,6 +33,19 @@ Read before you change; edit",
       "length": 1167,
       "sha1": "852aa578ddc3",
     },
+    {
+      "head": "Working rules beyond the baseline:
+- Risky or hard-to-reverse actions (force-pus",
+      "index": 2,
+      "length": 858,
+      "sha1": "e68da7e0d4f6",
+    },
+    {
+      "head": "Environment: workspace <workspace> · win32 · shell PowerShell · approval full ac",
+      "index": 3,
+      "length": 116,
+      "sha1": "5a6e06430755",
+    },
   ],
   "tools": [
     {
@@ -181,14 +194,14 @@ Read before you change; edit",
     },
     {
       "description": {
-        "length": 1187,
-        "sha1": "fdb2a17d1c08",
+        "length": 1304,
+        "sha1": "3092dcf84a3f",
       },
       "index": 12,
       "name": "run_command",
       "parameters": {
-        "length": 354,
-        "sha1": "1d6ad17aee88",
+        "length": 622,
+        "sha1": "8999539922ca",
       },
     },
     {
@@ -313,14 +326,14 @@ Read before you change; edit",
     },
     {
       "description": {
-        "length": 233,
-        "sha1": "161d0313a866",
+        "length": 299,
+        "sha1": "0ce50b25ff18",
       },
       "index": 23,
       "name": "job",
       "parameters": {
-        "length": 860,
-        "sha1": "55f4173f9831",
+        "length": 1188,
+        "sha1": "dbd512b9f64c",
       },
     },
     {

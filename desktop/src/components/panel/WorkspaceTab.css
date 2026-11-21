@@ -174,12 +174,6 @@
 .mc-wstree__icon[data-cat="dir"] {
   color: var(--fg-subtlest);
 }
-.mc-wstree__icon[data-cat="image"] {
-  color: var(--danger);
-}
-.mc-wstree__icon[data-cat="media"] {
-  color: var(--accent-violet);
-}
 
 /* ---- 文件右键菜单（portal 到 body；fixed 定位不受面板 overflow 影响） ---- */
 .mc-wstree__menu {

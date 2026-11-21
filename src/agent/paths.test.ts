@@ -38,6 +38,47 @@ describe("workspace path guard", () => {
     );
   });
 
+  it("allows reads under explicitly attached roots without full access", async () => {
+    const workspace = await tempDir("meowcode-ws-");
+    const attached = await tempDir("meowcode-attached-");
+    const sibling = await tempDir("meowcode-sibling-");
+    try {
+      const file = path.join(attached, "note.txt");
+      const other = path.join(sibling, "other.txt");
+      await writeFile(file, "attached");
+      await writeFile(other, "sibling");
+
+      await expect(resolveToolPath(workspace, file)).rejects.toThrow("outside the workspace");
+      expect(await resolveToolPath(workspace, file, false, [attached])).toBe(path.resolve(file));
+      await expect(
+        resolveToolPath(workspace, other, false, [attached]),
+      ).rejects.toThrow("outside the workspace");
+    } finally {
+      await rm(workspace, { recursive: true, force: true });
+      await rm(attached, { recursive: true, force: true });
+      await rm(sibling, { recursive: true, force: true });
+    }
+  });
+
+  it("still rejects junction escapes inside an attached root", async () => {
+    const workspace = await tempDir("meowcode-ws-");
+    const attached = await tempDir("meowcode-attached-");
+    const outside = await tempDir("meowcode-outside-");
+    try {
+      await writeFile(path.join(outside, "secret.txt"), "secret");
+      await symlink(outside, path.join(attached, "escape"), linkType);
+      await expect(
+        resolveToolPath(workspace, path.join(attached, "escape", "secret.txt"), false, [
+          attached,
+        ]),
+      ).rejects.toThrow("outside the workspace");
+    } finally {
+      await rm(workspace, { recursive: true, force: true });
+      await rm(attached, { recursive: true, force: true });
+      await rm(outside, { recursive: true, force: true });
+    }
+  });
+
   it("treats the app data root (home/.meowcode) as trusted", async () => {
     const workspace = await tempDir("meowcode-ws-");
     const appRoot = await tempDir("meowcode-app-");

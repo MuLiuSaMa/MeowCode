@@ -16,7 +16,31 @@ async function resolveAssetBase() {
 }
 void resolveAssetBase(); // 预热：多数情况下窗口加载完 server 已就绪
 
+/*
+ * 启动壁纸预热：同步读一次主进程里已落盘的 wallpaper，窗口首帧就能挂背景；
+ * 同时把视频的首帧缩略图丢给图片缓存，视频解码还没起来时先显示这一帧。
+ */
+let startupWallpaper = null;
+try {
+  startupWallpaper = ipcRenderer.sendSync("meow:startup-wallpaper") ?? null;
+} catch {
+  startupWallpaper = null;
+}
+try {
+  const activeItem =
+    startupWallpaper?.items?.find((item) => item.fileName === startupWallpaper.active) ??
+    startupWallpaper?.items?.[0];
+  if (startupWallpaper?.enabled && activeItem?.kind === "video" && typeof Image === "function") {
+    const prewarm = new Image();
+    prewarm.src = `meow-media://wallpaper/${encodeURIComponent(`${activeItem.fileName}.thumb.jpg`)}`;
+  }
+} catch {
+  // 预热失败不影响启动
+}
+
 contextBridge.exposeInMainWorld("meow", {
+  /** 启动时同步读到的壁纸设置：设置 IPC 返回前先用它渲染背景 */
+  startupWallpaper,
   request: (path, init) => ipcRenderer.invoke("meow:request", path, init),
   /** 会话落盘图片的绝对 URL（带 query token）；server 未就绪时返回 null */
   assetUrl: (file) => {
@@ -47,6 +71,8 @@ contextBridge.exposeInMainWorld("meow", {
       return null;
     }
   },
+  /** 输入框「添加文件夹」：系统目录选择器，取消返回空数组 */
+  pickAttachmentFolders: () => ipcRenderer.invoke("meow:pick-attachment-folders"),
   getSettings: () => ipcRenderer.invoke("meow:get-settings"),
   saveSettings: (settings) => ipcRenderer.invoke("meow:save-settings", settings),
   /** 服务商列表增删改：只写盘 + 热更新 server（不重启，不中断对话） */
@@ -90,8 +116,11 @@ contextBridge.exposeInMainWorld("meow", {
   getDataLocation: () => ipcRenderer.invoke("meow:get-data-location"),
   /** 选择新的数据目录（原生文件夹选择框）；取消返回 null */
   pickDataDirectory: () => ipcRenderer.invoke("meow:pick-data-directory"),
-  /** 复制必要数据并重启应用；失败返回错误码 */
-  changeDataLocation: (target) => ipcRenderer.invoke("meow:change-data-location", target),
+  /** 选择工作树根目录（原生文件夹选择框）；取消返回 null */
+  pickWorktreeRoot: () => ipcRenderer.invoke("meow:pick-worktree-root"),
+  /** 复制必要数据并重启应用；removeSource 时成功后删除旧位置的数据 */
+  changeDataLocation: (target, options) =>
+    ipcRenderer.invoke("meow:change-data-location", target, options),
   /** 工作区目录是否仍然存在（被删除时输入框上方回退成「选择工作区」） */
   workspaceExists: (target) => ipcRenderer.invoke("meow:workspace-exists", target),
   /** 只写 provider 偏好（思考强度），不重启 agent server */
@@ -134,6 +163,16 @@ contextBridge.exposeInMainWorld("meow", {
     return () => ipcRenderer.removeListener("meow:announcement", wrapped);
   },
 
+  // ---- 赞助者名单（关于页；主进程拉取 + 缓存） ----
+  getSponsors: () => ipcRenderer.invoke("meow:sponsors"),
+  /** 主动刷新一次；失败时主进程保留旧名单 */
+  refreshSponsors: () => ipcRenderer.invoke("meow:sponsors-refresh"),
+  onSponsors: (listener) => {
+    const wrapped = (_event, payload) => listener(payload);
+    ipcRenderer.on("meow:sponsors", wrapped);
+    return () => ipcRenderer.removeListener("meow:sponsors", wrapped);
+  },
+
   // ---- 轻量偏好：主题 / 关闭方式（只写盘，不重启 agent server）----
   savePreferences: (prefs) => ipcRenderer.invoke("meow:save-preferences", prefs),
   /** 轻量偏好已保存的广播（悬浮岛据此跟随主题/语言；主窗口自身不依赖它） */
@@ -166,6 +205,13 @@ contextBridge.exposeInMainWorld("meow", {
   importFont: () => ipcRenderer.invoke("meow:import-font"),
   /** 删除已导入的自定义字体（清记录 + 删文件） */
   removeCustomFont: (family) => ipcRenderer.invoke("meow:remove-custom-font", family),
+  /** 导入一张或多张图片 / 视频到背景库（拷贝到 userData/wallpapers） */
+  importWallpapers: (kind) => ipcRenderer.invoke("meow:import-wallpapers", { kind }),
+  /** 从背景库删掉一项（清记录 + 删文件） */
+  removeWallpaper: (fileName) => ipcRenderer.invoke("meow:remove-wallpaper", { fileName }),
+  /** 保存视频壁纸首帧缩略图：下次启动先显示这一帧，避免开窗黑一段 */
+  saveWallpaperThumbnail: (fileName, dataUrl) =>
+    ipcRenderer.invoke("meow:save-wallpaper-thumbnail", fileName, dataUrl),
   /** 导出会话：主进程弹保存框、拉 server 内容并写盘，返回最终路径 */
   exportSession: (payload) => ipcRenderer.invoke("meow:export-session", payload),
   /** 托盘菜单「设置…」触发，主进程通知渲染层切到设置页 */
@@ -255,22 +301,6 @@ contextBridge.exposeInMainWorld("meow", {
   /** 用系统默认浏览器打开 http/https 链接，返回错误信息或 null */
   openExternal: (url) => ipcRenderer.invoke("meow:open-external", url),
 
-  // ---- 内嵌浏览器（agent 驱动）----
-  /** agent 浏览器页签的 webview 就绪后回报 tabId ↔ webContentsId 绑定 */
-  bindBrowserTab: (payload) => ipcRenderer.invoke("meow:browser-bind-tab", payload),
-  /** 主进程要求建/复用 agent 浏览器页签（agent 的 browser_navigate 触发） */
-  onEnsureBrowserTab: (listener) => {
-    const wrapped = (_event, payload) => listener(payload);
-    ipcRenderer.on("meow:browser-ensure-tab", wrapped);
-    return () => ipcRenderer.removeListener("meow:browser-ensure-tab", wrapped);
-  },
-  /** 主进程要求激活 agent 浏览器页签（复用已有页签导航时） */
-  onSelectBrowserTab: (listener) => {
-    const wrapped = (_event, payload) => listener(payload);
-    ipcRenderer.on("meow:browser-select-tab", wrapped);
-    return () => ipcRenderer.removeListener("meow:browser-select-tab", wrapped);
-  },
-
   // ---- 自动化（定时任务）----
   listAutomations: () => ipcRenderer.invoke("meow:automations-list"),
   saveAutomation: (input) => ipcRenderer.invoke("meow:automations-save", input),
@@ -310,29 +340,4 @@ contextBridge.exposeInMainWorld("meow", {
     return () => ipcRenderer.removeListener("meow:term-exit", wrapped);
   },
 
-  // ---- 邮箱聚合 ----
-  mailAccountsList: () => ipcRenderer.invoke("meow:mail-accounts-list"),
-  mailAccountSave: (payload) => ipcRenderer.invoke("meow:mail-accounts-save", payload),
-  mailAccountRemove: (accountId) => ipcRenderer.invoke("meow:mail-accounts-remove", { accountId }),
-  mailAccountTest: (payload) => ipcRenderer.invoke("meow:mail-accounts-test", payload),
-  mailSync: (payload) => ipcRenderer.invoke("meow:mail-sync", payload),
-  mailCounts: (accountId) => ipcRenderer.invoke("meow:mail-counts", { accountId }),
-  mailList: (payload) => ipcRenderer.invoke("meow:mail-list", payload),
-  mailMessage: (payload) => ipcRenderer.invoke("meow:mail-message", payload),
-  mailSetSeen: (payload) => ipcRenderer.invoke("meow:mail-message-seen", payload),
-  mailDelete: (payload) => ipcRenderer.invoke("meow:mail-message-delete", payload),
-  mailDownloadAttachment: (payload) => ipcRenderer.invoke("meow:mail-attachment-download", payload),
-  mailPickAttachments: () => ipcRenderer.invoke("meow:mail-pick-attachments"),
-  mailDraftsList: (accountId) => ipcRenderer.invoke("meow:mail-drafts-list", { accountId }),
-  mailDraftSave: (payload) => ipcRenderer.invoke("meow:mail-drafts-save", payload),
-  mailDraftDelete: (id) => ipcRenderer.invoke("meow:mail-drafts-delete", { id }),
-  mailSend: (payload) => ipcRenderer.invoke("meow:mail-send", payload),
-  mailOutboxList: (accountId) => ipcRenderer.invoke("meow:mail-outbox-list", { accountId }),
-  mailOutboxRetry: (id) => ipcRenderer.invoke("meow:mail-outbox-retry", { id }),
-  mailOutboxDelete: (id) => ipcRenderer.invoke("meow:mail-outbox-delete", { id }),
-  onMailEvent: (listener) => {
-    const wrapped = (_event, payload) => listener(payload);
-    ipcRenderer.on("meow:mail-event", wrapped);
-    return () => ipcRenderer.removeListener("meow:mail-event", wrapped);
-  },
 });

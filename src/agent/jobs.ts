@@ -26,12 +26,33 @@ export type JobChunk = {
   code: number | null;
 };
 
+export type JobWaitOptions = {
+  /** 从哪个 offset 之后开始看；省略 = 只看这次调用之后的新输出 */
+  offset?: number;
+  timeoutMs: number;
+  /** exit = 攒到进程退出或到点；output = 一有新输出就返回 */
+  until: "exit" | "output";
+};
+
+export type AdoptJobInput = {
+  command: string;
+  cwd: string;
+  child: ChildProcess;
+  /** 超时前已经采集到的输出（已清 ANSI） */
+  stdout: Buffer;
+  stderr: Buffer;
+};
+
 export type JobManager = {
   start(input: { command: string; cwd?: string }): Promise<{ id: string; shell?: string }>;
   read(id: string, offset?: number): Promise<JobChunk | null>;
+  /** 阻塞等待：有新输出（until=output）、退出或到点返回；job 不存在返回 null */
+  wait(id: string, options: JobWaitOptions): Promise<JobChunk | null>;
   write(id: string, data: string): Promise<void>;
   kill(id: string): Promise<void>;
   list(): Promise<JobInfo[]>;
+  /** 把超时的前台进程接管成本地 job（只有进程内的 manager 支持） */
+  adopt?(input: AdoptJobInput): string;
 };
 
 const JOB_BUFFER_MAX_CHARS = 256 * 1024;
@@ -40,10 +61,6 @@ const HTTP_TIMEOUT_MS = 10_000;
 const MAX_LOCAL_JOBS = 8;
 /** 已退出 job 的保留时长：给模型留出读尾部输出的时间，之后回收。 */
 const JOB_RETENTION_MS = 10 * 60 * 1000;
-
-function tailOf(text: string, start: number): JobChunk["data"] {
-  return text.slice(Math.max(0, start));
-}
 
 export function createJobManager(env: NodeJS.ProcessEnv = process.env): JobManager {
   const baseUrl = env.MEOWCODE_JOB_HOST;
@@ -58,7 +75,11 @@ export function createHttpJobManager(options: {
   timeoutMs?: number;
 }): JobManager {
   const timeoutMs = options.timeoutMs ?? HTTP_TIMEOUT_MS;
-  const call = async (route: string, init: RequestInit = {}): Promise<Response> => {
+  const call = async (
+    route: string,
+    init: RequestInit = {},
+    requestTimeoutMs = timeoutMs,
+  ): Promise<Response> => {
     const response = await fetch(new URL(route, options.baseUrl), {
       ...init,
       headers: {
@@ -66,7 +87,7 @@ export function createHttpJobManager(options: {
         "x-meow-job-token": options.token,
         ...(init.headers as Record<string, string> | undefined),
       },
-      signal: AbortSignal.timeout(timeoutMs),
+      signal: AbortSignal.timeout(requestTimeoutMs),
     });
     return response;
   };
@@ -92,6 +113,18 @@ export function createHttpJobManager(options: {
     async read(id, offset) {
       const query = offset === undefined ? "" : `&offset=${encodeURIComponent(String(offset))}`;
       const response = await call(`/job/read?id=${encodeURIComponent(id)}${query}`);
+      if (response.status === 404) return null;
+      return json<JobChunk>(response);
+    },
+    async wait(id, options) {
+      const params = new URLSearchParams({
+        id,
+        timeout_ms: String(options.timeoutMs),
+        until: options.until,
+      });
+      if (options.offset !== undefined) params.set("offset", String(options.offset));
+      // 宿主自己会等到点再返回，客户端的超时要留出网络余量
+      const response = await call(`/job/wait?${params.toString()}`, {}, options.timeoutMs + 5_000);
       if (response.status === 404) return null;
       return json<JobChunk>(response);
     },
@@ -130,10 +163,48 @@ type LocalJob = {
   code: number | null;
   /** 退出时间（毫秒）：已退出的 job 保留一段时间供模型读尾部输出，之后回收 */
   exitedAt?: number;
+  /** 有新输出 / 退出时唤醒所有等待者 */
+  waiters: Set<() => void>;
 };
 
 export function createLocalJobManager(): JobManager {
   const jobs = new Map<string, LocalJob>();
+
+  // 不清空 waiters：until=exit 的等待要活到进程退出，check 自己在 finish 时摘掉
+  const wake = (job: LocalJob): void => {
+    for (const check of [...job.waiters]) check();
+  };
+
+  const snapshot = (job: LocalJob, offset: number | undefined): JobChunk => {
+    const requested = offset === undefined ? job.bufferStart : Math.max(0, Math.floor(offset));
+    const from = Math.max(requested, job.bufferStart);
+    return {
+      data: job.buffer.slice(from - job.bufferStart),
+      offset: job.bufferStart + job.buffer.length,
+      bufferStart: job.bufferStart,
+      truncated: requested < job.bufferStart,
+      exited: job.exited,
+      code: job.code,
+    };
+  };
+
+  /** 等到有新输出、进程退出或到点；返回时的 chunk 覆盖 from 之后的全部内容 */
+  const waitFor = (job: LocalJob, from: number, timeoutMs: number, until: "exit" | "output") =>
+    new Promise<JobChunk>((resolve) => {
+      const finish = (): void => {
+        clearTimeout(timer);
+        job.waiters.delete(check);
+        resolve(snapshot(job, from));
+      };
+      const check = (): void => {
+        const chunk = snapshot(job, from);
+        if (chunk.exited || (until === "output" && chunk.data.length)) finish();
+      };
+      const timer = setTimeout(finish, timeoutMs);
+      timer.unref?.();
+      job.waiters.add(check);
+      check();
+    });
 
   /** 回收已退出且超过保留期的 job，并统计还活着的数量。 */
   const reap = (): number => {
@@ -150,12 +221,15 @@ export function createLocalJobManager(): JobManager {
   };
 
   const append = (job: LocalJob, chunk: Buffer | string) => {
-    job.buffer += chunk.toString();
+    const text = chunk.toString();
+    if (!text) return;
+    job.buffer += text;
     if (job.buffer.length > JOB_BUFFER_MAX_CHARS) {
       const drop = job.buffer.length - JOB_BUFFER_MAX_CHARS;
       job.buffer = job.buffer.slice(drop);
       job.bufferStart += drop;
     }
+    wake(job);
   };
 
   return {
@@ -185,6 +259,7 @@ export function createLocalJobManager(): JobManager {
         bufferStart: 0,
         exited: false,
         code: null,
+        waiters: new Set(),
       };
       jobs.set(id, job);
       child.stdout?.on("data", (chunk: Buffer) => append(job, chunk));
@@ -193,6 +268,7 @@ export function createLocalJobManager(): JobManager {
         job.exited = true;
         job.code = code;
         job.exitedAt = Date.now();
+        wake(job);
       });
       child.on("error", (error) => {
         job.exited = true;
@@ -203,15 +279,14 @@ export function createLocalJobManager(): JobManager {
     },
     async read(id, offset) {
       const job = jobs.get(id);
+      return job ? snapshot(job, offset) : null;
+    },
+    async wait(id, options) {
+      const job = jobs.get(id);
       if (!job) return null;
-      return {
-        data: tailOf(job.buffer, offset ?? job.bufferStart),
-        offset: job.bufferStart + job.buffer.length,
-        bufferStart: job.bufferStart,
-        truncated: (offset ?? job.bufferStart) < job.bufferStart,
-        exited: job.exited,
-        code: job.code,
-      };
+      const from =
+        options.offset === undefined ? job.bufferStart + job.buffer.length : Math.max(0, options.offset);
+      return await waitFor(job, from, options.timeoutMs, options.until);
     },
     async write(id, data) {
       const job = jobs.get(id);
@@ -233,6 +308,91 @@ export function createLocalJobManager(): JobManager {
         exited: job.exited,
         code: job.code,
       }));
+    },
+  };
+}
+
+/**
+ * 多个 job 来源合成一个：桌面端 PTY 任务在前，超时提升出来的本地任务在后。
+ * id 由 start / adopt 现场登记归属，读不到再按顺序回退探测，避免不同来源的 id 撞车。
+ */
+export function combineJobManagers(...managers: JobManager[]): JobManager {
+  const live = managers.filter(Boolean);
+  if (live.length === 1) return live[0]!;
+  const owners = new Map<string, JobManager>();
+  const candidates = (id: string): JobManager[] => {
+    const owner = owners.get(id);
+    return owner ? [owner, ...live.filter((manager) => manager !== owner)] : live;
+  };
+
+  return {
+    async start(input) {
+      // 保留第一个失败原因：后面的 manager 可能根本不支持启动（比如超时提升出来的本地任务）
+      let firstError: unknown;
+      for (const manager of live) {
+        try {
+          const started = await manager.start(input);
+          owners.set(started.id, manager);
+          return started;
+        } catch (error) {
+          firstError ??= error;
+        }
+      }
+      throw firstError instanceof Error ? firstError : new Error(String(firstError));
+    },
+    async read(id, offset) {
+      for (const manager of candidates(id)) {
+        const chunk = await manager.read(id, offset);
+        if (chunk) {
+          owners.set(id, manager);
+          return chunk;
+        }
+      }
+      return null;
+    },
+    async wait(id, options) {
+      for (const manager of candidates(id)) {
+        const chunk = await manager.wait(id, options);
+        if (chunk) {
+          owners.set(id, manager);
+          return chunk;
+        }
+      }
+      return null;
+    },
+    async write(id, data) {
+      for (const manager of candidates(id)) {
+        if (await manager.read(id)) {
+          await manager.write(id, data);
+          return;
+        }
+      }
+    },
+    async kill(id) {
+      for (const manager of candidates(id)) {
+        if (await manager.read(id)) {
+          await manager.kill(id);
+          owners.delete(id);
+          return;
+        }
+      }
+    },
+    async list() {
+      const all = await Promise.all(live.map((manager) => manager.list()));
+      const seen = new Set<string>();
+      return all
+        .flat()
+        .filter((job) => (seen.has(job.id) ? false : (seen.add(job.id), true)));
+    },
+    adopt(input) {
+      for (const manager of live) {
+        if (manager.adopt) {
+          const id = manager.adopt(input);
+          owners.set(id, manager);
+          return id;
+        }
+      }
+      throw new Error("No job manager can adopt a promoted command.");
     },
   };
 }

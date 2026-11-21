@@ -10,21 +10,37 @@
   color: var(--fg-subtle);
   /* 消息流最末一项：流式输出时容器高度会被挤，这一行不能被压缩（否则文字被裁、又弹回） */
   flex: none;
-  /* 固定住整行高度：圆形 Logo 14px + 上下各 1px 内边距 */
+  /* 固定住整行高度：16px Logo + 上下各 1px 内边距 */
   min-height: calc(1em * var(--lh-normal) + 2px);
 }
+.mc-statusline__mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: var(--fg);
+}
 .mc-statusline__logo {
-  width: 14px;
-  height: 14px;
+  width: 16px;
+  height: 16px;
   border-radius: 3px;
   object-fit: contain;
   flex-shrink: 0;
+}
+.mc-statusline__particles {
+  display: block;
+  overflow: visible;
+  shape-rendering: geometricPrecision;
+}
+.mc-statusline__particles circle {
+  fill: currentColor;
 }
 .mc-statusline__text {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  color: var(--fg);
 }
 .mc-statusline__dots {
   display: inline-flex;
@@ -37,7 +53,8 @@
   height: 5px;
   border-radius: 50%;
   background: currentColor;
-  animation: mc-statusline-bounce 1.2s var(--ease) infinite;
+  /* 只做明暗呼吸、不做上下位移：整行文字不会跟着“跳” */
+  animation: mc-statusline-breathe 1.2s var(--ease) infinite;
 }
 .mc-statusline__dots i:nth-child(2) {
   animation-delay: 0.15s;
@@ -52,15 +69,13 @@
   font-variant-numeric: tabular-nums;
   opacity: 0.85;
 }
-@keyframes mc-statusline-bounce {
+@keyframes mc-statusline-breathe {
   0%,
   60%,
   100% {
-    transform: translateY(0);
-    opacity: 0.4;
+    opacity: 0.35;
   }
   30% {
-    transform: translateY(-4px);
     opacity: 1;
   }
 }

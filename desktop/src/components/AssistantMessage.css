@@ -4,7 +4,7 @@
   gap: 8px;
   max-width: 100%;
   /* 新消息落到时间线时淡入上浮（只在节点首次挂载时跑一次；流式期间不再重播，避免闪字） */
-  animation: mc-assistant-in 200ms var(--ease) both;
+  animation: mc-assistant-in 200ms var(--ease) backwards;
 }
 @keyframes mc-assistant-in {
   from {
@@ -13,7 +13,9 @@
   }
   to {
     opacity: 1;
-    transform: translateY(0);
+    /* 保留 translateY(0) 会留下一个恒等 transform，形成新的 backdrop 根，
+       正文里的文件胶囊 / 代码块 backdrop-filter 就采不到壁纸了。 */
+    transform: none;
   }
 }
 @media (prefers-reduced-motion: reduce) {

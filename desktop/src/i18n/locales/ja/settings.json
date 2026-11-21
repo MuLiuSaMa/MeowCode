@@ -73,6 +73,24 @@
     "themeDesc": "「システムに従う」は Windows のライト / ダーク設定にリアルタイムで追従します。切り替えは即時反映され、再起動は不要です。",
     "paletteSection": "カラーパレット",
     "paletteDesc": "アクセント色とキャンバスの色味を選びます。ライト／ダークは個別に調整されているため、モードを切り替えると自動でなじみます。",
+    "backgroundSection": "カスタム背景",
+    "backgroundDesc": "画像や動画をすべてのパネルの下に敷く背景として使えます。複数まとめて読み込め、「画像 / 動画」タブで切り替え、スライドショーをオンにすると順番に切り替わります。動画はミュートで再生され、「パネルの不透明度」を下げるほど背景が透けますが文字は読みにくくなります。",
+    "backgroundEnable": "カスタム背景",
+    "backgroundImage": "画像",
+    "backgroundVideo": "動画",
+    "backgroundAdd": "読み込み…",
+    "backgroundRemove": "削除",
+    "backgroundEmpty": "このタブにはまだ背景がありません。「読み込み」から追加してください",
+    "backgroundCount": "{{count}} 枚",
+    "backgroundCarousel": "スライドショー",
+    "backgroundSound": "動画の音声",
+    "backgroundInterval": "切り替え間隔",
+    "backgroundSeconds": "{{count}} 秒",
+    "backgroundMinutes": "{{count}} 分",
+    "backgroundOpacity": "背景の不透明度",
+    "backgroundBrightness": "明るさ",
+    "backgroundBlur": "ぼかし",
+    "backgroundPanel": "パネルの不透明度",
     "palette": {
       "classic": "クラシック",
       "lava": "ラバオレンジ",
@@ -495,7 +513,7 @@
     "root": {
       "label": "ワークツリーのルートディレクトリ",
       "hint": "空の場合は既定の場所を使用します。変更はアプリの再起動後に反映されます。",
-      "open": "フォルダーを開く"
+      "choose": "フォルダーを選択"
     },
     "fetch": {
       "label": "ワークツリー作成前に常に上流を取得",
@@ -574,6 +592,10 @@
     "clearFailed": "消去に失敗しました"
   },
   "general": {
+    "viewTabs": {
+      "field": "ビュー切り替え",
+      "desc": "メイン領域の上部に「会話 / 軌跡」のフローティング切り替えを表示します。メッセージのない新規セッションでは表示されません。"
+    },
     "section": "一般",
     "desc": "日常の動作に関する設定です。変更はすぐに反映されます。",
     "notify": {
@@ -593,9 +615,9 @@
       "desc": "メインプロバイダーのタイムアウト・レート制限・サーバーエラー時、このターンは他の有効なプロバイダーに自動で切り替わります（最大 2 回）。",
       "toggleFailed": "プロバイダーのフェイルオーバー設定を保存できませんでした"
     },
-    "mailAi": {
-      "field": "チャットとは別に使用するモデル",
-      "follow": "チャットに従う"
+    "defaultPermission": {
+      "field": "既定の権限モード",
+      "desc": "新しい会話で使用するツール権限。既存の会話はそれぞれの選択を保持します。"
     },
     "other": {
       "section": "一般"
@@ -723,7 +745,14 @@
       "title": "アーカイブ済みチャット",
       "hint": "アーカイブ済みチャットを個別に復元または削除します",
       "action": "管理"
-    }
+    },
+    "transfer": "移動…",
+    "transferTitle": "すべてのデータを移動しますか？",
+    "transferDesc": "すべてのアプリデータを新しいフォルダーにコピーし、成功したら元の場所のデータを削除してアプリを再起動します。",
+    "transferConfirm": "移動して再起動",
+    "transferBusy": "移動中…",
+    "transferRestarting": "データを移動しました。アプリを再起動しています…",
+    "transferFailed": "データを移動できませんでした。"
   },
   "connections": {
     "section": "SSH 接続",

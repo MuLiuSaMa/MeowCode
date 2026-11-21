@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { LuFileText, LuSearch } from "react-icons/lu";
+import { LuSearch } from "react-icons/lu";
+import { FileIcon } from "../ui/FileIcon";
 import { api } from "../../api";
 import { Dialog } from "../ui/Dialog";
 import "./QuickOpenDialog.css";
@@ -141,7 +142,7 @@ export function QuickOpenDialog({
                 onMouseEnter={() => setIndex(itemIndex)}
                 onClick={() => pick(file)}
               >
-                <LuFileText size={14} className="mc-quickopen__icon" />
+                <FileIcon path={file} size={14} />
                 {dirNameOf(file) ? (
                   <span className="mc-quickopen__dir mc-truncate">{dirNameOf(file)}/</span>
                 ) : null}

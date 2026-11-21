@@ -1,0 +1,61 @@
+/* 设置页滑杆：原生 range 重画轨道与滑块，配色跟主题走 */
+.mc-sliderfield {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 220px;
+}
+.mc-sliderfield[data-disabled="true"] {
+  opacity: 0.5;
+}
+.mc-sliderfield__input {
+  flex: 1;
+  min-width: 0;
+  height: 18px;
+  margin: 0;
+  appearance: none;
+  background: transparent;
+  cursor: pointer;
+}
+.mc-sliderfield__input:disabled {
+  cursor: default;
+}
+.mc-sliderfield__input::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: 999px;
+  background: var(--surface-strong, var(--border));
+}
+.mc-sliderfield__input::-webkit-slider-thumb {
+  appearance: none;
+  width: 13px;
+  height: 13px;
+  margin-top: -4.5px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--accent);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+  transition: transform 120ms var(--ease);
+}
+.mc-sliderfield__input:active::-webkit-slider-thumb {
+  transform: scale(1.08);
+}
+.mc-sliderfield__input:focus-visible::-webkit-slider-thumb {
+  outline: 2px solid var(--accent-soft);
+  outline-offset: 2px;
+}
+/* 经典色是黑白灰主题：滑杆的强调色换成中性色，不再出现蓝点与蓝色聚焦环 */
+:root[data-palette="classic"] .mc-sliderfield__input::-webkit-slider-thumb {
+  background: var(--brand);
+}
+:root[data-palette="classic"] .mc-sliderfield__input:focus-visible::-webkit-slider-thumb {
+  outline-color: var(--ring);
+}
+
+.mc-sliderfield__value {
+  width: 44px;
+  flex: none;
+  text-align: right;
+  font-size: var(--fs-sm);
+  font-variant-numeric: tabular-nums;
+  color: var(--fg-subtle);
+}

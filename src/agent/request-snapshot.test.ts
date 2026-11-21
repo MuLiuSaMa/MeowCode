@@ -69,6 +69,12 @@ const otherProfiles: ProviderConfig[] = [
   },
 ];
 
+/** 与 prompt-segments 的本地日期口径一致（toISOString 是 UTC，跨时区会错一天） */
+function localDate(): string {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+}
+
 type RequestOptions = {
   messages: ChatMessage[];
   tools: ToolDefinition[];
@@ -121,6 +127,8 @@ describe("request snapshot", () => {
     const snapshot = snapshotOf(provider, call, [
       [sessionsDir, "<sessions>"],
       [workspace, "<workspace>"],
+      // 环境段带当天日期：换成占位符，快照才不会隔天就红
+      [localDate(), "<today>"],
     ]);
     expect(snapshot).toMatchSnapshot();
   });

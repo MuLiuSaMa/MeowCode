@@ -3,7 +3,6 @@
     "home": "Início",
     "architecture": "Arquitetura do agente",
     "git": "Git",
-    "mail": "E-mail",
     "plugins": "Loja de plugins",
     "automation": "Automação",
     "settings": "Configurações"
@@ -250,5 +249,10 @@
     "label": "Anúncio",
     "close": "Fechar",
     "viewSite": "Ver site"
+  },
+  "view": {
+    "label": "Alternar vista",
+    "chat": "Conversa",
+    "trajectory": "Rastro"
   }
 }

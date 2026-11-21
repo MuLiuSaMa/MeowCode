@@ -1,0 +1,49 @@
+/* 截图画廊：工具行里的结果图、回合末尾的结果图共用同一套尺寸与放大层 */
+
+.mc-shots {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.mc-shot {
+  max-width: min(560px, 100%);
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-elevated);
+  line-height: 0;
+  overflow: hidden;
+  cursor: zoom-in;
+}
+
+.mc-shot:hover {
+  border-color: var(--border-hover);
+}
+
+.mc-shot img {
+  display: block;
+  max-width: 100%;
+  max-height: 280px;
+  object-fit: contain;
+}
+
+/* 点图放大：遮罩层铺满窗口，点任意处或 Esc 关闭 */
+.mc-shotzoom {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 28px;
+  background: rgba(0, 0, 0, 0.72);
+  cursor: zoom-out;
+}
+
+.mc-shotzoom img {
+  max-width: 100%;
+  max-height: 100%;
+  border-radius: var(--radius-lg);
+  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.5);
+}

@@ -67,20 +67,26 @@
   white-space: nowrap;
 }
 .mc-toolrow__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
   flex: 0 1 auto;
   min-width: 0;
   max-width: 320px;
   padding: 1px 7px;
   border: 1px solid var(--border);
   border-radius: var(--radius-xs);
-  corner-shape: superellipse(1.5);
   background: var(--surface);
   color: var(--fg-subtle);
   font-size: var(--fs-sm);
   line-height: 1.5;
-  white-space: nowrap;
+  overflow: hidden;
+}
+.mc-toolrow__chiptext {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .mc-toolrow__meta {
   display: flex;
@@ -181,4 +187,9 @@
 }
 .mc-toolrow__stats [data-kind="del"] {
   color: var(--diff-del);
+}
+
+/* 工具行里的截图：缩进对齐工具行文字，其余尺寸由 ShotGallery.css 统一负责 */
+.mc-toolrow__shots {
+  margin: 2px 0 8px 24px;
 }

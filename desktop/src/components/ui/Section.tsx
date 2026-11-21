@@ -36,21 +36,34 @@ export function FieldRow({
   label,
   hint,
   htmlFor,
+  icon,
   children,
 }: {
   label: string;
   hint?: string;
   htmlFor?: string;
+  /** 标题左侧的图标（可选） */
+  icon?: ReactNode;
   children: ReactNode;
 }) {
+  const text = (
+    <div className="mc-fieldrow__text">
+      <label className="mc-fieldrow__label" htmlFor={htmlFor}>
+        {label}
+      </label>
+      {hint ? <span className="mc-fieldrow__hint">{hint}</span> : null}
+    </div>
+  );
   return (
     <div className="mc-fieldrow">
-      <div className="mc-fieldrow__text">
-        <label className="mc-fieldrow__label" htmlFor={htmlFor}>
-          {label}
-        </label>
-        {hint ? <span className="mc-fieldrow__hint">{hint}</span> : null}
-      </div>
+      {icon ? (
+        <div className="mc-fieldrow__lead">
+          <span className="mc-fieldrow__icon">{icon}</span>
+          {text}
+        </div>
+      ) : (
+        text
+      )}
       <div className="mc-fieldrow__control">{children}</div>
     </div>
   );
