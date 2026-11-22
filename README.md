@@ -10,13 +10,24 @@
   <a href="https://gitee.com/muliuawa/MeowCode"><img alt="Gitee" src="https://img.shields.io/badge/Gitee-%E4%BB%93%E5%BA%93-C71D23?style=flat-square&amp;logo=gitee&amp;logoColor=white"></a>
   <a href="https://gitcode.com/MuLiuSaMa/MeowCode"><img alt="GitCode" src="https://img.shields.io/badge/GitCode-%E4%BB%93%E5%BA%93-1677FF?style=flat-square&amp;logo=gitcode&amp;logoColor=white"></a>
   <img alt="Stars" src="https://img.shields.io/github/stars/MuLiuSaMa/MeowCode?style=flat-square&amp;logo=github&amp;color=e3b341">
+  <a href="https://gitcode.com/MuLiuSaMa/MeowCode"><img alt="GitCode Stars" src="https://gitcode.com/MuLiuSaMa/MeowCode/star/badge.svg"></a>
   <img alt="Downloads" src="https://img.shields.io/github/downloads/MuLiuSaMa/MeowCode/total?style=flat-square&amp;logo=github&amp;label=%E4%B8%8B%E8%BD%BD%E9%87%8F&amp;color=2ea043">
   <img alt="QQ群 1128483595" src="https://img.shields.io/badge/QQ%E7%BE%A4-1128483595-12B7F5?style=flat-square&amp;logo=tencentqq&amp;logoColor=white">
+</p>
+
+<p align="center">
+  <a href="https://atomgit.com/MuLiuSaMa/MeowCode">
+    <img src="https://atomgit.com/MuLiuSaMa/MeowCode/star/new_badge.svg" alt="AtomGitStars">
+  </a>
 </p>
 
 一个**架构可以随你改**的本地编程 Agent 桌面应用。
 
 Electron + React 负责界面，Agent 内核跑在本地 HTTP/SSE 服务里，UI 与内核只通过事件流通信——所以内核可以单独跑、单独换、单独重写，不会牵动界面。
+
+<p align="center">
+  <img src="./assets/meowcode-ui.png" alt="MeowCode 界面" width="100%">
+</p>
 
 ## 亮点
 
@@ -81,7 +92,7 @@ Electron + React 负责界面，Agent 内核跑在本地 HTTP/SSE 服务里，UI
 -   多项目工作区切换；设置页覆盖模型与服务商、审批、沙箱、Hooks、项目规则、记忆、自我学习、Worktree、外观、快捷键、数据位置与归档。
 -   标题栏公告：更新动态显示在 Logo 右侧，点开看全文；关闭状态按公告 id 记录，换新公告才会再提示。
 -   AI 悬浮岛：屏幕顶部胶囊聚合所有运行中会话，待审批亮琥珀点，悬停展开迷你聊天窗，空闲时鼠标穿透。
--   外观：6 套配色（经典色 / 熔岩橙 / 蜜蜂黄 / 薄荷绿 / 羊皮纸 / 和谐蓝）× 明暗 / 跟随系统；11 种界面语言。
+-   外观：6 套配色（经典色 / 熔岩橙 / 蜜蜂黄 / 薄荷绿 / 羊皮纸 / 和谐蓝）× 明暗 / 跟随系统；11 种界面语言。
 -   自定义背景：图片或视频铺在面板下层，可调透明度 / 亮度 / 模糊与面板不透明度；视频静音循环，媒体走 `meow-media://` 协议按 Range 流式读取。
 -   托盘会话、系统通知、自动更新检查与下载。
 -   侧边聊天 `Ctrl+Alt+S`、文件快开 `Ctrl+P`、终端 `` Ctrl+` ``。
