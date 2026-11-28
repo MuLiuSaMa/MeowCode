@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { LuFolderSearch } from "react-icons/lu";
 import type { SessionSummary } from "../../api";
 import { formatDateTime } from "../../i18n/format";
 import { Button } from "../ui/Button";
+import { ConfirmDialog } from "../ui/ConfirmDialog";
 import { CustomSelect } from "../ui/CustomSelect";
 import { FieldRow, Section } from "../ui/Section";
 import { IconButton } from "../ui/IconButton";
@@ -49,20 +50,12 @@ export function WorktreeSection({
   const [rootInput, setRootInput] = useState(root);
   const [managed, setManaged] = useState<WorktreeList | null>(null);
   const [loading, setLoading] = useState(false);
-  const [confirming, setConfirming] = useState<string | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<string | null>(null);
-  const confirmTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     setRootInput(root);
   }, [root]);
-
-  useEffect(
-    () => () => {
-      if (confirmTimer.current) clearTimeout(confirmTimer.current);
-    },
-    [],
-  );
 
   const refresh = useCallback(() => {
     setLoading(true);
@@ -106,16 +99,19 @@ export function WorktreeSection({
     if (next !== root.trim()) onRootChange(next);
   };
 
-  const remove = (itemPath: string) => {
+  /** 设置里关掉「删除前询问」时直接删，否则先弹确认 */
+  const requestRemove = (itemPath: string) => {
     if (deleting) return;
-    if (confirmDelete && confirming !== itemPath) {
-      if (confirmTimer.current) clearTimeout(confirmTimer.current);
-      setConfirming(itemPath);
-      confirmTimer.current = setTimeout(() => setConfirming(null), 4000);
+    if (confirmDelete) {
+      setPendingDelete(itemPath);
       return;
     }
-    if (confirmTimer.current) clearTimeout(confirmTimer.current);
-    setConfirming(null);
+    remove(itemPath);
+  };
+
+  const remove = (itemPath: string) => {
+    if (deleting) return;
+    setPendingDelete(null);
     setDeleting(itemPath);
     void window.meow
       .worktreeDelete(itemPath, [...referenced])
@@ -219,13 +215,11 @@ export function WorktreeSection({
                   </div>
                   <Button
                     size="sm"
-                    variant={confirming === item.path ? "danger" : "ghost"}
+                    variant="ghost"
                     disabled={inUse || deleting === item.path}
-                    onClick={() => remove(item.path)}
+                    onClick={() => requestRemove(item.path)}
                   >
-                    {confirming === item.path
-                      ? t("worktree.managed.confirm")
-                      : t("worktree.managed.delete")}
+                    {t("worktree.managed.delete")}
                   </Button>
                 </div>
               );
@@ -233,6 +227,16 @@ export function WorktreeSection({
           )}
         </div>
       </Section>
+
+      <ConfirmDialog
+        open={pendingDelete !== null}
+        title={t("confirm.deleteTitle")}
+        message={t("confirm.deleteMessage", {
+          name: pendingDelete ? pendingDelete.split(/[\\/]/).pop() || pendingDelete : "",
+        })}
+        onCancel={() => setPendingDelete(null)}
+        onConfirm={() => pendingDelete && remove(pendingDelete)}
+      />
     </div>
   );
 }

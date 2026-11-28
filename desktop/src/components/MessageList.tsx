@@ -11,7 +11,7 @@ import {
 } from "react";
 import { useTranslation } from "react-i18next";
 import { LuCircleAlert, LuInfo } from "react-icons/lu";
-import type { SubagentRun, TimelineCompaction, TimelineItem, TimelineMessage } from "../api";
+import type { PlanState, SubagentRun, TimelineCompaction, TimelineItem, TimelineMessage } from "../api";
 import { wallpaperUrl } from "../api";
 import logo from "../assets/logo-cat.webp";
 import { planDocPathOf, samePlanDocPath } from "../plan-doc";
@@ -129,6 +129,7 @@ export function MessageList({
   scrollApiRef,
   onOpenPlan,
   planRevision,
+  plan,
   reconnect,
 }: {
   items: TimelineItem[];
@@ -179,6 +180,8 @@ export function MessageList({
   onOpenPlan?: (path: string) => void;
   /** 最近一次落盘的计划文档：只有同一路径的卡片需要重读，避免全量刷新 */
   planRevision?: { path: string; version: number } | null;
+  /** 当前会话的任务清单（plan_updated）：状态行显示进行中的步骤而非干转的点 */
+  plan?: PlanState | null;
   /** 模型流断线后的自动重连状态：占用底部状态行 */
   reconnect?: { phase: "started" | "recovered"; attempt: number; maxAttempts: number } | null;
 }) {
@@ -226,6 +229,7 @@ export function MessageList({
   const autoScrollTopRef = useRef(0);
   const followRafRef = useRef<number | null>(null);
   const scrollIdleTimerRef = useRef<number | null>(null);
+  const statusPinTimerRef = useRef<number | null>(null);
   const stopFollow = useCallback(() => {
     if (followRafRef.current !== null) {
       cancelAnimationFrame(followRafRef.current);
@@ -246,68 +250,73 @@ export function MessageList({
       delete el.dataset.scrolling;
     }, 140);
   };
+  /**
+   * 程序化滚动的打点。切会话回填 / 首屏大位移 / 检索跳转 / 吸底追帧都是我们自己写
+   * scrollTop，同样会派发 scroll 事件；这类一次性跳转没有逐帧重采样，不该当成用户
+   * 滚动去挂 data-scrolling 或改变状态行钉位。滚动事件异步派发，所以同时记录
+   * 时间戳和本次写入的位置；原生 smooth 不记位置，仍由实际滚动逐步判断贴底。
+   */
+  const programmaticScrollAtRef = useRef(0);
+  const programmaticScrollTopRef = useRef<number | null>(null);
+  const markProgrammaticScroll = useCallback((top?: number) => {
+    programmaticScrollAtRef.current = performance.now();
+    if (top == null) {
+      programmaticScrollTopRef.current = null;
+      return;
+    }
+    autoScrollTopRef.current = top;
+    programmaticScrollTopRef.current = top;
+  }, []);
+  const applyStatusPin = useCallback((el: HTMLDivElement, offset: number, animate = false) => {
+    const line = el.querySelector<HTMLElement>(".mc-statusline");
+    if (!line) return;
+    if (statusPinTimerRef.current !== null) {
+      window.clearTimeout(statusPinTimerRef.current);
+      statusPinTimerRef.current = null;
+    }
+    if (!animate && Math.abs(offset) < 0.01) {
+      line.style.transition = "";
+      line.style.transform = "";
+      return;
+    }
+    line.style.transition = animate ? "transform 140ms ease-out" : "";
+    line.style.transform = `translateY(${offset.toFixed(2)}px)`;
+    if (animate) {
+      statusPinTimerRef.current = window.setTimeout(() => {
+        statusPinTimerRef.current = null;
+        line.style.transition = "";
+        line.style.transform = "";
+      }, 140);
+    }
+  }, []);
+  const releaseStatusPin = useCallback(
+    (el: HTMLDivElement) => {
+      const line = el.querySelector<HTMLElement>(".mc-statusline");
+      if (!line?.style.transform) return;
+      applyStatusPin(el, 0, true);
+    },
+    [applyStatusPin],
+  );
   useEffect(
     () => () => {
       stopFollow();
       if (scrollIdleTimerRef.current !== null) window.clearTimeout(scrollIdleTimerRef.current);
+      if (statusPinTimerRef.current !== null) window.clearTimeout(statusPinTimerRef.current);
     },
     [stopFollow],
   );
-  /**
-   * 状态行「贴底时离滚动区底边」的真实距离：流的底部内边距 + 列表底部内边距
-   * （有进度胶囊时会被 :has 规则加大）+ 行后内容的实际高度与外边距。
-   * 进度胶囊出现/消失、尾部横幅增减时都要重算，否则 sticky 钉位和流内位置
-   * 对不上，贴/放会平移一段。
-   */
-  const syncStatusStick = (el: HTMLDivElement) => {
-    const line = el.querySelector<HTMLElement>(".mc-statusline");
-    if (!line) return;
-    let gap = parseFloat(getComputedStyle(el).paddingBottom) || 0;
-    if (line.parentElement) {
-      gap += parseFloat(getComputedStyle(line.parentElement).paddingBottom) || 0;
-    }
-    for (let sibling = line.nextElementSibling; sibling; sibling = sibling.nextElementSibling) {
-      const style = getComputedStyle(sibling);
-      gap +=
-        (sibling as HTMLElement).getBoundingClientRect().height +
-        (parseFloat(style.marginTop) || 0) +
-        (parseFloat(style.marginBottom) || 0);
-    }
-    line.style.setProperty("--status-stick", `${Math.max(0, Math.round(gap))}px`);
-  };
-  /**
-   * 贴底期间给滚动容器挂 data-follow（状态行 sticky 钉底）。
-   * 不能只在追帧循环运行时挂：循环在增量间隙会收敛停下，下一行内容到来时
-   * 状态行会先被推下去、再被吸底拉回来——就是那一下“往下跳”。
-   * 只要处于贴底状态就挂着，和流内位置重合，不产生视觉差异。
-   * requireAtBottom：用户滚动的路径用严格判定（离底 2px 就摘），
-   * 不沿用吸底的 80px 滞回，否则要往上滚一段它才消失。
-   */
-  const syncFollowAttr = (el: HTMLDivElement, requireAtBottom = false) => {
-    const atBottom = maxScrollRef.current - el.scrollTop < 2;
-    const pinned = stickRef.current && (!requireAtBottom || atBottom);
-    if (pinned) {
-      if (el.dataset.follow !== "true") {
-        syncStatusStick(el);
-        el.dataset.follow = "true";
-      }
-    } else if (el.dataset.follow === "true") {
-      delete el.dataset.follow;
-    }
-  };
   const followBottom = (el: HTMLDivElement) => {
     // 已经在追就让循环自己读最新上限，不要重启动画（重启会从静止开始，发顿）
     if (followRafRef.current !== null) return;
     smoothFollowRef.current = true;
-    // 连续下滚期间状态行 sticky 钉底，不被每行内容推着上下漂
-    syncStatusStick(el);
-    el.dataset.follow = "true";
     let pos = el.scrollTop;
+    applyStatusPin(el, pos - maxScrollRef.current);
     /** 速度：一阶追帧每来一行字速度会从 0 跳变，看起来“顿”一下；这里带速度积分 */
     let velocity = 0;
     const step = () => {
       if (!stickRef.current) {
         stopFollow();
+        releaseStatusPin(el);
         return;
       }
       const target = maxScrollRef.current;
@@ -318,7 +327,8 @@ export function MessageList({
       if (Math.abs(delta) < 0.4 && Math.abs(velocity) < 0.4) {
         pos = target;
         el.scrollTop = pos;
-        autoScrollTopRef.current = pos;
+        markProgrammaticScroll(pos);
+        applyStatusPin(el, 0);
         stopFollow();
         reportScrolledAway(el);
         return;
@@ -332,13 +342,14 @@ export function MessageList({
       // 永不超过目标（浏览器越界钳位会造成一次硬跳）
       if (pos > target) pos = target;
       el.scrollTop = pos;
-      autoScrollTopRef.current = pos;
+      markProgrammaticScroll(pos);
+      applyStatusPin(el, pos - target);
       followRafRef.current = requestAnimationFrame(step);
     };
     followRafRef.current = requestAnimationFrame(step);
   };
 
-  /** 回合进行中才显示：具体进度 > 压缩 > 等你回答 > 思考中 > 等待模型响应 > 随机文案；回合结束隐藏。 */
+  /** 回合进行中才显示：具体进度 > 压缩 > 等你回答 > 当前计划步骤 > 思考中 > 等待模型响应 > 随机文案；回合结束隐藏。 */
   const statusLine = useMemo<{ visible: boolean; status: AssistantStatus | null }>(() => {
     if (reconnect?.phase === "started") {
       return {
@@ -365,10 +376,33 @@ export function MessageList({
       return { visible: false, status: null };
     }
 
+    // 任务感知（cc-haha 口径）：工具执行这类静默等待里，状态行显示当前计划
+    // 步骤而不是干转的点；工具行本身就带人话标签，不重复。
+    const steps = plan?.steps ?? [];
+    const activeIndex = steps.findIndex((step) => step.status === "in_progress");
+    const activeStep =
+      activeIndex >= 0
+        ? { title: steps[activeIndex].title, index: activeIndex + 1, total: steps.length }
+        : null;
+
     if (anchor?.kind === "tool" && !anchor.replayed && anchor.ok === undefined) {
-      return anchor.tool === "ask_user"
-        ? { visible: true, status: { text: t("status.waitingAnswer"), busy: false } }
-        : { visible: true, status: null };
+      if (anchor.tool === "ask_user") {
+        return { visible: true, status: { text: t("status.waitingAnswer"), busy: false } };
+      }
+      if (activeStep) {
+        return {
+          visible: true,
+          status: {
+            text: t("status.step", {
+              title: activeStep.title,
+              index: activeStep.index,
+              total: activeStep.total,
+            }),
+            busy: true,
+          },
+        };
+      }
+      return { visible: true, status: null };
     }
 
     if (anchor?.kind === "message" && anchor.role === "assistant" && anchor.streaming) {
@@ -384,7 +418,7 @@ export function MessageList({
     if (waiting) return { visible: true, status: { text: t("waiting.response"), busy: true } };
 
     return { visible: false, status: null };
-  }, [items, waiting, preparing, reconnect, t]);
+  }, [items, waiting, preparing, reconnect, plan, t]);
 
   // 对话浏览条只列用户消息；不足两条时没有浏览意义，不渲染
   const userNavItems = useMemo(
@@ -423,19 +457,24 @@ export function MessageList({
     if (!items.length) {
       stickRef.current = true;
       stopFollow();
+      applyStatusPin(el, 0);
       return;
     }
-    syncFollowAttr(el);
     if (!stickRef.current) return;
     const delta = max - el.scrollTop;
     if (delta <= 0.5) {
+      stopFollow();
       el.scrollTop = max;
+      markProgrammaticScroll(max);
+      applyStatusPin(el, 0);
       return;
     }
     // 切会话 / 首屏回填这类大位移直接到位；流式的一行一行平滑追。
     if (delta > 240 || window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) {
       stopFollow();
       el.scrollTop = max;
+      markProgrammaticScroll(max);
+      applyStatusPin(el, 0);
       return;
     }
     followBottom(el);
@@ -449,6 +488,8 @@ export function MessageList({
     const el = scrollRef.current;
     if (!el) return;
     stickRef.current = false;
+    stopFollow();
+    releaseStatusPin(el);
     let raf = 0;
     const locate = (allowRetry: boolean) => {
       const anchor = el.querySelector<HTMLElement>(`[data-message-index="${focus.messageIndex}"]`);
@@ -459,7 +500,9 @@ export function MessageList({
       }
       // 只滚消息流自己（scrollIntoView 会连带滚动 overflow:hidden 的祖先）
       const top = anchor.getBoundingClientRect().top - el.getBoundingClientRect().top + el.scrollTop;
-      el.scrollTo({ top: top - Math.max(0, (el.clientHeight - anchor.offsetHeight) / 2) });
+      const targetTop = top - Math.max(0, (el.clientHeight - anchor.offsetHeight) / 2);
+      el.scrollTo({ top: targetTop });
+      markProgrammaticScroll(el.scrollTop);
       const token = String(focus.token);
       anchor.dataset.flash = token;
       window.setTimeout(() => {
@@ -469,7 +512,7 @@ export function MessageList({
     };
     raf = requestAnimationFrame(() => locate(true));
     return () => cancelAnimationFrame(raf);
-  }, [focus]);
+  }, [focus, markProgrammaticScroll, releaseStatusPin, stopFollow]);
 
   const handleScroll = () => {
     const el = scrollRef.current;
@@ -478,18 +521,28 @@ export function MessageList({
     if (smoothFollowRef.current) {
       if (Math.abs(el.scrollTop - autoScrollTopRef.current) < 2) return;
       stopFollow();
+      releaseStatusPin(el);
     }
-    // 用户/惯性滚动：滚动期间先关掉流里的毛玻璃和动画（见 MessageList.css）
-    markScrolling(el);
-    // 只有真正贴底才重新吸底：中间区间保持用户上一次的选择，
-    // 否则向上滚一点（仍在 80px 内）会被下一次流式更新直接拽回底部。
-    // 这里必须同步判定（拖滚动条不会先来 wheel）；滚动上限用缓存值，
-    // 不读 scrollHeight，避免流式输出期间每个 scroll 事件都强制布局。
+    const programmaticTop = programmaticScrollTopRef.current;
+    if (programmaticTop !== null && Math.abs(el.scrollTop - programmaticTop) < 2) {
+      programmaticScrollTopRef.current = null;
+      reportScrolledAway(el);
+      return;
+    }
+    programmaticScrollTopRef.current = null;
+    // 用户/惯性滚动：滚动期间先关掉流里的毛玻璃和动画（见 MessageList.css）。
+    // 但自己刚写过的 scrollTop（120ms 内）不算用户滚动：一次性跳转没有逐帧重采样，
+    // 挂上去只会让整条流闪一下「没模糊」。其后的贴底判定照常执行。
+    if (performance.now() - programmaticScrollAtRef.current > 120) markScrolling(el);
+    // 用户一旦离开贴底位置就交还内容流；滚回真正贴底才重新吸底。
+    // 滚动上限用缓存值，不读 scrollHeight，避免流式输出期间每个 scroll 事件都强制布局。
     const distance = maxScrollRef.current - el.scrollTop;
-    if (distance > 80) stickRef.current = false;
-    else if (distance < 1) stickRef.current = true;
-    // 用户滚动：离底 2px 就摘状态行 sticky，不等 80px 的吸底滞回
-    syncFollowAttr(el, true);
+    if (distance > 2) {
+      stickRef.current = false;
+      releaseStatusPin(el);
+    } else if (distance < 1) {
+      stickRef.current = true;
+    }
     reportScrolledAway(el);
   };
 
@@ -506,12 +559,12 @@ export function MessageList({
       stickRef.current = false;
       // 用户要往上滚：立刻停掉正在进行的平滑吸底，别和用户抢滚动条
       stopFollow();
-      syncFollowAttr(el);
+      releaseStatusPin(el);
       markScrolling(el);
     };
     el.addEventListener("wheel", onWheel, { passive: true });
     return () => el.removeEventListener("wheel", onWheel);
-  }, [stopFollow]);
+  }, [releaseStatusPin, stopFollow]);
 
   // 滚到底 / 切换会话后重新上报一次（内容变化导致滚动位置被重置时同步按钮显隐）
   useLayoutEffect(() => {
@@ -533,17 +586,20 @@ export function MessageList({
     if (!el || !(inner instanceof HTMLElement)) return;
     const observer = new ResizeObserver(() => {
       const max = syncScrollBounds(el);
-      // 底部留白（进度胶囊）、尾部横幅变化时同步钉位，贴/放不再平移
-      syncStatusStick(el);
       reportScrolledAway(el);
       if (!stickRef.current) return;
       // 追帧循环在跑时不用管，它会读最新上限
       if (followRafRef.current !== null) return;
       const delta = max - el.scrollTop;
-      if (delta <= 0.5) return;
+      if (delta <= 0.5) {
+        applyStatusPin(el, 0);
+        return;
+      }
       if (delta > 240 || window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) {
         stopFollow();
         el.scrollTop = max;
+        markProgrammaticScroll(max);
+        applyStatusPin(el, 0);
         return;
       }
       followBottom(el);
@@ -559,13 +615,17 @@ export function MessageList({
     scrollApiRef.current = {
       scrollToBottom: () => {
         const el = scrollRef.current;
-        if (el) el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+        if (!el) return;
+        stopFollow();
+        applyStatusPin(el, 0);
+        markProgrammaticScroll();
+        el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
       },
     };
     return () => {
       scrollApiRef.current = null;
     };
-  }, [scrollApiRef]);
+  }, [scrollApiRef, applyStatusPin, markProgrammaticScroll, stopFollow]);
 
   // turn-info 不在流里平铺渲染，改由每轮末尾的 TurnInfoBar 承载
   const renderItem = (item: TimelineItem) =>
@@ -680,12 +740,19 @@ export function MessageList({
 
   return (
     <div className="mc-streamwrap">
-      {/* 视频壁纸副本：蒙版根内玻璃要糊的「背景」，与 AppBackground 的真视频同源播放（强制静音，
-          声音归真视频）。图片壁纸没有这层 —— 由 MessageList.css 的 ::before 位图副本承担 */}
-      {wallpaperVideo ? (
-        <WallpaperVideoReplica fileName={wallpaperVideo.fileName} />
-      ) : null}
       <div className="mc-stream" ref={scrollRef} onScroll={handleScroll}>
+        {/* 壁纸副本容器：必须住在滚动容器内部。合成滚动会把滚动子树变成玻璃的
+            「背板根」，副本留在外层（streamwrap）玻璃就会糊到空背板——这也是
+            壁纸模式此前滚动卡顿的根源：为了保玻璃只能放弃合成滚动，每帧主线程
+            重栅格化。副本搬进来之后滚动容器可以常驻合成层，滚动回到合成器线程。
+            细节见 MessageList.css 蒙版块的架构注释 */}
+        <div className="mc-stream__bg" aria-hidden="true">
+          {/* 视频壁纸副本：玻璃要糊的「背景」，与 AppBackground 的真视频同源播放（强制静音，
+              声音归真视频）。图片壁纸没有这层 —— 由 MessageList.css 的 ::before 位图副本承担 */}
+          {wallpaperVideo ? (
+            <WallpaperVideoReplica fileName={wallpaperVideo.fileName} />
+          ) : null}
+        </div>
         <div className="mc-stream__inner">
           <PluginSlot
             name="message.list.before"

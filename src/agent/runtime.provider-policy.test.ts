@@ -52,7 +52,7 @@ describe("thinking effort by session mode", () => {
     ...patch,
   });
 
-  it("raises the effort one level in plan mode", async () => {
+  it("floors the effort at medium in plan mode", async () => {
     const runtime = await newRuntime([provider()]);
     streamMock.mockResolvedValue({ message: { role: "assistant", content: "ok" } });
     await runtime.setSessionMode("plan");
@@ -62,6 +62,16 @@ describe("thinking effort by session mode", () => {
     expect(request.provider.reasoningEffort).toBe("medium");
   });
 
+  it("does not raise an already-high effort in plan mode", async () => {
+    const runtime = await newRuntime([provider({ reasoningEffort: "high" })]);
+    streamMock.mockResolvedValue({ message: { role: "assistant", content: "ok" } });
+    await runtime.setSessionMode("plan");
+    await runtime.prompt("plan it");
+
+    const request = streamMock.mock.calls[0][0] as { provider: ProviderConfig };
+    expect(request.provider.reasoningEffort).toBe("high");
+  });
+
   it("keeps the user effort in default mode", async () => {
     const runtime = await newRuntime([provider()]);
     streamMock.mockResolvedValue({ message: { role: "assistant", content: "ok" } });
@@ -69,6 +79,33 @@ describe("thinking effort by session mode", () => {
 
     const request = streamMock.mock.calls[0][0] as { provider: ProviderConfig };
     expect(request.provider.reasoningEffort).toBe("low");
+  });
+
+  it("falls back to the catalog default when the provider has no effort", async () => {
+    // 模型商没有"查默认档位"的接口：认识的模型按目录兜底（没有 medium 档的取最低档）
+    const runtime = await newRuntime([
+      provider({
+        reasoningEffort: undefined,
+        reasoningLevels: undefined,
+        model: "deepseek-v4.1-flash-economy",
+      }),
+    ]);
+    streamMock.mockResolvedValue({ message: { role: "assistant", content: "ok" } });
+    await runtime.prompt("just do it");
+
+    const request = streamMock.mock.calls[0][0] as { provider: ProviderConfig };
+    expect(request.provider.reasoningEffort).toBe("low");
+  });
+
+  it("does not invent an effort for models outside the catalog", async () => {
+    const runtime = await newRuntime([
+      provider({ reasoningEffort: undefined, reasoningLevels: undefined }),
+    ]);
+    streamMock.mockResolvedValue({ message: { role: "assistant", content: "ok" } });
+    await runtime.prompt("just do it");
+
+    const request = streamMock.mock.calls[0][0] as { provider: ProviderConfig };
+    expect(request.provider.reasoningEffort).toBeUndefined();
   });
 
   it("does not boost when an explicit thinking budget is set", async () => {

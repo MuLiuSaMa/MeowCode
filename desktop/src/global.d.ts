@@ -56,6 +56,20 @@ type ModelProfilesPayload = {
   }>;
 };
 
+/** 第二路目录：models.dev 展平后的 id → 精简规格。 */
+type ModelsDevPayload = {
+  fetchedAt: number;
+  models: Record<
+    string,
+    {
+      contextWindow: number;
+      maxOutputTokens?: number;
+      supportsImage?: boolean;
+      levels?: string[];
+    }
+  >;
+};
+
 declare global {
   interface Window {
     meow: {
@@ -172,6 +186,10 @@ declare global {
         selfLearning?: boolean;
         /** 供应商故障转移开关（实时生效走 /config/provider-fallback） */
         providerFallback?: boolean;
+        /** 辅助任务模型 providerId（实时生效走 /config/aux-model）；null = 跟随主模型 */
+        auxProviderId?: string | null;
+        /** 悬浮岛模型 providerId（实时生效走 /config/island-model）；null = 跟随会话当前模型 */
+        islandProviderId?: string | null;
         /** 网络代理模式（实时生效走 /config/proxy） */
         proxyMode?: "direct" | "system" | "manual";
         /** manual 模式下的代理地址 */
@@ -190,6 +208,9 @@ declare global {
       /** 模型规则：主进程定期从 ZCode 内置配置同步（档位 / 上下文 / 输出 / 图片输入） */
       getModelProfiles(): Promise<ModelProfilesPayload | null>;
       onModelProfiles(listener: (payload: ModelProfilesPayload) => void): () => void;
+      /** 第二路目录：models.dev（新模型靠它，ZCode 的表更新很慢） */
+      getModelsDev(): Promise<ModelsDevPayload | null>;
+      onModelsDev(listener: (payload: ModelsDevPayload) => void): () => void;
 
       /** 自绘标题栏的窗口操作 */
       minimizeWindow(): Promise<void>;
@@ -225,6 +246,10 @@ declare global {
       notifyIslandPrompt(payload: { sessionId: string; text: string }): Promise<void>;
       /** 悬浮岛发出 prompt 的广播（仅主窗口消费） */
       onIslandPromptSent(listener: (payload: { sessionId: string; text: string }) => void): () => void;
+      /** 通知里回复投递失败：把草稿还原进输入框并提示原因 */
+      onNotificationReplyFailed(
+        listener: (payload: { sessionId: string; text: string; error: string }) => void,
+      ): () => void;
       /** 已导入的自定义字体（外观设置用） */
       listCustomFonts(): Promise<Array<{ family: string; url: string }>>;
       /** 弹系统对话框选字体文件并导入；family 为导入后的展示名 */

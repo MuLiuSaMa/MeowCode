@@ -1,7 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { LuChevronDown } from "react-icons/lu";
-import { detectedCapabilities } from "../../modelProfiles";
+import {
+  detectedCapabilities,
+  isStaleCapability,
+  modelProfilesRevision,
+  subscribeModelProfiles,
+} from "../../modelProfiles";
+import { effortLevelsForModel } from "../../effort";
+import { recommendedEffortForModel } from "../../../../src/agent/reasoning-catalog";
 import { formatCapacity } from "../../util";
 import { Button } from "../ui/Button";
 import { Checkbox } from "../ui/Checkbox";
@@ -60,6 +67,10 @@ export function ModelSettingsDialog({
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const autoFilledRef = useRef({ context: false, max: false, image: false });
   const lastModelRef = useRef(form.model);
+  // 远程规则表一到（启动时的后台拉取 / 定时更新），弹层开着也要重算一次
+  const [profilesRevision, setProfilesRevision] = useState(modelProfilesRevision);
+  useEffect(() => subscribeModelProfiles(() => setProfilesRevision(modelProfilesRevision())), []);
+  const lastRevisionRef = useRef(profilesRevision);
 
   // 与旧表单一致：模型 ID 变化时按 ZCode 规则自动补容量与图片能力，已手填的不覆盖
   useEffect(() => {
@@ -67,8 +78,21 @@ export function ModelSettingsDialog({
     if (!model) return;
     const capabilities = detectedCapabilities(model);
     const changed = lastModelRef.current !== form.model;
+    const rulesChanged = lastRevisionRef.current !== profilesRevision;
     lastModelRef.current = form.model;
+    lastRevisionRef.current = profilesRevision;
     const auto = autoFilledRef.current;
+
+    // 已保存的旧值先按新规则校正：值恰好是旧规则给的、而最高优先级规则已经变了，
+    // 就说明这是当初自动填的（GLM-5.4 的 20 万 → 1M 靠这一步，不用用户重填）。
+    if (isStaleCapability(model, "contextWindow", form.contextWindow) && capabilities.contextWindow) {
+      auto.context = true;
+      onContextInputChange(formatCapacity(capabilities.contextWindow));
+    }
+    if (isStaleCapability(model, "maxOutputTokens", form.maxTokens) && capabilities.maxOutputTokens) {
+      auto.max = true;
+      onMaxInputChange(formatCapacity(capabilities.maxOutputTokens));
+    }
 
     if (auto.context && !capabilities.contextWindow) {
       auto.context = false;
@@ -86,7 +110,7 @@ export function ModelSettingsDialog({
     }
 
     const untouched = !form.contextWindow && !form.maxTokens;
-    if (!changed && !untouched) return;
+    if (!changed && !untouched && !rulesChanged) return;
     if (capabilities.supportsImage && !(form.inputModalities ?? []).includes("image")) {
       auto.image = true;
       onChange({ inputModalities: ["text", "image"] });
@@ -94,8 +118,8 @@ export function ModelSettingsDialog({
       auto.image = false;
       onChange({ inputModalities: ["text"] });
     }
-    // 只在模型 ID 变化时触发：容量输入框的当前值不作为依赖
-  }, [form.model]);
+    // 依赖只有「模型 ID」和「规则版本」：容量输入框的当前值不作为依赖
+  }, [form.model, profilesRevision]);
 
   const ttlOptions = useMemo(
     () => CACHE_TTL_OPTIONS.map((item) => ({ value: item.value, label: t(item.labelKey) })),
@@ -105,6 +129,16 @@ export function ModelSettingsDialog({
     () => SUMMARY_OPTIONS.map((item) => ({ value: item.value, label: t(item.labelKey) })),
     [t],
   );
+  /**
+   * 思考强度只允许选模型真实支持的档位：自由文本能让用户填出服务商不认的值
+   * （例如 DeepSeek 只认 low/high/max，填 medium 会被当成高档，越调越慢）。
+   * 推荐值来自 reasoning-catalog，与 Codex 的 default_reasoning_level 同义。
+   */
+  const effortOptions = useMemo(
+    () => effortLevelsForModel(form.model).map((level) => ({ value: level.value, label: level.label })),
+    [form.model, t],
+  );
+  const recommendedEffort = useMemo(() => recommendedEffortForModel(form.model), [form.model]);
   const compactionOptions = useMemo(
     () => COMPACTION_OPTIONS.map((item) => ({ value: item.value, label: t(item.labelKey) })),
     [t],
@@ -202,12 +236,16 @@ export function ModelSettingsDialog({
           </button>
           {advancedOpen ? (
             <div className="mc-modelform__grid mc-modelform__advancedbody">
-              <TextField
+              <Select
                 label={t("models.form.reasoningEffort")}
                 value={form.reasoningEffort ?? ""}
-                onChange={(event) => onChange({ reasoningEffort: event.target.value })}
-                placeholder={t("models.form.reasoningEffortPlaceholder")}
-                hint={t("models.form.reasoningEffortHint")}
+                options={effortOptions}
+                onChange={(value) => onChange({ reasoningEffort: value || undefined })}
+                hint={
+                  form.reasoningEffort
+                    ? t("models.form.reasoningEffortHint")
+                    : t("models.form.reasoningEffortRecommended", { level: recommendedEffort })
+                }
               />
               <TextField
                 label={t("models.form.thinkingBudget")}

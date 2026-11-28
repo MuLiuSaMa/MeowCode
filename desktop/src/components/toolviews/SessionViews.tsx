@@ -118,7 +118,9 @@ export function TaskView({ item, status, t }: ToolViewProps) {
   return (
     <div className="mc-tv">
       <div className="mc-tv__pathrow">
-        <span className="mc-tv__path">{description || t("tool.task")}</span>
+        <span className="mc-tv__path">
+          {description || (mode === "wait" ? t("tool.taskWait") : t("tool.task"))}
+        </span>
         {mode ? <ToolBadge tone="muted">{mode}</ToolBadge> : null}
         {agentType ? <ToolBadge tone="muted">{agentType}</ToolBadge> : null}
         {agentId ? <ToolBadge tone="muted">{agentId}</ToolBadge> : null}

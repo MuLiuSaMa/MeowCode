@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { SessionSummary } from "../../api";
 import { formatDateTime } from "../../i18n/format";
 import { formatBytes } from "../../util";
 import { Button } from "../ui/Button";
+import { ConfirmDialog } from "../ui/ConfirmDialog";
 import { Dialog } from "../ui/Dialog";
 import { FieldRow } from "../ui/Section";
 import "./StorageSection.css";
@@ -47,10 +48,10 @@ export function StorageSection({
   const [usage, setUsage] = useState<StorageUsage | null>(null);
   const [loading, setLoading] = useState(false);
   const [cleanOpen, setCleanOpen] = useState(false);
-  const [confirming, setConfirming] = useState<string | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<{ filePath: string; title: string } | null>(null);
   const [target, setTarget] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const confirmTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
 
   const refresh = useCallback((force = false) => {
     setLoading(true);
@@ -65,13 +66,6 @@ export function StorageSection({
     refresh();
   }, [refresh]);
 
-  useEffect(
-    () => () => {
-      if (confirmTimer.current) clearTimeout(confirmTimer.current);
-    },
-    [],
-  );
-
   /** 旧聊天：有消息、未归档，按创建时间从旧到新 */
   const cleanSessions = useMemo(() => {
     const archived = new Set(archivedSessions);
@@ -82,21 +76,14 @@ export function StorageSection({
 
   const total = usage?.total ?? 0;
 
-  const armDelete = (filePath: string) => {
-    if (confirmTimer.current) clearTimeout(confirmTimer.current);
-    if (confirming === filePath) {
-      setConfirming(null);
-      void onDeleteSessions([filePath]).then((deleted) => {
-        if (deleted.length) refresh(true);
-      });
-      return;
-    }
-    setConfirming(filePath);
-    confirmTimer.current = setTimeout(() => setConfirming(null), 4000);
+  const deleteOldSession = (filePath: string) => {
+    setPendingDelete(null);
+    void onDeleteSessions([filePath]).then((deleted) => {
+      if (deleted.length) refresh(true);
+    });
   };
 
   const closeClean = () => {
-    setConfirming(null);
     setCleanOpen(false);
   };
 
@@ -196,10 +183,7 @@ export function StorageSection({
         <FieldRow label={t("storage.clean.title")} hint={t("storage.clean.hint")}>
           <Button
             size="sm"
-            onClick={() => {
-              setConfirming(null);
-              setCleanOpen(true);
-            }}
+            onClick={() => setCleanOpen(true)}
           >
             {t("storage.clean.action")}
           </Button>
@@ -240,12 +224,15 @@ export function StorageSection({
                 </div>
                 <Button
                   size="sm"
-                  variant={confirming === item.filePath ? "danger" : "ghost"}
-                  onClick={() => armDelete(item.filePath)}
+                  variant="ghost"
+                  onClick={() =>
+                    setPendingDelete({
+                      filePath: item.filePath,
+                      title: item.title || t("storage.clean.untitled"),
+                    })
+                  }
                 >
-                  {confirming === item.filePath
-                    ? t("storage.clean.confirm")
-                    : t("storage.clean.delete")}
+                  {t("storage.clean.delete")}
                 </Button>
               </div>
             ))
@@ -279,6 +266,14 @@ export function StorageSection({
           </Button>
         </div>
       </Dialog>
+
+      <ConfirmDialog
+        open={pendingDelete !== null}
+        title={t("confirm.deleteTitle")}
+        message={t("confirm.deleteMessage", { name: pendingDelete?.title ?? "" })}
+        onCancel={() => setPendingDelete(null)}
+        onConfirm={() => pendingDelete && deleteOldSession(pendingDelete.filePath)}
+      />
     </div>
   );
 }

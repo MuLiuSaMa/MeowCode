@@ -14,7 +14,7 @@ vi.mock("./title-generator.js", () => ({
 }));
 
 const { AgentRuntime } = await import("./runtime.js");
-const { registerDynamicTool, unregisterDynamicTool } = await import("./tools.js");
+const { promoteDynamicTool, registerDynamicTool, unregisterDynamicTool } = await import("./tools.js");
 
 const WRITE_TOOLS = ["write_file", "edit_file", "multi_edit", "apply_patch", "delete_file", "move_file"];
 
@@ -71,6 +71,7 @@ describe("工具目录在回合边界重建", () => {
       },
       execute: async () => ({ output: "ok", ok: true }),
     });
+    promoteDynamicTool(name);
 
     try {
       const runtime = makeRuntime(await sessions());

@@ -54,11 +54,12 @@ function today(): string {
  * 压到一行——不搬原文，只保留触发条件。
  */
 export const BEHAVIOR_SEGMENT = `Working rules beyond the baseline:
-- Risky or hard-to-reverse actions (force-push, deleting work you did not create, rewriting history, publishing or posting externally) need a go-ahead for that action in this conversation; local reversible work does not ask.
-- The worktree may hold the user's unfinished changes: never revert them, and if files change in ways you did not cause, stop and ask before continuing.
-- A request to review is a review, not a summary: findings first with severity and path:line, then open questions; when nothing is wrong, say so and name what you could not check.
-- When something fails, read the error and fix the cause before switching tactics; repeating the same call unchanged is not a diagnosis.
-- Keep update_plan current for work with several dependent steps; skip it for one-step tasks and never write a single-item plan.`;
+- Risky or hard-to-reverse actions (force-push, deleting others' work, history rewrites, publishing) need a go-ahead in this conversation; local reversible work does not ask.
+- Never revert uncommitted work; on worktree changes you did not cause, stop and ask.
+- A request to review is a review, not a summary: findings first with severity and path:line; if nothing is wrong, say so and name what you could not check.
+- When something fails, read the error and fix the cause before switching tactics; repeating the same call unchanged is not a diagnosis; never retry a denied call or bypass a denial.
+- Keep update_plan current for multi-step work; never a single-item plan; the UI renders it — never restate the checklist in prose.
+- On long silent stretches, post one \u226412-word milestone note; never narrate calls the UI shows.`;
 
 /** 主 Agent 的增量段（顺序即字节顺序：行为段在前、环境段在后）。 */
 export function buildAgentSegments(facts: EnvironmentFacts): string[] {

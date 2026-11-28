@@ -1,9 +1,10 @@
-import { useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { LuFolderOpen, LuServer } from "react-icons/lu";
 import type { SshAuthType, SshConnection } from "../../api";
 import { Button } from "../ui/Button";
 import { CustomSelect } from "../ui/CustomSelect";
+import { ConfirmDialog } from "../ui/ConfirmDialog";
 import { Dialog } from "../ui/Dialog";
 import { FieldRow, Section } from "../ui/Section";
 import { IconButton } from "../ui/IconButton";
@@ -48,8 +49,7 @@ export function ConnectionsSection({
   const { t } = useTranslation("settings");
   const [draft, setDraft] = useState<Draft | null>(null);
   const [testing, setTesting] = useState<string | null>(null);
-  const [confirming, setConfirming] = useState<string | null>(null);
-  const confirmTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<SshConnection | null>(null);
 
   const authOptions = useMemo(
     () => [
@@ -143,14 +143,8 @@ export function ConnectionsSection({
   };
 
   const removeConnection = (connection: SshConnection) => {
-    if (confirmTimer.current) clearTimeout(confirmTimer.current);
-    if (confirming === connection.id) {
-      setConfirming(null);
-      onChange(connections.filter((item) => item.id !== connection.id));
-      return;
-    }
-    setConfirming(connection.id);
-    confirmTimer.current = setTimeout(() => setConfirming(null), 4000);
+    setPendingDelete(null);
+    onChange(connections.filter((item) => item.id !== connection.id));
   };
 
   return (
@@ -188,12 +182,8 @@ export function ConnectionsSection({
                 <Button size="sm" variant="ghost" onClick={() => openEdit(connection)}>
                   {t("actions.edit")}
                 </Button>
-                <Button
-                  size="sm"
-                  variant={confirming === connection.id ? "danger" : "ghost"}
-                  onClick={() => removeConnection(connection)}
-                >
-                  {confirming === connection.id ? t("actions.confirmDelete") : t("actions.delete")}
+                <Button size="sm" variant="ghost" onClick={() => setPendingDelete(connection)}>
+                  {t("actions.delete")}
                 </Button>
               </div>
             </FieldRow>
@@ -275,6 +265,16 @@ export function ConnectionsSection({
           </Button>
         </div>
       </Dialog>
+
+      <ConfirmDialog
+        open={pendingDelete !== null}
+        title={t("confirm.deleteTitle")}
+        message={t("confirm.deleteMessage", {
+          name: pendingDelete?.name || `${pendingDelete?.username}@${pendingDelete?.host}` || "",
+        })}
+        onCancel={() => setPendingDelete(null)}
+        onConfirm={() => pendingDelete && removeConnection(pendingDelete)}
+      />
     </div>
   );
 }

@@ -6,7 +6,9 @@
 .mc-nav {
   position: absolute;
   top: 50%;
-  right: 8px;
+  /* 贴右缘：收起态刻度要落在消息列右缘（内容盒到面板边 20px）与滚动条滑块
+     之间的空档里，不压到卡片边缘——right:8px 会让刻度横穿卡片右缘 4px */
+  right: 2px;
   transform: translateY(-50%);
   z-index: 20;
   display: flex;
@@ -27,6 +29,26 @@
     box-shadow 200ms var(--ease);
   animation: mc-nav-in 260ms var(--ease) backwards;
 }
+
+/* 随声音律动：audio-level 单例按频段逐帧写入每根刻度的 --tick-level（0..1），
+   刻度像迷你均衡器一样一根一根变长变短跳动；颜色语义不变（悬停灰、当前品牌色）。
+   律动时收起态导航条加宽 6px 给刻度腾出更大的伸缩行程（经 width 过渡平滑展开），
+   宽度本身已由 JS 逐帧平滑，data-pulse 下去掉刻度的 width 过渡，否则跳动会被拖成蠕动 */
+@media (prefers-reduced-motion: no-preference) {
+  .mc-nav[data-pulse] {
+    width: 28px;
+  }
+  .mc-nav[data-pulse] .mc-nav__tick {
+    width: calc(6px + 14px * var(--tick-level, 0));
+    transition: background-color 200ms var(--ease);
+  }
+  /* 盖过悬停/当前的定宽规则，让律动优先 */
+  .mc-nav[data-pulse] .mc-nav__item:hover .mc-nav__tick,
+  .mc-nav[data-pulse] .mc-nav__item[data-active="true"] .mc-nav__tick {
+    width: calc(6px + 14px * var(--tick-level, 0));
+  }
+}
+
 .mc-nav:hover,
 .mc-nav:focus-within {
   width: 236px;

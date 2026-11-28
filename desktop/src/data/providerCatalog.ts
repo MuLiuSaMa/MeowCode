@@ -35,7 +35,7 @@ const ZCODE_TEMPLATES: ProviderTemplate[] = [
     baseUrl: "https://api.z.ai/api/anthropic",
     protocol: "anthropic-messages",
     iconKey: "zai",
-    models: ["GLM-5.3", "GLM-5.3-Flash"],
+    models: ["GLM-5.4", "GLM-5.3", "GLM-5.3-Flash"],
     source: "zcode",
   },
   {
@@ -45,6 +45,7 @@ const ZCODE_TEMPLATES: ProviderTemplate[] = [
     protocol: "openai-chat-completions",
     iconKey: "zai",
     models: [
+      "GLM-5.4",
       "GLM-5.3",
       "GLM-5.3-Flash",
       "GLM-5V-Turbo",
@@ -78,7 +79,7 @@ const ZCODE_TEMPLATES: ProviderTemplate[] = [
     baseUrl: "https://open.bigmodel.cn/api/anthropic",
     protocol: "anthropic-messages",
     iconKey: "bigmodel",
-    models: ["GLM-5.3", "GLM-5.3-Flash"],
+    models: ["GLM-5.4", "GLM-5.3", "GLM-5.3-Flash"],
     source: "zcode",
   },
   {
@@ -88,6 +89,7 @@ const ZCODE_TEMPLATES: ProviderTemplate[] = [
     protocol: "openai-chat-completions",
     iconKey: "bigmodel",
     models: [
+      "GLM-5.4",
       "GLM-5.3",
       "GLM-5.3-Flash",
       "GLM-5V-Turbo",

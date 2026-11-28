@@ -89,7 +89,7 @@
     "discard": "破棄",
     "pendingAria": "キュー内のメッセージ",
     "steerTitle": "現在の応答を中止して、このメッセージをすぐ送信",
-    "steer": "割り込み送信",
+    "steer": "今すぐ",
     "removeTitle": "キューから削除",
     "remove": "削除",
     "edit": "編集",

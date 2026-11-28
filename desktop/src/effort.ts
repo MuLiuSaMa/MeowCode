@@ -16,6 +16,7 @@
 
 import i18n from "i18next";
 import type { TFunction } from "i18next";
+import { reasoningLevelsForModel } from "../../src/agent/reasoning-catalog";
 import { remoteReasoningValues } from "./modelProfiles";
 
 /** 档位值 → composer ns 的 key（与 ZCode 的文案表一致）。表里只存 key，禁止在模块顶层取译文。 */
@@ -51,33 +52,9 @@ export function toEffortLevel(value: string): EffortLevel {
   return { value, label: levelLabel(value) };
 }
 
-/**
- * 模型档位表，按顺序取第一条命中的正则。
- * 取值与顺序摘自 ZCode 内置表的 modelRules（2026-10 核对）。
- */
-const MODEL_PROFILES: Array<{ match: RegExp; values: readonly string[] }> = [
-  // DeepSeek V4 家族（ZCode: deepseek-v4.1-flash → disabled/low/high/max，这里去掉 disabled）
-  { match: /deepseek-v4[.-]1-flash/i, values: ["low", "high", "max"] },
-  { match: /deepseek-v4-pro/i, values: ["low", "high", "max"] },
-  { match: /deepseek-v4-flash/i, values: ["low", "high", "max"] },
-  { match: /deepseek-flash/i, values: ["low", "high", "max"] },
-  // GLM-5.3 家族（参考图里的 glm-5.3-flash 就走这条）
-  { match: /glm-5\.3/i, values: ["low", "high", "max"] },
-  { match: /glm-5\.2/i, values: ["low", "high", "max"] },
-  // Kimi K3
-  { match: /kimi[-_ ]?k3/i, values: ["low", "high", "max"] },
-  // OpenAI
-  { match: /gpt-5\.6/i, values: ["none", "low", "medium", "high", "xhigh", "max", "ultra"] },
-  { match: /gpt-5\.3-codex/i, values: ["low", "medium", "high", "xhigh"] },
-  { match: /gpt-5\.4-pro/i, values: ["medium", "high", "xhigh"] },
-  { match: /gpt-5\.4/i, values: ["none", "low", "medium", "high", "xhigh"] },
-  // Anthropic / xAI
-  { match: /claude-(fable|opus|sonnet|mythos)-5/i, values: ["low", "medium", "high", "xhigh", "max"] },
-  { match: /grok-4\.6/i, values: ["low", "medium", "high", "xhigh"] },
-];
-
-/** 认不出模型时用 OpenAI 的通用四档。 */
-const FALLBACK_VALUES: readonly string[] = ["minimal", "low", "medium", "high"];
+// 模型档位表已收敛到 `src/agent/reasoning-catalog.ts`：设置页下拉与推荐默认值
+// 共用同一张表，避免"界面能选、请求被改写成别的档"（DeepSeek 只认 low/high/max）。
+// 这里只保留远程同步（ZCode 内置配置更新后无需发版）与文案包装。
 
 /** 由一串档位值构造列表（第一档固定是「默认」= 不下发）。 */
 export function effortLevelsFromValues(values: readonly string[]): EffortLevel[] {
@@ -89,8 +66,7 @@ export function effortLevelsForModel(model?: string | null): EffortLevel[] {
   const name = model ?? "";
   const remote = remoteReasoningValues(name);
   if (remote) return effortLevelsFromValues(remote);
-  const profile = MODEL_PROFILES.find((item) => item.match.test(name));
-  return effortLevelsFromValues(profile ? profile.values : FALLBACK_VALUES);
+  return effortLevelsFromValues(reasoningLevelsForModel(name));
 }
 
 export function effortIndex(value: string | null | undefined, levels: EffortLevel[]): number {

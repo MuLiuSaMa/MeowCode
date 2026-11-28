@@ -6,6 +6,7 @@ import { COMPLEX_SYSTEM_PROMPT, MINIMAL_SYSTEM_PROMPT } from "./agent-profiles.j
 import { BEHAVIOR_SEGMENT, buildEnvironmentSegment } from "./prompt-segments.js";
 import {
   listDynamicToolDefinitions,
+  promoteDynamicTool,
   registerDynamicTool,
   unregisterDynamicTool,
 } from "./tools.js";
@@ -60,9 +61,27 @@ describe("system prompt anti-drift", () => {
       ["只改被要求的", "Change only what was asked"],
       ["不顺手重构", "no unrequested refactors"],
       ["两次失败就停", "After two failed attempts"],
+      // 对齐 Codex 的 action 口径：停在提案上、改完回读，都会把一轮改动拖成三轮。
+      ["别停在提案", "do not stop at a proposal"],
+      ["改完不回读", "do not re-read to verify"],
+      ["多文件用 patch", "apply_patch for multi-file hunks"],
+      // 对齐 cc-haha 的数字长度锚点（实测比定性「简洁」更省输出）。
+      ["数字锚点", "\u2264100 words"],
     ];
     for (const [label, phrase] of redLines) {
       expect(BASE_SYSTEM_PROMPT, `基线丢了红线：${label}`).toContain(phrase);
+    }
+  });
+
+  it("keeps behavior-segment working rules", () => {
+    // 行为段的三个新触发条件（cc-haha 拒绝引导 / Codex 计划不复述 / Codex 里程碑插播）。
+    const pins: Array<[string, string]> = [
+      ["拒绝不重试", "never retry a denied call"],
+      ["计划不复述", "never restate the checklist"],
+      ["里程碑插播", "milestone note"],
+    ];
+    for (const [label, phrase] of pins) {
+      expect(BEHAVIOR_SEGMENT, `行为段丢了规则：${label}`).toContain(phrase);
     }
   });
 
@@ -88,46 +107,61 @@ describe("system prompt anti-drift", () => {
   });
 });
 
-describe("dynamic tool budget", () => {
-  it("keeps every name, enum and required while fitting 8k tokens", () => {
-    const names: string[] = [];
-    for (let index = 0; index < 30; index += 1) {
-      const name = `mcp__test__tool_${String(index).padStart(2, "0")}`;
-      const properties: Record<string, unknown> = {};
-      for (let field = 0; field < 20; field += 1) {
-        properties[`field_${field}`] = {
-          type: "string",
-          description: "d".repeat(600),
-          ...(field === 0 ? { enum: ["alpha", "beta"] } : {}),
-        };
-      }
-      registerDynamicTool(name, {
+describe("dynamic tool schema governance", () => {
+  it("提升后的单工具裁剪描述至 400 token 内，并保留结构字段", () => {
+    const name = "mcp__test__governed_tool";
+    const description = "s".repeat(600);
+    const propertyDescription = "d".repeat(600);
+    try {
+      expect(registerDynamicTool(name, {
         definition: {
           type: "function",
           function: {
             name,
-            description: "s".repeat(600),
-            parameters: { type: "object", properties, required: ["field_0"] },
+            description,
+            parameters: {
+              type: "object",
+              properties: {
+                field_0: {
+                  type: "string",
+                  description: propertyDescription,
+                  enum: ["alpha", "beta"],
+                },
+                field_1: { type: "integer", description: propertyDescription },
+              },
+              required: ["field_0"],
+              additionalProperties: false,
+            },
           },
         },
         execute: async () => ({ output: "ok", ok: true }),
-      });
-      names.push(name);
-    }
+      }).ok).toBe(true);
+      expect(promoteDynamicTool(name)).toBe(true);
 
-    try {
-      const tools = listDynamicToolDefinitions();
-      expect(estimateToolDefinitionsTokens(tools)).toBeLessThanOrEqual(8_000);
-      expect(tools.map((tool) => tool.function.name)).toEqual([...names].sort());
-      const first = tools[0].function.parameters as {
+      const tools = listDynamicToolDefinitions().filter(
+        (tool) => tool.function.name === name,
+      );
+      expect(tools).toHaveLength(1);
+      expect(estimateToolDefinitionsTokens(tools)).toBeLessThanOrEqual(400);
+      expect(tools[0].function.description).not.toBe(description);
+      expect(tools[0].function.description).toContain("…");
+
+      const parameters = tools[0].function.parameters as {
+        type: string;
         properties: Record<string, Record<string, unknown>>;
         required?: string[];
+        additionalProperties?: boolean;
       };
-      expect(first.required).toEqual(["field_0"]);
-      expect(first.properties.field_0.enum).toEqual(["alpha", "beta"]);
-      expect(first.properties.field_1.type).toBe("string");
+      expect(parameters.type).toBe("object");
+      expect(parameters.required).toEqual(["field_0"]);
+      expect(parameters.additionalProperties).toBe(false);
+      expect(parameters.properties.field_0.type).toBe("string");
+      expect(parameters.properties.field_0.enum).toEqual(["alpha", "beta"]);
+      expect(parameters.properties.field_0.description).not.toBe(propertyDescription);
+      expect(parameters.properties.field_1.type).toBe("integer");
     } finally {
-      for (const name of names) unregisterDynamicTool(name);
+      unregisterDynamicTool(name);
+      listDynamicToolDefinitions();
     }
   });
 });

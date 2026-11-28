@@ -40,10 +40,13 @@ export function SideChatTab({
   cwd,
   providers,
   activeProviderId,
+  interjectMode,
   onManageModels,
   onOpenFile,
 }: {
   active: boolean;
+  /** 插话方式：steer = 回合进行中发送直接中止当前对话 */
+  interjectMode?: "queue" | "steer";
   cwd?: string;
   providers: ProviderSettings[];
   /** 主会话当前选择的模型：新建侧边会话时默认跟随 */
@@ -218,6 +221,7 @@ export function SideChatTab({
     },
     [pushError],
   );
+
 
   useEffect(() => {
     if (!contextUsage?.recommendedCompaction) setContextWarningDismissed(false);
@@ -549,9 +553,10 @@ export function SideChatTab({
       updateQueuedEdit(null);
     }
     if (overrideText === undefined) setInput("");
-    const queued = streaming;
+    // steer 模式：回合进行中发送直接中断当前对话（服务端 interrupt），不进队列
+    const steerInterrupt = streaming && interjectMode === "steer";
     let queueId: string | undefined;
-    if (queued) {
+    if (streaming && !steerInterrupt) {
       queueId = nextSideKey("queued");
       enqueueQueuedPrompt({ id: queueId, text });
     } else {
@@ -577,6 +582,7 @@ export function SideChatTab({
         body: JSON.stringify({
           message: text,
           ...(queueId ? { queueId } : {}),
+          ...(steerInterrupt ? { interrupt: true } : {}),
           ...(images?.length
             ? { images: images.map(({ mimeType, data }) => ({ mimeType, data })) }
             : {}),
@@ -593,13 +599,14 @@ export function SideChatTab({
     } catch (error) {
       if (queueId) dropQueuedPrompt(queueId);
       pushError(error instanceof Error ? error.message : String(error));
-      if (!queued) setStreaming(false);
+      if (!streaming) setStreaming(false);
     }
   }, [
     input,
     streaming,
     compacting,
     sideId,
+    interjectMode,
     enqueueQueuedPrompt,
     dropQueuedPrompt,
     pushError,
@@ -790,6 +797,7 @@ export function SideChatTab({
         streaming={streaming}
         queuedPrompts={queuedPrompts}
         onSteerQueued={(id) => void steerQueuedPrompt(id)}
+
         onRemoveQueued={(id) => void removeQueuedPrompt(id)}
         onReorderQueued={(id, beforeId) => void reorderQueuedPrompt(id, beforeId)}
         editingQueuedId={queuedEdit?.id ?? null}

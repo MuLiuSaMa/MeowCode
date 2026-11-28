@@ -58,6 +58,31 @@ export function validateToolInput(tool: string, raw: string | undefined): ToolIn
     }
     return { ok: true, input: args };
   }
+  if (tool === "task") {
+    const mode = args.mode ?? "spawn";
+    if (mode !== "spawn" && mode !== "resume" && mode !== "fork" && mode !== "wait") {
+      return { ok: false, error: 'argument "mode" must be one of: spawn, resume, fork, wait.' };
+    }
+    const required =
+      mode === "wait"
+        ? ["agent_id"]
+        : mode === "resume"
+          ? ["description", "agent_id"]
+          : ["description"];
+    for (const field of required) {
+      const value = args[field];
+      if (typeof value !== "string") {
+        return {
+          ok: false,
+          error: `missing required string argument "${field}" (required: ${required.join(", ")}).`,
+        };
+      }
+      if (!value.trim()) {
+        return { ok: false, error: `argument "${field}" must not be empty.` };
+      }
+    }
+    return { ok: true, input: args };
+  }
   const spec = builtinToolArgs(tool);
   if (spec) {
     for (const field of spec.required ?? []) {

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { LuArchive, LuArchiveRestore, LuTrash2 } from "react-icons/lu";
 import { useTranslation } from "react-i18next";
 import type { SessionSummary } from "../../api";
@@ -6,6 +6,7 @@ import { formatDateTime } from "../../i18n/format";
 import { baseName } from "../../util";
 import { FieldRow, Section } from "../ui/Section";
 import { Button } from "../ui/Button";
+import { ConfirmDialog } from "../ui/ConfirmDialog";
 
 function formatWhen(value: string): string {
   if (!value) return "";
@@ -18,8 +19,10 @@ function formatWhen(value: string): string {
  * 归档分区：列出已归档的会话。
  *
  * 归档本身只是 settings.json 里的路径列表，但这里的删除是**真的删文件**
- * （走 /sessions/delete，和聊天列表里的删除同一条链路）—— 所以两个动作都做二次确认，
- * 4 秒不点就复位，避免误触把会话记录抹掉。
+ * （走 /sessions/delete，和聊天列表里的删除同一条链路）—— 所以删除走确认弹窗。
+ *
+ * 注意：归档列表里可能有「旧数据目录」的路径（换过 userData 之后），那些文件
+ * 早就不在了；删除时由上层把这类条目直接从列表里摘掉，不让它永远卡在这。
  */
 export function ArchiveSection({
   sessions,
@@ -35,34 +38,7 @@ export function ArchiveSection({
   onDeleteAll: () => void;
 }) {
   const { t } = useTranslation("settings");
-  const [confirming, setConfirming] = useState<string | null>(null);
-  const [confirmingAll, setConfirmingAll] = useState(false);
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  useEffect(
-    () => () => {
-      if (timer.current) clearTimeout(timer.current);
-    },
-    [],
-  );
-
-  const arm = (key: string, apply: () => void) => {
-    if (timer.current) clearTimeout(timer.current);
-    // 同一个目标再点一次 = 确认；点别处则把确认移到新目标上
-    const already = key === "__all__" ? confirmingAll : confirming === key;
-    if (already) {
-      setConfirming(null);
-      setConfirmingAll(false);
-      apply();
-      return;
-    }
-    setConfirming(key === "__all__" ? null : key);
-    setConfirmingAll(key === "__all__");
-    timer.current = setTimeout(() => {
-      setConfirming(null);
-      setConfirmingAll(false);
-    }, 4000);
-  };
+  const [pending, setPending] = useState<{ filePath: string; name: string } | "all" | null>(null);
 
   const archived = archivedSessions.map((filePath) => {
     const session = sessions.find((item) => item.filePath === filePath);
@@ -74,6 +50,8 @@ export function ArchiveSection({
     };
   });
 
+  const pendingItem = pending && pending !== "all" ? pending : null;
+
   return (
     <div className="mc-settings__inner">
       <Section
@@ -83,11 +61,11 @@ export function ArchiveSection({
           archived.length ? (
             <Button
               size="sm"
-              variant={confirmingAll ? "danger" : "outline"}
+              variant="outline"
               icon={<LuTrash2 size={13} />}
-              onClick={() => arm("__all__", onDeleteAll)}
+              onClick={() => setPending("all")}
             >
-              {confirmingAll ? t("archive.confirmDeleteAll") : t("archive.deleteAll")}
+              {t("archive.deleteAll")}
             </Button>
           ) : undefined
         }
@@ -100,16 +78,15 @@ export function ArchiveSection({
             </p>
           ) : (
             archived.map((item) => {
-              const isConfirming = confirming === item.filePath;
+              const name =
+                item.title ||
+                t("archive.item", {
+                  when: formatWhen(item.createdAt) || t("archive.unknownTime"),
+                });
               return (
                 <FieldRow
                   key={item.filePath}
-                  label={
-                    item.title ||
-                    t("archive.item", {
-                      when: formatWhen(item.createdAt) || t("archive.unknownTime"),
-                    })
-                  }
+                  label={name}
                   hint={item.cwd === item.filePath ? item.filePath : baseName(item.cwd)}
                 >
                   <Button
@@ -121,16 +98,12 @@ export function ArchiveSection({
                     {t("actions.restore")}
                   </Button>
                   <Button
-                    variant={isConfirming ? "danger" : "ghost"}
+                    variant="ghost"
                     size="sm"
-                    aria-label={
-                      isConfirming
-                        ? t("archive.confirmDeleteAria", { name: item.title ?? item.filePath })
-                        : t("archive.deleteAria", { name: item.title ?? item.filePath })
-                    }
-                    onClick={() => arm(item.filePath, () => onDelete(item.filePath))}
+                    aria-label={t("archive.deleteAria", { name })}
+                    onClick={() => setPending({ filePath: item.filePath, name })}
                   >
-                    {isConfirming ? t("archive.confirmDelete") : <LuTrash2 size={13} />}
+                    <LuTrash2 size={13} />
                   </Button>
                 </FieldRow>
               );
@@ -138,6 +111,23 @@ export function ArchiveSection({
           )}
         </div>
       </Section>
+
+      <ConfirmDialog
+        open={pending !== null}
+        title={pending === "all" ? t("confirm.clearTitle") : t("confirm.deleteTitle")}
+        message={
+          pending === "all"
+            ? t("confirm.clearMessage")
+            : t("confirm.deleteMessage", { name: pendingItem?.name ?? "" })
+        }
+        onCancel={() => setPending(null)}
+        onConfirm={() => {
+          const target = pending;
+          setPending(null);
+          if (target === "all") onDeleteAll();
+          else if (target) onDelete(target.filePath);
+        }}
+      />
     </div>
   );
 }

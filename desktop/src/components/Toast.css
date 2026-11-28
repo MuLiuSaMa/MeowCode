@@ -1,11 +1,24 @@
-/* 右上角轻提示：固定在标题栏下方，自动消失，不挡操作 */
-.mc-toast {
+/* 全局弹窗：窗口顶部居中，多条时向下堆叠 */
+.mc-toaststack {
   position: fixed;
-  top: 48px;
-  right: 16px;
+  top: 10px;
+  left: 50%;
   z-index: 600;
-  max-width: 320px;
-  padding: 9px 14px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  width: min(520px, calc(100vw - 32px));
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+.mc-toast {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  max-width: 100%;
+  padding: 10px 16px;
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   corner-shape: superellipse(1.5);
@@ -13,18 +26,87 @@
   box-shadow: var(--shadow-lg);
   color: var(--fg);
   font-size: var(--fs-sm);
+  line-height: var(--lh-normal);
   word-break: break-word;
   pointer-events: none;
-  animation: mc-toast-in var(--dur) var(--ease);
+  will-change: transform, opacity;
+  animation: mc-toast-drop 420ms cubic-bezier(0.22, 1.1, 0.36, 1) both;
 }
 
-@keyframes mc-toast-in {
+/* 带操作按钮的通知需要点得到；窗口顶部在标题栏拖拽区内，按钮要显式退出拖拽 */
+.mc-toast--interactive {
+  pointer-events: auto;
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+
+.mc-toast__text {
+  min-width: 0;
+}
+
+.mc-toast__action {
+  flex-shrink: 0;
+  padding: 3px 10px;
+  border: 1px solid var(--border-strong, var(--border));
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--fg);
+  font-family: inherit;
+  font-size: var(--fs-xs);
+  line-height: 1.4;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background-color var(--dur) var(--ease), border-color var(--dur) var(--ease);
+}
+
+.mc-toast__action:hover:not(:disabled) {
+  background: var(--surface-hover);
+  border-color: var(--border-hover, var(--border-strong, var(--border)));
+}
+
+.mc-toast__action:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.mc-toast__close {
+  flex-shrink: 0;
+  padding: 0 2px;
+  border: none;
+  background: transparent;
+  color: var(--fg-subtle);
+  font-family: inherit;
+  font-size: var(--fs-base);
+  line-height: 1;
+  cursor: pointer;
+}
+
+.mc-toast__close:hover {
+  color: var(--fg);
+}
+
+.mc-toast--leaving {
+  animation: mc-toast-rise 240ms var(--ease) both;
+}
+
+@keyframes mc-toast-drop {
   from {
     opacity: 0;
-    transform: translateX(10px);
+    transform: translateY(calc(-100% - 20px));
   }
   to {
     opacity: 1;
-    transform: none;
+    transform: translateY(0);
+  }
+}
+
+@keyframes mc-toast-rise {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(calc(-100% - 20px));
   }
 }

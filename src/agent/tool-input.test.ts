@@ -122,6 +122,63 @@ describe("validateToolInput", () => {
     });
   });
 
+  describe("task 模式", () => {
+    it("wait 只需 agent_id，不要求 description", () => {
+      const result = validateToolInput("task", '{"mode":"wait","agent_id":"agent-1"}');
+      expect(result.ok).toBe(true);
+    });
+
+    it("wait 拒绝缺失或空白的 agent_id", () => {
+      for (const raw of ['{"mode":"wait"}', '{"mode":"wait","agent_id":"  "}']) {
+        const result = validateToolInput("task", raw);
+        expect(result.ok, raw).toBe(false);
+        if (result.ok) throw new Error("unreachable");
+        expect(result.error).toContain("agent_id");
+      }
+    });
+
+    it("spawn 和 fork 要求非空 description", () => {
+      for (const mode of ["spawn", "fork"]) {
+        for (const description of [undefined, "  "]) {
+          const raw = JSON.stringify({ mode, ...(description === undefined ? {} : { description }) });
+          const result = validateToolInput("task", raw);
+          expect(result.ok, raw).toBe(false);
+          if (result.ok) throw new Error("unreachable");
+          expect(result.error).toContain("description");
+        }
+      }
+      const defaultMode = validateToolInput("task", "{}");
+      expect(defaultMode.ok).toBe(false);
+      if (defaultMode.ok) throw new Error("unreachable");
+      expect(defaultMode.error).toContain("description");
+    });
+
+    it("resume 同时要求 description 和 agent_id", () => {
+      for (const raw of [
+        '{"mode":"resume","description":"continue"}',
+        '{"mode":"resume","agent_id":"agent-1"}',
+      ]) {
+        const result = validateToolInput("task", raw);
+        expect(result.ok, raw).toBe(false);
+        if (result.ok) throw new Error("unreachable");
+        expect(result.error).toMatch(/description|agent_id/);
+      }
+      expect(
+        validateToolInput(
+          "task",
+          '{"mode":"resume","description":"continue","agent_id":"agent-1"}',
+        ).ok,
+      ).toBe(true);
+    });
+
+    it("未知 mode 返回可纠正错误", () => {
+      const result = validateToolInput("task", '{"mode":"listen","description":"task"}');
+      expect(result.ok).toBe(false);
+      if (result.ok) throw new Error("unreachable");
+      expect(result.error).toContain("spawn, resume, fork, wait");
+    });
+  });
+
   describe("未知工具", () => {
     it("动态工具/插件工具放行，形态由各自实现校验", () => {
       const result = validateToolInput("some_plugin_tool", '{"anything": 1}');
@@ -139,7 +196,7 @@ describe("validateToolInput", () => {
  * 新增工具漏声明会直接红灯。
  */
 describe("契约 args 与工具 schema 的一致性", () => {
-  const CUSTOM_VALIDATED = new Set(["multi_edit", "read_many"]);
+  const CUSTOM_VALIDATED = new Set(["multi_edit", "read_many", "task"]);
   const KNOWN_UNGATED: Record<string, string> = {
     read_video: "数组/路径之外还有可选帧参数，缺 path 时 video.ts 自己给可读错误",
     update_plan: "steps 是数组，门禁表只覆盖字符串字段；缺省由 runtime 的 plan 分支兜底",

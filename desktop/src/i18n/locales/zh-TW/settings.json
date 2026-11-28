@@ -176,7 +176,7 @@
     "deleteAll": "全部刪除",
     "confirmDeleteAll": "確認全部刪除？",
     "deleteAria": "永久刪除 {{name}}",
-    "confirmDeleteAria": "再次點擊永久刪除 {{name}}"
+    "confirmDeleteAria": "永久刪除 {{name}}"
   },
   "about": {
     "loading": "正在讀取版本資訊…",
@@ -199,6 +199,12 @@
     "upToDate": "已是最新版本",
     "checkFailed": "版本檢查失敗：{{error}}",
     "sponsorList": "贊助者名單（MeowCode、新境盒、OpenMD、LingTab）"
+  },
+  "confirm": {
+    "deleteTitle": "確認刪除？",
+    "deleteMessage": "「{{name}}」刪除後無法復原。",
+    "clearTitle": "確認全部刪除？",
+    "clearMessage": "這會刪除全部記錄，且無法復原。"
   },
   "actions": {
     "add": "新增",
@@ -327,8 +333,8 @@
       "advanced": "進階設定",
       "advancedHint": "思考強度 / 快取 TTL / 思考等級 / 認證與請求自訂 —— 不填走預設",
       "reasoningEffort": "思考強度",
-      "reasoningEffortPlaceholder": "留空 = 服務商預設",
       "reasoningEffortHint": "作為 reasoning_effort 下發",
+      "reasoningEffortRecommended": "留空 = 按推薦 {{level}} 下發（模型商沒有查預設檔位的介面）",
       "thinkingBudget": "思考預算",
       "thinkingBudgetPlaceholder": "留空 = 依思考強度等級",
       "thinkingBudgetHint": "thinking.budget_tokens；會自動壓到 max_tokens 以下",
@@ -374,7 +380,13 @@
   "island": {
     "section": "AI 悬浮岛",
     "field": "启用悬浮岛",
-    "desc": "在螢幕頂部置中顯示所有執行中對話的狀態膠囊；滑鼠移上去可展開成對話小窗，直接輸入或停止任務。"
+    "desc": "在螢幕頂部置中顯示所有執行中對話的狀態膠囊；滑鼠移上去可展開成對話小窗，直接輸入或停止任務。",
+    "model": {
+      "field": "懸浮島模型",
+      "desc": "從懸浮島傳送訊息時，目標對話會先切換到這個模型（對後續回合生效，正在生成的回合不受影響，主視窗的模型切換會覆蓋它）；留空或該模型不可用時跟隨對話目前模型。",
+      "followMain": "跟隨對話模型",
+      "saveFailed": "儲存懸浮島模型失敗"
+    }
   },
   "hooks": {
     "loading": "正在讀取 Hooks 設定…",
@@ -489,7 +501,7 @@
     "noWorkspaceHint": "規則儲存在專案的 .meowcode/rules 目錄。",
     "clickToEdit": "按一下編輯此規則",
     "deleteAria": "刪除規則「{{name}}」",
-    "confirmDeleteAria": "再按一次以確認刪除規則「{{name}}」",
+    "confirmDeleteAria": "刪除規則「{{name}}」",
     "createTitle": "新規則",
     "editTitle": "編輯規則「{{name}}」",
     "editorDesc": "規則會隨專案注入系統提示詞，支援 Markdown。",
@@ -586,7 +598,7 @@
     "clearField": "清除所有學到的",
     "clearHint": "刪除全部學到的技能、專案經驗、使用者特徵與回合記錄 —— 本專案與跨專案都清。不可復原。",
     "clearAction": "全部清除",
-    "clearConfirm": "再點一次確認",
+    "clearConfirm": "確認清空",
     "cleared": "已清空 {{scopes}} 個學習目錄",
     "clearedNothing": "沒有可清除的內容",
     "clearFailed": "清除失敗"
@@ -595,6 +607,10 @@
     "viewTabs": {
       "field": "檢視切換",
       "desc": "在主區域頂部顯示「對話 / 軌跡」懸浮切換；新會話沒有訊息時不顯示。"
+    },
+    "navPulse": {
+      "field": "瀏覽列隨聲音律動",
+      "desc": "對話瀏覽列跟隨電腦正在播放的聲音呼吸發光（Windows）。"
     },
     "section": "一般",
     "desc": "日常行為偏好，修改後立即生效。",
@@ -610,6 +626,12 @@
       "confirmCost": "這會在每輪對話額外消耗 Token。請求會重用對話快取，通常花費不多，但仍會計費。",
       "enable": "開啟"
     },
+    "auxModel": {
+      "field": "輔助模型",
+      "desc": "標題生成、AI 審查、輸入建議、記憶蒸餾、學習、壓縮摘要、commit 資訊、提示詞美化等輔助任務改用這個模型，以節約成本；留空或該模型不可用時跟隨主對話模型。",
+      "followMain": "跟隨主模型",
+      "saveFailed": "儲存輔助模型失敗"
+    },
     "providerFallback": {
       "field": "供應商故障轉移",
       "desc": "主服務商逾時、限流或伺服器故障時，本回合自動切到其他已啟用的服務商，最多切換 2 次。",
@@ -618,6 +640,18 @@
     "defaultPermission": {
       "field": "預設權限模式",
       "desc": "新建對話時預設使用的工具執行權限；既有對話保留各自的選擇。"
+    },
+    "interjectMode": {
+      "field": "插話方式",
+      "desc": "回覆還在產生時傳送訊息的行為。",
+      "options": {
+        "queue": "排隊",
+        "steer": "直接插話"
+      },
+      "descs": {
+        "queue": "訊息進入佇列，等當前回合結束後依序傳送。",
+        "steer": "立即暫停當前回覆，這條訊息馬上傳送。"
+      }
     },
     "other": {
       "section": "常規"

@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -50,9 +51,71 @@ function taskCallWith(
 ) {
   return {
     id,
-    type: "function",
+    type: "function" as const,
     function: { name: "task", arguments: JSON.stringify(args) },
   };
+}
+
+type TaskResult = {
+  output: string;
+  ok: boolean;
+  status: string;
+  error?: string;
+};
+
+type RuntimeTaskInternals = {
+  runSubagentTask(
+    session: SessionStore,
+    call: ReturnType<typeof taskCallWith>,
+    input: Record<string, unknown>,
+  ): Promise<TaskResult>;
+  liveSubagents: Map<string, { completion?: Promise<TaskResult> }>;
+  subagentBudget: number;
+  subagentsStartedThisTurn: number;
+};
+
+function taskInternals(runtime: InstanceType<typeof AgentRuntime>): RuntimeTaskInternals {
+  return runtime as unknown as RuntimeTaskInternals;
+}
+
+function deferredVoid(): { promise: Promise<void>; resolve: () => void } {
+  let resolve!: () => void;
+  const promise = new Promise<void>((done) => {
+    resolve = done;
+  });
+  return { promise, resolve };
+}
+
+async function waitForTask(
+  runtime: InstanceType<typeof AgentRuntime>,
+  agentId: string,
+  timeoutMs = 1_000,
+): Promise<TaskResult> {
+  const session = runtime.current;
+  if (!session) throw new Error("No active session.");
+  const input = { mode: "wait", agent_id: agentId, timeout_ms: timeoutMs };
+  return taskInternals(runtime).runSubagentTask(
+    session,
+    taskCallWith(`wait-${randomUUID()}`, input),
+    input,
+  );
+}
+
+async function startBackgroundTask(
+  runtime: InstanceType<typeof AgentRuntime>,
+  description = "Background wait",
+): Promise<{ agentId: string; started: TaskResult }> {
+  const session = runtime.current;
+  if (!session) throw new Error("No active session.");
+  const input = { description, prompt: "Complete the background task.", background: true };
+  const started = await taskInternals(runtime).runSubagentTask(
+    session,
+    taskCallWith(`bg-${randomUUID()}`, input),
+    input,
+  );
+  const agentId = /\[agent id: ([0-9a-f-]{36})\]/.exec(started.output)?.[1];
+  if (!agentId) throw new Error(`Background task did not return an agent id: ${started.output}`);
+  return { agentId, started };
 }
 
 function collectEvents(runtime: InstanceType<typeof AgentRuntime>): MeowEvent[] {
@@ -648,6 +711,11 @@ describe("AgentRuntime subagents", () => {
       (event) => event.type === "subagent_started",
     ) as Extract<MeowEvent, { type: "subagent_started" }>;
     expect(started.background).toBe(true);
+    const taskOutput = events.find(
+      (event) => event.type === "tool_output" && event.callId === "bg-1",
+    ) as Extract<MeowEvent, { type: "tool_output" }>;
+    expect(taskOutput.output).toContain(`[agent id: ${started.agentId}]`);
+    expect(taskOutput.output).toContain('task mode "wait"');
 
     releaseChild();
     await vi.waitFor(() => {
@@ -658,15 +726,17 @@ describe("AgentRuntime subagents", () => {
     ) as Extract<MeowEvent, { type: "subagent_completed" }>;
     expect(completed.status).toBe("completed");
     expect(completed.report).toContain("background report");
-    expect(runtime.hasLiveSubagents).toBe(false);
+    await vi.waitFor(() => expect(runtime.hasLiveSubagents).toBe(false), { timeout: 5_000 });
     expect(
       runtime.current?.entries.some(
         (entry) =>
           entry.type === "context_note" &&
           entry.source === "subagent" &&
-          entry.content.includes("background report"),
+          entry.content.includes("background report") &&
+          entry.content.includes(`[agent id: ${started.agentId}]`),
       ),
     ).toBe(true);
+    expect(parentCalls).toBe(2);
     await runtime.closeSession();
   });
 
@@ -1387,6 +1457,420 @@ describe("AgentRuntime subagents", () => {
     const child = await SessionStore.load(childFile);
     expect(child.messages).not.toContainEqual({ role: "user", content: "Too late" });
     await child.close();
+    await runtime.closeSession();
+  });
+});
+
+describe("AgentRuntime background subagent waits", () => {
+  it("times out without stopping the child and returns its persisted result on a repeat wait", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "meowcode-subagents-"));
+    const workspace = await mkdtemp(path.join(tmpdir(), "meowcode-subws-"));
+    const runtime = makeRuntime(dir);
+    await runtime.newSession(workspace);
+    await runtime.setApprovalMode("full");
+    const events = collectEvents(runtime);
+    const childGate = deferredVoid();
+
+    streamMock.mockImplementation(async ({ messages }: { messages: ChatMessage[] }) => {
+      if (!isChildRequest(messages)) throw new Error("unexpected parent provider call");
+      await childGate.promise;
+      return {
+        message: { role: "assistant", content: "persisted background report" },
+        usage: { inputTokens: 10, outputTokens: 3 },
+      };
+    });
+
+    const { agentId, started } = await startBackgroundTask(runtime);
+    expect(started.output).toContain(`[agent id: ${agentId}]`);
+    const internals = taskInternals(runtime);
+    internals.subagentBudget = 0;
+    const startsBeforeWait = internals.subagentsStartedThisTurn;
+    const waitStarted = Date.now();
+    const timedOut = await waitForTask(runtime, agentId, 0);
+    expect(timedOut).toMatchObject({ ok: true, status: "running" });
+    expect(timedOut.output).toContain("still running after 1s");
+    expect(Date.now() - waitStarted).toBeGreaterThanOrEqual(900);
+    expect(runtime.liveSubagentIds).toContain(agentId);
+
+    childGate.resolve();
+    const completed = await waitForTask(runtime, agentId, 5_000);
+    expect(completed).toMatchObject({ ok: true, status: "completed" });
+    expect(completed.output).toContain("persisted background report");
+    expect(completed.output).toContain(`[agent id: ${agentId}]`);
+    expect(internals.subagentBudget).toBe(0);
+    expect(internals.subagentsStartedThisTurn).toBe(startsBeforeWait);
+    expect(events.filter((event) => event.type === "subagent_started")).toHaveLength(1);
+    expect(events.filter((event) => event.type === "subagent_completed")).toHaveLength(1);
+    const notes = runtime.current!.entries.filter(
+      (entry) => entry.type === "context_note" && entry.source === "subagent",
+    );
+    expect(notes).toHaveLength(1);
+    expect(notes[0].content).toContain(`[agent id: ${agentId}]`);
+    expect(streamMock).toHaveBeenCalledTimes(1);
+    await runtime.closeSession();
+  });
+
+  it("resolves concurrent waits without duplicating completion notifications", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "meowcode-subagents-"));
+    const workspace = await mkdtemp(path.join(tmpdir(), "meowcode-subws-"));
+    const runtime = makeRuntime(dir);
+    await runtime.newSession(workspace);
+    await runtime.setApprovalMode("full");
+    const events = collectEvents(runtime);
+    const childGate = deferredVoid();
+
+    streamMock.mockImplementation(async ({ messages }: { messages: ChatMessage[] }) => {
+      if (!isChildRequest(messages)) throw new Error("unexpected parent provider call");
+      await childGate.promise;
+      return { message: { role: "assistant", content: "shared background report" } };
+    });
+
+    const { agentId } = await startBackgroundTask(runtime);
+    const first = waitForTask(runtime, agentId, 5_000);
+    const second = waitForTask(runtime, agentId, 5_000);
+    childGate.resolve();
+    const results = await Promise.all([first, second]);
+    for (const result of results) {
+      expect(result).toMatchObject({ ok: true, status: "completed" });
+      expect(result.output).toContain("shared background report");
+    }
+    expect(events.filter((event) => event.type === "subagent_completed")).toHaveLength(1);
+    expect(
+      runtime.current!.entries.filter(
+        (entry) => entry.type === "context_note" && entry.source === "subagent",
+      ),
+    ).toHaveLength(1);
+    await runtime.closeSession();
+  });
+
+  it("aborts the wait with the parent turn but leaves the background child running", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "meowcode-subagents-"));
+    const workspace = await mkdtemp(path.join(tmpdir(), "meowcode-subws-"));
+    const runtime = makeRuntime(dir);
+    await runtime.newSession(workspace);
+    await runtime.setApprovalMode("full");
+    const events = collectEvents(runtime);
+    const childGate = deferredVoid();
+    let parentCalls = 0;
+    let backgroundId = "";
+
+    streamMock.mockImplementation(async ({
+      messages,
+      signal,
+    }: {
+      messages: ChatMessage[];
+      signal?: AbortSignal;
+    }) => {
+      if (isChildRequest(messages)) {
+        await childGate.promise;
+        return { message: { role: "assistant", content: "background survived parent abort" } };
+      }
+      if (signal?.aborted) {
+        const error = new Error("aborted");
+        error.name = "AbortError";
+        throw error;
+      }
+      parentCalls += 1;
+      if (parentCalls === 1) {
+        return {
+          message: {
+            role: "assistant",
+            content: null,
+            tool_calls: [
+              taskCallWith("bg-abort-wait", {
+                description: "Background then wait",
+                background: true,
+              }),
+            ],
+          },
+        };
+      }
+      if (parentCalls === 2) {
+        const toolResult = [...messages]
+          .reverse()
+          .find((message) => message.role === "tool" && message.name === "task");
+        const match = /\[agent id: ([0-9a-f-]{36})\]/.exec(String(toolResult?.content ?? ""));
+        if (!match) throw new Error("background agent id missing from tool result");
+        backgroundId = match[1];
+        return {
+          message: {
+            role: "assistant",
+            content: null,
+            tool_calls: [
+              taskCallWith("wait-abort", {
+                mode: "wait",
+                agent_id: backgroundId,
+                timeout_ms: 5_000,
+              }),
+            ],
+          },
+        };
+      }
+      return { message: { role: "assistant", content: "unexpected parent continuation" } };
+    });
+
+    const promptPromise = runtime.prompt("start in background, then wait");
+    await vi.waitFor(() => {
+      expect(events.some((event) => event.type === "tool_started" && event.callId === "wait-abort"))
+        .toBe(true);
+    }, { timeout: 5_000 });
+    runtime.abort();
+    await promptPromise;
+
+    const waitOutput = events.find(
+      (event) => event.type === "tool_output" && event.callId === "wait-abort",
+    ) as Extract<MeowEvent, { type: "tool_output" }> | undefined;
+    expect(waitOutput).toBeDefined();
+    expect(waitOutput!.output).toContain("aborted with the parent turn");
+    expect(waitOutput!.output).toContain("still running");
+    expect(runtime.liveSubagentIds).toContain(backgroundId);
+    expect(
+      runtime.current?.subagents.find((item) => item.agentId === backgroundId)?.status,
+    ).toBe("running");
+
+    childGate.resolve();
+    await vi.waitFor(() => {
+      expect(
+        events.some(
+          (event) =>
+            event.type === "subagent_completed" &&
+            event.agentId === backgroundId &&
+            event.status === "completed",
+        ),
+      ).toBe(true);
+    }, { timeout: 5_000 });
+    await vi.waitFor(() => expect(runtime.hasLiveSubagents).toBe(false), { timeout: 5_000 });
+    expect(parentCalls).toBe(2);
+    await runtime.closeSession();
+  });
+
+  it("reads a completed background result after reopening the parent session in a new runtime", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "meowcode-subagents-"));
+    const workspace = await mkdtemp(path.join(tmpdir(), "meowcode-subws-"));
+    const runtime = makeRuntime(dir);
+    await runtime.newSession(workspace);
+    await runtime.setApprovalMode("full");
+
+    streamMock.mockImplementation(async ({ messages }: { messages: ChatMessage[] }) => {
+      if (!isChildRequest(messages)) throw new Error("unexpected parent provider call");
+      return { message: { role: "assistant", content: "report after runtime restart" } };
+    });
+
+    const { agentId } = await startBackgroundTask(runtime);
+    await vi.waitFor(() => expect(runtime.hasLiveSubagents).toBe(false), { timeout: 5_000 });
+    const parentId = runtime.current!.id;
+    const sessionFile = runtime.current!.filePath;
+    await runtime.closeSession();
+
+    const reopened = makeRuntime(dir);
+    await reopened.switchSession(sessionFile);
+    const result = await waitForTask(reopened, agentId);
+    expect(result).toMatchObject({ ok: true, status: "completed" });
+    expect(result.output).toContain("report after runtime restart");
+    expect(reopened.current?.id).toBe(parentId);
+    expect(reopened.current?.subagents[0]?.status).toBe("completed");
+    await reopened.closeSession();
+  });
+
+  it("rejects unknown, cross-parent, and foreground subagent ids", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "meowcode-subagents-"));
+    const workspace = await mkdtemp(path.join(tmpdir(), "meowcode-subws-"));
+    const otherWorkspace = await mkdtemp(path.join(tmpdir(), "meowcode-subws-"));
+    const runtime = makeRuntime(dir);
+    await runtime.newSession(workspace);
+    await runtime.setApprovalMode("full");
+
+    streamMock.mockImplementation(async ({ messages }: { messages: ChatMessage[] }) => {
+      if (!isChildRequest(messages)) throw new Error("unexpected parent provider call");
+      return { message: { role: "assistant", content: "child report" } };
+    });
+
+    const unknown = await waitForTask(runtime, "00000000-0000-0000-0000-000000000000");
+    expect(unknown).toMatchObject({ ok: false, status: "failed" });
+    expect(unknown.output).toContain("not found in this session");
+
+    const session = runtime.current!;
+    const foregroundInput = { description: "Foreground", prompt: "Finish." };
+    const foreground = await taskInternals(runtime).runSubagentTask(
+      session,
+      taskCallWith("foreground-wait-target", foregroundInput),
+      foregroundInput,
+    );
+    const foregroundId = /\[agent id: ([0-9a-f-]{36})\]/.exec(foreground.output)?.[1];
+    expect(foregroundId).toBeTruthy();
+    const notBackground = await waitForTask(runtime, foregroundId!);
+    expect(notBackground).toMatchObject({ ok: false, status: "failed" });
+    expect(notBackground.output).toContain("only background subagents");
+
+    const { agentId: backgroundId } = await startBackgroundTask(runtime);
+    await vi.waitFor(() => expect(runtime.hasLiveSubagents).toBe(false), { timeout: 5_000 });
+    const other = makeRuntime(dir);
+    await other.newSession(otherWorkspace);
+    const crossParent = await waitForTask(other, backgroundId);
+    expect(crossParent).toMatchObject({ ok: false, status: "failed" });
+    expect(crossParent.output).toContain("not found in this session");
+    await other.closeSession();
+    await runtime.closeSession();
+  });
+
+  it("projects a stale running summary as interrupted without rewriting the index", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "meowcode-subagents-"));
+    const workspace = await mkdtemp(path.join(tmpdir(), "meowcode-subws-"));
+    const runtime = makeRuntime(dir);
+    await runtime.newSession(workspace);
+    const session = runtime.current!;
+    const agentId = randomUUID();
+    const child = await SessionStore.create(
+      path.join(dir, "subagents", session.id, `${agentId}.jsonl`),
+      workspace,
+      {
+        id: agentId,
+        parentSessionId: session.id,
+        rootSessionId: session.id,
+        agentKind: "subagent",
+        description: "Interrupted background task",
+      },
+    );
+    await child.close();
+    await session.appendSubagent({
+      agentId,
+      callId: "stale-bg",
+      description: "Interrupted background task",
+      background: true,
+      status: "running",
+      startedAt: new Date().toISOString(),
+    });
+    await session.flush();
+
+    const result = await waitForTask(runtime, agentId);
+    expect(result).toMatchObject({ ok: false, status: "interrupted" });
+    expect(result.output).toContain("will not resume automatically");
+    expect(session.subagents[0]?.status).toBe("running");
+    await runtime.closeSession();
+  });
+
+  it("keeps the indexed terminal state when the child transcript is missing or owned by another parent", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "meowcode-subagents-"));
+    const workspace = await mkdtemp(path.join(tmpdir(), "meowcode-subws-"));
+    const runtime = makeRuntime(dir);
+    await runtime.newSession(workspace);
+    const session = runtime.current!;
+    const missingId = randomUUID();
+    const wrongOwnerId = randomUUID();
+    const wrongOwner = await SessionStore.create(
+      path.join(dir, "subagents", session.id, `${wrongOwnerId}.jsonl`),
+      workspace,
+      {
+        id: wrongOwnerId,
+        parentSessionId: "another-parent",
+        rootSessionId: "another-parent",
+        agentKind: "subagent",
+        description: "Wrong owner",
+      },
+    );
+    await wrongOwner.close();
+    for (const [agentId, description] of [
+      [missingId, "Missing transcript"],
+      [wrongOwnerId, "Wrong owner"],
+    ] as const) {
+      await session.appendSubagent({
+        agentId,
+        callId: `terminal-${agentId}`,
+        description,
+        background: true,
+        status: "completed",
+        startedAt: new Date().toISOString(),
+        endedAt: new Date().toISOString(),
+      });
+    }
+    await session.flush();
+
+    for (const agentId of [missingId, wrongOwnerId]) {
+      const result = await waitForTask(runtime, agentId);
+      expect(result).toMatchObject({ ok: false, status: "completed" });
+      expect(result.output).toContain("Saved subagent transcript could not be read");
+      expect(result.output).toContain(`[agent id: ${agentId}]`);
+    }
+    expect(session.subagents.every((item) => item.status === "completed")).toBe(true);
+    await runtime.closeSession();
+  });
+
+  it("returns retryable running during the startup window before completion is attached", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "meowcode-subagents-"));
+    const workspace = await mkdtemp(path.join(tmpdir(), "meowcode-subws-"));
+    const runtime = makeRuntime(dir);
+    await runtime.newSession(workspace);
+    await runtime.setApprovalMode("full");
+    const childGate = deferredVoid();
+
+    streamMock.mockImplementation(async ({ messages }: { messages: ChatMessage[] }) => {
+      if (!isChildRequest(messages)) throw new Error("unexpected parent provider call");
+      await childGate.promise;
+      return { message: { role: "assistant", content: "ready after startup" } };
+    });
+
+    const { agentId } = await startBackgroundTask(runtime);
+    const live = taskInternals(runtime).liveSubagents.get(agentId);
+    if (!live?.completion) throw new Error("background completion was not retained");
+    const completion = live.completion;
+    live.completion = undefined;
+    const starting = await waitForTask(runtime, agentId);
+    expect(starting).toMatchObject({ ok: true, status: "running" });
+    expect(starting.output).toContain("still starting");
+    live.completion = completion;
+    childGate.resolve();
+    await completion;
+    const completed = await waitForTask(runtime, agentId);
+    expect(completed).toMatchObject({ ok: true, status: "completed" });
+    expect(completed.output).toContain("ready after startup");
+    await runtime.closeSession();
+  });
+
+  it("returns persisted failed and aborted terminal states", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "meowcode-subagents-"));
+    const workspace = await mkdtemp(path.join(tmpdir(), "meowcode-subws-"));
+    const runtime = makeRuntime(dir);
+    await runtime.newSession(workspace);
+    const session = runtime.current!;
+    const cases = [
+      { status: "failed" as const, error: "provider failed" },
+      { status: "aborted" as const, error: "stopped by user" },
+    ];
+    for (const item of cases) {
+      const agentId = randomUUID();
+      const child = await SessionStore.create(
+        path.join(dir, "subagents", session.id, `${agentId}.jsonl`),
+        workspace,
+        {
+          id: agentId,
+          parentSessionId: session.id,
+          rootSessionId: session.id,
+          agentKind: "subagent",
+          description: `${item.status} background task`,
+        },
+      );
+      await child.appendMessage({ role: "assistant", content: "partial report" });
+      await child.flush();
+      await child.close();
+      await session.appendSubagent({
+        agentId,
+        callId: `terminal-${agentId}`,
+        description: `${item.status} background task`,
+        background: true,
+        status: item.status,
+        error: item.error,
+        startedAt: new Date().toISOString(),
+        endedAt: new Date().toISOString(),
+      });
+    }
+    await session.flush();
+
+    for (const item of cases) {
+      const summary = session.subagents.find((entry) => entry.status === item.status)!;
+      const result = await waitForTask(runtime, summary.agentId);
+      expect(result).toMatchObject({ ok: false, status: item.status, error: item.error });
+      expect(result.output).toContain(item.error);
+    }
     await runtime.closeSession();
   });
 });

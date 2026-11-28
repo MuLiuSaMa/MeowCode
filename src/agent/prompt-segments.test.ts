@@ -38,7 +38,7 @@ describe("agent segments", () => {
     expect(segments[1].startsWith("Environment: ")).toBe(true);
     for (const phrase of [
       "Risky or hard-to-reverse actions",
-      "never revert them",
+      "Never revert uncommitted work",
       "findings first with severity and path:line",
       "read the error and fix the cause",
       "update_plan",

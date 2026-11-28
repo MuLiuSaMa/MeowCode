@@ -222,6 +222,39 @@ describe("streamChatCompletion usage reporting", () => {
     expect(finals[0]).toMatchObject({ inputTokens: 1000, outputTokens: 20, cacheReadTokens: 800 });
   });
 
+  it("clamps cached_tokens that exceed prompt_tokens (aggregator quirk)", async () => {
+    // 真实案例：magpie 转发层报 prompt=202002 / cached=392064，
+    // 不夹住会让界面显示 194% 命中率，费用也按缓存价多算。
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        sseResponse([
+          { choices: [{ delta: { content: "hi" } }] },
+          {
+            choices: [{ delta: {}, finish_reason: "stop" }],
+            usage: {
+              prompt_tokens: 1000,
+              completion_tokens: 20,
+              prompt_tokens_details: { cached_tokens: 1960 },
+            },
+          },
+        ]),
+      ),
+    );
+
+    const finals: Array<{ inputTokens?: number; cacheReadTokens?: number; uncachedInputTokens?: number }> = [];
+    await streamChatCompletion({
+      ...baseOptions,
+      onUsageFinal: (usage) => finals.push({ ...usage }),
+    });
+
+    expect(finals[0]).toMatchObject({
+      inputTokens: 1000,
+      cacheReadTokens: 1000,
+      uncachedInputTokens: 0,
+    });
+  });
+
   it("calls onUsageFinal with the last observed usage when the stream fails", async () => {
     vi.stubGlobal(
       "fetch",

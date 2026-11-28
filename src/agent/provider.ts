@@ -373,6 +373,18 @@ async function streamChatCompletions(options: {
                     (parsed.usage.completion_tokens ?? 0) +
                     directRead +
                     (directWrite ?? 0))));
+        // 聚合代理（magpie 这类转发层）会把多次尝试的缓存读数累加，报出
+        // cached_tokens > prompt_tokens。按「prompt 已含缓存」的口径这是不可能的数据：
+        // 夹到 prompt_tokens，否则命中率会显示 >100%、费用也按缓存价多算。
+        // 独占输入（exclusivePrompt）不夹 —— 那种口径下缓存本来就在 prompt 之外。
+        const boundedCached =
+          !exclusivePrompt && promptTokens !== undefined && cachedTokens !== undefined
+            ? Math.min(cachedTokens, promptTokens)
+            : cachedTokens;
+        const boundedWrite =
+          !exclusivePrompt && promptTokens !== undefined && cacheWriteTokens !== undefined
+            ? Math.min(cacheWriteTokens, Math.max(0, promptTokens - (boundedCached ?? 0)))
+            : cacheWriteTokens;
         usage = {
           inputTokens:
             exclusivePrompt && promptTokens !== undefined
@@ -384,13 +396,13 @@ async function streamChatCompletions(options: {
                   ? promptTokens
                   : Math.max(
                       0,
-                      promptTokens - (cachedTokens ?? 0) - (cacheWriteTokens ?? 0),
+                      promptTokens - (boundedCached ?? 0) - (boundedWrite ?? 0),
                     ),
               }
             : {}),
           outputTokens: parsed.usage.completion_tokens,
-          ...(cachedTokens !== undefined ? { cacheReadTokens: cachedTokens } : {}),
-          ...(cacheWriteTokens !== undefined ? { cacheWriteTokens } : {}),
+          ...(boundedCached !== undefined ? { cacheReadTokens: boundedCached } : {}),
+          ...(boundedWrite !== undefined ? { cacheWriteTokens: boundedWrite } : {}),
         };
         if (!sameUsage(reportedUsage, usage)) {
           reportedUsage = usage;

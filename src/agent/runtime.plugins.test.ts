@@ -1,9 +1,10 @@
 import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { PluginRegistry } from "../plugins/registry.js";
 import type { PluginTool } from "../plugins/types.js";
+import { promoteDynamicTool } from "./tools.js";
 import type { ChatMessage, MeowEvent } from "./types.js";
 
 const { streamMock } = vi.hoisted(() => ({ streamMock: vi.fn() }));
@@ -16,6 +17,14 @@ vi.mock("./title-generator.js", () => ({
 }));
 
 const { AgentRuntime } = await import("./runtime.js");
+
+const registries = new Set<PluginRegistry>();
+
+function createPluginRegistry(): PluginRegistry {
+  const registry = new PluginRegistry();
+  registries.add(registry);
+  return registry;
+}
 
 function makeTool(name: string, overrides: Partial<PluginTool> = {}): PluginTool {
   return {
@@ -70,11 +79,17 @@ beforeEach(() => {
   streamMock.mockReset();
 });
 
+afterEach(() => {
+  for (const registry of registries) registry.unregisterAll();
+  registries.clear();
+});
+
 describe("插件工具接入（P2）", () => {
   it("插件工具进入模型请求的 tools 列表并可执行", async () => {
-    const registry = new PluginRegistry();
+    const registry = createPluginRegistry();
     const execute = vi.fn(async () => ({ output: "plugin says hi", ok: true }));
     registry.addTool("p1", makeTool("plugin_echo", { execute }));
+    promoteDynamicTool("plugin_echo");
     const { runtime } = await setup(registry);
 
     mockToolRound("plugin_echo", { foo: "bar" });
@@ -95,7 +110,7 @@ describe("插件工具接入（P2）", () => {
   });
 
   it("allowedTools 白名单过滤插件工具", async () => {
-    const registry = new PluginRegistry();
+    const registry = createPluginRegistry();
     registry.addTool("p1", makeTool("plugin_echo"));
     const dir = await mkdtemp(path.join(tmpdir(), "meowcode-rt-plugins-"));
     const workspace = await mkdtemp(path.join(tmpdir(), "meowcode-rt-ws-"));
@@ -113,7 +128,7 @@ describe("插件工具接入（P2）", () => {
   });
 
   it("requiresApproval 的插件工具触发审批流", async () => {
-    const registry = new PluginRegistry();
+    const registry = createPluginRegistry();
     const execute = vi.fn(async () => ({ output: "approved run", ok: true }));
     registry.addTool("p1", makeTool("plugin_gate", { execute, requiresApproval: true }));
     const { runtime, events } = await setup(registry);
@@ -138,7 +153,7 @@ describe("插件工具接入（P2）", () => {
 
 describe("生命周期 hooks（P3）", () => {
   it("tool_call block：工具不执行，原因作为工具结果", async () => {
-    const registry = new PluginRegistry();
+    const registry = createPluginRegistry();
     const execute = vi.fn(async () => ({ output: "should not run", ok: true }));
     registry.addTool("p1", makeTool("plugin_danger", { execute }));
     registry.addHook("guard", "tool_call", () => ({ block: true, reason: "not today" }));
@@ -157,7 +172,7 @@ describe("生命周期 hooks（P3）", () => {
   });
 
   it("tool_call input transform 非法时拒绝执行（重校验）", async () => {
-    const registry = new PluginRegistry();
+    const registry = createPluginRegistry();
     registry.addHook("broken", "tool_call", () => ({ input: {} }));
     const { runtime } = await setup(registry);
 
@@ -176,7 +191,7 @@ describe("生命周期 hooks（P3）", () => {
   });
 
   it("tool_call input transform：execute 收到改写后的参数", async () => {
-    const registry = new PluginRegistry();
+    const registry = createPluginRegistry();
     const execute = vi.fn(async (input: Record<string, unknown>) => ({
       output: `ran with ${String(input.command)}`,
       ok: true,
@@ -197,7 +212,7 @@ describe("生命周期 hooks（P3）", () => {
   });
 
   it("tool_result transform：输出被改写后进入下一轮请求", async () => {
-    const registry = new PluginRegistry();
+    const registry = createPluginRegistry();
     registry.addTool("p1", makeTool("plugin_loud"));
     registry.addHook("redactor", "tool_result", () => ({ output: "[redacted]" }));
     const { runtime } = await setup(registry);
@@ -211,7 +226,7 @@ describe("生命周期 hooks（P3）", () => {
   });
 
   it("prompt_submit block：不调模型，assistant 消息呈现原因", async () => {
-    const registry = new PluginRegistry();
+    const registry = createPluginRegistry();
     registry.addHook("guard", "prompt_submit", () => ({ block: true, reason: "banned" }));
     const { runtime, events } = await setup(registry);
 
@@ -228,7 +243,7 @@ describe("生命周期 hooks（P3）", () => {
   });
 
   it("prompt_submit text transform：模型收到改写后的文本", async () => {
-    const registry = new PluginRegistry();
+    const registry = createPluginRegistry();
     registry.addHook("expander", "prompt_submit", (event) => ({ text: `${event.text} (project: alpha)` }));
     const { runtime } = await setup(registry);
 
@@ -241,7 +256,7 @@ describe("生命周期 hooks（P3）", () => {
   });
 
   it("session_start / turn_start / turn_end 观察事件触发", async () => {
-    const registry = new PluginRegistry();
+    const registry = createPluginRegistry();
     const sessionStart = vi.fn();
     const turnStart = vi.fn();
     const turnEnd = vi.fn();
@@ -261,7 +276,7 @@ describe("生命周期 hooks（P3）", () => {
   });
 
   it("tool_call ask：full 模式也强制审批，hookReason 进入事件", async () => {
-    const registry = new PluginRegistry();
+    const registry = createPluginRegistry();
     const execute = vi.fn(async () => ({ output: "ran", ok: true }));
     registry.addTool("p1", makeTool("plugin_ask", { execute }));
     registry.addHook("ask", "tool_call", () => ({ permission: "ask", reason: "confirm this" }));
@@ -288,7 +303,7 @@ describe("生命周期 hooks（P3）", () => {
   });
 
   it("tool_call allow 不预批准：仍走人工审批", async () => {
-    const registry = new PluginRegistry();
+    const registry = createPluginRegistry();
     const execute = vi.fn(async () => ({ output: "ran", ok: true }));
     registry.addTool("p1", makeTool("plugin_allow", { execute, requiresApproval: true }));
     registry.addHook("allow", "tool_call", () => ({ permission: "allow" }));
@@ -308,7 +323,7 @@ describe("生命周期 hooks（P3）", () => {
   });
 
   it("PermissionRequest allow 自动应答审批，无需用户操作", async () => {
-    const registry = new PluginRegistry();
+    const registry = createPluginRegistry();
     const execute = vi.fn(async () => ({ output: "ran", ok: true }));
     registry.addTool("p1", makeTool("plugin_perm_allow", { execute, requiresApproval: true }));
     registry.addHook("perm", "permission_request", () => ({ permission: "allow" }));
@@ -325,7 +340,7 @@ describe("生命周期 hooks（P3）", () => {
   });
 
   it("PermissionRequest deny 自动拒绝，工具不执行", async () => {
-    const registry = new PluginRegistry();
+    const registry = createPluginRegistry();
     const execute = vi.fn(async () => ({ output: "should not run", ok: true }));
     registry.addTool("p1", makeTool("plugin_perm_deny", { execute, requiresApproval: true }));
     registry.addHook("perm", "permission_request", () => ({
@@ -351,7 +366,7 @@ describe("生命周期 hooks（P3）", () => {
   });
 
   it("只读批处理同样经过 tool_call ask 审批", async () => {
-    const registry = new PluginRegistry();
+    const registry = createPluginRegistry();
     registry.addHook("ask-read", "tool_call", (event) =>
       event.tool === "list_dir"
         ? { permission: "ask" as const, reason: "check listing" }
@@ -379,7 +394,7 @@ describe("生命周期 hooks（P3）", () => {
 
 describe("工具执行事件（对应新增的 tool_execution_*）", () => {
   it("被 tool_call block 的调用不会触发 tool_execution_start", async () => {
-    const registry = new PluginRegistry();
+    const registry = createPluginRegistry();
     const calls: string[] = [];
     registry.addHook("p1", "tool_call", () => {
       calls.push("tool_call");
@@ -402,7 +417,7 @@ describe("工具执行事件（对应新增的 tool_execution_*）", () => {
   });
 
   it("真正执行的调用两个执行事件都触发", async () => {
-    const registry = new PluginRegistry();
+    const registry = createPluginRegistry();
     const calls: string[] = [];
     registry.addHook("p1", "tool_call", () => {
       calls.push("tool_call");
@@ -428,7 +443,7 @@ describe("工具执行事件（对应新增的 tool_execution_*）", () => {
 
 describe("context_inject（对应新增的 context_inject）", () => {
   it("注入内容进历史尾部而不是系统提示", async () => {
-    const registry = new PluginRegistry();
+    const registry = createPluginRegistry();
     registry.addHook("p1", "context_inject", () => ({ notes: ["PLUGIN_INJECTED_NOTE"] }));
     const { runtime } = await setup(registry);
 

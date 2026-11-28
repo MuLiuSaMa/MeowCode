@@ -104,6 +104,7 @@ export function RightPanel({
   speedSamples,
   provider,
   providers,
+  interjectMode,
   onManageModels,
   toolCount,
   planPath,
@@ -143,6 +144,8 @@ export function RightPanel({
   providers: ProviderSettings[];
   /** 打开 设置 → 模型（侧边聊天模型弹层的「管理模型」） */
   onManageModels: () => void;
+  /** 插话方式：直接传给侧聊发送链路 */
+  interjectMode?: "queue" | "steer";
   toolCount: number;
   /** 计划文档（工作区相对路径）与写入状态：计划页签据此预览 plans/ 下的 Markdown */
   planPath?: string | null;
@@ -399,6 +402,7 @@ export function RightPanel({
               />
             ) : (
               <SideChatTab
+                interjectMode={interjectMode}
                 active={tab.id === activeId}
                 cwd={workspace}
                 providers={providers}

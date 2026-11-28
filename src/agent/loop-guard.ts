@@ -7,11 +7,17 @@ import type { ChatMessage, ToolCall } from "./types.js";
  * 循环检测（P1-2）：同一回合内「参数完全相同 且 输出逐字节相同」的连续工具调用。
  * 双条件缺一不可 —— edit 之后用相同参数重读同一文件是合法流程（文件变了输出就变，
  * 不会计数）；只有确定性工具返回相同输出时，重复调用才是零信息浪费。
- * 阈值参考 dsh repeat-tool-reminder 的 3/5/8 分级；只提醒，从不拦截执行。
+ * 阈值参考 dsh repeat-tool-reminder 的 3/5/8 分级；8 次强提醒仍压不住时，
+ * 从第 9 次起由 blockNotice 硬阻断执行（codex ToolCollision / cc-haha 拦 sleep 口径）。
  */
 export const LOOP_REMIND_AT = 3;
 export const LOOP_WARN_AT = 5;
 export const LOOP_STRONG_REMIND_AT = 8;
+
+/** 硬阻断文案：改参数即自然解除（换键重新计数）。 */
+export function loopBlockMessage(tool: string): string {
+  return `[meowcode] Blocked: ${tool} has been called with these exact arguments ${LOOP_STRONG_REMIND_AT} times in a row, each returning an identical result. Executing it again adds nothing. Change the arguments, use a different tool, or report the wait in your reply instead of re-calling.`;
+}
 
 /** 每个文件最多保留多少段已读区间（相邻区间会合并）。 */
 export const MAX_READ_RANGES_PER_FILE = 8;
@@ -196,7 +202,7 @@ export class LoopGuard {
   /**
    * 执行后登记：参数键与输出指纹都相同才累计。返回要附加到工具结果的提醒
    * （未达阈值返回空串）。占位符/错误结果同样计数 —— 反复同参数失败也是循环。
-   * 无论重复多少次都只提醒，不拦截执行。
+   * 达到强提醒阈值后，后续同参调用由 blockNotice 在执行前拦截。
    */
   noteResult(sessionId: string, tool: string, input: unknown, output: string): string {
     const key = `${tool}:${stableJson(input)}`;
@@ -211,6 +217,20 @@ export class LoopGuard {
     }
     this.states.set(sessionId, { key, outputHash: fingerprint, count: 1 });
     return "";
+  }
+
+  /**
+   * 执行前硬阻断检查：同参调用已连续拿到 ≥8 次相同输出后，下一次同参调用
+   * 直接以工具错误返回、不再执行 —— 提醒压不住的死循环到此为止。
+   * 改参数即自然解除（换键重新计数）；文件变过则输出指纹必变，合法重读不受影响。
+   */
+  blockNotice(sessionId: string, tool: string, input: unknown): string | null {
+    const key = `${tool}:${stableJson(input)}`;
+    const state = this.states.get(sessionId);
+    if (state && state.key === key && state.count >= LOOP_STRONG_REMIND_AT) {
+      return loopBlockMessage(tool);
+    }
+    return null;
   }
 
   /**

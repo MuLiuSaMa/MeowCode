@@ -55,7 +55,13 @@
   "island": {
     "section": "AI 悬浮岛",
     "field": "启用悬浮岛",
-    "desc": "在屏幕顶部居中显示所有运行中会话的状态胶囊；鼠标放上去可展开成对话小窗，直接输入或停止任务。"
+    "desc": "在屏幕顶部居中显示所有运行中会话的状态胶囊；鼠标放上去可展开成对话小窗，直接输入或停止任务。",
+    "model": {
+      "field": "悬浮岛模型",
+      "desc": "从悬浮岛发送消息时，目标会话会先切换到这个模型（对后续回合生效，正在生成的回合不受影响，主窗口的模型切换会覆盖它）；留空或该模型不可用时跟随会话当前模型。",
+      "followMain": "跟随会话模型",
+      "saveFailed": "保存悬浮岛模型失败"
+    }
   },
   "close": {
     "section": "关闭方式",
@@ -126,7 +132,7 @@
     "noWorkspaceHint": "规则保存在当前项目的 .meowcode/rules 目录中。",
     "clickToEdit": "点击编辑规则",
     "deleteAria": "删除规则「{{name}}」",
-    "confirmDeleteAria": "再次点击确认删除规则「{{name}}」",
+    "confirmDeleteAria": "删除规则「{{name}}」",
     "createTitle": "新建规则",
     "editTitle": "编辑规则「{{name}}」",
     "editorDesc": "规则会随项目一起注入系统提示词；支持 Markdown。",
@@ -252,7 +258,7 @@
     "deleteAll": "全部删除",
     "confirmDeleteAll": "确认全部删除？",
     "deleteAria": "永久删除 {{name}}",
-    "confirmDeleteAria": "再次点击永久删除 {{name}}"
+    "confirmDeleteAria": "永久删除 {{name}}"
   },
   "about": {
     "loading": "正在读取版本信息…",
@@ -275,6 +281,12 @@
     "upToDate": "已是最新版本",
     "checkFailed": "版本检查失败：{{error}}",
     "sponsorList": "赞助者名单（MeowCode、新境盒、OpenMD、LingTab）"
+  },
+  "confirm": {
+    "deleteTitle": "确认删除？",
+    "deleteMessage": "「{{name}}」删除后无法恢复。",
+    "clearTitle": "确认全部删除？",
+    "clearMessage": "这会删除全部记录，且无法恢复。"
   },
   "actions": {
     "add": "添加",
@@ -403,8 +415,8 @@
       "advanced": "高级设置",
       "advancedHint": "思考强度 / 缓存 TTL / 思考档位 / 鉴权与请求定制 —— 不填走默认",
       "reasoningEffort": "思考强度",
-      "reasoningEffortPlaceholder": "留空 = 服务商默认",
       "reasoningEffortHint": "作为 reasoning_effort 下发",
+      "reasoningEffortRecommended": "留空 = 按推荐 {{level}} 下发（模型商没有查默认档位的接口）",
       "thinkingBudget": "思考预算",
       "thinkingBudgetPlaceholder": "留空 = 按思考强度档位",
       "thinkingBudgetHint": "thinking.budget_tokens；会自动压到 max_tokens 以下",
@@ -586,7 +598,7 @@
     "clearField": "清除所有学到的",
     "clearHint": "删除全部学到的技能、项目经验、用户特征与回合记录 —— 本项目与跨项目都清。不可撤销。",
     "clearAction": "全部清除",
-    "clearConfirm": "再点一次确认",
+    "clearConfirm": "确认清空",
     "cleared": "已清空 {{scopes}} 个学习目录",
     "clearedNothing": "没有可清除的内容",
     "clearFailed": "清除失败"
@@ -595,6 +607,10 @@
     "viewTabs": {
       "field": "视图切换",
       "desc": "在主区域顶部显示「对话 / 轨迹」悬浮切换；新会话没有消息时不显示。"
+    },
+    "navPulse": {
+      "field": "浏览条随声音律动",
+      "desc": "对话浏览条跟随电脑正在播放的声音呼吸发光（Windows）。"
     },
     "section": "通用",
     "desc": "日常行为偏好，修改后立即生效。",
@@ -610,6 +626,12 @@
       "confirmCost": "这会在每轮对话额外消耗 Token。请求会复用对话缓存，通常花费不多，但仍会计费。",
       "enable": "开启"
     },
+    "auxModel": {
+      "field": "辅助模型",
+      "desc": "标题生成、AI 审查、输入建议、记忆蒸馏、学习、压缩摘要、commit 信息、提示词美化等辅助任务改用这个模型，以节约成本；留空或该模型不可用时跟随主对话模型。",
+      "followMain": "跟随主模型",
+      "saveFailed": "保存辅助模型失败"
+    },
     "providerFallback": {
       "field": "供应商故障转移",
       "desc": "主服务商超时、限流或服务端故障时，本回合自动切到其他已启用的服务商，最多切换 2 次。",
@@ -618,6 +640,18 @@
     "defaultPermission": {
       "field": "默认权限模式",
       "desc": "新建对话时默认使用的工具执行权限；已有对话保留各自的选择。"
+    },
+    "interjectMode": {
+      "field": "插话方式",
+      "desc": "回复还在生成时发送消息的行为。",
+      "options": {
+        "queue": "排队",
+        "steer": "直接插话"
+      },
+      "descs": {
+        "queue": "消息进入队列，等当前回合结束后依次发送。",
+        "steer": "立即暂停当前回复，这条消息马上发送。"
+      }
     },
     "other": {
       "section": "常规"

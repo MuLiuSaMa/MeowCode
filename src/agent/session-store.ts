@@ -1929,6 +1929,8 @@ export type SessionSummary = {
   filePath: string;
   cwd: string;
   createdAt: string;
+  /** 最后一条记录的时间；会话列表按它倒序，继续旧对话后卡片会回到最前 */
+  updatedAt: string;
   /** AI 生成或用户手动设置的会话标题；还没生成过则为 null */
   title: string | null;
   /** 会话里的消息条数；0 = 还没发过消息（新建后未使用的会话，列表里不显示） */
@@ -1999,20 +2001,28 @@ async function parseSessionSummary(
   if (header.type !== "session") return null;
   let title: string | null = null;
   let messageCount = 0;
+  // 最后一条消息的时间：会话列表按它排序（继续旧对话后回到最前），而不是按创建时间。
+  // 只认 message：恢复会话时补写的 turn_end / session_settings 不算“继续对话”，
+  // 否则仅仅打开一个旧会话就会把它顶到列表最前。
+  let updatedAt = header.createdAt;
   for (let index = 1; index < lines.length; index += 1) {
     if (!lines[index].trim()) continue;
     try {
       const entry = JSON.parse(lines[index]) as SessionEntry;
       if (entry.type === "title") title = entry.title;
-      else if (entry.type === "message") messageCount += 1;
+      else if (entry.type === "message") {
+        messageCount += 1;
+        updatedAt = entry.timestamp;
+      }
     } catch {
-      // 忽略撕裂/坏行；writer 会在下次 append 时修复
+      // 忽略撕裂/坏行；writer 会在下次 append 时修�?
     }
   }
   return {
     id: header.id,
     cwd: header.cwd,
     createdAt: header.createdAt,
+    updatedAt,
     title,
     messageCount,
     ...(header.worktree ? { worktree: header.worktree } : {}),
@@ -2049,6 +2059,7 @@ export async function listSessions(sessionsDir: string): Promise<SessionSummary[
           id: cached.id,
           cwd: cached.cwd,
           createdAt: cached.createdAt,
+          updatedAt: cached.updatedAt ?? cached.createdAt,
           title: cached.title,
           messageCount: cached.messageCount,
           ...(cached.worktree ? { worktree: cached.worktree } : {}),
@@ -2082,7 +2093,10 @@ export async function listSessions(sessionsDir: string): Promise<SessionSummary[
     );
   }
 
-  return sessions.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  return sessions.sort((a, b) => {
+    const updated = b.updatedAt.localeCompare(a.updatedAt);
+    return updated || b.createdAt.localeCompare(a.createdAt);
+  });
 }
 
 export function sessionFileName(cwd: string, timestamp: Date): string {

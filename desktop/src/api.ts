@@ -366,6 +366,7 @@ export type TurnStatus = "completed" | "aborted" | "error" | "interrupted";
 export type UiState = {
   version: number;
   inspector: { visible: boolean; width: number };
+  collapsedProjects: string[];
   tabs: Array<{
     id: string;
     kind:
@@ -555,6 +556,8 @@ export type SessionSummary = {
   filePath: string;
   cwd: string;
   createdAt: string;
+  /** 最后一条记录的时间；侧栏按它倒序（继续旧对话后卡片回到最前）。旧服务端可能没有 */
+  updatedAt?: string;
   /** AI 生成或手动设置的会话标题；还没生成过则为 null */
   title: string | null;
   /** 会话里的消息条数；0 = 还没发过消息（新建未使用的会话，列表里不显示） */
@@ -681,6 +684,9 @@ export type SshConnection = {
   privateKeyPath?: string;
 };
 
+/** 项目内手动拖拽后的会话顺序：cwd → filePath[]。 */
+export type ConversationOrder = Record<string, string[]>;
+
 export type Preferences = {
   theme: ThemePreference;
   /** 配色方案：缺省视为 classic（轻量通道，不重启 server） */
@@ -700,6 +706,10 @@ export type Preferences = {
   projectNames?: Record<string, string>;
   /** 置顶的项目 cwd 列表（顺序即置顶顺序） */
   pinnedProjects?: string[];
+  /** 置顶对话的 filePath 列表（顺序即置顶顺序，新置顶的排最前） */
+  pinnedConversations?: string[];
+  /** 项目内手动拖拽后的会话顺序；发生会话活动或切换时清除 */
+  conversationOrder?: ConversationOrder;
   /** 已移除（侧栏隐藏）的项目 cwd 列表 */
   removedProjects?: string[];
   /** 检查到新版本时后台静默下载（默认开；完成后导航栏左下角出现重启按钮） */
@@ -710,12 +720,16 @@ export type Preferences = {
   announcements?: boolean;
   /** 主区域顶部「对话 / 轨迹」悬浮切换胶囊（默认开；关掉后不显示） */
   showViewTabs?: boolean;
+  /** 对话跳转条随声音律动：跟随系统声音呼吸发光（默认关，仅 Windows 回环采集） */
+  navAudioPulse?: boolean;
   /** AI 悬浮岛：屏幕顶部胶囊显示所有运行中会话状态（默认关） */
   floatingIsland?: boolean;
   /** 输入建议：回合结束后额外请求一次，预测下一句（默认关） */
   nextPromptSuggestions?: boolean;
   /** 新建对话的默认工具权限模式（默认 auto） */
   defaultPermissionMode?: "read-only" | "ask" | "auto" | "full";
+  /** 插话方式：queue = 回合进行中发送的消息排队等待（默认）；steer = 直接中止当前对话立即发送 */
+  interjectMode?: "queue" | "steer";
   /** Worktrees：创建前先 fetch 上游更新（默认关） */
   worktreeFetchUpstream?: boolean;
   /** Worktrees：自动清理旧 worktree（默认开） */
@@ -1042,6 +1056,10 @@ export type Settings = {
   projectNames?: Record<string, string>;
   /** 置顶的项目 cwd 列表（顺序即置顶顺序） */
   pinnedProjects?: string[];
+  /** 置顶对话的 filePath 列表（顺序即置顶顺序，新置顶的排最前） */
+  pinnedConversations?: string[];
+  /** 项目内手动拖拽后的会话顺序；发生会话活动或切换时清除 */
+  conversationOrder?: ConversationOrder;
   /** 已移除（侧栏隐藏）的项目 cwd 列表 */
   removedProjects?: string[];
   /** 插件启停：禁用的插件 id 列表（全局） */
@@ -1075,12 +1093,16 @@ export type Settings = {
   announcements?: boolean;
   /** 主区域顶部「对话 / 轨迹」悬浮切换胶囊（缺省视为开启） */
   showViewTabs?: boolean;
+  /** 对话跳转条随声音律动：跟随系统声音呼吸发光（默认关，仅 Windows 回环采集） */
+  navAudioPulse?: boolean;
   /** AI 悬浮岛：屏幕顶部胶囊显示所有运行中会话状态（默认关） */
   floatingIsland?: boolean;
   /** 输入建议：回合结束后额外请求一次，预测下一句（默认关） */
   nextPromptSuggestions?: boolean;
   /** 新建对话的默认工具权限模式（默认 auto） */
   defaultPermissionMode?: "read-only" | "ask" | "auto" | "full";
+  /** 插话方式：queue = 回合进行中发送的消息排队等待（默认）；steer = 直接中止当前对话立即发送 */
+  interjectMode?: "queue" | "steer";
   /** Worktrees：创建前先 fetch 上游更新（默认关） */
   worktreeFetchUpstream?: boolean;
   /** Worktrees：自动清理旧 worktree（默认开） */
@@ -1642,6 +1664,38 @@ export async function setLearning(enabled: boolean): Promise<{ enabled: boolean 
     method: "PUT",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ enabled }),
+  });
+}
+
+/** 辅助任务模型：查询当前配置（null = 跟随主模型） */
+export async function getAuxModel(): Promise<{ providerId: string | null }> {
+  return api<{ providerId: string | null }>("/config/aux-model");
+}
+
+/** 辅助任务模型：运行中实时生效（下一次辅助请求起用新模型，无需重启 agent server） */
+export async function setAuxModel(
+  providerId: string | null,
+): Promise<{ providerId: string | null }> {
+  return api<{ providerId: string | null }>("/config/aux-model", {
+    method: "PUT",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ providerId }),
+  });
+}
+
+/** 悬浮岛模型：查询当前配置（null = 跟随会话当前模型） */
+export async function getIslandModel(): Promise<{ providerId: string | null }> {
+  return api<{ providerId: string | null }>("/config/island-model");
+}
+
+/** 悬浮岛模型：运行中实时生效（下一次从悬浮岛发送起用新模型，无需重启 agent server） */
+export async function setIslandModel(
+  providerId: string | null,
+): Promise<{ providerId: string | null }> {
+  return api<{ providerId: string | null }>("/config/island-model", {
+    method: "PUT",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ providerId }),
   });
 }
 

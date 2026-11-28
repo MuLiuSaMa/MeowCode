@@ -89,7 +89,7 @@
     "discard": "丢弃",
     "pendingAria": "排队中的消息",
     "steerTitle": "中止当前回复，立即发送这条消息",
-    "steer": "强制插话",
+    "steer": "立即",
     "removeTitle": "从队列中删除",
     "remove": "删除",
     "edit": "编辑",

@@ -47,6 +47,30 @@ describe("SessionStore", () => {
     expect(summary.worktree).toEqual(worktree);
   });
 
+  it("orders sessions by last activity instead of creation time", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "meowcode-sessions-"));
+    const older = await SessionStore.create(path.join(dir, "older.jsonl"), "D:/work", {
+      createdAt: new Date("2026-01-01T00:00:00.000Z"),
+    });
+    const newer = await SessionStore.create(path.join(dir, "newer.jsonl"), "D:/work", {
+      createdAt: new Date("2026-02-01T00:00:00.000Z"),
+    });
+    // 先给新会话写一条，再回到旧会话继续聊：旧会话的最后活动时间更晚
+    await newer.appendMessage({ role: "user", content: "new" });
+    // 时间戳精度是毫秒：隔开两次写入，避免同一毫秒时退回按创建时间排序
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    await older.appendMessage({ role: "user", content: "continue old chat" });
+    await older.flush();
+    await newer.flush();
+
+    const sessions = await listSessions(dir);
+    expect(sessions.map((session) => session.filePath)).toEqual([
+      path.join(dir, "older.jsonl"),
+      path.join(dir, "newer.jsonl"),
+    ]);
+    expect(sessions[0].updatedAt >= sessions[1].updatedAt).toBe(true);
+  });
+
   it("persists plans and compaction summaries, and slices effective messages", async () => {    const dir = await mkdtemp(path.join(tmpdir(), "meowcode-sessions-"));
     const filePath = path.join(dir, "session.jsonl");
     const session = await SessionStore.create(filePath, "D:/work");

@@ -87,6 +87,27 @@ describe("resolveThinkingPolicy", () => {
     ).toEqual({ effort: "medium", budget: 2048 });
   });
 
+  it("plan mode only floors at medium, never raises above it", () => {
+    // Codex 的 plan preset 就是 Medium：进计划模式不是加码思考
+    expect(
+      resolveThinkingPolicy({
+        effort: "high",
+        reasoningLevels: ["low", "medium", "high", "max"],
+        maxTokens: 32_000,
+        boost: true,
+      }),
+    ).toEqual({ effort: "high", budget: 4096 });
+    // 没有 medium 档的模型（DeepSeek/GLM 只认 low/high/max）原样返回
+    expect(
+      resolveThinkingPolicy({
+        effort: "low",
+        reasoningLevels: ["low", "high", "max"],
+        maxTokens: 32_000,
+        boost: true,
+      }),
+    ).toEqual({ effort: "low", budget: 1024 });
+  });
+
   it("does not touch an explicit budget", () => {
     expect(
       resolveThinkingPolicy({

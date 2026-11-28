@@ -14,6 +14,7 @@ import {
   deferredDynamicToolNames,
   hasDynamicTool,
   listDynamicToolDefinitions,
+  promoteDynamicTool,
   registerDynamicTool,
   truncateMiddle,
   unregisterDynamicTool,
@@ -1189,68 +1190,68 @@ describe("dynamic tool definitions", () => {
   });
 
   it("is byte-identical regardless of registration order", () => {
-    registerDynamicTool("mcp__z__last", stub("mcp__z__last", "z"));
-    registerDynamicTool("mcp__a__first", stub("mcp__a__first", "a"));
-    const first = JSON.stringify(listDynamicToolDefinitions());
-    unregisterDynamicTool("mcp__z__last");
-    unregisterDynamicTool("mcp__a__first");
+    const names = ["mcp__z__last", "mcp__a__first"];
+    try {
+      registerDynamicTool(names[0], stub(names[0], "z"));
+      registerDynamicTool(names[1], stub(names[1], "a"));
+      for (const name of names) expect(promoteDynamicTool(name)).toBe(true);
+      const first = JSON.stringify(listDynamicToolDefinitions());
+      for (const name of names) unregisterDynamicTool(name);
 
-    registerDynamicTool("mcp__a__first", stub("mcp__a__first", "a"));
-    registerDynamicTool("mcp__z__last", stub("mcp__z__last", "z"));
-    const second = JSON.stringify(listDynamicToolDefinitions());
-    unregisterDynamicTool("mcp__z__last");
-    unregisterDynamicTool("mcp__a__first");
+      registerDynamicTool(names[1], stub(names[1], "a"));
+      registerDynamicTool(names[0], stub(names[0], "z"));
+      for (const name of names) expect(promoteDynamicTool(name)).toBe(true);
+      const second = JSON.stringify(listDynamicToolDefinitions());
 
-    expect(second).toBe(first);
-    expect(first.indexOf("mcp__a__first")).toBeLessThan(first.indexOf("mcp__z__last"));
+      expect(second).toBe(first);
+      expect(first.indexOf("mcp__a__first")).toBeLessThan(first.indexOf("mcp__z__last"));
+    } finally {
+      for (const name of names) unregisterDynamicTool(name);
+      listDynamicToolDefinitions();
+    }
   });
 
-  it("超预算的动态工具转入 deferred，tool_search 命中后提升回可见区", async () => {
-    const names: string[] = [];
+  it("自动模式默认 deferred，可按名执行并在提升后可见", async () => {
+    const names = ["mcp__bulk__tool_a", "mcp__bulk__tool_b"];
     try {
-      // 单工具注册时被冻结到 ≤400 tokens，但极简 stub 实际 ~50 tokens：
-      // 200 个 × ~50 ≈ 10k，必然越过 8k 整体预算
-      for (let index = 0; index < 200; index += 1) {
-        const name = `mcp__bulk__tool_${String(index).padStart(2, "0")}`;
-        names.push(name);
-        registerDynamicTool(name, stub(name, `bulk test tool number ${index}`));
-      }
-      const visible = listDynamicToolDefinitions();
-      const visibleNames = visible.map((definition) => definition.function.name);
-      // 有工具被延迟：可见数 < 30，且可见集是名字序的前缀
-      expect(visibleNames.length).toBeLessThan(200);
-      expect(visibleNames).toEqual([...visibleNames].sort());
+      for (const name of names) registerDynamicTool(name, stub(name, name));
+      const visibleNames = listDynamicToolDefinitions().map(
+        (definition) => definition.function.name,
+      );
       const deferred = deferredDynamicToolNames();
-      expect(deferred.length).toBeGreaterThan(0);
-      for (const name of deferred) {
+      expect(deferred).toEqual([...names].sort());
+      for (const name of names) {
         expect(visibleNames).not.toContain(name);
-        expect(hasDynamicTool(name)).toBe(true); // 在册可调用，只是 schema 不发
+        expect(hasDynamicTool(name)).toBe(true);
       }
+      expect((await executeTool(names[0], { q: "x" }, process.cwd())).ok).toBe(true);
 
-      // tool_search 按名字命中一个 deferred 工具 → 提升回可见区（下轮生效）
-      const target = deferred[0];
-      const search = await executeTool("tool_search", { query: target });
+      const target = names[0];
+      const search = await executeTool("tool_search", { query: target }, process.cwd());
       expect(search.ok).toBe(true);
       expect(search.output).toContain(target);
-      const after = listDynamicToolDefinitions().map((definition) => definition.function.name);
-      expect(after).toContain(target);
+      const promoted = listDynamicToolDefinitions().map(
+        (definition) => definition.function.name,
+      );
+      expect(promoted).toContain(target);
+      expect(promoted).not.toContain(names[1]);
       expect(deferredDynamicToolNames()).not.toContain(target);
+      expect(deferredDynamicToolNames()).toContain(names[1]);
 
-      // 无命中 → 列出全部在册工具兜底
-      const miss = await executeTool("tool_search", { query: "zzz-no-such-keyword" });
+      const miss = await executeTool("tool_search", { query: "zzz-no-such-keyword" }, process.cwd());
       expect(miss.ok).toBe(true);
       expect(miss.output).toContain("No registered tool matches");
     } finally {
       for (const name of names) unregisterDynamicTool(name);
-      listDynamicToolDefinitions(); // 触发重算，清空 deferred 集
+      listDynamicToolDefinitions();
     }
   });
 
-  it("插件创作入口始终可见，不会被大量 MCP 工具挤出预算", () => {
+  it("插件创作入口在自动模式下始终可见", () => {
     const bulk: string[] = [];
     const essentials = ["plugin_authoring_guide", "create_plugin", "create_skill"];
     try {
-      for (let index = 0; index < 200; index += 1) {
+      for (let index = 0; index < 10; index += 1) {
         const name = `mcp__bulk__tool_${String(index).padStart(2, "0")}`;
         bulk.push(name);
         registerDynamicTool(name, stub(name, `bulk test tool number ${index}`));

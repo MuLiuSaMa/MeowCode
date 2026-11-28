@@ -232,9 +232,10 @@ describe("AgentRuntime context compaction", () => {
     ).toBe(true);
     expect(streamMock).toHaveBeenCalledTimes(3); // 失败 + 摘要 + 重试
     expect(runtime.current?.currentCompactionSummary).toBe("SUMMARY");
-    // 压缩后的有效历史 = 摘要（user 前缀）+ 压缩点之后的消息
+    // 压缩后的有效历史 = 摘要（user 前缀）+ 衔接语（接着干，不复述不早停）+ 压缩点之后的消息
     expect(runtime.current?.effectiveMessages.map((message) => message.content)).toEqual([
       "Earlier conversation summary:\nSUMMARY",
+      expect.stringContaining("Continue the work seamlessly"),
       "FINAL",
     ]);
   });
@@ -752,9 +753,10 @@ describe("AgentRuntime manual compaction", () => {
       messageIndex: 1,
       summary: "MANUAL-SUMMARY",
     });
-    // 压缩点之后只剩摘要本身，没有可继续压缩的新消息
+    // 压缩点之后只剩摘要 + 衔接语，没有可继续压缩的新消息
     expect(runtime.current?.effectiveMessages).toEqual([
       { role: "user", content: "Earlier conversation summary:\nMANUAL-SUMMARY" },
+      { role: "user", content: expect.stringContaining("Continue the work seamlessly") },
     ]);
     expect(runtime.current?.hasUncompactedMessages).toBe(false);
     const reloaded = await (await import("./session-store.js")).SessionStore.load(session.filePath);
@@ -2003,6 +2005,52 @@ describe("approval modes", () => {
     await approvalEvent;
     await runtime.prompt("second", "q1"); // 运行中 → 入队
     runtime.steerQueuedPrompt("q1");
+    expect(runtime.pendingApproval).toBeNull();
+    await first;
+    expect(runtime.isRunning).toBe(false);
+    expect(
+      runtime.current?.messages.some(
+        (message) => message.role === "user" && message.content === "second",
+      ),
+    ).toBe(true);
+  });
+
+  it("interrupt prompt stops the running turn and sends immediately", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "meowcode-runtime-"));
+    const runtime = makeRuntime(dir);
+    await runtime.newSession();
+    // 插话模式（interrupt=true）：入队后立即中止当前回合，这条消息马上执行
+    await runtime.setApprovalMode("ask");
+    streamMock.mockResolvedValueOnce({
+      message: {
+        role: "assistant",
+        content: null,
+        tool_calls: [
+          {
+            id: "write",
+            type: "function",
+            function: {
+              name: "write_file",
+              arguments: JSON.stringify({ path: "a.txt", content: "x" }),
+            },
+          },
+        ],
+      },
+    });
+    streamMock.mockImplementation((options: { signal?: AbortSignal }) => {
+      if (options?.signal?.aborted) return Promise.reject(new Error("Aborted"));
+      return Promise.resolve({ message: { role: "assistant", content: "queued done" } });
+    });
+    const approvalEvent = new Promise<Extract<MeowEvent, { type: "approval_required" }>>(
+      (resolve) => {
+        runtime.onEvent((event) => {
+          if (event.type === "approval_required") resolve(event);
+        });
+      },
+    );
+    const first = runtime.prompt("first");
+    await approvalEvent;
+    await runtime.prompt("second", undefined, undefined, undefined, true);
     expect(runtime.pendingApproval).toBeNull();
     await first;
     expect(runtime.isRunning).toBe(false);

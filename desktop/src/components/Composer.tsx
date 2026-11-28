@@ -1725,28 +1725,31 @@ export function Composer({
     if (trySlashCommand()) return;
     onSend(takeImages());
   };
-  const builtinSubmit = streaming ? (
-    <button
-      type="button"
-      className="mc-sendbtn"
-      aria-label={t("action.stop")}
-      title={t("action.stop")}
-      onClick={onStop}
-    >
-      <LuSquare size={13} />
-    </button>
-  ) : (
-    <button
-      type="button"
-      className="mc-sendbtn"
-      aria-label={t("action.send")}
-      title={t("action.send")}
-      disabled={sendDisabled}
-      onClick={pluginSend}
-    >
-      <LuArrowUp size={17} />
-    </button>
-  );
+  // 回合进行中：输入框有内容（可发送）就显示发送钮——点击按插话方式排队/直接插话；
+  // 空输入或不可发送时才是停止钮。Enter 发送原本就生效，这里补齐按钮的可见性。
+  const builtinSubmit =
+    streaming && sendDisabled ? (
+      <button
+        type="button"
+        className="mc-sendbtn"
+        aria-label={t("action.stop")}
+        title={t("action.stop")}
+        onClick={onStop}
+      >
+        <LuSquare size={13} />
+      </button>
+    ) : (
+      <button
+        type="button"
+        className="mc-sendbtn"
+        aria-label={t("action.send")}
+        title={t("action.send")}
+        disabled={sendDisabled}
+        onClick={pluginSend}
+      >
+        <LuArrowUp size={17} />
+      </button>
+    );
 
   return (
     <PluginWrap
@@ -1810,29 +1813,27 @@ export function Composer({
           </div>
         ) : workspace && !showContext ? (
           <div className="mc-composer__context" data-open={projectOpen}>
-            {/* 悬停 / 菜单展开时这一整段是一枚胶囊；点名字打开项目切换菜单 */}
-            <div className="mc-composer__projpill">
+            {/* 悬停 / 菜单展开时这一整段是一枚胶囊；整个胶囊都可点开项目切换菜单 */}
+            <button
+              type="button"
+              className="mc-composer__projpill"
+              aria-haspopup="menu"
+              aria-expanded={projectOpen}
+              title={projectDisplayCwd}
+              onClick={() => {
+                setBranchOpen(false);
+                setProjectOpen((open) => !open);
+              }}
+            >
               <span className="mc-composer__projicon" aria-hidden>
                 <LuFolder size={15} />
               </span>
-              <button
-                type="button"
-                className="mc-composer__projname"
-                aria-haspopup="menu"
-                aria-expanded={projectOpen}
-                title={projectDisplayCwd}
-                onClick={() => {
-                  setBranchOpen(false);
-                  setProjectOpen((open) => !open);
-                }}
-              >
-                <span className="mc-truncate">
-                  {projectDisplayCwd
-                    ? projectNames[projectDisplayCwd]?.trim() || baseName(projectDisplayCwd)
-                    : ""}
-                </span>
-              </button>
-            </div>
+              <span className="mc-composer__projname mc-truncate">
+                {projectDisplayCwd
+                  ? projectNames[projectDisplayCwd]?.trim() || baseName(projectDisplayCwd)
+                  : ""}
+              </span>
+            </button>
 
             {/* 当前分支：点开是本仓库的分支列表，选一个就切过去 */}
             {gitBranch ? (
@@ -2025,10 +2026,11 @@ export function Composer({
                         </button>
                         <button
                           type="button"
-                          className="mc-queued__action"
+                          className="mc-queued__action mc-queued__action--steer"
                           title={t("queue.steerTitle")}
                           onClick={() => onSteerQueued(item.id)}
                         >
+                          <LuArrowUp size={12} />
                           {t("queue.steer")}
                         </button>
                         <button

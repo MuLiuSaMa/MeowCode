@@ -92,12 +92,12 @@ export const BUILTIN_TOOL_CONTRACTS: Record<string, ToolContract> = {
     ...MUTATING_WORKSPACE,
     args: { required: ["path", "oldString", "newString"], nonEmpty: ["path", "oldString"] },
   },
-  // multi_edit / read_many 的入参形态不是「一层字符串字段」，由 tool-input.ts 单独校验
+  // multi_edit / read_many / task 的入参形态不是「一层字符串字段」，由 tool-input.ts 单独校验
   multi_edit: MUTATING_WORKSPACE,
   delete_file: { ...MUTATING_WORKSPACE, args: { required: ["path"], nonEmpty: ["path"] } },
   move_file: { ...MUTATING_WORKSPACE, args: { required: ["from", "to"], nonEmpty: ["from", "to"] } },
   apply_patch: { ...MUTATING_WORKSPACE, args: { required: ["patch"], nonEmpty: ["patch"] } },
-  task: { ...MUTATING_WORKSPACE, args: { required: ["description"], nonEmpty: ["description"] } },
+  task: MUTATING_WORKSPACE,
   run_command: { ...MUTATING_SYSTEM, args: { required: ["command"], nonEmpty: ["command"] } },
   job: { ...MUTATING_SYSTEM, args: { required: ["action"], nonEmpty: ["action"] } },
   git: { ...MUTATING_WORKSPACE, args: { required: ["action"], nonEmpty: ["action"] } },

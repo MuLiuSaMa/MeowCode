@@ -203,7 +203,7 @@ import type {
   TurnStatus,
 } from "../agent/types.js";
 
-const APP_VERSION = "1.5.0";
+const APP_VERSION = "1.6.0";
 const DEFAULT_SESSIONS_DIR = path.join(os.homedir(), "AppData", "Roaming", "MeowCode", "agent", "sessions");
 
 /** 插件命令 chip 的展示标记：首行是名称/插件/命令，空行后才是实际 `/command` 文本 */
@@ -329,7 +329,11 @@ function readProvidersFromEnv(): ProviderConfig[] {
   return [...providers.filter((provider) => !ids.has(provider.id)), ...magpie];
 }
 
-/** 实验开关（MEOWCODE_EXPERIMENTAL，JSON）：未设置/解析失败一律全关。 */
+/**
+ * 实验开关（MEOWCODE_EXPERIMENTAL，JSON）。
+ * 解析失败按"未设置"处理；未设置的键取 runtime 里各自的默认值
+ * （promptSegments / complexityThinking / midstreamToolExec 默认开，其余默认关）。
+ */
 function readExperimentalFromEnv(): {
   midstreamToolExec?: boolean;
   incrementalResponses?: boolean;
@@ -355,7 +359,8 @@ function readExperimentalFromEnv(): {
       promptSegments?: boolean;
       complexityThinking?: boolean;
     } = {};
-    if (parsed.midstreamToolExec) flags.midstreamToolExec = true;
+    // 三个开关默认开（缺省即新行为），显式 false 才回退旧行为
+    if (typeof parsed.midstreamToolExec === "boolean") flags.midstreamToolExec = parsed.midstreamToolExec;
     // 这个开关默认是开的（官方端点），所以要接受显式 false 才能关掉
     if (typeof parsed.incrementalResponses === "boolean") {
       flags.incrementalResponses = parsed.incrementalResponses;
@@ -417,6 +422,18 @@ function readProviderFallbackFromEnv(): boolean {
   if (raw === undefined || raw.trim() === "") return false;
   const normalized = raw.trim().toLowerCase();
   return normalized === "1" || normalized === "true" || normalized === "on";
+}
+
+/** 辅助任务专用模型（标题/记忆/学习/压缩/建议等）：settings.json 的初始值，空 = 跟随主模型。 */
+function readAuxProviderIdFromEnv(): string | null {
+  const raw = process.env.MEOWCODE_AUX_PROVIDER_ID;
+  return raw && raw.trim() ? raw.trim() : null;
+}
+
+/** 悬浮岛模型（从悬浮岛发送时切到的模型）：settings.json 的初始值，空 = 跟随会话当前模型。 */
+function readIslandProviderIdFromEnv(): string | null {
+  const raw = process.env.MEOWCODE_ISLAND_PROVIDER_ID;
+  return raw && raw.trim() ? raw.trim() : null;
 }
 
 function sendJson(response: http.ServerResponse, status: number, body: unknown): void {
@@ -689,6 +706,10 @@ export async function startServer(options: { port?: number; token?: string } = {
     process.env.MEOWCODE_WORKTREES_DIR ?? path.join(path.dirname(sessionsDir), "worktrees");
   const providerId = process.env.MEOWCODE_PROVIDER_ID;
   const workspace = process.env.MEOWCODE_WORKSPACE;
+  // 辅助任务模型：env 给初值，PUT /config/aux-model 运行中实时切换（null = 跟随主模型）
+  let auxProviderId = readAuxProviderIdFromEnv();
+  // 悬浮岛模型：env 给初值，PUT /config/island-model 运行中实时切换（null = 跟随会话当前模型）
+  let islandProviderId = readIslandProviderIdFromEnv();
   // 回合后记忆蒸馏：env 给初值，PUT /config/memory-extraction 运行中实时切换
   let memoryEnabled = readMemoryFromEnv();
   // 自我学习：env 给初值，PUT /config/learning 运行中实时切换
@@ -890,6 +911,7 @@ export async function startServer(options: { port?: number; token?: string } = {
       memory: memoryEnabled,
       learning: learningEnabled,
       providerFallback: providerFallbackEnabled,
+      auxProviderId,
       instructionSettings,
       builtinSkillsDir: builtinSkillsDir(),
       speechStyle,
@@ -1164,6 +1186,7 @@ export async function startServer(options: { port?: number; token?: string } = {
         memory: memoryEnabled,
         learning: learningEnabled,
         providerFallback: providerFallbackEnabled,
+        auxProviderId,
         instructionSettings,
         builtinSkillsDir: builtinSkillsDir(),
         speechStyle,
@@ -2976,6 +2999,9 @@ export async function startServer(options: { port?: number; token?: string } = {
           sessionId?: string;
           images?: unknown;
           documents?: unknown;
+          interrupt?: boolean;
+          /** 悬浮岛发送标记：true 时先把目标会话切到悬浮岛模型（未配置/失效则不动） */
+          island?: unknown;
         }>(request);
         const parsedImages = await parsePromptAttachments(body.images, body.documents);
         if (!parsedImages.ok) {
@@ -3070,12 +3096,23 @@ export async function startServer(options: { port?: number; token?: string } = {
           sendError(response, 413, "prompt_too_large", tooLarge.message);
           return;
         }
+        // 悬浮岛模型：从悬浮岛发送时，先把该会话切到悬浮岛模型再受理
+        // （对后续回合生效，正在生成的回合不受影响；模型已删/停用时保持当前模型，
+        // 主窗口的手动切换仍可覆盖 —— setActiveProvider 会广播 model_switch 让选择器同步）
+        if (body.island === true && islandProviderId) {
+          try {
+            target.setActiveProvider(islandProviderId);
+          } catch {
+            // 配置的悬浮岛模型不在列表里或已停用：保持会话当前模型
+          }
+        }
         void target
           .prompt(
             promptText,
             body.queueId?.trim(),
             parsedImages.images,
             parsedImages.documents,
+            body.interrupt === true,
           )
           .catch(() => undefined);
         sendJson(response, 202, { accepted: true });
@@ -4658,6 +4695,49 @@ export async function startServer(options: { port?: number; token?: string } = {
         sendJson(response, 200, { enabled: providerFallbackEnabled });
         return;
       }
+      // 辅助任务模型：GET 查询；PUT 实时切换（与记忆/学习同款：前台/侧边/后台全生效）。
+      // settings.json 的落盘由桌面端负责（meow:save-provider-prefs）。
+      if (pathname === "/config/aux-model" && request.method === "GET") {
+        sendJson(response, 200, { providerId: auxProviderId });
+        return;
+      }
+      if (pathname === "/config/aux-model" && request.method === "PUT") {
+        const body = await readJsonBody<{ providerId?: unknown }>(request);
+        if (body.providerId !== null && typeof body.providerId !== "string") {
+          sendError(response, 400, "invalid_request", "providerId must be a string or null");
+          return;
+        }
+        auxProviderId =
+          typeof body.providerId === "string" && body.providerId.trim()
+            ? body.providerId.trim()
+            : null;
+        runtime.setAuxProvider(auxProviderId);
+        if (sideRuntime) sideRuntime.setAuxProvider(auxProviderId);
+        for (const instance of backgroundRuntimes.values()) {
+          instance.setAuxProvider(auxProviderId);
+        }
+        sendJson(response, 200, { providerId: auxProviderId });
+        return;
+      }
+      // 悬浮岛模型：GET 查询；PUT 实时切换。只在悬浮岛发消息（body.island）受理前应用，
+      // 不主动改任何 runtime 的激活模型；settings.json 的落盘由桌面端负责。
+      if (pathname === "/config/island-model" && request.method === "GET") {
+        sendJson(response, 200, { providerId: islandProviderId });
+        return;
+      }
+      if (pathname === "/config/island-model" && request.method === "PUT") {
+        const body = await readJsonBody<{ providerId?: unknown }>(request);
+        if (body.providerId !== null && typeof body.providerId !== "string") {
+          sendError(response, 400, "invalid_request", "providerId must be a string or null");
+          return;
+        }
+        islandProviderId =
+          typeof body.providerId === "string" && body.providerId.trim()
+            ? body.providerId.trim()
+            : null;
+        sendJson(response, 200, { providerId: islandProviderId });
+        return;
+      }
       // 每个主 Agent 的并行子 Agent 上限：设置页可调，运行中热切换。
       if (pathname === "/config/agent-limits" && request.method === "PUT") {
         const body = await readJsonBody<{ limits?: unknown }>(request);
@@ -5059,6 +5139,7 @@ export async function startServer(options: { port?: number; token?: string } = {
           queueId?: string;
           images?: unknown;
           documents?: unknown;
+          interrupt?: boolean;
         }>(request);
         const parsedImages = await parsePromptAttachments(body.images, body.documents);
         if (!parsedImages.ok) {
@@ -5104,6 +5185,7 @@ export async function startServer(options: { port?: number; token?: string } = {
             body.queueId?.trim(),
             parsedImages.images,
             parsedImages.documents,
+            body.interrupt === true,
           )
           .catch(() => undefined);
         sendJson(response, 202, { accepted: true });

@@ -35,6 +35,24 @@ type NotificationsModule = {
     now?: () => number;
     limit?: number;
   }) => { accept: (key: string) => boolean; release: (key: string) => void; size: () => number };
+  escapeXml: (value: unknown) => string;
+  notificationTag: (sessionId: string) => string;
+  buildReplyToastXml: (input: {
+    title: string;
+    body: string;
+    iconUrl?: string;
+    tag: string;
+    sessionId: string;
+    placeholder: string;
+    sendLabel: string;
+  }) => string;
+  parseActivationArgs: (raw: unknown) => Record<string, string>;
+  pickReplyText: (details: unknown) => string;
+  createReplyRoutes: (options?: {
+    ttlMs?: number;
+    limit?: number;
+    now?: () => number;
+  }) => { remember: (tag: string, sessionId: string) => void; resolve: (tag: string) => string | null; size: () => number };
 };
 
 const requireCjs = createRequire(import.meta.url);
@@ -47,6 +65,12 @@ const {
   shouldNotify,
   notificationTitle,
   createDedupe,
+  escapeXml,
+  notificationTag,
+  buildReplyToastXml,
+  parseActivationArgs,
+  pickReplyText,
+  createReplyRoutes,
 } = requireCjs("./notifications.cjs") as NotificationsModule;
 
 const LABELS: Labels = {
@@ -199,5 +223,104 @@ describe("createDedupe", () => {
     // 最旧的 a/b 已被淘汰，重新出现时算新请求
     expect(dedupe.accept("a")).toBe(true);
     expect(dedupe.accept("e")).toBe(false);
+  });
+});
+
+describe("escapeXml", () => {
+  it("escapes markup so session text stays plain", () => {
+    expect(escapeXml(`<a href="x">&'`)).toBe("&lt;a href=&quot;x&quot;&gt;&amp;&apos;");
+    expect(escapeXml(null)).toBe("");
+  });
+});
+
+describe("notificationTag", () => {
+  it("is stable, short, and distinct per session", () => {
+    const a = notificationTag("0f2c6a1e-1111-4a2b-9c3d-000000000001");
+    const b = notificationTag("0f2c6a1e-1111-4a2b-9c3d-000000000002");
+    expect(a).toMatch(/^[0-9a-f]{16}$/);
+    expect(notificationTag("0f2c6a1e-1111-4a2b-9c3d-000000000001")).toBe(a);
+    expect(a).not.toBe(b);
+    expect(notificationTag("")).toBe("");
+  });
+});
+
+describe("buildReplyToastXml", () => {
+  it("includes a reply input and send action wired to the session", () => {
+    const xml = buildReplyToastXml({
+      title: "MeowCode · 会话",
+      body: "回合已完成",
+      iconUrl: "file:///C:/icon.png",
+      tag: "abc123",
+      sessionId: "sid-1",
+      placeholder: "回复…",
+      sendLabel: "发送",
+    });
+    expect(xml.startsWith("<toast ")).toBe(true);
+    expect(xml).not.toContain("<?xml");
+    // 带输入框的 toast 要留足打字时间
+    expect(xml).toContain(`duration="long"`);
+    expect(xml).toContain(`<input id="reply" type="text" placeHolderContent="回复…"/>`);
+    expect(xml).toContain(`arguments="type=reply&amp;tag=abc123&amp;sid=sid-1"`);
+    expect(xml).toContain(`launch="type=click&amp;tag=abc123&amp;sid=sid-1"`);
+    expect(xml).toContain(`hintInputId="reply"`);
+    expect(xml).toContain(`content="发送"`);
+  });
+
+  it("escapes session-derived text and omits a missing icon", () => {
+    const xml = buildReplyToastXml({
+      title: "<b>t</b>",
+      body: "a & b",
+      tag: "t1",
+      sessionId: "s1",
+      placeholder: `"p"`,
+      sendLabel: "Send",
+    });
+    expect(xml).toContain("<text>&lt;b&gt;t&lt;/b&gt;</text>");
+    expect(xml).toContain("<text>a &amp; b</text>");
+    expect(xml).not.toContain("<image");
+  });
+});
+
+describe("parseActivationArgs", () => {
+  it("splits key=value pairs and ignores malformed tokens", () => {
+    expect(parseActivationArgs("type=reply&tag=abc&sid=s-1")).toEqual({
+      type: "reply",
+      tag: "abc",
+      sid: "s-1",
+    });
+    expect(parseActivationArgs("noequals&&=empty")).toEqual({});
+    expect(parseActivationArgs(null)).toEqual({});
+  });
+});
+
+describe("createReplyRoutes", () => {
+  it("reads the reply text from either field and ignores non-reply activations", () => {
+    expect(pickReplyText({ type: "reply", reply: "hi" })).toBe("hi");
+    expect(pickReplyText({ type: "click", userInputs: { reply: "typed" } })).toBe("typed");
+    expect(pickReplyText({ type: "reply", reply: "", userInputs: { reply: "fallback" } })).toBe(
+      "fallback",
+    );
+    expect(pickReplyText({ type: "click", arguments: "type=click&tag=a" })).toBe("");
+    expect(pickReplyText(null)).toBe("");
+  });
+
+  it("resolves a remembered tag and drops expired routes", () => {
+    let now = 1000;
+    const routes = createReplyRoutes({ ttlMs: 500, now: () => now });
+    routes.remember("tag-1", "session-1");
+    expect(routes.resolve("tag-1")).toBe("session-1");
+    now = 1600;
+    expect(routes.resolve("tag-1")).toBeNull();
+    expect(routes.resolve("")).toBeNull();
+  });
+
+  it("keeps the newest routes within the limit", () => {
+    const routes = createReplyRoutes({ limit: 2 });
+    routes.remember("a", "s-a");
+    routes.remember("b", "s-b");
+    routes.remember("c", "s-c");
+    expect(routes.size()).toBe(2);
+    expect(routes.resolve("a")).toBeNull();
+    expect(routes.resolve("c")).toBe("s-c");
   });
 });

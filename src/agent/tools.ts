@@ -579,13 +579,13 @@ export const toolDefinitions: ToolDefinition[] = [
     function: {
       name: "task",
       description:
-        "Spawn a subagent for one self-contained task; only its report returns. Use for broad independent work; handle quick searches and coupled edits yourself. It sees the current request and plan — give a short description and scope; pick the role via agent_type. background=true returns immediately and notifies later. mode=resume continues an earlier subagent by agent_id (its history is kept); mode=fork copies this conversation prefix for prompt-cache reuse. Concurrent agents are capped; finished slots can be reused this turn.",
+        "Spawn a subagent for one self-contained task; only its report returns. Use for broad independent work; handle quick searches and coupled edits yourself. It sees the current request and plan — give a short description and scope; pick the role via agent_type. background=true returns immediately with an agent id and notifies later; when its result is needed, use mode=\"wait\" with agent_id and timeout_ms instead of sleeping or repeated polling. mode=resume continues an earlier subagent by agent_id (its history is kept); mode=fork copies this conversation prefix for prompt-cache reuse. Concurrent agents are capped; finished slots can be reused this turn.",
       parameters: {
         type: "object",
         properties: {
           description: {
             type: "string",
-            description: "Short label shown in the UI.",
+            description: "Short label shown in the UI; required for spawn, resume, and fork.",
           },
           prompt: {
             type: "string",
@@ -594,13 +594,18 @@ export const toolDefinitions: ToolDefinition[] = [
           },
           mode: {
             type: "string",
-            enum: ["spawn", "resume", "fork"],
+            enum: ["spawn", "resume", "fork", "wait"],
             description:
-              "spawn = new fresh subagent (default); resume = continue agent_id; fork = copy this conversation prefix into a general subagent.",
+              "spawn = new fresh subagent (default); resume = continue agent_id; fork = copy this conversation prefix into a general subagent; wait = wait for a background subagent result.",
           },
           agent_id: {
             type: "string",
-            description: "Existing subagent id for mode=resume.",
+            description: "Existing background subagent id for mode=resume or mode=wait.",
+          },
+          timeout_ms: {
+            type: "number",
+            description:
+              "Wait duration for mode=wait: 1000-300000 milliseconds (default 60000). A timeout returns while the subagent keeps running.",
           },
           agent_type: {
             type: "string",
@@ -625,7 +630,6 @@ export const toolDefinitions: ToolDefinition[] = [
             description: "Reasoning effort; omit to inherit.",
           },
         },
-        required: ["description"],
         additionalProperties: false,
       },
     },
@@ -990,13 +994,7 @@ function rememberRetired(name: string): void {
   }
 }
 
-/**
- * 动态工具 schema 的软预算：MCP / 插件工具每轮随请求全量发送，是唯一会随
- * 「装了几个 server」无限增长的部分。超预算只告警不再统一降档——统一重写会把
- * 已发送的工具描述换字节，整段缓存前缀失效；收缩下沉到注册时按单工具裁剪。
- */
-const DYNAMIC_TOOL_BUDGET_TOKENS = 8_000;
-/** 创作入口永远可见：被 MCP 工具挤出预算后模型会以为没有该能力，转而去翻源码。 */
+/** 创作入口永远可见：延迟后模型会以为没有该能力，转而去翻源码。 */
 const ALWAYS_VISIBLE_DYNAMIC_TOOLS = new Set([
   "plugin_authoring_guide",
   "create_plugin",
@@ -1016,7 +1014,6 @@ let dynamicToolsRev = 0;
 let dynamicDefinitionsCache: {
   version: number;
   tools: ToolDefinition[];
-  trimmed: boolean;
 } | null = null;
 
 /** 词边界裁剪；max <= 0 表示直接丢弃。 */
@@ -1144,7 +1141,7 @@ export function isToolParallelSafe(name: string): boolean {
   return isParallelSafeContract(toolContractOf(name));
 }
 
-/** 超预算被延迟展示的动态工具：注册在册、可按名调用，但 schema 不进 tools 段。 */
+/** 自动模式下被延迟展示的动态工具：注册在册、可按名调用，但 schema 不进 tools 段。 */
 const deferredDynamicTools = new Set<string>();
 /** tool_search 命中后被固定展示的工具（会话生命周期内保持可见，FIFO 淘汰最旧）。 */
 const pinnedDynamicTools: string[] = [];
@@ -1181,32 +1178,24 @@ export function deferredDynamicToolNames(): string[] {
 }
 
 /**
- * 动态工具定义：**按名字升序**输出，并套用描述预算。
+ * 动态工具定义：**按名字升序**输出，并套用单工具描述治理。
  *
  * 排序是为了缓存前缀稳定 —— MCP server 并发 connect 的完成顺序不稳定，
  * 按注册顺序输出会让 tools 断点（缓存断点）在每次重连后整段失效。
  *
- * 集合超过整体预算时不再全量发送：按名字序累计装到预算为止，其余转入
- * deferred（仍在册、可调用，schema 不发）。tool_search 命中的工具会被固定回
- * 可见区（promote），下轮请求经 reconcileToolCatalog 以「新增」追加到目录末尾，
- * 不破坏缓存前缀 —— claude-code isDeferred 同款语义。
+ * 自动模式下其余 MCP/插件工具转入 deferred（仍在册、可调用，schema 不发）。
+ * tool_search 命中的工具固定回可见区，下轮经 reconcileToolCatalog 以「新增」
+ * 追加到目录末尾，不破坏缓存前缀。
  */
 export function listDynamicToolDefinitions(): ToolDefinition[] {
   const cached = dynamicDefinitionsCache;
   if (cached && cached.version === dynamicToolsRev) return cached.tools;
   const sorted = [...dynamicTools.keys()].sort();
   const visible: ToolDefinition[] = [];
-  let used = 0;
   for (const name of sorted) {
     const definition = dynamicTools.get(name)!.definition;
-    const cost = estimateToolDefinitionsTokens([definition]);
-    if (
-      ALWAYS_VISIBLE_DYNAMIC_TOOLS.has(name) ||
-      pinnedDynamicTools.includes(name) ||
-      used + cost <= DYNAMIC_TOOL_BUDGET_TOKENS
-    ) {
+    if (ALWAYS_VISIBLE_DYNAMIC_TOOLS.has(name) || pinnedDynamicTools.includes(name)) {
       visible.push(definition);
-      used += cost;
     } else {
       deferredDynamicTools.add(name);
     }
@@ -1219,7 +1208,6 @@ export function listDynamicToolDefinitions(): ToolDefinition[] {
   dynamicDefinitionsCache = {
     version: dynamicToolsRev,
     tools: visible,
-    trimmed: deferredDynamicTools.size > 0,
   };
   return visible;
 }
@@ -1227,12 +1215,6 @@ export function listDynamicToolDefinitions(): ToolDefinition[] {
 /** 动态工具注册表版本：runtime 用它判断是否需要重建原始工具表。 */
 export function dynamicToolsVersion(): number {
   return dynamicToolsRev;
-}
-
-/** 动态工具描述是否因预算被裁剪过（true 说明该关掉一些 MCP server）。 */
-export function dynamicToolDefinitionsTrimmed(): boolean {
-  listDynamicToolDefinitions();
-  return dynamicDefinitionsCache?.trimmed === true;
 }
 
 export function hasDynamicTool(name: string): boolean {

@@ -125,6 +125,10 @@
 .mc-convpanel__grouprow[data-active="true"] .mc-convpanel__folder {
   color: var(--fg);
 }
+/* 「置顶」栏的图钉图标：品牌色点缀，和文件夹图标区分开 */
+.mc-convpanel__grouprow[data-pinned="true"] .mc-convpanel__folder {
+  color: var(--brand);
+}
 
 /* 行内操作钮：悬停整行时淡入 */
 .mc-convpanel__groupactions {
@@ -251,6 +255,7 @@
 }
 
 .mc-convpanel__item {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 7px;
@@ -264,14 +269,14 @@
   font-family: inherit;
   font-size: var(--fs-caption);
   text-align: left;
-  cursor: pointer;
+  cursor: default;
   /* 标题单行省略：旧会话里可能存有超长 AI 标题，不能让它换行撑高列表 */
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   transition: background-color var(--dur) var(--ease), color var(--dur) var(--ease);
 }
-.mc-convpanel__item:hover {
+.mc-convpanel__itemrow[data-hover="true"] .mc-convpanel__item {
   background: var(--surface-hover);
   color: var(--fg);
 }
@@ -322,18 +327,52 @@
   text-overflow: ellipsis;
 }
 
-/* 正在生成回复的主会话：小圆点脉冲 */
-.mc-convpanel__runningdot {
-  flex: none;
+/* 会话状态圆点：固定在标题左侧槽位，不参与文字布局 */
+.mc-convpanel__statusdot {
+  position: absolute;
+  left: 13px;
+  top: calc(50% - 3px);
   width: 6px;
   height: 6px;
   border-radius: 50%;
   background: var(--fg);
+}
+
+.mc-convpanel__statusdot[data-state="running"],
+.mc-convpanel__statusdot[data-state="approval"],
+.mc-convpanel__statusdot[data-state="ask"],
+.mc-convpanel__statusdot[data-state="compacting"] {
   animation: mc-conv-running 1.2s ease-in-out infinite;
 }
 
-.mc-convpanel__runningdot[data-approval="true"] {
+.mc-convpanel__statusdot[data-state="approval"],
+.mc-convpanel__statusdot[data-state="interrupted"] {
   background: var(--warning);
+}
+
+.mc-convpanel__statusdot[data-state="ask"] {
+  background: var(--accent);
+}
+
+.mc-convpanel__statusdot[data-state="compacting"] {
+  background: var(--accent-violet);
+}
+
+.mc-convpanel__statusdot[data-state="completed"] {
+  background: var(--success-strong);
+}
+
+.mc-convpanel__statusdot[data-state="error"] {
+  background: var(--danger);
+}
+
+.mc-convpanel__statusdot[data-state="aborted"] {
+  background: var(--fg-subtle);
+}
+
+/* 多选时同一槽位让给勾选框，标题位置保持不变 */
+.mc-convpanel__item[data-selecting="true"] .mc-convpanel__statusdot {
+  display: none;
 }
 
 @keyframes mc-conv-running {
@@ -349,7 +388,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .mc-convpanel__runningdot {
+  .mc-convpanel__statusdot {
     animation: none;
   }
 }
@@ -360,6 +399,43 @@
   align-items: center;
   min-width: 0;
   width: 100%;
+}
+.mc-convpanel__itemrow::before {
+  content: "";
+  position: absolute;
+  z-index: 2;
+  top: -1px;
+  right: 8px;
+  left: 8px;
+  height: 2px;
+  border-radius: var(--radius-full);
+  background: var(--accent);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--dur) var(--ease);
+}
+.mc-convpanel__itemrow[data-drop="before"]::before,
+.mc-convpanel__itemrow[data-drop="after"]::before {
+  opacity: 1;
+}
+.mc-convpanel__itemrow[data-drop="after"]::before {
+  top: auto;
+  bottom: -1px;
+}
+.mc-convpanel__itemrow[data-dragging="true"] .mc-convpanel__item {
+  opacity: 0.45;
+  cursor: default;
+}
+/* 指针拖拽期间不允许任何手形光标或文本选中 */
+body.mc-convpanel-dragging,
+body.mc-convpanel-dragging * {
+  cursor: default !important;
+}
+body.mc-convpanel-dragging {
+  user-select: none;
+}
+.mc-convpanel__itemrow[data-selecting="true"] .mc-convpanel__item {
+  cursor: default;
 }
 .mc-convpanel__itemrow .mc-convpanel__item {
   flex: 1;
@@ -386,7 +462,7 @@
   opacity: 0;
   transition: opacity var(--dur) var(--ease), background-color var(--dur) var(--ease), color var(--dur) var(--ease);
 }
-.mc-convpanel__itemrow:hover .mc-convpanel__rowbtn,
+.mc-convpanel__itemrow[data-hover="true"] .mc-convpanel__rowbtn,
 .mc-convpanel__rowbtn:focus-visible,
 .mc-convpanel__rowbtn[aria-expanded="true"] {
   opacity: 1;

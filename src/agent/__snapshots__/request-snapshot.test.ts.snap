@@ -22,10 +22,10 @@ exports[`request snapshot > matches the pinned first-turn request snapshot 1`] =
     {
       "head": "You are MeowCode, a local coding agent on Windows.
 
-Read before you change; edit",
+Edit files with edit_file or",
       "index": 0,
-      "length": 1427,
-      "sha1": "9ad099029d4b",
+      "length": 1425,
+      "sha1": "f95696170a5a",
     },
     {
       "head": "Project instructions from the user's workspace (AGENTS.md, CLAUDE.md, project ru",
@@ -37,8 +37,8 @@ Read before you change; edit",
       "head": "Working rules beyond the baseline:
 - Risky or hard-to-reverse actions (force-pus",
       "index": 2,
-      "length": 858,
-      "sha1": "e68da7e0d4f6",
+      "length": 863,
+      "sha1": "5be771877344",
     },
     {
       "head": "Environment: workspace <workspace> · win32 · shell PowerShell · approval full ac",
@@ -206,14 +206,14 @@ Read before you change; edit",
     },
     {
       "description": {
-        "length": 882,
-        "sha1": "a241f844f88c",
+        "length": 1012,
+        "sha1": "c3fa8bb05428",
       },
       "index": 13,
       "name": "task",
       "parameters": {
-        "length": 1295,
-        "sha1": "4637edac0e66",
+        "length": 1553,
+        "sha1": "05514b6f97be",
       },
     },
     {

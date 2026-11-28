@@ -35,7 +35,7 @@ const { AgentRuntime } = await import("./runtime.js");
 const { resetGatewayCacheDegradation, resolveCachePlan } = await import("./cache-profile.js");
 const { anthropicTools, toAnthropicMessages } = await import("./anthropic.js");
 const { trimMessages } = await import("./context.js");
-const { registerDynamicTool, unregisterDynamicTool } = await import("./tools.js");
+const { promoteDynamicTool, registerDynamicTool, unregisterDynamicTool } = await import("./tools.js");
 
 /** 官方 Anthropic 端点：四断点画像，也是工具目录行为组的基准 provider。 */
 const provider: ProviderConfig = {
@@ -308,6 +308,7 @@ describe("prompt cache prefix — 工具目录行为", () => {
       definition: extra,
       execute: async () => ({ ok: true, output: "ok" }),
     }).ok).toBe(true);
+    promoteDynamicTool(extra.function.name);
     try {
       await runtime.prompt("second");
     } finally {
@@ -337,6 +338,7 @@ describe("prompt cache prefix — 工具目录行为", () => {
       definition: gone,
       execute: async () => ({ ok: true, output: "ok" }),
     }).ok).toBe(true);
+    promoteDynamicTool(gone.function.name);
     try {
       await runtime.prompt("first");
       unregisterDynamicTool(gone.function.name);
@@ -366,6 +368,7 @@ describe("prompt cache prefix — 工具目录行为", () => {
       definition: gone,
       execute: async () => ({ ok: true, output: "ok" }),
     }).ok).toBe(true);
+    promoteDynamicTool(gone.function.name);
     try {
       await runtime.prompt("first");
       unregisterDynamicTool(gone.function.name);

@@ -6,12 +6,15 @@ import { Dialog } from "../ui/Dialog";
 import { FieldRow, Section } from "../ui/Section";
 import { Toggle } from "../ui/Toggle";
 import {
+  getAuxModel,
   getProviderFallback,
+  setAuxModel,
   setProviderFallback,
   type CloseAction,
   type LanguagePreference,
   type Preferences,
   type ProgressPillDismiss,
+  type ProviderSettings,
   type SpeechStyle,
 } from "../../api";
 import { UI_LANGUAGES } from "../../i18n/languages";
@@ -23,6 +26,8 @@ const CLOSE_ACTIONS: CloseAction[] = ["ask", "tray", "quit"];
 const SPEECH_STYLES: SpeechStyle[] = ["normal", "tafei", "dazui"];
 const PILL_DISMISS_MODES: ProgressPillDismiss[] = ["commit", "turn-end"];
 type DefaultPermissionMode = NonNullable<Preferences["defaultPermissionMode"]>;
+type InterjectMode = NonNullable<Preferences["interjectMode"]>;
+const INTERJECT_MODES: InterjectMode[] = ["queue", "steer"];
 const DEFAULT_PERMISSION_MODES: DefaultPermissionMode[] = ["read-only", "ask", "auto", "full"];
 const DEFAULT_PERMISSION_KEYS: Record<DefaultPermissionMode, string> = {
   "read-only": "readOnly",
@@ -48,10 +53,15 @@ export function GeneralSection({
   onAnnouncementsChange,
   showViewTabs,
   onShowViewTabsChange,
+  navAudioPulse,
+  onNavAudioPulseChange,
   nextPromptSuggestions,
   onNextPromptSuggestionsChange,
   defaultPermissionMode,
   onDefaultPermissionModeChange,
+  interjectMode,
+  onInterjectModeChange,
+  providers,
   onToast,
 }: {
   closeAction: CloseAction;
@@ -76,12 +86,19 @@ export function GeneralSection({
   /** 主区域顶部「对话 / 轨迹」悬浮胶囊（默认开） */
   showViewTabs: boolean;
   onShowViewTabsChange: (value: boolean) => void;
+  /** 对话跳转条随声音律动：跟随系统声音呼吸发光（默认关，仅 Windows） */
+  navAudioPulse: boolean;
+  onNavAudioPulseChange: (value: boolean) => void;
   /** 输入建议：回合结束后预测下一句（默认关，开启前确认额外 token） */
   nextPromptSuggestions: boolean;
   onNextPromptSuggestionsChange: (value: boolean) => void;
   /** 新建对话时默认使用的工具权限模式 */
   defaultPermissionMode: DefaultPermissionMode;
+  interjectMode: InterjectMode;
+  onInterjectModeChange: (value: InterjectMode) => void;
   onDefaultPermissionModeChange: (value: DefaultPermissionMode) => void;
+  /** 已配置的服务商列表：辅助模型下拉的候选 */
+  providers: ProviderSettings[];
   onToast: (text: string) => void;
 }) {
   const { t } = useTranslation("settings");
@@ -116,6 +133,37 @@ export function GeneralSection({
       onToast(error instanceof Error ? error.message : t("general.providerFallback.toggleFailed"));
     }
   };
+
+  /** 辅助任务模型："" = 跟随主模型；null = 还没从服务端拿到当前值 */
+  const [auxProviderId, setAuxProviderIdState] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    getAuxModel()
+      .then((result) => {
+        if (!cancelled) setAuxProviderIdState(result.providerId ?? "");
+      })
+      .catch(() => {
+        // 查询失败按默认值（跟随主模型）展示，避免下拉卡在加载态
+        if (!cancelled) setAuxProviderIdState("");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const changeAuxModel = async (value: string) => {
+    const previous = auxProviderId;
+    setAuxProviderIdState(value); // 乐观更新：失败回滚
+    try {
+      await setAuxModel(value || null); // 运行中的 server 立即生效（前台/侧边/后台 runtime 一起切）
+      // 落盘供下次启动传 env；走 saveProviderPrefs，不重启 agent server
+      await window.meow.saveProviderPrefs({ auxProviderId: value || null });
+    } catch (error) {
+      setAuxProviderIdState(previous ?? "");
+      onToast(error instanceof Error ? error.message : t("general.auxModel.saveFailed"));
+    }
+  };
   // 语言名用各自母语写法、不参与翻译：翻成当前界面语言反而认不出自己要切去哪
   const languageOptions = useMemo<CustomSelectOption<LanguagePreference>[]>(
     () => [
@@ -146,6 +194,24 @@ export function GeneralSection({
       })),
     [t],
   );
+  const interjectModeOptions = useMemo<CustomSelectOption<InterjectMode>[]>(
+    () =>
+      INTERJECT_MODES.map((value) => ({
+        value,
+        label: t(`general.interjectMode.options.${value}`),
+        description: t(`general.interjectMode.descs.${value}`),
+      })),
+    [t],
+  );
+  /** 辅助模型候选：停用的服务商保留但置灰（选中它会自动回退主模型），便于识别当前配置 */
+  const auxModelOptions = useMemo<CustomSelectOption<string>[]>(() => {
+    const options = providers.map((provider) => ({
+      value: provider.id,
+      label: `${provider.displayName || provider.name} · ${provider.model}`,
+      disabled: provider.enabled === false,
+    }));
+    return [{ value: "", label: t("general.auxModel.followMain") }, ...options];
+  }, [providers, t]);
 
   return (
     <div className="mc-settings__inner">
@@ -196,6 +262,13 @@ export function GeneralSection({
             label={t("general.viewTabs.field")}
           />
         </FieldRow>
+        <FieldRow label={t("general.navPulse.field")} hint={t("general.navPulse.desc")}>
+          <Toggle
+            checked={navAudioPulse}
+            onChange={onNavAudioPulseChange}
+            label={t("general.navPulse.field")}
+          />
+        </FieldRow>
         <ProxyRows onToast={onToast} />
         <FieldRow
           label={t("progressPill.field")}
@@ -222,12 +295,31 @@ export function GeneralSection({
             ariaLabel={t("general.defaultPermission.field")}
           />
         </FieldRow>
+        <FieldRow
+          label={t("general.interjectMode.field")}
+          hint={t("general.interjectMode.desc")}
+        >
+          <CustomSelect
+            value={interjectMode}
+            options={interjectModeOptions}
+            onChange={onInterjectModeChange}
+            ariaLabel={t("general.interjectMode.field")}
+          />
+        </FieldRow>
         <FieldRow label={t("speech.field")} hint={t("speech.desc")}>
           <CustomSelect
             value={speechStyle}
             options={speechOptions}
             onChange={onSpeechStyleChange}
             ariaLabel={t("speech.section")}
+          />
+        </FieldRow>
+        <FieldRow label={t("general.auxModel.field")} hint={t("general.auxModel.desc")}>
+          <CustomSelect
+            value={auxProviderId ?? ""}
+            options={auxModelOptions}
+            onChange={(value) => void changeAuxModel(value)}
+            ariaLabel={t("general.auxModel.field")}
           />
         </FieldRow>
         <FieldRow

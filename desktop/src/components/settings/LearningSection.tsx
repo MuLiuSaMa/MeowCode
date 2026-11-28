@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { LuSparkles, LuRotateCcw, LuTrash2, LuUndo2 } from "react-icons/lu";
 import {
@@ -12,6 +12,7 @@ import {
   type LearningSnapshot,
 } from "../../api";
 import { Button } from "../ui/Button";
+import { ConfirmDialog } from "../ui/ConfirmDialog";
 import { FieldRow, Section } from "../ui/Section";
 import { Spinner } from "../ui/Spinner";
 import { Toggle } from "../ui/Toggle";
@@ -36,9 +37,8 @@ export function LearningSection({ onToast }: { onToast: (text: string) => void }
   const [enabled, setEnabled] = useState<boolean | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
-  /** 清除所有学到的：二次确认，4 秒后自动复位（与记忆删除同范式） */
-  const [confirmingClear, setConfirmingClear] = useState(false);
-  const clearTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** 清除所有学到的：走确认弹窗（不可撤销） */
+  const [clearOpen, setClearOpen] = useState(false);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -70,13 +70,6 @@ export function LearningSection({ onToast }: { onToast: (text: string) => void }
       cancelled = true;
     };
   }, []);
-
-  useEffect(
-    () => () => {
-      if (clearTimer.current) clearTimeout(clearTimer.current);
-    },
-    [],
-  );
 
   const toggle = async (value: boolean) => {
     const previous = enabled;
@@ -120,15 +113,9 @@ export function LearningSection({ onToast }: { onToast: (text: string) => void }
     }
   };
 
-  /** 二次确认后才真的清：这个动作不可撤销，点错一次就全没了 */
+  /** 弹窗里确认后才真的清：这个动作不可撤销 */
   const clearAll = async () => {
-    if (clearTimer.current) clearTimeout(clearTimer.current);
-    if (!confirmingClear) {
-      setConfirmingClear(true);
-      clearTimer.current = setTimeout(() => setConfirmingClear(false), 4000);
-      return;
-    }
-    setConfirmingClear(false);
+    setClearOpen(false);
     setBusy(true);
     try {
       const result = await clearLearning();
@@ -253,13 +240,8 @@ export function LearningSection({ onToast }: { onToast: (text: string) => void }
           </span>
         </FieldRow>
         <FieldRow label={t("learning.clearField")} hint={t("learning.clearHint")}>
-          <Button
-            size="sm"
-            variant={confirmingClear ? "danger" : "outline"}
-            disabled={busy}
-            onClick={() => void clearAll()}
-          >
-            {confirmingClear ? t("learning.clearConfirm") : t("learning.clearAction")}
+          <Button size="sm" variant="outline" disabled={busy} onClick={() => setClearOpen(true)}>
+            {t("learning.clearAction")}
           </Button>
         </FieldRow>
       </Section>
@@ -309,6 +291,14 @@ export function LearningSection({ onToast }: { onToast: (text: string) => void }
           </ul>
         )}
       </Section>
+
+      <ConfirmDialog
+        open={clearOpen}
+        title={t("confirm.clearTitle")}
+        message={t("learning.clearHint")}
+        onCancel={() => setClearOpen(false)}
+        onConfirm={() => void clearAll()}
+      />
     </div>
   );
 }

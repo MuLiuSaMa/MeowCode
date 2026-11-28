@@ -199,6 +199,12 @@ contextBridge.exposeInMainWorld("meow", {
     ipcRenderer.on("meow:island-prompt-sent", wrapped);
     return () => ipcRenderer.removeListener("meow:island-prompt-sent", wrapped);
   },
+  /** 通知里回复投递失败：把草稿还原进输入框并提示原因 */
+  onNotificationReplyFailed: (listener) => {
+    const wrapped = (_event, payload) => listener(payload);
+    ipcRenderer.on("meow:notification-reply-failed", wrapped);
+    return () => ipcRenderer.removeListener("meow:notification-reply-failed", wrapped);
+  },
   /** 已导入的自定义字体（外观设置用），返回 [{family, url}] */
   listCustomFonts: () => ipcRenderer.invoke("meow:list-custom-fonts"),
   /** 弹系统对话框选字体文件并导入（拷贝到 userData/fonts） */
@@ -270,6 +276,14 @@ contextBridge.exposeInMainWorld("meow", {
     const wrapped = (_event, payload) => listener(payload);
     ipcRenderer.on("meow:model-profiles", wrapped);
     return () => ipcRenderer.removeListener("meow:model-profiles", wrapped);
+  },
+
+  /** 第二路目录：models.dev（ZCode 没收录的新模型靠它） */
+  getModelsDev: () => ipcRenderer.invoke("meow:models-dev"),
+  onModelsDev: (listener) => {
+    const wrapped = (_event, payload) => listener(payload);
+    ipcRenderer.on("meow:models-dev", wrapped);
+    return () => ipcRenderer.removeListener("meow:models-dev", wrapped);
   },
 
   /** 在资源管理器中打开目录（项目行菜单），返回错误信息或 null */

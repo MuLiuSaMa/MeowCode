@@ -116,12 +116,13 @@ export function UsageStatsSection() {
       if (!Number.isFinite(ms) || ms <= 0) return "—";
       const minutes = Math.max(1, Math.round(ms / 60_000));
       const days = Math.floor(minutes / 1440);
-      if (days >= 1) return `${days} ${t("usage.units.days")}`;
+      // 数字与单位之间用不换行空格：指标卡变窄时只在「x 小时」和「xx 分钟」之间折行
+      if (days >= 1) return `${days}\u00A0${t("usage.units.days")}`;
       const hours = Math.floor(minutes / 60);
       if (hours > 0) {
-        return `${hours} ${t("usage.units.hours")} ${minutes % 60} ${t("usage.units.minutes")}`;
+        return `${hours}\u00A0${t("usage.units.hours")} ${minutes % 60}\u00A0${t("usage.units.minutes")}`;
       }
-      return `${minutes} ${t("usage.units.minutes")}`;
+      return `${minutes}\u00A0${t("usage.units.minutes")}`;
     },
     [t],
   );

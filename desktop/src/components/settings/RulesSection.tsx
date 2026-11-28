@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { LuListChecks, LuPlus, LuRotateCw, LuTrash2 } from "react-icons/lu";
 import {
@@ -10,6 +10,7 @@ import {
 } from "../../api";
 import { formatDate } from "../../i18n/format";
 import { Button } from "../ui/Button";
+import { ConfirmDialog } from "../ui/ConfirmDialog";
 import { Dialog } from "../ui/Dialog";
 import { Spinner } from "../ui/Spinner";
 import { TextField } from "../ui/TextField";
@@ -53,8 +54,7 @@ export function RulesSection({
   const [editor, setEditor] = useState<Editor | null>(null);
   const [saving, setSaving] = useState(false);
   const [nameError, setNameError] = useState<string | null>(null);
-  const [confirming, setConfirming] = useState<string | null>(null);
-  const confirmTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     if (!workspace) {
@@ -75,13 +75,6 @@ export function RulesSection({
   useEffect(() => {
     void refresh();
   }, [refresh]);
-
-  useEffect(
-    () => () => {
-      if (confirmTimer.current) clearTimeout(confirmTimer.current);
-    },
-    [],
-  );
 
   const openCreate = () => {
     setNameError(null);
@@ -121,13 +114,6 @@ export function RulesSection({
 
   const remove = async (name: string) => {
     if (!workspace) return;
-    if (confirmTimer.current) clearTimeout(confirmTimer.current);
-    if (confirming !== name) {
-      setConfirming(name);
-      confirmTimer.current = setTimeout(() => setConfirming(null), 4000);
-      return;
-    }
-    setConfirming(null);
     try {
       await deleteRule(workspace, name);
       onToast(t("rules.deleted", { name }));
@@ -198,7 +184,6 @@ export function RulesSection({
           ) : (
             <ul className="mc-rules__list">
               {rules.map((rule) => {
-                const isConfirming = confirming === rule.name;
                 return (
                   <li key={rule.name} className="mc-rules__row">
                     <button
@@ -213,16 +198,12 @@ export function RulesSection({
                     </button>
                     <Button
                       size="sm"
-                      variant={isConfirming ? "danger" : "ghost"}
+                      variant="ghost"
                       className="mc-rules__delete"
-                      aria-label={
-                        isConfirming
-                          ? t("rules.confirmDeleteAria", { name: rule.name })
-                          : t("rules.deleteAria", { name: rule.name })
-                      }
-                      onClick={() => void remove(rule.name)}
+                      aria-label={t("rules.deleteAria", { name: rule.name })}
+                      onClick={() => setPendingDelete(rule.name)}
                     >
-                      {isConfirming ? t("actions.confirmDelete") : <LuTrash2 size={14} />}
+                      <LuTrash2 size={14} />
                     </Button>
                   </li>
                 );
@@ -278,6 +259,18 @@ export function RulesSection({
           </>
         ) : null}
       </Dialog>
+
+      <ConfirmDialog
+        open={pendingDelete !== null}
+        title={t("confirm.deleteTitle")}
+        message={t("confirm.deleteMessage", { name: pendingDelete ?? "" })}
+        onCancel={() => setPendingDelete(null)}
+        onConfirm={() => {
+          const name = pendingDelete;
+          setPendingDelete(null);
+          if (name) void remove(name);
+        }}
+      />
     </div>
   );
 }

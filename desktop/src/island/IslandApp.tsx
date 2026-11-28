@@ -908,6 +908,8 @@ export default function IslandApp() {
         body: JSON.stringify({
           message,
           sessionId: selected.id,
+          // 悬浮岛标记：server 据此在受理前把会话切到「悬浮岛模型」（设置 → 悬浮岛）
+          island: true,
           ...(pendingImages.length
             ? { images: pendingImages.map(({ mimeType, data }) => ({ mimeType, data })) }
             : {}),

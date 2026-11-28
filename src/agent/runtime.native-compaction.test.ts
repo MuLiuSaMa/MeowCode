@@ -88,6 +88,8 @@ describe("runtime native compaction", () => {
     expect(runtime.current?.currentCompactionSummary).toBe("SERVER SUMMARY");
     expect(runtime.current?.effectiveMessages.map((message) => message.content)).toEqual([
       "Earlier conversation summary:\nSERVER SUMMARY",
+      // 衔接语：压缩后明说「接着干」，防止模型复述进展或提前收工
+      expect.stringContaining("Continue the work seamlessly"),
       "FINAL",
     ]);
   });

@@ -154,6 +154,45 @@ function linesOf(text: string): { lines: string[]; eol: string; trailingNewline:
   return { lines, eol, trailingNewline };
 }
 
+/**
+ * 上下文匹配的三级放宽（对齐 Codex 的 seek_sequence）：精确 → 忽略行尾空白 →
+ * 忽略首尾空白。模型抄上下文时最容易多带/少带缩进与行尾空格，为这种事让整轮
+ * 补丁失败、再花一整轮重新思考，代价远大于"宽松一点"的风险。
+ * 三级都失败才算不匹配 —— 真正的错位置不会因为 trim 就撞上。
+ */
+const CONTEXT_MATCHERS: ReadonlyArray<(actual: string, expected: string) => boolean> = [
+  (actual, expected) => actual === expected,
+  (actual, expected) => actual.replace(/\s+$/, "") === expected.replace(/\s+$/, ""),
+  (actual, expected) => actual.trim() === expected.trim(),
+];
+
+/** 在 [from, ∞) 里找第一个窗口；返回起点，找不到返回 -1。 */
+function seekContext(working: string[], oldLines: string[], from: number): number {
+  for (const matches of CONTEXT_MATCHERS) {
+    for (let start = from; start + oldLines.length <= working.length; start += 1) {
+      let hit = true;
+      for (let offset = 0; offset < oldLines.length; offset += 1) {
+        if (!matches(working[start + offset], oldLines[offset])) {
+          hit = false;
+          break;
+        }
+      }
+      if (hit) return start;
+    }
+  }
+  return -1;
+}
+
+/** 失败时的"最近似位置"：首行内容（忽略空白）出现在哪，帮模型判断是抄错了还是改错了文件。 */
+function nearestContextLine(working: string[], oldLines: string[], from: number): number | undefined {
+  const first = oldLines[0]?.trim();
+  if (!first) return undefined;
+  for (let index = from; index < working.length; index += 1) {
+    if (working[index].trim() === first) return index + 1;
+  }
+  return undefined;
+}
+
 function applyHunks(
   path: string,
   before: string,
@@ -166,23 +205,12 @@ function applyHunks(
     if (!hunk.oldLines.length) {
       throw new PatchError(`${path}: hunk ${hunkIndex + 1} has no context or removed lines`);
     }
-    let found = -1;
-    for (let start = cursor; start + hunk.oldLines.length <= working.length; start += 1) {
-      let matches = true;
-      for (let offset = 0; offset < hunk.oldLines.length; offset += 1) {
-        if (working[start + offset] !== hunk.oldLines[offset]) {
-          matches = false;
-          break;
-        }
-      }
-      if (matches) {
-        found = start;
-        break;
-      }
-    }
+    const found = seekContext(working, hunk.oldLines, cursor);
     if (found < 0) {
+      const near = nearestContextLine(working, hunk.oldLines, cursor);
       throw new PatchError(
-        `${path}: hunk ${hunkIndex + 1} does not match the current file. Re-read the file and regenerate the patch.`,
+        `${path}: hunk ${hunkIndex + 1} does not match the current file` +
+          `${near === undefined ? "" : ` (closest context at line ${near})`}. Re-read the file and regenerate the patch.`,
       );
     }
     working = [

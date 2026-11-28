@@ -176,7 +176,7 @@
     "deleteAll": "すべて削除",
     "confirmDeleteAll": "すべて削除しますか？",
     "deleteAria": "{{name}} を完全に削除",
-    "confirmDeleteAria": "もう一度クリックで {{name}} を完全に削除"
+    "confirmDeleteAria": "{{name}} を完全に削除"
   },
   "about": {
     "loading": "バージョン情報を読み込んでいます…",
@@ -199,6 +199,12 @@
     "upToDate": "すでに最新バージョンです",
     "checkFailed": "バージョン確認に失敗しました：{{error}}",
     "sponsorList": "スポンサー一覧（MeowCode、NexBox、OpenMD、LingTab）"
+  },
+  "confirm": {
+    "deleteTitle": "削除しますか？",
+    "deleteMessage": "「{{name}}」は完全に削除されます。",
+    "clearTitle": "すべて削除しますか？",
+    "clearMessage": "すべての記録が削除され、元に戻せません。"
   },
   "actions": {
     "add": "追加",
@@ -327,8 +333,8 @@
       "advanced": "高度な設定",
       "advancedHint": "推論強度 / キャッシュ TTL / 推論レベル / 認証とリクエストのカスタマイズ — 未設定なら既定",
       "reasoningEffort": "推論強度",
-      "reasoningEffortPlaceholder": "空欄 = プロバイダーの既定",
       "reasoningEffortHint": "reasoning_effort として送信されます",
+      "reasoningEffortRecommended": "空欄 = {{level}} を送信（既定の思考強度を返す API はありません）",
       "thinkingBudget": "思考予算",
       "thinkingBudgetPlaceholder": "空欄 = 推論強度のレベルに従う",
       "thinkingBudgetHint": "thinking.budget_tokens。max_tokens を超えないよう自動的に調整されます",
@@ -374,7 +380,13 @@
   "island": {
     "section": "AI 悬浮岛",
     "field": "启用悬浮岛",
-    "desc": "画面の上部中央にすべての実行中セッションの状態カプセルを表示します。ホバーでチャット小窓に展開し、そのまま入力や停止ができます。"
+    "desc": "画面の上部中央にすべての実行中セッションの状態カプセルを表示します。ホバーでチャット小窓に展開し、そのまま入力や停止ができます。",
+    "model": {
+      "field": "アイランドのモデル",
+      "desc": "フローティングアイランドからメッセージを送ると、対象セッションはまずこのモデルに切り替わります（次のターンから適用。生成中のターンには影響せず、メインウィンドウでのモデル切り替えが優先されます）。未設定または利用不可の場合はセッションの現在のモデルに従います。",
+      "followMain": "セッションのモデルに従う",
+      "saveFailed": "アイランドのモデルを保存できませんでした"
+    }
   },
   "hooks": {
     "loading": "Hooks 設定を読み込み中…",
@@ -489,7 +501,7 @@
     "noWorkspaceHint": "ルールはプロジェクトの .meowcode/rules ディレクトリに保存されます。",
     "clickToEdit": "クリックしてこのルールを編集",
     "deleteAria": "ルール「{{name}}」を削除",
-    "confirmDeleteAria": "ルール「{{name}}」の削除を確認するにはもう一度クリック",
+    "confirmDeleteAria": "ルール「{{name}}」を削除",
     "createTitle": "新しいルール",
     "editTitle": "ルール「{{name}}」を編集",
     "editorDesc": "ルールはプロジェクトとともにシステムプロンプトへ注入されます。Markdown に対応しています。",
@@ -586,7 +598,7 @@
     "clearField": "学習した内容をすべて消去",
     "clearHint": "学習したスキル、指針、プロファイル特性、結果履歴をすべて削除します（このプロジェクトとプロジェクト横断の両方）。元に戻せません。",
     "clearAction": "すべて消去",
-    "clearConfirm": "もう一度クリックで確定",
+    "clearConfirm": "消去する",
     "cleared": "{{scopes}} 個の学習ディレクトリを空にしました",
     "clearedNothing": "消去する項目はありません",
     "clearFailed": "消去に失敗しました"
@@ -595,6 +607,10 @@
     "viewTabs": {
       "field": "ビュー切り替え",
       "desc": "メイン領域の上部に「会話 / 軌跡」のフローティング切り替えを表示します。メッセージのない新規セッションでは表示されません。"
+    },
+    "navPulse": {
+      "field": "サウンドに合わせて鼓動",
+      "desc": "会話ナビゲーターが PC で再生中のサウンドのリズムに合わせて呼吸するように光ります（Windows）。"
     },
     "section": "一般",
     "desc": "日常の動作に関する設定です。変更はすぐに反映されます。",
@@ -610,6 +626,12 @@
       "confirmCost": "毎ターン追加の Token を消費します。会話のキャッシュを再利用するため通常は少額ですが、課金対象です。",
       "enable": "オンにする"
     },
+    "auxModel": {
+      "field": "補助モデル",
+      "desc": "タイトル生成、AI レビュー、入力候補、記憶の蒸留、学習、要約圧縮、コミットメッセージ、プロンプト整形などの補助タスクをこのモデルで実行し、コストを節約します。未設定または利用不可の場合はメインの会話モデルに従います。",
+      "followMain": "メインモデルに従う",
+      "saveFailed": "補助モデルを保存できませんでした"
+    },
     "providerFallback": {
       "field": "プロバイダーのフェイルオーバー",
       "desc": "メインプロバイダーのタイムアウト・レート制限・サーバーエラー時、このターンは他の有効なプロバイダーに自動で切り替わります（最大 2 回）。",
@@ -618,6 +640,18 @@
     "defaultPermission": {
       "field": "既定の権限モード",
       "desc": "新しい会話で使用するツール権限。既存の会話はそれぞれの選択を保持します。"
+    },
+    "interjectMode": {
+      "field": "割り込み方式",
+      "desc": "応答の生成中にメッセージを送ったときの動作。",
+      "options": {
+        "queue": "キューに入れる",
+        "steer": "停止して送信"
+      },
+      "descs": {
+        "queue": "メッセージはキューに入り、現在のターン終了後に送られます。",
+        "steer": "実行中の応答をすぐ停止し、メッセージを直接送ります。"
+      }
     },
     "other": {
       "section": "一般"

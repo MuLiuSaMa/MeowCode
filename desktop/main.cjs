@@ -4,6 +4,7 @@ const {
   Menu,
   Notification,
   Tray,
+  desktopCapturer,
   dialog,
   ipcMain,
   nativeImage,
@@ -18,6 +19,7 @@ const { registerTerminalIpc } = require("./terminals.cjs");
 const { createJobHost } = require("./job-host.cjs");
 const { createBrowserHostController } = require("./browser-host.cjs");
 const { createComputerHostController } = require("./computer-host.cjs");
+const { extractModelsDev } = require("./models-dev.cjs");
 const { createNoticeController } = require("./notice.cjs");
 const { createSponsorsController } = require("./sponsors.cjs");
 const { mainStrings } = require("./main-i18n.cjs");
@@ -30,11 +32,16 @@ const {
 } = require("./tray-sessions.cjs");
 const {
   TURN_DEDUPE_MS,
+  buildReplyToastXml,
   createDedupe,
+  createReplyRoutes,
   describeApproval,
   describeAsk,
   describeTurn,
+  notificationTag,
   notificationTitle,
+  parseActivationArgs,
+  pickReplyText,
   shouldNotify,
 } = require("./notifications.cjs");
 const { readJsonWithBackup, writeJsonAtomic } = require("./persist.cjs");
@@ -94,6 +101,8 @@ const http = require("node:http");
 const https = require("node:https");
 const os = require("node:os");
 const path = require("node:path");
+const { pathToFileURL } = require("node:url");
+const zlib = require("node:zlib");
 
 // 悬浮岛是透明置顶小窗：Windows 下 Chromium 的遮挡计算会把它误判为被遮挡而挂起渲染
 // （NexBox 灵动岛踩过同一坑）。必须在 app ready 前设置，对所有窗口生效。
@@ -431,16 +440,39 @@ function reportStartupStatistics() {
 /**
  * 模型规则自动更新：拉取 ZCode 的公开内置配置（与 providerCatalog 同一数据源），
  * 把 modelRules 里按模型名生效的思考档位、上下文窗口、最大输出、图片输入能力
- * 抽成精简表缓存到本机。新模型发布后无需改代码，下次启动（或本次拉取完成）
- * 就能用上新的档位与容量。
+ * 抽成精简表缓存到本机。新模型发布后无需改代码。
+ *
+ * 地址：https://cdn-zcode.z.ai/zcode/config/zcode-builtin.json（ZCode 官方 CDN）
+ * 策略：每 10 分钟一次**条件请求**（If-None-Match）；上游没变就是 304（几百字节），
+ * 变了才下载整包（约 150KB）并推给渲染层。
  */
-const MODEL_PROFILES_URL = "https://cdn-zcode.z.ai/zcode/config/zcode-builtin.json";
-/** 拉取间隔：6 小时。失败不重试，等下次启动。 */
-const MODEL_PROFILES_TTL = 6 * 60 * 60 * 1000;
+const MODEL_PROFILES_URL =
+  process.env.MEOWCODE_MODEL_PROFILES_URL || "https://cdn-zcode.z.ai/zcode/config/zcode-builtin.json";
+/** 轮询间隔：10 分钟。上游一发布新模型，最迟 10 分钟就能生效。 */
+const MODEL_PROFILES_TTL = 10 * 60 * 1000;
+/** 窗口回到前台时，距上次校验超过这个时间就立刻再查一次（睡眠唤醒 / 长时间在后台）。 */
+const MODEL_PROFILES_FOCUS_TTL = 2 * 60 * 1000;
 let modelProfiles = null;
+/** 上次成功校验的时间（200 或 304 都算）：单独记，304 不回写磁盘也不会反复重拉 */
+let modelProfilesCheckedAt = 0;
+/** 上次拿到的 ETag：条件请求用 */
+let modelProfilesEtag = null;
 
 function modelProfilesPath() {
   return path.join(app.getPath("userData"), "model-profiles.json");
+}
+
+/**
+ * 失败重试间隔：启动时网络常常还没起来（代理没就绪 / Wi-Fi 刚连），
+ * 只靠 3 小时定时器会让用户一整天用旧表。先快后慢试四次，之后交给定时器。
+ */
+const FETCH_RETRY_DELAYS = [15_000, 60_000, 180_000, 600_000];
+
+/** 排一次重试；attempt 用尽后不再排，等下一个定时周期。 */
+function retryFetch(fetcher, attempt) {
+  if (attempt >= FETCH_RETRY_DELAYS.length) return;
+  const timer = setTimeout(() => fetcher(true, attempt + 1), FETCH_RETRY_DELAYS[attempt]);
+  if (typeof timer.unref === "function") timer.unref();
 }
 
 /**
@@ -498,46 +530,206 @@ function readCachedModelProfiles() {
   }
 }
 
-function fetchModelProfiles() {
+/** 把本机缓存读进内存（只读盘、不发请求）：窗口一起来就能拿到上一轮的表。 */
+function loadCachedModelProfiles() {
+  if (modelProfiles) return;
   modelProfiles = readCachedModelProfiles();
-  const age = modelProfiles ? Date.now() - Number(modelProfiles.fetchedAt ?? 0) : Infinity;
-  if (age >= 0 && age < MODEL_PROFILES_TTL) return;
+  modelProfilesCheckedAt = Number(modelProfiles?.fetchedAt ?? 0);
+  modelProfilesEtag = modelProfiles?.etag ?? null;
+}
 
-  const request = https.get(MODEL_PROFILES_URL, { timeout: 15_000 }, (response) => {
-    if (response.statusCode !== 200) {
-      response.resume();
-      return;
-    }
-    let body = "";
-    response.setEncoding("utf8");
-    response.on("data", (chunk) => {
-      body += chunk;
-    });
-    response.on("end", () => {
-      try {
-        const payload = JSON.parse(body);
-        const profiles = extractModelProfiles(payload);
-        if (!profiles.length) return;
-        const next = {
-          revision: payload.revision ?? null,
-          fetchedAt: Date.now(),
-          profiles,
-        };
-        fs.mkdirSync(path.dirname(modelProfilesPath()), { recursive: true });
-        fs.writeFileSync(modelProfilesPath(), JSON.stringify(next));
-        modelProfiles = next;
-        if (mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.webContents.send("meow:model-profiles", next);
-        }
-      } catch (error) {
-        console.warn("[MeowCode] Failed to parse model profiles:", error);
+function fetchModelProfiles(force = false, attempt = 0) {
+  loadCachedModelProfiles();
+  if (!force && Date.now() - modelProfilesCheckedAt < MODEL_PROFILES_TTL) return;
+
+  // 一次请求只排一次重试：timeout 与 error 可能同时到
+  let retried = false;
+  const retryOnce = () => {
+    if (retried) return;
+    retried = true;
+    retryFetch(fetchModelProfiles, attempt);
+  };
+  const request = https.get(
+    MODEL_PROFILES_URL,
+    {
+      timeout: 15_000,
+      headers: {
+        // 条件请求：规则没变就只回 304，避免每 10 分钟下一次 150KB
+        ...(modelProfilesEtag ? { "If-None-Match": modelProfilesEtag } : {}),
+        "Cache-Control": "no-cache",
+      },
+    },
+    (response) => {
+      if (response.statusCode === 304) {
+        response.resume();
+        modelProfilesCheckedAt = Date.now();
+        return;
       }
-    });
-  });
+      if (response.statusCode !== 200) {
+        response.resume();
+        retryOnce();
+        return;
+      }
+      let body = "";
+      response.setEncoding("utf8");
+      response.on("data", (chunk) => {
+        body += chunk;
+      });
+      response.on("end", () => {
+        try {
+          const payload = JSON.parse(body);
+          const profiles = extractModelProfiles(payload);
+          if (!profiles.length) {
+            retryOnce();
+            return;
+          }
+          const next = {
+            revision: payload.revision ?? null,
+            fetchedAt: Date.now(),
+            etag: response.headers.etag ?? null,
+            profiles,
+          };
+          fs.mkdirSync(path.dirname(modelProfilesPath()), { recursive: true });
+          fs.writeFileSync(modelProfilesPath(), JSON.stringify(next));
+          modelProfiles = next;
+          modelProfilesCheckedAt = next.fetchedAt;
+          modelProfilesEtag = next.etag;
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send("meow:model-profiles", next);
+          }
+        } catch (error) {
+          console.warn("[MeowCode] Failed to parse model profiles:", error);
+          retryOnce();
+        }
+      });
+    },
+  );
   request.on("error", (error) => {
     console.warn("[MeowCode] Failed to fetch model profiles:", error.message ?? error);
+    retryOnce();
   });
-  request.on("timeout", () => request.destroy());
+  request.on("timeout", () => {
+    // destroy 不一定会发 error 事件，超时自己也要排一次重试（retryOnce 内部去重）
+    retryOnce();
+    request.destroy();
+  });
+}
+
+/**
+ * 第二路远程目录：models.dev（OpenCode 用的那份公开模型目录，326 个服务商 / 4000+ 模型）。
+ * ZCode 的表自 2026-09 起没更新，新模型只能靠它补；这里只取四个字段：
+ * 上下文 / 最大输出 / 图片输入 / 思考档位。
+ *
+ * 地址：https://models.dev/api.json（整包约 6.8MB，靠 ETag：没变就是 304）
+ */
+const MODELS_DEV_URL =
+  process.env.MEOWCODE_MODELS_DEV_URL || "https://models.dev/api.json";
+/** 3 小时检查一次；带 ETag，没变就只有 304（实测支持），不会每次都下 6.8MB */
+const MODELS_DEV_TTL = 3 * 60 * 60 * 1000;
+/** 回到前台时的检查阈值：gzip + ETag 之后一次校验很便宜，10 分钟就够勤 */
+const MODELS_DEV_FOCUS_TTL = 10 * 60 * 1000;
+let modelsDev = null;
+let modelsDevCheckedAt = 0;
+let modelsDevEtag = null;
+
+function modelsDevPath() {
+  return path.join(app.getPath("userData"), "models-dev.json");
+}
+
+function readCachedModelsDev() {
+  try {
+    const parsed = JSON.parse(fs.readFileSync(modelsDevPath(), "utf8"));
+    return parsed && parsed.models && typeof parsed.models === "object" ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+/** 同上：models.dev 的缓存也先读进内存，首帧就有值。 */
+function loadCachedModelsDev() {
+  if (modelsDev) return;
+  modelsDev = readCachedModelsDev();
+  modelsDevCheckedAt = Number(modelsDev?.fetchedAt ?? 0);
+  modelsDevEtag = modelsDev?.etag ?? null;
+}
+
+function fetchModelsDev(force = false, attempt = 0) {
+  loadCachedModelsDev();
+  if (!force && Date.now() - modelsDevCheckedAt < MODELS_DEV_TTL) return;
+
+  let retried = false;
+  const retryOnce = () => {
+    if (retried) return;
+    retried = true;
+    retryFetch(fetchModelsDev, attempt);
+  };
+  const request = https.get(
+    MODELS_DEV_URL,
+    {
+      timeout: 60_000,
+      headers: {
+        ...(modelsDevEtag ? { "If-None-Match": modelsDevEtag } : {}),
+        "Cache-Control": "no-cache",
+        // 必须压缩：原包 6.85MB，直连国内要 21 秒；gzip 后 712KB，约 2 秒
+        "Accept-Encoding": "gzip",
+      },
+    },
+    (response) => {
+      if (response.statusCode === 304) {
+        response.resume();
+        modelsDevCheckedAt = Date.now();
+        return;
+      }
+      if (response.statusCode !== 200) {
+        response.resume();
+        retryOnce();
+        return;
+      }
+      const chunks = [];
+      response.on("data", (chunk) => {
+        chunks.push(chunk);
+      });
+      response.on("end", () => {
+        try {
+          const raw = Buffer.concat(chunks);
+          const text =
+            response.headers["content-encoding"] === "gzip"
+              ? zlib.gunzipSync(raw).toString("utf8")
+              : raw.toString("utf8");
+          const models = extractModelsDev(JSON.parse(text));
+          if (!Object.keys(models).length) {
+            retryOnce();
+            return;
+          }
+          const next = {
+            fetchedAt: Date.now(),
+            etag: response.headers.etag ?? null,
+            models,
+          };
+          fs.mkdirSync(path.dirname(modelsDevPath()), { recursive: true });
+          fs.writeFileSync(modelsDevPath(), JSON.stringify(next));
+          modelsDev = next;
+          modelsDevCheckedAt = next.fetchedAt;
+          modelsDevEtag = next.etag;
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send("meow:models-dev", next);
+          }
+        } catch (error) {
+          console.warn("[MeowCode] Failed to parse models.dev:", error);
+          retryOnce();
+        }
+      });
+    },
+  );
+  request.on("error", (error) => {
+    console.warn("[MeowCode] Failed to fetch models.dev:", error.message ?? error);
+    retryOnce();
+  });
+  request.on("timeout", () => {
+    // destroy 不一定会发 error 事件，超时自己也要排一次重试（retryOnce 内部去重）
+    retryOnce();
+    request.destroy();
+  });
 }
 
 /**
@@ -609,10 +801,16 @@ function defaultSettings() {
     progressPillDismiss: "commit",
     // 新建对话的默认权限模式：保持引入设置之前的「工作区内自动」
     defaultPermissionMode: "auto",
+    // 插话方式：queue = 回合进行中发送的消息排队等当前回合结束；steer = 直接中止当前对话立即发送
+    interjectMode: "queue",
     // 记忆总开关：开 = 自动蒸馏 + 注入记忆索引 + 下发记忆工具；关 = 全部停用（记忆文件仍保留）
     memoryEnabled: true,
     // 自我学习（技能 / 项目经验 / 用户模型）：实验性能力，默认关闭，设置页可开
     selfLearning: false,
+    // 辅助任务模型（标题/记忆/学习/压缩/建议等）：providerId 或 null = 跟随主模型
+    auxProviderId: null,
+    // 悬浮岛模型（从悬浮岛发送时切到的模型）：providerId 或 null = 跟随会话当前模型
+    islandProviderId: null,
     // 供应商故障转移：默认关闭，开启后超时/限流/5xx 时本回合自动切备用服务商
     providerFallback: false,
     // 命令沙箱（Windows 受限令牌 + ACL）：默认关闭，设置页显式开启
@@ -624,6 +822,8 @@ function defaultSettings() {
     archivedSessions: [],
     projectNames: {},
     pinnedProjects: [],
+    pinnedConversations: [],
+    conversationOrder: {},
     removedProjects: [],
     githubAuth: {},
     mcpCredentials: {},
@@ -634,6 +834,16 @@ function defaultSettings() {
       includeWorkspace: false,
     },
   };
+}
+
+function normalizeConversationOrder(raw) {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
+  const out = {};
+  for (const [cwd, filePaths] of Object.entries(raw)) {
+    if (!cwd || !Array.isArray(filePaths)) continue;
+    out[cwd] = [...new Set(filePaths.filter((item) => typeof item === "string" && item))];
+  }
+  return out;
 }
 
 function normalizeMcpCredentials(raw) {
@@ -711,6 +921,8 @@ function migrateSettings(raw) {
     defaultPermissionMode: DEFAULT_PERMISSION_MODES.includes(parsed.defaultPermissionMode)
       ? parsed.defaultPermissionMode
       : "auto",
+    // 插话方式：缺字段的老用户补 queue（保持原有排队行为）
+    interjectMode: parsed.interjectMode === "steer" ? "steer" : "queue",
     // 全新安装走 defaultSettings() 回退（显式 false）；已有 settings.json 缺字段的老用户补 true
     onboardingCompleted:
       typeof parsed.onboardingCompleted === "boolean" ? parsed.onboardingCompleted : true,
@@ -724,6 +936,14 @@ function migrateSettings(raw) {
           : true,
     // 自我学习：缺字段的老用户补 false（实验性，默认关闭）
     selfLearning: typeof parsed.selfLearning === "boolean" ? parsed.selfLearning : false,
+    // 辅助任务模型：null = 跟随主模型
+    auxProviderId:
+      typeof parsed.auxProviderId === "string" && parsed.auxProviderId ? parsed.auxProviderId : null,
+    // 悬浮岛模型：null = 跟随会话当前模型
+    islandProviderId:
+      typeof parsed.islandProviderId === "string" && parsed.islandProviderId
+        ? parsed.islandProviderId
+        : null,
     // 供应商故障转移：缺字段的老用户补 false（新功能，默认关闭）
     providerFallback: parsed.providerFallback === true,
     // 网络代理：缺字段的老用户补直连（保持原有网络行为）
@@ -735,6 +955,8 @@ function migrateSettings(raw) {
         ? parsed.projectNames
         : {},
     pinnedProjects: Array.isArray(parsed.pinnedProjects) ? parsed.pinnedProjects : [],
+    pinnedConversations: Array.isArray(parsed.pinnedConversations) ? parsed.pinnedConversations : [],
+    conversationOrder: normalizeConversationOrder(parsed.conversationOrder),
     removedProjects: Array.isArray(parsed.removedProjects) ? parsed.removedProjects : [],
     // 界面字体：空串 = 默认 MiSans；customFonts = 导入的自定义字体文件
     fontFamily: typeof parsed.fontFamily === "string" ? parsed.fontFamily : "",
@@ -955,6 +1177,8 @@ function publicSettings(settings) {
     defaultPermissionMode: DEFAULT_PERMISSION_MODES.includes(settings.defaultPermissionMode)
       ? settings.defaultPermissionMode
       : "auto",
+    /** 插话方式：queue = 排队；steer = 直接中止当前对话立即发送 */
+    interjectMode: settings.interjectMode === "steer" ? "steer" : "queue",
     onboardingCompleted: typeof settings.onboardingCompleted === "boolean" ? settings.onboardingCompleted : true,
     /** 记忆总开关：默认开（关掉后不蒸馏、不注入、不下发记忆工具） */
     memoryEnabled:
@@ -965,6 +1189,16 @@ function publicSettings(settings) {
           : true,
     /** 自我学习：实验性，默认关 */
     selfLearning: typeof settings.selfLearning === "boolean" ? settings.selfLearning : false,
+    /** 辅助任务模型：null = 跟随主模型 */
+    auxProviderId:
+      typeof settings.auxProviderId === "string" && settings.auxProviderId
+        ? settings.auxProviderId
+        : null,
+    /** 悬浮岛模型：null = 跟随会话当前模型 */
+    islandProviderId:
+      typeof settings.islandProviderId === "string" && settings.islandProviderId
+        ? settings.islandProviderId
+        : null,
     /** 供应商故障转移：默认关（开 = 临时故障时本回合切备用服务商） */
     providerFallback: settings.providerFallback === true,
     /** 网络代理：direct / system / manual */
@@ -975,11 +1209,18 @@ function publicSettings(settings) {
     projectNames: settings.projectNames && typeof settings.projectNames === "object" ? settings.projectNames : {},
     /** 置顶的项目 cwd 列表（顺序即置顶顺序） */
     pinnedProjects: Array.isArray(settings.pinnedProjects) ? settings.pinnedProjects : [],
+    pinnedConversations: Array.isArray(settings.pinnedConversations) ? settings.pinnedConversations : [],
+    /** 项目内手动拖拽后的会话顺序 */
+    conversationOrder: normalizeConversationOrder(settings.conversationOrder),
     /** 已移除（侧栏隐藏）的项目 cwd 列表 */
     removedProjects: Array.isArray(settings.removedProjects) ? settings.removedProjects : [],
     silentUpdate: typeof settings.silentUpdate === "boolean" ? settings.silentUpdate : true,
     notifications: typeof settings.notifications === "boolean" ? settings.notifications : true,
     announcements: typeof settings.announcements === "boolean" ? settings.announcements : true,
+    // 主区域「对话 / 轨迹」悬浮胶囊：此前漏在这里，关掉后重启会弹回开启
+    showViewTabs: typeof settings.showViewTabs === "boolean" ? settings.showViewTabs : true,
+    // 跳转条随声音律动：默认关闭
+    navAudioPulse: typeof settings.navAudioPulse === "boolean" ? settings.navAudioPulse : false,
     floatingIsland: typeof settings.floatingIsland === "boolean" ? settings.floatingIsland : false,
     nextPromptSuggestions:
       typeof settings.nextPromptSuggestions === "boolean" ? settings.nextPromptSuggestions : false,
@@ -1187,6 +1428,7 @@ function defaultUiState() {
   return {
     version: 1,
     inspector: { visible: true, width: 360 },
+    collapsedProjects: [],
     tabs: [],
     activeTabId: "home",
     drafts: {},
@@ -1209,6 +1451,9 @@ function sanitizeUiState(raw) {
       typeof inspectorInput.visible === "boolean" ? inspectorInput.visible : base.inspector.visible,
     width: clampNumber(inspectorInput.width, 240, 1600, base.inspector.width),
   };
+  const collapsedProjects = Array.isArray(parsed.collapsedProjects)
+    ? [...new Set(parsed.collapsedProjects.filter((item) => typeof item === "string" && item.length > 0))]
+    : [];
 
   const tabs = [];
   if (Array.isArray(parsed.tabs)) {
@@ -1314,7 +1559,7 @@ function sanitizeUiState(raw) {
     activeTabId = tabs[0]?.id ?? "home";
   }
 
-  const result = { version: 1, inspector, tabs, activeTabId, drafts };
+  const result = { version: 1, inspector, collapsedProjects, tabs, activeTabId, drafts };
   // 极端情况下仍超限：先丢最旧草稿，再减少非活动浏览器页签
   while (JSON.stringify(result).length > MAX_UI_STATE_CHARS && Object.keys(result.drafts).length) {
     const oldest = Object.entries(result.drafts).sort((a, b) =>
@@ -1354,6 +1599,7 @@ function mergeUiState(patch) {
       next.inspector.width = Number(patch.inspector.width);
     }
   }
+  if (Array.isArray(patch?.collapsedProjects)) next.collapsedProjects = patch.collapsedProjects;
   if (Array.isArray(patch?.tabs)) next.tabs = patch.tabs;
   if (typeof patch?.activeTabId === "string") next.activeTabId = patch.activeTabId;
   if (patch?.drafts && typeof patch.drafts === "object" && !Array.isArray(patch.drafts)) {
@@ -1502,6 +1748,12 @@ function buildServerEnv(settings) {
     MEOWCODE_MEMORY: settings.memoryEnabled === false ? "0" : "1",
     // 自我学习开关：同上，运行中切换走 /config/learning（默认关）
     MEOWCODE_SELF_LEARNING: settings.selfLearning === true ? "1" : "0",
+    // 辅助任务模型：server 只认 env，运行中切换走 /config/aux-model（空 = 跟随主模型）
+    MEOWCODE_AUX_PROVIDER_ID:
+      typeof settings.auxProviderId === "string" ? settings.auxProviderId : "",
+    // 悬浮岛模型：server 只认 env，运行中切换走 /config/island-model（空 = 跟随会话当前模型）
+    MEOWCODE_ISLAND_PROVIDER_ID:
+      typeof settings.islandProviderId === "string" ? settings.islandProviderId : "",
     // 供应商故障转移：server 只认 env，运行中切换走 /config/provider-fallback（默认关）
     MEOWCODE_PROVIDER_FALLBACK: settings.providerFallback === true ? "1" : "0",
     // 网络代理：system 模式在启动时把系统代理解析成具体地址传给 server
@@ -2203,6 +2455,12 @@ const sessionPreviews = new Map();
 const turnDedupe = createDedupe({ windowMs: TURN_DEDUPE_MS });
 /** 审批通知去重：同一个 callId 只提示一次（子 Agent 也复用同一事件类型）。 */
 const approvalDedupe = createDedupe();
+/** toast tag → 会话：点击/回复时用它找回 sessionId（冷启动也能从 arguments 的 sid 还原）。 */
+const replyRoutes = createReplyRoutes();
+/** 回复去重：WinRT 激活事件与实例 reply 事件可能同时到达，同一条只投递一次。 */
+const replyDedupe = createDedupe({ windowMs: 2000 });
+/** 点击去重：同上，冷启动回调与实例 click 可能重复唤窗。 */
+const clickDedupe = createDedupe({ windowMs: 2000 });
 
 /** 通知文案跟随界面语言（与托盘菜单同一套词条表）。 */
 function notificationLabels() {
@@ -2214,6 +2472,9 @@ function notificationLabels() {
     approval: ui.notifApproval,
     ask: ui.notifAsk,
     untitled: ui.untitledSession,
+    replyPlaceholder: ui.notifReplyPlaceholder,
+    replySend: ui.notifReplySend,
+    replyFailed: ui.notifReplyFailed,
   };
 }
 
@@ -2260,44 +2521,211 @@ function shouldNotifyNow(sessionId) {
 
 function showNotification({ title, body, sessionId }) {
   if (!body) return;
-  try {
+  const labels = notificationLabels();
+  const tag = sessionId ? notificationTag(sessionId) : "";
+  if (tag && sessionId) replyRoutes.remember(tag, sessionId);
+  const iconPath = notificationIconPath();
+  /**
+   * Windows 用自定义 XML：在原生 toast 里加输入框 + 发送键（ChatGPT 同款）。
+   * XML 是手拼的，万一被系统拒绝（旧版 Win10 / 策略禁用 input），
+   * 退回 Electron 预设模板的回复框，至少还能回。
+   */
+  const show = (customXml) => {
     const notification = new Notification({
       title,
       body,
       icon: notificationIcon(),
-      // Windows 的 Tag 语义：同一会话的新通知替换旧的，通知中心不会堆一列
-      ...(sessionId ? { id: sessionId } : {}),
+      ...(tag ? { id: tag } : {}),
+      // 非 Windows 走系统自带的回复框；Windows 由下面的 toastXml 接管
+      ...(sessionId
+        ? {
+            hasReply: true,
+            replyPlaceholder: labels.replyPlaceholder,
+            // 带输入框的 toast 别 5 秒就消失：用户可能正打字
+            timeoutType: "never",
+          }
+        : {}),
+      ...(sessionId && customXml ? { toastXml: customXml } : {}),
     });
+    let failed = false;
     notification.on("failed", (_event, error) => {
       // dev 下没有开始菜单快捷方式时 AUMID 归属可能失败，这里至少留下线索
       console.warn("[MeowCode] Notification failed:", error);
+      if (failed) return;
+      failed = true;
+      if (customXml && process.platform === "win32") {
+        // 自定义 XML 被拒：用预设模板重来一次（模板自带回复输入框）
+        setTimeout(() => {
+          try {
+            show("");
+          } catch (fallbackError) {
+            console.warn("[MeowCode] Notification fallback failed:", fallbackError);
+          }
+        }, 200);
+      }
     });
     notification.on("click", () => {
+      if (sessionId && !clickDedupe.accept(sessionId)) return;
       showMainWindow();
       void focusSessionFromNotification(sessionId);
     });
+    notification.on("reply", (details) => {
+      void handleNotificationReply(pickReplyText(details), sessionId);
+    });
     notification.show();
+  };
+  try {
+    show(
+      sessionId && process.platform === "win32"
+        ? buildReplyToastXml({
+            title,
+            body,
+            iconUrl: pathToFileUrl(iconPath),
+            tag,
+            sessionId,
+            placeholder: labels.replyPlaceholder,
+            sendLabel: labels.replySend,
+          })
+        : "",
+    );
   } catch (error) {
     console.warn("[MeowCode] Notification error:", error);
   }
 }
 
-/** 点通知回到对应会话：事件只带 sessionId，现拉一次列表换成 filePath 再走托盘切换通道。 */
-async function focusSessionFromNotification(sessionId) {
-  if (!sessionId || !serverUrl) return;
+/** 通知图标路径 → toast XML 可用的 file:// URL（Windows 要求绝对路径）。 */
+function pathToFileUrl(filePath) {
+  try {
+    return pathToFileURL(filePath).href;
+  } catch {
+    return "";
+  }
+}
+
+/**
+ * 通知里回复：把文本投递给对应会话，并把窗口唤到前台。
+ * 与悬浮岛发送同一套 HTTP 链路，主窗口当前会话命中时由渲染层补用户气泡。
+ */
+/** 会话文件路径：/sessions 里按 id 查一次（通知只带 sessionId）。 */
+async function sessionFilePath(sessionId) {
+  if (!sessionId || !serverUrl) return "";
   try {
     const response = await fetch(`${serverUrl}/sessions`, {
       headers: { authorization: `Bearer ${serverToken}` },
     });
-    if (!response.ok) return;
+    if (!response.ok) return "";
     const body = await response.json();
     const hit = Array.isArray(body?.sessions)
       ? body.sessions.find((item) => item?.id === sessionId)
       : null;
-    if (hit?.filePath) sendTrayAction("meow:tray-switch-session", hit.filePath);
+    return typeof hit?.filePath === "string" ? hit.filePath : "";
   } catch {
-    // 拿不到列表就只把窗口唤到前台，不打断用户
+    return "";
   }
+}
+
+/**
+ * 往指定会话投递 prompt。
+ * 空闲会话的 runtime 会被服务端回收，此时 /session/prompt 返回 404；
+ * 先 /session/switch 把它激活再重试，用户点通知回复时不必关心会话是否还热着。
+ * 返回 { filePath }：发生过切换时调用方要让渲染层跟着切过去，否则 UI 还停在旧会话。
+ */
+async function promptSession(sessionId, message) {
+  const base = await waitForServerReady();
+  const send = () =>
+    fetch(`${base}/session/prompt`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${serverToken}`, "content-type": "application/json" },
+      body: JSON.stringify({ sessionId, message }),
+    });
+  let response = await send();
+  let switchedFilePath = "";
+  if (response.status === 404) {
+    const filePath = await sessionFilePath(sessionId);
+    if (filePath) {
+      const switched = await fetch(`${base}/session/switch`, {
+        method: "POST",
+        headers: { authorization: `Bearer ${serverToken}`, "content-type": "application/json" },
+        body: JSON.stringify({ filePath }),
+      });
+      if (switched.ok) {
+        switchedFilePath = filePath;
+        response = await send();
+      }
+    }
+  }
+  if (!response.ok) {
+    const detail = await response.text().catch(() => "");
+    let detailMessage = "";
+    try {
+      detailMessage = String(JSON.parse(detail)?.error?.message ?? "");
+    } catch {
+      detailMessage = "";
+    }
+    throw new Error(detailMessage || `prompt failed (${response.status})`);
+  }
+  return { filePath: switchedFilePath };
+}
+
+async function handleNotificationReply(text, sessionId) {
+  const message = String(text ?? "").trim();
+  if (!message || !sessionId) return;
+  if (!replyDedupe.accept(`${sessionId}\u0000${message}`)) return;
+  const labels = notificationLabels();
+  try {
+    const { filePath } = await promptSession(sessionId, message);
+    broadcast("meow:island-prompt-sent", { sessionId, text: message });
+    // 服务端已切到该会话时，渲染层也跟着切（窗口不弹出，只是保持状态一致）
+    if (filePath) sendTrayAction("meow:tray-switch-session", filePath);
+  } catch (error) {
+    console.warn("[MeowCode] Notification reply failed:", error);
+    // 成功时不打扰用户（回完继续做自己的事）；只有失败才唤窗，把草稿还回输入框
+    showMainWindow();
+    // 通知里没有可写的错误位：失败时把草稿还原进该会话的输入框，别让文字丢掉
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      const detail = error instanceof Error ? error.message : String(error ?? "");
+      mainWindow.webContents.send("meow:notification-reply-failed", {
+        sessionId,
+        text: message,
+        error: detail ? `${labels.replyFailed}：${detail}` : labels.replyFailed,
+      });
+    }
+    // 切到该会话，用户能直接看到还原的草稿
+    void focusSessionFromNotification(sessionId);
+  }
+}
+
+/**
+ * 注册一次全局激活回调：点通知 / 输入框回复 / 冷启动从通知拉起都走这里。
+ * 实例还活着时普通点击走实例 click 事件；冷启动 / 通知中心里的旧通知没有实例，
+ * 只能靠这里的 launch 参数找回会话。
+ */
+function registerNotificationActivation() {
+  if (process.platform !== "win32") return;
+  Notification.handleActivation((details) => {
+    if (!details) return;
+    const args = parseActivationArgs(details.arguments);
+    const sessionId = replyRoutes.resolve(args.tag) ?? args.sid ?? "";
+    // 回复内容可能挂在 details.reply，也可能只在 userInputs.reply（输入框 id）里；
+    // 按钮 activationType=foreground 时 Electron 有时会把 type 判成 click，
+    // 所以先看有没有输入内容，再按 type 分流。
+    const reply = pickReplyText(details);
+    if (reply.trim() || details.type === "reply") {
+      void handleNotificationReply(reply, sessionId);
+      return;
+    }
+    if (details.type === "click" && sessionId && clickDedupe.accept(sessionId)) {
+      showMainWindow();
+      void focusSessionFromNotification(sessionId);
+    }
+  });
+}
+
+/** 点通知回到对应会话：事件只带 sessionId，现拉一次列表换成 filePath 再走托盘切换通道。 */
+async function focusSessionFromNotification(sessionId) {
+  // 拿不到列表就只把窗口唤到前台，不打断用户
+  const filePath = await sessionFilePath(sessionId);
+  if (filePath) sendTrayAction("meow:tray-switch-session", filePath);
 }
 
 // ---- 自动化（定时任务）调度器 ----
@@ -2965,6 +3393,12 @@ function createWindow() {
   mainWindow.on("leave-full-screen", pushWindowState);
   mainWindow.on("resize", () => scheduleWindowStateSave());
   mainWindow.on("move", () => scheduleWindowStateSave());
+  // 模型规则：窗口回到前台时，距上次校验超过阈值就顺手重查一次（ZCode 条件请求 / models.dev 条件请求）。
+  // 上游发布新模型后不用等满定时器，也不用重启应用。
+  mainWindow.on("focus", () => {
+    if (Date.now() - modelProfilesCheckedAt >= MODEL_PROFILES_FOCUS_TTL) fetchModelProfiles(true);
+    if (Date.now() - modelsDevCheckedAt >= MODELS_DEV_FOCUS_TTL) fetchModelsDev(true);
+  });
   mainWindow.once("ready-to-show", () => {
     if (!mainWindow || mainWindow.isDestroyed()) return;
     if (savedWindow.maximized) mainWindow.maximize();
@@ -4801,6 +5235,20 @@ ipcMain.handle("meow:save-provider-prefs", (_event, prefs) => {
   if (typeof prefs?.selfLearning === "boolean") {
     next.selfLearning = prefs.selfLearning;
   }
+  // 辅助任务模型：只写盘（启动时经 MEOWCODE_AUX_PROVIDER_ID 传给 server），
+  // 实时生效走 /config/aux-model，由渲染层另行调用——绝不走 saveSettings
+  if (prefs?.auxProviderId !== undefined) {
+    next.auxProviderId =
+      typeof prefs.auxProviderId === "string" && prefs.auxProviderId ? prefs.auxProviderId : null;
+  }
+  // 悬浮岛模型：只写盘（启动时经 MEOWCODE_ISLAND_PROVIDER_ID 传给 server），
+  // 实时生效走 /config/island-model，由渲染层另行调用——绝不走 saveSettings
+  if (prefs?.islandProviderId !== undefined) {
+    next.islandProviderId =
+      typeof prefs.islandProviderId === "string" && prefs.islandProviderId
+        ? prefs.islandProviderId
+        : null;
+  }
   // 网络代理：落盘供下次启动，实时生效走 /config/proxy
   if (PROXY_MODES.includes(prefs?.proxyMode)) {
     next.proxyMode = prefs.proxyMode;
@@ -4833,11 +5281,15 @@ ipcMain.handle("meow:get-preferences", () => {
     defaultPermissionMode: DEFAULT_PERMISSION_MODES.includes(settings.defaultPermissionMode)
       ? settings.defaultPermissionMode
       : "auto",
+    // 插话方式：queue = 排队；steer = 直接中止当前对话立即发送
+    interjectMode: settings.interjectMode === "steer" ? "steer" : "queue",
     onboardingCompleted:
       typeof settings.onboardingCompleted === "boolean" ? settings.onboardingCompleted : true,
     archivedSessions: Array.isArray(settings.archivedSessions) ? settings.archivedSessions : [],
     projectNames: settings.projectNames && typeof settings.projectNames === "object" ? settings.projectNames : {},
     pinnedProjects: Array.isArray(settings.pinnedProjects) ? settings.pinnedProjects : [],
+    pinnedConversations: Array.isArray(settings.pinnedConversations) ? settings.pinnedConversations : [],
+    conversationOrder: normalizeConversationOrder(settings.conversationOrder),
     removedProjects: Array.isArray(settings.removedProjects) ? settings.removedProjects : [],
     // 缺省视为开启静默下载（boolean 存量用户没有这个字段）
     silentUpdate: typeof settings.silentUpdate === "boolean" ? settings.silentUpdate : true,
@@ -4845,6 +5297,8 @@ ipcMain.handle("meow:get-preferences", () => {
     notifications: typeof settings.notifications === "boolean" ? settings.notifications : true,
     // 标题栏公告：默认开启
     announcements: typeof settings.announcements === "boolean" ? settings.announcements : true,
+    // 跳转条随声音律动：默认关闭
+    navAudioPulse: typeof settings.navAudioPulse === "boolean" ? settings.navAudioPulse : false,
     // AI 悬浮岛：默认关闭
     floatingIsland: typeof settings.floatingIsland === "boolean" ? settings.floatingIsland : false,
     // 输入建议：每轮回合后预测下一句（默认关闭，开启前会提示额外 token）
@@ -4926,6 +5380,10 @@ ipcMain.handle("meow:save-preferences", (_event, prefs) => {
   ) {
     next.defaultPermissionMode = prefs.defaultPermissionMode;
   }
+  // 插话方式：queue = 排队；steer = 回合进行中发送直接中止当前对话
+  if (prefs?.interjectMode !== undefined) {
+    next.interjectMode = prefs.interjectMode === "steer" ? "steer" : "queue";
+  }
   // 工作区只决定「新建会话的默认目录」（/session/new 每次都会带 cwd）。
   // 绝不能走 meow:save-settings：那条路会 startServer() 重启 agent server，
   // 把运行中的回合和后台会话一起杀掉——这正是「换工作区后对话就结束」的根因。
@@ -4949,6 +5407,12 @@ ipcMain.handle("meow:save-preferences", (_event, prefs) => {
   if (Array.isArray(prefs?.pinnedProjects)) {
     next.pinnedProjects = prefs.pinnedProjects.filter((item) => typeof item === "string");
   }
+  if (Array.isArray(prefs?.pinnedConversations)) {
+    next.pinnedConversations = prefs.pinnedConversations.filter((item) => typeof item === "string");
+  }
+  if (prefs?.conversationOrder && typeof prefs.conversationOrder === "object" && !Array.isArray(prefs.conversationOrder)) {
+    next.conversationOrder = normalizeConversationOrder(prefs.conversationOrder);
+  }
   if (Array.isArray(prefs?.removedProjects)) {
     next.removedProjects = prefs.removedProjects.filter((item) => typeof item === "string");
   }
@@ -4965,6 +5429,10 @@ ipcMain.handle("meow:save-preferences", (_event, prefs) => {
   // 主区域「对话 / 轨迹」悬浮切换胶囊：纯渲染层偏好，只写盘
   if (typeof prefs?.showViewTabs === "boolean") {
     next.showViewTabs = prefs.showViewTabs;
+  }
+  // 跳转条随声音律动：纯渲染层偏好，只写盘，不重启 agent server
+  if (typeof prefs?.navAudioPulse === "boolean") {
+    next.navAudioPulse = prefs.navAudioPulse;
   }
   // 界面字体：空串 = 默认 MiSans
   if (typeof prefs?.fontFamily === "string") {
@@ -5145,15 +5613,21 @@ ipcMain.handle("meow:save-preferences", (_event, prefs) => {
     defaultPermissionMode: DEFAULT_PERMISSION_MODES.includes(next.defaultPermissionMode)
       ? next.defaultPermissionMode
       : "auto",
+    // 插话方式：漏了这个字段渲染层收不到回执，表现为「下拉选中态不动」
+    interjectMode: next.interjectMode === "steer" ? "steer" : "queue",
     onboardingCompleted:
       typeof next.onboardingCompleted === "boolean" ? next.onboardingCompleted : true,
     archivedSessions: Array.isArray(next.archivedSessions) ? next.archivedSessions : [],
     projectNames: next.projectNames ?? {},
     pinnedProjects: Array.isArray(next.pinnedProjects) ? next.pinnedProjects : [],
+    pinnedConversations: Array.isArray(next.pinnedConversations) ? next.pinnedConversations : [],
+    conversationOrder: normalizeConversationOrder(next.conversationOrder),
     removedProjects: Array.isArray(next.removedProjects) ? next.removedProjects : [],
     silentUpdate: typeof next.silentUpdate === "boolean" ? next.silentUpdate : true,
     notifications: typeof next.notifications === "boolean" ? next.notifications : true,
     announcements: typeof next.announcements === "boolean" ? next.announcements : true,
+    showViewTabs: typeof next.showViewTabs === "boolean" ? next.showViewTabs : true,
+    navAudioPulse: typeof next.navAudioPulse === "boolean" ? next.navAudioPulse : false,
     floatingIsland: typeof next.floatingIsland === "boolean" ? next.floatingIsland : false,
     nextPromptSuggestions:
       typeof next.nextPromptSuggestions === "boolean" ? next.nextPromptSuggestions : false,
@@ -5578,6 +6052,7 @@ ipcMain.handle("meow:open-installer", async (_event, filePath) => {
 });
 
 ipcMain.handle("meow:model-profiles", () => modelProfiles);
+ipcMain.handle("meow:models-dev", () => modelsDev);
 
 // ---- AI 悬浮岛 IPC ----
 
@@ -5657,6 +6132,19 @@ if (!hasSingleInstanceLock) {
     // 其余权限维持 Electron 默认行为（这里的处理器只保证 local-fonts 不被拦）
     session.defaultSession.setPermissionRequestHandler((_contents, _permission, callback) => callback(true));
     session.defaultSession.setPermissionCheckHandler(() => true);
+    // 跳转条随声音律动：渲染层 getDisplayMedia 时自动放行系统声音回环采集（仅 Windows
+    // 支持 loopback），不弹屏幕/音频选择器；采集的是整路系统输出，渲染层只分析不回放
+    if (process.platform === "win32") {
+      session.defaultSession.setDisplayMediaRequestHandler((_request, callback) => {
+        desktopCapturer
+          .getSources({ types: ["screen"] })
+          .then((sources) => {
+            if (sources.length > 0) callback({ video: sources[0], audio: "loopback" });
+            else callback({});
+          })
+          .catch(() => callback({}));
+      });
+    }
     // 内嵌浏览器默认拒绝摄像头/麦克风/定位/剪贴板/通知等权限请求
     for (const partition of ["persist:meow-browser", "persist:meow-browser-agent"]) {
       const browserSession = session.fromPartition(partition);
@@ -5665,15 +6153,25 @@ if (!hasSingleInstanceLock) {
       );
       browserSession.setPermissionCheckHandler(() => false);
     }
+    // 先把本机缓存读进内存：窗口一起来 getModelProfiles / getModelsDev 就有值，
+    // 不用等下面那趟网络请求
+    loadCachedModelProfiles();
+    loadCachedModelsDev();
     createWindow();
     createTray();
+    // Windows toast 的输入框回复：注册一次全局激活回调（冷启动也走这里）
+    registerNotificationActivation();
     // AI 悬浮岛：设置里开着就随应用启动（island 渲染层自行拉快照、带重试）
     if (readSettings().floatingIsland) {
       createIslandWindow();
     }
-    // 先读本机缓存，过期再后台拉取；拉取完成后会把新规则推给渲染层
-    fetchModelProfiles();
+    // 启动就强制校验一次：缓存再新也问一遍（304 几乎不花钱），保证开窗拿到的就是最新表；
+    // 失败按 15s/60s/3min/10min 重试，避免开机时代理还没起来就整整一天用旧表
+    fetchModelProfiles(true);
     setInterval(fetchModelProfiles, MODEL_PROFILES_TTL).unref();
+    // models.dev 压缩后 712KB：晚 2 秒起步避开首屏，但这一轮一定跑，不看缓存年龄
+    setTimeout(() => fetchModelsDev(true), 2_000);
+    setInterval(fetchModelsDev, MODELS_DEV_TTL).unref();
     // 公告：先展示磁盘缓存，再后台拉取（失败静默），每 3 小时刷新
     noticeController = createNoticeController({
       cachePath: path.join(settingsDir, "announcement.json"),

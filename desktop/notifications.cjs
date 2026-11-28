@@ -4,6 +4,8 @@
  * 这里决定「弹不弹」「标题/正文写什么」「同一件事会不会重复弹」。
  */
 
+const crypto = require("node:crypto");
+
 /** 通知正文的长度上限：Windows toast 卡片约两行，再长就被截断了。 */
 const PREVIEW_MAX = 120;
 /** 同一会话的回合结束通知在这个窗口内只弹一次（SSE 重连可能重放）。 */
@@ -122,6 +124,116 @@ function createDedupe({ windowMs = 0, now = Date.now, limit = 200 } = {}) {
   };
 }
 
+/** XML 文本 / 属性转义：标题正文来自会话，必须当作纯文本塞进 toast。 */
+function escapeXml(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
+}
+
+/**
+ * 通知 tag：Windows 对 toast tag 长度有限制，会话 id（UUID 36 位）不直接当 tag。
+ * 取 sha1 前 16 位做稳定短 tag；真实 sessionId 另放在 arguments 的 sid 里，
+ * 这样冷启动（进程里没有路由表）也能还原会话。
+ */
+function notificationTag(sessionId) {
+  const text = String(sessionId ?? "");
+  if (!text) return "";
+  return crypto.createHash("sha1").update(text).digest("hex").slice(0, 16);
+}
+
+/**
+ * 自定义 Windows toast XML：标题 + 正文 + 图标 + 输入框 + 发送按钮。
+ * Electron 的 handleActivation 会解析 arguments 里的 type/tag，
+ * 并把输入框内容按 id（reply）放进 details.reply，所以格式必须对齐。
+ */
+function buildReplyToastXml({
+  title,
+  body,
+  iconUrl,
+  tag,
+  sessionId,
+  placeholder,
+  sendLabel,
+}) {
+  const clickArgs = escapeXml(`type=click&tag=${tag}&sid=${sessionId}`);
+  const replyArgs = escapeXml(`type=reply&tag=${tag}&sid=${sessionId}`);
+  const image = iconUrl
+    ? `<image placement="appLogoOverride" hint-crop="none" src="${escapeXml(iconUrl)}"/>`
+    : "";
+  // 不用 scenario="reminder"：那样每条通知都会常驻屏幕直到手动关掉。
+  // 普通 toast 在用户点进输入框时不会自动收起，错过后也能从通知中心回复。
+  return [
+    // duration="long"：默认 5 秒对"打开通知再打字"太短，长版约 25 秒
+    `<toast launch="${clickArgs}" duration="long">`,
+    "<visual>",
+    '<binding template="ToastGeneric">',
+    `<text>${escapeXml(title)}</text>`,
+    `<text>${escapeXml(body)}</text>`,
+    image,
+    "</binding>",
+    "</visual>",
+    "<actions>",
+    `<input id="reply" type="text" placeHolderContent="${escapeXml(placeholder)}"/>`,
+    `<action content="${escapeXml(sendLabel)}" activationType="foreground" arguments="${replyArgs}" hintInputId="reply"/>`,
+    "</actions>",
+    "</toast>",
+  ].join("");
+}
+
+/** 解析 Electron 回传的激活参数（key=value&key=value）。 */
+function parseActivationArgs(raw) {
+  const parsed = {};
+  for (const token of String(raw ?? "").split("&")) {
+    const index = token.indexOf("=");
+    if (index <= 0) continue;
+    parsed[token.slice(0, index)] = token.slice(index + 1);
+  }
+  return parsed;
+}
+
+/**
+ * 从激活事件里取回复文本：自定义 XML 的输入框内容在 userInputs.reply，
+ * 预设模板 / macOS 走 details.reply；两处都没有就是普通点击。
+ */
+function pickReplyText(details) {
+  const direct = typeof details?.reply === "string" ? details.reply : "";
+  if (direct) return direct;
+  const fromInputs = details?.userInputs?.reply;
+  return typeof fromInputs === "string" ? fromInputs : "";
+}
+
+/** tag → sessionId 路由：通知被点/回复时据此找回会话，过期自动清掉。 */
+function createReplyRoutes({ ttlMs = 6 * 60 * 60 * 1000, limit = 200, now = Date.now } = {}) {
+  const routes = new Map();
+  return {
+    remember(tag, sessionId) {
+      if (!tag || !sessionId) return;
+      routes.delete(tag);
+      routes.set(tag, { sessionId, at: now() });
+      if (routes.size > limit) {
+        for (const key of [...routes.keys()].slice(0, routes.size - limit)) routes.delete(key);
+      }
+    },
+    resolve(tag) {
+      if (!tag) return null;
+      const hit = routes.get(tag);
+      if (!hit) return null;
+      if (now() - hit.at > ttlMs) {
+        routes.delete(tag);
+        return null;
+      }
+      return hit.sessionId;
+    },
+    size() {
+      return routes.size;
+    },
+  };
+}
+
 module.exports = {
   PREVIEW_MAX,
   TURN_DEDUPE_MS,
@@ -132,4 +244,10 @@ module.exports = {
   shouldNotify,
   notificationTitle,
   createDedupe,
+  escapeXml,
+  notificationTag,
+  buildReplyToastXml,
+  parseActivationArgs,
+  pickReplyText,
+  createReplyRoutes,
 };

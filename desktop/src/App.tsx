@@ -8,6 +8,7 @@ import {
   type CSSProperties,
   type PointerEvent as ReactPointerEvent,
 } from "react";
+import { createPortal } from "react-dom";
 import {
   api,
   checkForUpdates,
@@ -33,6 +34,7 @@ import {
   type CompactionPoint,
   type CacheDiagnostics,
   type ContextUsage,
+  type ConversationOrder,
   type HarnessArchitectureSummary,
   type GitStatus,
   type MeowEvent,
@@ -63,6 +65,7 @@ import {
   type TimelineItem,
   type TimelineTool,
   type TurnMetrics,
+  type TurnStatus,
   type SpeedSample,
   type SshConnection,
   type UiState,
@@ -74,8 +77,14 @@ import {
   type WorkflowRoadmap,
   shouldRecommendCompaction,
 } from "./api";
-import { setModelProfiles, type ModelProfile } from "./modelProfiles";
+import {
+  setModelProfiles,
+  setModelsDevCatalog,
+  type CatalogModel,
+  type ModelProfile,
+} from "./modelProfiles";
 import { planDocPathOf } from "./plan-doc";
+import { setAudioPulseEnabled } from "./audio-level";
 import { AppBackground } from "./components/AppBackground";
 import { PluginPage } from "./plugins/PluginPage";
 import { PluginPageNav } from "./plugins/PluginPageNav";
@@ -123,7 +132,6 @@ import {
   shouldShowStarPrompt,
   snoozeStarPrompt,
 } from "./components/StarPrompt";
-import "./components/UndoBar.css";
 import { UpdateModal } from "./components/UpdateModal";
 import { ThemeProvider, readStoredPalette } from "./theme/theme";
 import { useSideTabs, type SideTab, type SideTabOpen } from "./panel/useSideTabs";
@@ -148,6 +156,7 @@ import {
   type UsageSample,
 } from "./usage-meter";
 import { reconcileProviderEcho } from "./provider-save";
+import { partitionArchivedTargets } from "./archive-paths";
 import i18n from "./i18n";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
@@ -359,6 +368,13 @@ export default function App() {
   /** 当前工作区目录是否可用：null = 正在校验，false = 已被删除/不存在 */
   const [workspaceAvailable, setWorkspaceAvailable] = useState<boolean | null>(null);
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
+  const sessionsRef = useRef<SessionSummary[]>([]);
+  sessionsRef.current = sessions;
+  const conversationOrderRef = useRef<ConversationOrder>({});
+  conversationOrderRef.current = settings?.conversationOrder ?? {};
+  const savePreferencesRef = useRef<(prefs: Partial<Preferences>) => Promise<boolean>>(
+    async () => false,
+  );
   /** 正在切换会话：时间线暂时为空时不显示欢迎页，避免闪一下 */
   const [sessionLoading, setSessionLoading] = useState(false);
   /** 正在切换/新建会话：先收起上一个会话的审批弹窗，等目标会话加载完再按需恢复 */
@@ -581,10 +597,8 @@ export default function App() {
   const pendingComposerDrop = useRef<DOMRect | null>(null);
   /** 上次进程退出时未交付的排队消息（服务端恢复，只展示不自动执行） */
   const [recoveredPrompts, setRecoveredPrompts] = useState<QueuedPrompt[]>([]);
-  const [, setLastTurn] = useState<{
-    status: "completed" | "aborted" | "error" | "interrupted";
-    error?: string;
-  } | null>(null);
+  /** 各会话最近一次回合结果：侧栏卡片在切走后仍保留结束状态 */
+  const [sessionTurnStatuses, setSessionTurnStatuses] = useState<Record<string, TurnStatus>>({});
   /** ui-state.json 已 hydration；之前不写盘，避免默认值覆盖 */
   const [uiHydrated, setUiHydrated] = useState(false);
   /** 所有正在生成的主会话 id（服务端每个会话独立 runtime，切走也会继续跑） */
@@ -594,10 +608,14 @@ export default function App() {
   const [rewindDialog, setRewindDialog] = useState<{ plan: RewindPlan; busy: boolean } | null>(null);
   const rewindDialogRef = useRef<{ plan: RewindPlan; busy: boolean } | null>(null);
   rewindDialogRef.current = rewindDialog;
-  /** 当前会话最近一次可撤销的回滚（横幅入口；切换/回滚后刷新） */
+  /** 最近一次刚完成的回滚：只在本次提示一次，不随会话加载重新出现 */
   const [undoableRewind, setUndoableRewind] = useState<
     { rewindId: string; mode: RewindMode; fileCount: number } | null
   >(null);
+  /** 撤销回滚执行中：全局弹窗里的操作按钮置灰防重复点击 */
+  const [undoingRewind, setUndoingRewind] = useState(false);
+  /** 关闭回滚通知：稳定引用，避免 App 每次重渲染都重置 Toast 的自动收起计时 */
+  const dismissUndoableRewind = useCallback(() => setUndoableRewind(null), []);
   const setRunningSessions = useCallback((ids: string[]) => {
     const unique = [...new Set(ids)];
     runningSessionIdsRef.current = new Set(unique);
@@ -760,6 +778,15 @@ export default function App() {
     chatModeRef.current = chatMode;
   }, [chatMode]);
   const [showInspector, setShowInspector] = useState(true);
+  const [collapsedProjects, setCollapsedProjects] = useState<ReadonlySet<string>>(() => new Set());
+  const toggleCollapsedProject = useCallback((cwd: string) => {
+    setCollapsedProjects((current) => {
+      const next = new Set(current);
+      if (next.has(cwd)) next.delete(cwd);
+      else next.add(cwd);
+      return next;
+    });
+  }, []);
   /** 右侧检查器实际占位：设置/插件/架构页不渲染它，不应为它预留宽度 */
   const inspectorOccupied = view === "chat" && showInspector;
   /** 会话全文检索弹窗（Ctrl+K / 聊天头搜索按钮） */
@@ -784,6 +811,23 @@ export default function App() {
   const sideTabs = useSideTabs();
   /** 主会话 id（ref 版本，事件分流用，避免闭包过期） */
   const mainSessionIdRef = useRef<string | null>(null);
+  const acknowledgeTurnStatus = useCallback((id: string) => {
+    setSessionTurnStatuses((current) => {
+      if (!(id in current)) return current;
+      const next = { ...current };
+      delete next[id];
+      return next;
+    });
+  }, []);
+  const setLastTurn = useCallback(
+    (lastTurn: { status: TurnStatus } | null) => {
+      const id = mainSessionIdRef.current;
+      if (!id) return;
+      if (lastTurn) setSessionTurnStatuses((current) => ({ ...current, [id]: lastTurn.status }));
+      else acknowledgeTurnStatus(id);
+    },
+    [acknowledgeTurnStatus],
+  );
   useEffect(() => {
     mainSessionIdRef.current = session?.id ?? null;
   }, [session?.id]);
@@ -853,14 +897,29 @@ export default function App() {
    */
   const [, setModelProfilesVersion] = useState(0);
   useEffect(() => {
-    // 开发态热更新时 preload 可能还是旧的（没重启窗口），缺少这两个方法就跳过
-    if (!window.meow.getModelProfiles || !window.meow.onModelProfiles) return;
-    const apply = (payload: { profiles?: ModelProfile[] } | null) => {
-      setModelProfiles(payload?.profiles);
-      setModelProfilesVersion((value) => value + 1);
+    // 开发态热更新时 preload 可能还是旧的（没重启窗口），缺少方法就跳过
+    const cleanups: Array<() => void> = [];
+    const bump = () => setModelProfilesVersion((value) => value + 1);
+    if (window.meow.getModelProfiles && window.meow.onModelProfiles) {
+      const apply = (payload: { profiles?: ModelProfile[] } | null) => {
+        setModelProfiles(payload?.profiles);
+        bump();
+      };
+      void window.meow.getModelProfiles().then(apply).catch(() => undefined);
+      cleanups.push(window.meow.onModelProfiles(apply));
+    }
+    // 第二路：models.dev（ZCode 没收录的新模型）
+    if (window.meow.getModelsDev && window.meow.onModelsDev) {
+      const applyDev = (payload: { models?: Record<string, CatalogModel> } | null) => {
+        setModelsDevCatalog(payload?.models);
+        bump();
+      };
+      void window.meow.getModelsDev().then(applyDev).catch(() => undefined);
+      cleanups.push(window.meow.onModelsDev(applyDev));
+    }
+    return () => {
+      for (const off of cleanups) off();
     };
-    void window.meow.getModelProfiles().then(apply).catch(() => undefined);
-    return window.meow.onModelProfiles(apply);
   }, []);
 
   /** 左栏宽度：与右侧检查器同一套拖拽交互，localStorage 记忆 */
@@ -1113,11 +1172,19 @@ export default function App() {
     void window.meow
       .saveUiState({
         inspector: { visible: showInspector, width: inspectorWidth },
+        collapsedProjects: [...collapsedProjects],
         tabs,
         activeTabId: sideTabs.activeId,
       })
       .catch(() => undefined);
-  }, [uiHydrated, showInspector, inspectorWidth, sideTabs.tabs, sideTabs.activeId]);
+  }, [
+    uiHydrated,
+    showInspector,
+    inspectorWidth,
+    collapsedProjects,
+    sideTabs.tabs,
+    sideTabs.activeId,
+  ]);
 
   // ---- 草稿按会话落盘（主进程防抖原子写；清空即删除） ----
   useEffect(() => {
@@ -1141,6 +1208,34 @@ export default function App() {
     callId: string;
     questions: AskUserQuestion[];
   } | null>(null);
+  /** 等待用户回答的会话：卡片提示不随切换会话丢失 */
+  const [askSessionIds, setAskSessionIds] = useState<string[]>([]);
+  const askSessionIdsRef = useRef<Set<string>>(new Set());
+  const addAskingSession = useCallback((id: string) => {
+    if (askSessionIdsRef.current.has(id)) return;
+    const next = new Set(askSessionIdsRef.current);
+    next.add(id);
+    askSessionIdsRef.current = next;
+    setAskSessionIds([...next]);
+  }, []);
+  const removeAskingSession = useCallback((id: string) => {
+    if (!askSessionIdsRef.current.has(id)) return;
+    const next = new Set(askSessionIdsRef.current);
+    next.delete(id);
+    askSessionIdsRef.current = next;
+    setAskSessionIds([...next]);
+  }, []);
+  const syncPendingAsk = useCallback(
+    (pending: { callId: string; questions: AskUserQuestion[] } | null | undefined) => {
+      if (pending === undefined) return;
+      setPendingAsk(pending);
+      const id = mainSessionIdRef.current;
+      if (!id) return;
+      if (pending) addAskingSession(id);
+      else removeAskingSession(id);
+    },
+    [addAskingSession, removeAskingSession],
+  );
   const approvalsRef = useRef<Record<string, PendingApproval>>({});
   const replaceApprovals = useCallback((items: PendingApproval[]) => {
     const map: Record<string, PendingApproval> = {};
@@ -1389,9 +1484,11 @@ export default function App() {
       notifications: settings?.notifications ?? true,
       announcements: settings?.announcements ?? true,
       showViewTabs: settings?.showViewTabs ?? true,
+      navAudioPulse: settings?.navAudioPulse ?? false,
       floatingIsland: settings?.floatingIsland ?? false,
       nextPromptSuggestions: settings?.nextPromptSuggestions ?? false,
       defaultPermissionMode: settings?.defaultPermissionMode ?? "auto",
+      interjectMode: settings?.interjectMode ?? "queue",
       worktreeFetchUpstream: settings?.worktreeFetchUpstream ?? false,
       worktreeAutoCleanup: settings?.worktreeAutoCleanup ?? true,
       worktreeMaxKeep: settings?.worktreeMaxKeep ?? 15,
@@ -1416,9 +1513,11 @@ export default function App() {
       settings?.notifications,
       settings?.announcements,
       settings?.showViewTabs,
+      settings?.navAudioPulse,
       settings?.floatingIsland,
       settings?.nextPromptSuggestions,
       settings?.defaultPermissionMode,
+      settings?.interjectMode,
       settings?.worktreeFetchUpstream,
       settings?.worktreeAutoCleanup,
       settings?.worktreeMaxKeep,
@@ -1434,11 +1533,27 @@ export default function App() {
     ],
   );
   const defaultPermissionMode = preferences.defaultPermissionMode ?? "auto";
+  const interjectMode = preferences.interjectMode ?? "queue";
+
+  // 跳转条随声音律动：开关交给 audio-level 单例（有订阅者才真正开始采集）
+  useEffect(() => {
+    setAudioPulseEnabled(preferences.navAudioPulse === true);
+  }, [preferences.navAudioPulse]);
 
   const reloadSessions = useCallback(async () => {
     try {
       const result = await api<{ sessions: SessionSummary[] }>("/sessions");
-      setSessions(result.sessions);
+      setSessions((previous) => {
+        const latest = new Map(
+          previous.map((item) => [item.filePath, item.updatedAt ?? item.createdAt]),
+        );
+        return result.sessions.map((item) => {
+          const activeAt = latest.get(item.filePath);
+          return activeAt && activeAt > (item.updatedAt ?? item.createdAt)
+            ? { ...item, updatedAt: activeAt }
+            : item;
+        });
+      });
     } catch {
       // 保持上一次列表：瞬时失败不应把侧栏清空
     }
@@ -1589,6 +1704,7 @@ export default function App() {
       }>("/session/messages");
       // 快速切换时旧请求可能后到，直接丢弃
       if (loadId !== sessionLoadIdRef.current) return false;
+      mainSessionIdRef.current = current.id;
       setSession(current);
       mergeSubagentSummaries(current.subagents ?? []);
       setSessionTitle(current.title ?? null);
@@ -1610,7 +1726,6 @@ export default function App() {
       // 卡片版本只对当前会话有意义：切走后清空，避免同名文档在新会话里被旧版本号触发一次重读
       setPlanDocRevision(null);
       setRecoveredPrompts(current.recoveredPrompts ?? []);
-      setLastTurn(current.lastTurn ?? null);
       const usage = current.usage;
       const lastMetrics = current.metrics;
       // 会话级统计以文件汇总为基座：切回来时历史累计仍在
@@ -1657,7 +1772,7 @@ export default function App() {
       if (globalRunVersion === runStateVersionRef.current) {
         setRunningSessions(current.runningSessionIds ?? []);
         replaceApprovals(current.pendingApprovals ?? []);
-        if ("pendingAsk" in current) setPendingAsk(current.pendingAsk ?? null);
+        if ("pendingAsk" in current) syncPendingAsk(current.pendingAsk ?? null);
         setCompactingSessions(current.compactingSessionIds ?? []);
         runStateVersionRef.current += 1;
       }
@@ -1685,16 +1800,6 @@ export default function App() {
       }
       setTimeline(history);
       setReconnectView(null);
-      // 撤销回滚入口：当前会话最近一次可撤销的回滚（无则隐藏横幅）
-      void api<{ undoable: { rewindId: string; mode: RewindMode; fileCount: number } | null }>(
-        "/session/rewind/undoable",
-      )
-        .then((res) => {
-          if (loadId === sessionLoadIdRef.current) {
-            setUndoableRewind(res.undoable ?? null);
-          }
-        })
-        .catch(() => undefined);
       return true;
     } catch {
       return false;
@@ -1705,6 +1810,7 @@ export default function App() {
     replaceApprovals,
     replaceQueuedPrompts,
     setCompactingSessions,
+    syncPendingAsk,
     mergeSubagentSummaries,
   ]);
 
@@ -1756,14 +1862,12 @@ export default function App() {
     [pushError],
   );
 
-  /** 右上角轻提示（如「已是最新版本」）：几秒后自动消失 */
+  /** 顶部轻提示（如「已是最新版本」）：从窗口上沿落下，停留后自动收起 */
   const [toast, setToast] = useState<{ key: number; text: string } | null>(null);
-  const toastTimerRef = useRef<number | null>(null);
   const showToast = useCallback((text: string) => {
     setToast({ key: Date.now(), text });
-    if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current);
-    toastTimerRef.current = window.setTimeout(() => setToast(null), 2600);
   }, []);
+  const hideToast = useCallback(() => setToast(null), []);
 
   /** 设置 → 连接：开一个跑 ssh 的终端页签（密码在终端里交互输入，不落盘）。 */
   const connectSsh = useCallback(
@@ -1981,6 +2085,7 @@ export default function App() {
     },
     [pushError],
   );
+
 
   /** 恢复已结束子 Agent 的完整转录；运行中的实时内容不会被快照覆盖。 */
   const hydrateSubagent = useCallback(
@@ -2513,6 +2618,21 @@ export default function App() {
     setTimeline((items) => applyTimelineEvents(items, pending, nextKey));
   }, []);
 
+  const resetConversationOrder = useCallback((target: string, by: "id" | "path") => {
+    const item = sessionsRef.current.find((session) =>
+      by === "id" ? session.id === target : session.filePath === target,
+    );
+    if (!item) return;
+    const cwd = item.worktree?.sourceCwd ?? item.cwd;
+    const current = conversationOrderRef.current;
+    if (!current[cwd]) return;
+    const next = { ...current };
+    delete next[cwd];
+    conversationOrderRef.current = next;
+    setSettings((prev) => (prev ? { ...prev, conversationOrder: next } : prev));
+    void savePreferencesRef.current({ conversationOrder: next });
+  }, []);
+
   const handleEvent = useCallback((event: MeowEvent) => {
     if (event.agentId) {
       handleSubagentEvent(event);
@@ -2538,12 +2658,16 @@ export default function App() {
       return;
     }
     // ask_user：模型反问澄清问题（可批量多题），挂起回合等用户点选/输入
-    if (event.type === "ask_user" && (!event.sessionId || event.sessionId === mainSessionIdRef.current)) {
-      setPendingAsk({
-        callId: event.callId ?? "",
-        questions: event.questions ?? [],
-      });
-      return;
+    if (event.type === "ask_user") {
+      const askId = event.sessionId ?? mainSessionIdRef.current;
+      if (askId) addAskingSession(askId);
+      if (!event.sessionId || event.sessionId === mainSessionIdRef.current) {
+        setPendingAsk({
+          callId: event.callId ?? "",
+          questions: event.questions ?? [],
+        });
+        return;
+      }
     }
     // 治理 roadmap 快照：按会话保存最新状态（计划页签数据源）
     if (event.type === "workflow_roadmap" && event.sessionId) {
@@ -2585,6 +2709,7 @@ export default function App() {
       (event.type === "message_start" ||
         event.type === "turn_complete" ||
         event.type === "approval_required" ||
+        event.type === "ask_user" ||
         event.type === "compaction_started" ||
         event.type === "compaction_completed" ||
         event.type === "compaction_failed")
@@ -2597,24 +2722,47 @@ export default function App() {
     }
     // 每个会话独立 runtime：事件只更新对应会话的运行圆点和审批，不影响当前会话
     if (!event.side && "sessionId" in event && event.sessionId) {
+      const id = event.sessionId;
       if (event.type === "message_start" || event.type === "approval_required") {
-        addRunningSession(event.sessionId);
+        addRunningSession(id);
       } else if (event.type === "turn_complete") {
-        removeRunningSession(event.sessionId);
+        removeRunningSession(id);
       }
-      // ask_user 回合结束/中止/出错：挂起卡片一并清除（ask 挂起时回合不会正常结束，能到这里就该清）
+      if (event.type === "message_start") {
+        setSessionTurnStatuses((current) => {
+          if (!(id in current)) return current;
+          const next = { ...current };
+          delete next[id];
+          return next;
+        });
+      } else if (event.type === "turn_complete") {
+        const eventStatus = event.status as string | undefined;
+        const status: TurnStatus =
+          eventStatus === "aborted" || eventStatus === "interrupted"
+            ? eventStatus
+            : eventStatus === "error" || eventStatus === "failed"
+              ? "error"
+              : "completed";
+        if (id === mainSessionIdRef.current) setLastTurn({ status });
+        else setSessionTurnStatuses((current) => ({ ...current, [id]: status }));
+      } else if (event.type === "error") {
+        if (id === mainSessionIdRef.current) setLastTurn({ status: "error" });
+        else setSessionTurnStatuses((current) => ({ ...current, [id]: "error" }));
+      }
+      // ask_user 回合结束/中止/出错：只清对应会话的挂起状态，后台结束不误清当前卡片
       if (event.type === "turn_complete" || event.type === "error") {
-        setPendingAsk(null);
+        removeAskingSession(id);
+        if (id === mainSessionIdRef.current) setPendingAsk(null);
       }
       // 压缩状态按会话记录：后台会话也已开始/结束压缩时同步更新
       if (event.type === "compaction_started") {
-        addCompactingSession(event.sessionId);
+        addCompactingSession(id);
       } else if (
         event.type === "compaction_completed" ||
         event.type === "compaction_failed" ||
         event.type === "turn_complete"
       ) {
-        removeCompactingSession(event.sessionId);
+        removeCompactingSession(id);
       }
     }
     if (!event.side && event.type === "approval_required" && event.sessionId) {
@@ -2642,6 +2790,10 @@ export default function App() {
     }
     if (!event.side && event.type === "turn_complete") {
       removeOwnApprovals(event.sessionId);
+    }
+    // 收到新消息后恢复最近活动排序；只拖动卡片不会触发这里。
+    if (event.type === "message_start" && event.sessionId) {
+      resetConversationOrder(event.sessionId, "id");
     }
     // 侧栏列表与后台会话也要刷新：切走时消息事件会被过滤，但会话不能从列表消失
     if (
@@ -2835,7 +2987,7 @@ export default function App() {
           if (globalStable) {
             setRunningSessions(current.runningSessionIds ?? []);
             replaceApprovals(current.pendingApprovals ?? []);
-        if ("pendingAsk" in current) setPendingAsk(current.pendingAsk ?? null);
+            if ("pendingAsk" in current) syncPendingAsk(current.pendingAsk ?? null);
             setCompactingSessions(current.compactingSessionIds ?? []);
             runStateVersionRef.current += 1;
           }
@@ -3279,6 +3431,7 @@ export default function App() {
       });
     }
   }, [
+    resetConversationOrder,
     scheduleSessionChangesRefresh,
     refreshContextUsage,
     pushError,
@@ -3289,6 +3442,10 @@ export default function App() {
     clearQueuedPrompts,
     addRunningSession,
     removeRunningSession,
+    addAskingSession,
+    removeAskingSession,
+    syncPendingAsk,
+    setLastTurn,
     setRunningSessions,
     replaceApprovals,
     replaceQueuedPrompts,
@@ -3320,6 +3477,7 @@ export default function App() {
         setDrafts(loadedUi.drafts ?? {});
         setShowInspector(loadedUi.inspector.visible);
         setInspectorWidth(clampInspectorWidth(loadedUi.inspector.width, LIST_MIN_WIDTH));
+        setCollapsedProjects(new Set(loadedUi.collapsedProjects ?? []));
         const restoredTabs: SideTab[] = (loadedUi.tabs ?? []).flatMap((tab): SideTab[] => {
           if (tab.kind === "browser") {
             return [{ id: tab.id, kind: "browser", title: tab.title, url: tab.url ?? "" }];
@@ -3409,6 +3567,21 @@ export default function App() {
         { kind: "message", key: nextKey("user"), role: "user", content: text },
       ]);
     });
+    // 通知里回复发送失败：把原文还原进输入框，别让用户白打一遍
+    const unsubscribeReplyFailed = window.meow.onNotificationReplyFailed(
+      ({ sessionId, text, error }) => {
+        if (disposed || !sessionId) return;
+        // 草稿按会话存放：失败的是后台会话也照样还原，切过去就能看到
+        if (text) {
+          setDrafts((previous) =>
+            previous[sessionId]?.text
+              ? previous
+              : { ...previous, [sessionId]: { text, updatedAt: new Date().toISOString() } },
+          );
+        }
+        if (error && sessionId === mainSessionIdRef.current) pushError(error);
+      },
+    );
     const unsubscribeSettings = window.meow.onOpenSettings(() => {
       if (!disposed) setView("settings");
     });
@@ -3425,10 +3598,18 @@ export default function App() {
       pendingDeltaSession.current = null;
       unsubscribe();
       unsubscribeIslandPrompt();
+      unsubscribeReplyFailed();
       unsubscribeSettings();
       unsubscribeClose();
     };
-  }, [handleEvent, loadCurrentSession, refreshContextUsage, reloadSessions, sideTabs.hydrate]);
+  }, [
+    handleEvent,
+    loadCurrentSession,
+    refreshContextUsage,
+    reloadSessions,
+    sideTabs.hydrate,
+    pushError,
+  ]);
 
   const sendPrompt = useCallback(async (
     overrideText?: string,
@@ -3529,6 +3710,8 @@ export default function App() {
     suggestionSeqRef.current += 1;
     setPromptSuggestion(null);
     const queued = streaming;
+    // 直接插话模式：回合进行中发送 = 中止当前对话、这条立即执行（不再排队）
+    const interrupt = queued && interjectMode === "steer";
     const firstSend = !timeline.some(
       (item) => item.kind === "message" && item.role === "user",
     );
@@ -3588,7 +3771,7 @@ export default function App() {
     if (chips.length) setChips([]);
     let queueId: string | undefined;
     let userKey: string | undefined;
-    if (queued) {
+    if (queued && !interrupt) {
       queueId = nextKey("queued");
       enqueueQueuedPrompt({ id: queueId, text });
     } else {
@@ -3642,11 +3825,20 @@ export default function App() {
         body: JSON.stringify({
           message: text,
           ...(queueId ? { queueId } : {}),
+          ...(interrupt ? { interrupt: true } : {}),
           ...(images?.length
             ? { images: images.map(({ mimeType, data }) => ({ mimeType, data })) }
             : {}),
         }),
       });
+      // POST 受理后才更新活动时间：继续旧对话立即置顶，失败请求不污染列表。
+      if (targetSessionId) {
+        resetConversationOrder(targetSessionId, "id");
+        const activeAt = new Date().toISOString();
+        setSessions((list) =>
+          list.map((item) => (item.id === targetSessionId ? { ...item, updatedAt: activeAt } : item)),
+        );
+      }
       // 乐观置位：POST 受理后立刻把本会话标成运行中，不等 message_start
       if (!queued && targetSessionId) addRunningSession(targetSessionId);
       if (recoveredId) {
@@ -3680,6 +3872,7 @@ export default function App() {
     worktreeBusy,
     projectCwd,
     defaultPermissionMode,
+    interjectMode,
     loadCurrentSession,
     refreshContextUsage,
     showToast,
@@ -3689,6 +3882,7 @@ export default function App() {
     dropQueuedPrompt,
     pushError,
     reloadSessions,
+    resetConversationOrder,
     t,
     activeDraftKey,
     updateQueuedEdit,
@@ -3720,11 +3914,13 @@ export default function App() {
   /** 回答 ask_user 问题：清卡片 + 通知 server resolve 挂起的工具（answers 按题序对齐） */
   const answerAsk = useCallback((callId: string, answers: string[]) => {
     setPendingAsk(null);
+    const id = mainSessionIdRef.current;
+    if (id) removeAskingSession(id);
     void api("/session/answer", {
       method: "POST",
       body: JSON.stringify({ callId, answers }),
     }).catch(() => undefined);
-  }, []);
+  }, [removeAskingSession]);
 
   const respondApproval = useCallback(
     async (
@@ -3795,6 +3991,12 @@ export default function App() {
     if (nextShowViewTabs !== undefined) {
       setSettings((prev) => (prev ? { ...prev, showViewTabs: nextShowViewTabs } : prev));
     }
+    // 跳转条律动开关同理：点一下立刻启停采集，落盘失败再回滚
+    const nextNavAudioPulse = prefs.navAudioPulse;
+    const previousNavAudioPulse = settings?.navAudioPulse ?? false;
+    if (nextNavAudioPulse !== undefined) {
+      setSettings((prev) => (prev ? { ...prev, navAudioPulse: nextNavAudioPulse } : prev));
+    }
     // 网页搜索/抓取：下拉/开关立即反映，落盘失败再回滚
     const nextWebSearchProvider = prefs.webSearchProvider;
     const previousWebSearchProvider = settings?.webSearchProvider ?? "auto";
@@ -3834,6 +4036,10 @@ export default function App() {
                 typeof saved?.showViewTabs === "boolean"
                   ? saved.showViewTabs
                   : prev.showViewTabs,
+              navAudioPulse:
+                typeof saved?.navAudioPulse === "boolean"
+                  ? saved.navAudioPulse
+                  : prev.navAudioPulse,
               notifications:
                 typeof saved?.notifications === "boolean"
                   ? saved.notifications
@@ -3846,6 +4052,7 @@ export default function App() {
                   : prev.nextPromptSuggestions,
               defaultPermissionMode:
                 saved?.defaultPermissionMode ?? prev.defaultPermissionMode,
+              interjectMode: saved?.interjectMode ?? prev.interjectMode,
               worktreeFetchUpstream:
                 typeof saved?.worktreeFetchUpstream === "boolean"
                   ? saved.worktreeFetchUpstream
@@ -3877,6 +4084,8 @@ export default function App() {
                 typeof saved?.codeFontFamily === "string" ? saved.codeFontFamily : prev.codeFontFamily,
               projectNames: saved?.projectNames ?? prev.projectNames,
               pinnedProjects: saved?.pinnedProjects ?? prev.pinnedProjects,
+              pinnedConversations: saved?.pinnedConversations ?? prev.pinnedConversations,
+              conversationOrder: saved?.conversationOrder ?? prev.conversationOrder,
               removedProjects: saved?.removedProjects ?? prev.removedProjects,
               sshConnections: Array.isArray(saved?.sshConnections)
                 ? saved.sshConnections
@@ -3958,6 +4167,9 @@ export default function App() {
       if (nextShowViewTabs !== undefined) {
         setSettings((prev) => (prev ? { ...prev, showViewTabs: previousShowViewTabs } : prev));
       }
+      if (nextNavAudioPulse !== undefined) {
+        setSettings((prev) => (prev ? { ...prev, navAudioPulse: previousNavAudioPulse } : prev));
+      }
       if (nextWebSearchProvider !== undefined) {
         setSettings((prev) =>
           prev ? { ...prev, webSearchProvider: previousWebSearchProvider } : prev,
@@ -3990,6 +4202,8 @@ export default function App() {
   ]);
 
   // ---- 界面字体（外观设置）：导入的自定义字体注册成 @font-face，选中字体写进 --font-app ----
+
+  savePreferencesRef.current = savePreferences;
 
   const [customFonts, setCustomFonts] = useState<Array<{ family: string; url: string }>>([]);
   const reloadCustomFonts = useCallback(() => {
@@ -4132,6 +4346,16 @@ export default function App() {
     [settings?.projectNames, savePreferences],
   );
 
+  const reorderConversations = useCallback(
+    (cwd: string, filePaths: string[]) => {
+      const next = { ...conversationOrderRef.current, [cwd]: filePaths };
+      conversationOrderRef.current = next;
+      setSettings((prev) => (prev ? { ...prev, conversationOrder: next } : prev));
+      void savePreferences({ conversationOrder: next });
+    },
+    [savePreferences],
+  );
+
   const togglePinProject = useCallback(
     (cwd: string) => {
       const current = settings?.pinnedProjects ?? [];
@@ -4140,6 +4364,18 @@ export default function App() {
       });
     },
     [settings?.pinnedProjects, savePreferences],
+  );
+
+  /** 置顶 / 取消置顶对话：新置顶的排最前，数组顺序即「置顶」栏内顺序 */
+  const togglePinConversation = useCallback(
+    (filePath: string) => {
+      const current = settings?.pinnedConversations ?? [];
+      const next = current.includes(filePath)
+        ? current.filter((item) => item !== filePath)
+        : [filePath, ...current];
+      void savePreferences({ pinnedConversations: next });
+    },
+    [settings?.pinnedConversations, savePreferences],
   );
 
   /** 移除项目 = 侧栏隐藏（会话与磁盘文件都不动）；之后在该工作区新建聊天时自动恢复 */
@@ -4245,7 +4481,11 @@ export default function App() {
           method: "POST",
           body: JSON.stringify({ filePath }),
         });
-        if (switched?.id) mainSessionIdRef.current = switched.id;
+        if (switched?.id) {
+          mainSessionIdRef.current = switched.id;
+          acknowledgeTurnStatus(switched.id);
+        }
+        if (filePath !== session?.filePath) resetConversationOrder(filePath, "path");
         setTimeline([]);
         setSessionTitle(null); // 切换后由 loadCurrentSession 恢复
         setPlan(null);
@@ -4264,7 +4504,16 @@ export default function App() {
         setSessionSwitching(false);
       }
     },
-    [loadCurrentSession, refreshContextUsage, pushError, clearQueuedPrompts, reloadSessions],
+    [
+      loadCurrentSession,
+      refreshContextUsage,
+      pushError,
+      clearQueuedPrompts,
+      reloadSessions,
+      acknowledgeTurnStatus,
+      resetConversationOrder,
+      session?.filePath,
+    ],
   );
 
   /** 检索命中 → 打开会话并定位到命中消息；当前会话内直接滚过去（switchSession 不抛错，失败时锚点找不到即无操作） */
@@ -4350,16 +4599,24 @@ export default function App() {
         await loadCurrentSession();
         void refreshContextUsage();
       }
+      if (deletedPaths.length) {
+        // 删掉的会话同步从「置顶」栏摘掉，避免留下永远不显示的死条目
+        const pinned = settings?.pinnedConversations ?? [];
+        const nextPinned = pinned.filter((item) => !deletedPaths.includes(item));
+        if (nextPinned.length !== pinned.length) void savePreferences({ pinnedConversations: nextPinned });
+      }
       if (deletedPaths.length) await reloadSessions();
       return deletedPaths;
     },
     [
       session?.filePath,
+      settings?.pinnedConversations,
       clearQueuedPrompts,
       loadCurrentSession,
       refreshContextUsage,
       reloadSessions,
       pushError,
+      savePreferences,
     ],
   );
 
@@ -4375,18 +4632,29 @@ export default function App() {
    * 归档区删除：先删文件，再把**真正删掉的**从 archivedSessions 里摘掉。
    * 顺序很重要 —— 删除失败（会话还在生成）时它得继续留在归档列表里，
    * 否则文件还在、列表里却看不见，就成了谁都找不到的孤儿。
+   *
+   * 例外：归档列表里可能留着**旧数据目录**的路径（换过 userData 之后），那些文件
+   * 早就不在了。它们发给 /sessions/delete 只会被判成非法路径（400），永远删不掉，
+   * 于是整条归档像钉住一样。判断依据是「不在当前会话索引里」：没有文件可删，
+   * 直接从列表摘掉，不必打扰服务端。
    */
   const deleteArchivedSessions = useCallback(
     async (filePaths: string[]) => {
       const current = settings?.archivedSessions ?? [];
-      const targets = filePaths.filter((path) => current.includes(path));
+      const targets = filePaths.filter((filePath) => current.includes(filePath));
       if (!targets.length) return;
-      const deleted = await deleteSessionsByPath(targets);
-      if (!deleted.length) return;
-      const remaining = current.filter((path) => !deleted.includes(path));
+      const known = new Set(sessions.map((item) => item.filePath));
+      // 会话列表还没加载完（known 为空）时不能判孤儿 —— 否则会把整张归档表当成失效项清空，
+      // 文件却还在。这种情况退回老路：全部交给服务端删，删不掉就留着。
+      const { live, orphaned } =
+        known.size > 0 ? partitionArchivedTargets(targets, known) : { live: targets, orphaned: [] };
+      const deleted = live.length ? await deleteSessionsByPath(live) : [];
+      const gone = new Set([...deleted, ...orphaned]);
+      if (!gone.size) return;
+      const remaining = current.filter((filePath) => !gone.has(filePath));
       void savePreferences({ archivedSessions: remaining });
     },
-    [settings?.archivedSessions, deleteSessionsByPath, savePreferences],
+    [settings?.archivedSessions, sessions, deleteSessionsByPath, savePreferences],
   );
 
   /** 从会话末尾复制一份完整历史，创建并切换到新分支。 */
@@ -4424,9 +4692,15 @@ export default function App() {
   const archiveSession = useCallback(
     (filePath: string) => {
       const current = settings?.archivedSessions ?? [];
-      if (!current.includes(filePath)) void savePreferences({ archivedSessions: [...current, filePath] });
+      if (current.includes(filePath)) return;
+      // 归档的会话同时从「置顶」栏摘掉，一次写入避免两条偏好互相覆盖
+      const pinned = settings?.pinnedConversations ?? [];
+      void savePreferences({
+        archivedSessions: [...current, filePath],
+        pinnedConversations: pinned.filter((item) => item !== filePath),
+      });
     },
-    [settings?.archivedSessions, savePreferences],
+    [settings?.archivedSessions, settings?.pinnedConversations, savePreferences],
   );
 
   const unarchiveSession = useCallback(
@@ -4604,13 +4878,16 @@ export default function App() {
           method: "POST",
           body: JSON.stringify({ checkpointId, mode, dryRun: true, keepNewFiles }),
         });
-        const applied = await api<{ rewindId?: string; id?: string; filePath?: string }>(
-          "/session/rewind",
-          {
-            method: "POST",
-            body: JSON.stringify({ checkpointId, mode, dryRun: false, planId: plan.planId, force, keepNewFiles }),
-          },
-        );
+        const applied = await api<{
+          rewindId?: string;
+          applied?: number;
+          deleted?: number;
+          id?: string;
+          filePath?: string;
+        }>("/session/rewind", {
+          method: "POST",
+          body: JSON.stringify({ checkpointId, mode, dryRun: false, planId: plan.planId, force, keepNewFiles }),
+        });
         setRewindDialog(null);
         if (applied?.id) {
           mainSessionIdRef.current = applied.id;
@@ -4629,6 +4906,14 @@ export default function App() {
         setPlan(null);
         setContextWarningDismissed(false);
         await loadCurrentSession();
+        // 只在本次回滚完成后提示一次；之后重新进入该会话不再弹出
+        if (applied?.rewindId) {
+          setUndoableRewind({
+            rewindId: applied.rewindId,
+            mode,
+            fileCount: (applied.applied ?? 0) + (applied.deleted ?? 0),
+          });
+        }
         void refreshContextUsage();
         void reloadSessions();
       } catch (err) {
@@ -4654,6 +4939,7 @@ export default function App() {
     const current = undoableRewind;
     if (!current) return;
     const derived = session;
+    setUndoingRewind(true);
     setSessionLoading(true);
     setSessionSwitching(true);
     try {
@@ -4693,6 +4979,7 @@ export default function App() {
     } catch (err) {
       pushError(err instanceof Error ? err.message : String(err));
     } finally {
+      setUndoingRewind(false);
       setSessionLoading(false);
       setSessionSwitching(false);
     }
@@ -4983,7 +5270,7 @@ export default function App() {
       if (globalStable) {
         setRunningSessions(current.runningSessionIds ?? []);
         replaceApprovals(current.pendingApprovals ?? []);
-        if ("pendingAsk" in current) setPendingAsk(current.pendingAsk ?? null);
+        if ("pendingAsk" in current) syncPendingAsk(current.pendingAsk ?? null);
         setCompactingSessions(current.compactingSessionIds ?? []);
         runStateVersionRef.current += 1;
       }
@@ -4995,6 +5282,7 @@ export default function App() {
     replaceApprovals,
     replaceQueuedPrompts,
     setCompactingSessions,
+    syncPendingAsk,
   ]);
 
   const abortSession = useCallback(async () => {
@@ -5003,6 +5291,8 @@ export default function App() {
     if (session) {
       removeRunningSession(session.id);
       removeOwnApprovals(session.id);
+      removeAskingSession(session.id);
+      setPendingAsk(null);
     }
     runStateVersionRef.current += 1;
     try {
@@ -5018,6 +5308,7 @@ export default function App() {
     session?.id,
     removeRunningSession,
     removeOwnApprovals,
+    removeAskingSession,
     syncRunState,
   ]);
 
@@ -5030,6 +5321,7 @@ export default function App() {
       }
       removeRunningSession(sessionId);
       removeOwnApprovals(sessionId);
+      removeAskingSession(sessionId);
       runStateVersionRef.current += 1;
       try {
         await api("/session/abort", {
@@ -5047,6 +5339,7 @@ export default function App() {
       pushError,
       removeOwnApprovals,
       removeRunningSession,
+      removeAskingSession,
       session?.id,
       syncRunState,
     ],
@@ -5553,11 +5846,18 @@ export default function App() {
               approvalSessionIds={[
                 ...new Set(Object.values(approvals).map((item) => item.sessionId)),
               ]}
+              askSessionIds={askSessionIds}
+              compactingSessionIds={compactingSessionIds}
+              turnStatuses={sessionTurnStatuses}
               workspace={projectCwd}
               archivedSessions={settings?.archivedSessions ?? []}
               projectNames={settings?.projectNames ?? {}}
               pinnedProjects={settings?.pinnedProjects ?? []}
+              pinnedConversations={settings?.pinnedConversations ?? []}
+              conversationOrder={settings?.conversationOrder ?? {}}
               removedProjects={settings?.removedProjects ?? []}
+              collapsedProjects={collapsedProjects}
+              onToggleCollapsedProject={toggleCollapsedProject}
               onNewChat={() => void createSession()}
               onNewChatInProject={newChatInProject}
               onSwitchSession={(filePath) => void switchSession(filePath)}
@@ -5572,6 +5872,8 @@ export default function App() {
               onArchiveProject={archiveProject}
               onRenameProject={renameProject}
               onTogglePinProject={togglePinProject}
+              onTogglePinConversation={togglePinConversation}
+              onReorderConversations={reorderConversations}
               onRemoveProject={removeProject}
               onOpenProject={(cwd) => void openProject(cwd)}
             />
@@ -5600,6 +5902,7 @@ export default function App() {
                 style={{ "--inspector-w": `${inspectorWidthLive.current}px` } as CSSProperties}
               >
                 <RightPanel
+                  interjectMode={interjectMode}
                   tabs={visibleSideTabs}
                   activeId={visibleActiveTabId}
                   onActivate={sideTabs.activate}
@@ -5701,29 +6004,7 @@ export default function App() {
             onCompact={manualCompact}
             onDismiss={() => setContextWarningDismissed(true)}
           />
-          {/* 撤销回滚横幅：当前会话最近一次回滚仍可撤销（文件改回 + 切回源会话） */}
-          {undoableRewind ? (
-            <div className="mc-undobar" role="status">
-              <span className="mc-undobar__text">
-                {i18n.t("shell:notice.undoableRewind", { count: undoableRewind.fileCount })}
-              </span>
-              <button
-                type="button"
-                className="mc-undobar__button"
-                onClick={() => void undoRewind()}
-              >
-                {i18n.t("shell:notice.undoRewind")}
-              </button>
-              <button
-                type="button"
-                className="mc-undobar__close"
-                aria-label={i18n.t("shell:notice.dismiss")}
-                onClick={() => setUndoableRewind(null)}
-              >
-                ×
-              </button>
-            </div>
-          ) : null}
+
           <PluginWrap
             name="chat.view"
             props={{
@@ -5749,6 +6030,7 @@ export default function App() {
               turnStartedAt={turnStartedAt}
               preparing={toolPreparing}
               preparingTool={preparingTool}
+              plan={plan}
               loading={sessionLoading}
               reconnect={reconnectView}
               subagentsByCallId={subagentsByCallId}
@@ -5827,6 +6109,7 @@ export default function App() {
               streaming={streaming}
               queuedPrompts={queuedPrompts}
               onSteerQueued={(id) => void steerQueuedPrompt(id)}
+
               onRemoveQueued={(id) => void removeQueuedPrompt(id)}
               onReorderQueued={(id, beforeId) => void reorderQueuedPrompt(id, beforeId)}
               editingQueuedId={editingQueued?.id ?? null}
@@ -5907,7 +6190,28 @@ export default function App() {
           </>
         ) : null}
 
-        {toast ? <Toast key={toast.key} text={toast.text} /> : null}
+        {/* 全局弹窗：与普通轻提示同一位置；回滚通知带「撤销回滚」，停留后自动收起 */}
+        {createPortal(
+          <div className="mc-toaststack">
+            {undoableRewind ? (
+              <Toast
+                key={`rewind:${undoableRewind.rewindId}`}
+                text={i18n.t("shell:notice.undoableRewind", { count: undoableRewind.fileCount })}
+                action={{
+                  label: i18n.t("shell:notice.undoRewind"),
+                  onClick: () => void undoRewind(),
+                  disabled: undoingRewind,
+                }}
+                duration={6000}
+                dismissible
+                closeLabel={i18n.t("shell:notice.dismiss")}
+                onDone={dismissUndoableRewind}
+              />
+            ) : null}
+            {toast ? <Toast key={toast.key} text={toast.text} onDone={hideToast} /> : null}
+          </div>,
+          document.body,
+        )}
 
         <UpdateModal
           open={updateOpen}

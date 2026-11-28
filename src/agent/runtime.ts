@@ -86,7 +86,6 @@ import {
   isDynamicToolRequiringApproval,
   isToolParallelSafe,
   listDynamicToolDefinitions,
-  dynamicToolDefinitionsTrimmed,
   dynamicToolsVersion,
   toolDefinitions,
   admitToolDefinition,
@@ -135,6 +134,7 @@ import { planMutationWeight, planNudge, turnEndPlanBlock } from "./plan-freshnes
 import { observerCopy, validateToolInput } from "./tool-input.js";
 import { FAILOVER_WALL_CLOCK_MS, failoverReason, planFallbacks } from "./provider-fallback.js";
 import { resolveThinkingPolicy, type ThinkingComplexity } from "./thinking-budget.js";
+import { defaultEffortForModel } from "./reasoning-catalog.js";
 import { projectForMainPath, projectForRequest } from "./request-projection.js";
 import { SUGGESTION_SYSTEM_PROMPT, SUGGESTION_USER_PROMPT, usableSuggestion } from "./prompt-suggestion.js";
 import { toResponsesInput } from "./responses.js";
@@ -327,6 +327,9 @@ export const MAX_PENDING_STEERS = 8;
 const MAX_STEER_CHARS = 4000;
 /** 根 Agent 每回合的子 Agent 启动总预算（含嵌套）；并行上限另算，预算每回合重置。 */
 const SUBAGENT_BUDGET_PER_TURN = 8;
+const SUBAGENT_WAIT_DEFAULT_MS = 60_000;
+const SUBAGENT_WAIT_MIN_MS = 1_000;
+const SUBAGENT_WAIT_MAX_MS = 300_000;
 
 /**
  * 计划模式指令：走 in-history 尾注（ensureModeContext），会话中途切换模式只追加
@@ -334,6 +337,7 @@ const SUBAGENT_BUDGET_PER_TURN = 8;
  */
 const PLAN_MODE_PROMPT = `Plan mode is active for this session.
 Research first with read-only tools (list_dir, read_file, glob, grep, browser reads). Do not run commands.
+Stop researching once the plan is executable: reading eighty files for a three-file change wastes the user's turn. If one decision would change the plan and the code cannot settle it, ask the user once.
 Then write the implementation plan as a markdown document under the workspace plans/ directory (for example plans/2026-10-17-short-slug.md). Cover: goal, current state, step-by-step changes with concrete file paths, risks, and how to verify.
 Plan mode only allows writing files under plans/: any other write, every command, and every subagent call is rejected. Keep writes focused on the plan document itself.
 If a checklist already exists, keep its steps current; if there is none, do not create one — the plan document is the deliverable.
@@ -403,6 +407,7 @@ type LiveSubagent = {
   background: boolean;
   startedAt: string;
   startedAtMs: number;
+  completion?: Promise<SubagentTaskResult>;
 };
 
 type StartedSubagent = {
@@ -421,6 +426,46 @@ type SubagentTaskResult = {
   /** 契约角色的宿主校验结果（implementer/reviewer/verifier），治理层关 gate 用 */
   childResult?: ChildResult;
 };
+
+function finalAssistantReport(messages: ChatMessage[]): string {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (
+      message.role === "assistant" &&
+      typeof message.content === "string" &&
+      message.content.trim()
+    ) {
+      return message.content;
+    }
+  }
+  return "";
+}
+
+function completedSubagentResult(
+  agentId: string,
+  report: string,
+  usage?: UsageSummary,
+  extraParts: string[] = [],
+): SubagentTaskResult {
+  const parts: string[] = [];
+  if (report) parts.push(`Subagent report:\n${clipText(report, 4000)}`);
+  else parts.push("Subagent finished without a final report.");
+  parts.push(...extraParts);
+  parts.push(
+    `[agent id: ${agentId}] Use this id with task mode "resume" to continue this subagent later.`,
+  );
+  return {
+    output: parts.join("\n\n"),
+    ok: true,
+    status: "completed",
+    ...(usage ? { usage } : {}),
+  };
+}
+
+function clampSubagentWaitMs(value: unknown): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) return SUBAGENT_WAIT_DEFAULT_MS;
+  return Math.min(SUBAGENT_WAIT_MAX_MS, Math.max(SUBAGENT_WAIT_MIN_MS, Math.floor(value)));
+}
 
 /**
  * 子 Agent 的宿主观测记录（ChildResult 的 ground truth）：
@@ -899,16 +944,23 @@ function normalizeApprovalDecision(decision: ApprovalDecision | boolean): Approv
   };
 }
 
+/** 拒绝文案基句与行为引导：模型被拒后最容易原地重试同一调用（对齐 cc-haha 的拒绝引导）。 */
+const DENIAL_BASE = "User denied this tool call";
+const DENIAL_GUIDANCE =
+  " Do not retry this call unchanged or bypass a denial with another tool; if independent work remains, continue it.";
+
 /** 拒绝文案：带用户理由时一并回灌，模型下一轮可直接据此修正。 */
 function denialOutput(decision: ApprovalDecision): string {
   return decision.feedback
-    ? `User denied this tool call. Reason: ${decision.feedback}`
-    : "User denied this tool call.";
+    ? `User denied this tool call. Reason: ${decision.feedback}${DENIAL_GUIDANCE}`
+    : `${DENIAL_BASE}.${DENIAL_GUIDANCE}`;
 }
 
 export class AgentRuntime {
   private providers: ProviderConfig[];
   private providerId: string;
+  /** 辅助任务专用模型 id（标题/记忆/学习/压缩/建议/commit/polish/审查）；null = 跟随主模型 */
+  private auxProviderId: string | null = null;
   private sessionsDir: string;
   /** 主会话目录：子 Agent 的 sessionsDir 在 subagents/ 下，跨会话检索仍指回根目录 */
   private rootSessionsDir: string;
@@ -1013,7 +1065,11 @@ export class AgentRuntime {
   private suggestionAbort: AbortController | null = null;
   /** 服务端 context editing 已武装（粘滞到压缩/新会话）：避免阈值附近开关抖动。 */
   private contextEditingArmed = false;
-  /** 实验开关（默认全关），见 constructor options.experimental */
+  /**
+   * 实验开关：未设置的键取各自默认值（见构造函数里的归一化）。
+   * midstreamToolExec 默认开 —— 对齐 Codex 的流式即派发：参数一闭合就执行只读工具，
+   * 不必等整轮输出结束，省掉每轮尾部几百毫秒到数秒的空等。
+   */
   private experimental: {
     midstreamToolExec?: boolean;
     incrementalResponses?: boolean;
@@ -1050,6 +1106,9 @@ export class AgentRuntime {
   private mutationsSincePlanCheck = 0;
   /** 上次注入计划提醒时的加权改动量 */
   private planNudgeAt = 0;
+  /** 上下文余量提醒：80/90 各注一次，回落 70% 以下重新武装（压缩后自动复位）。 */
+  private contextNote80Done = false;
+  private contextNote90Done = false;
   /** 本回合是否已经推过「建清单」：整回合只推一次 */
   private noPlanNudged = false;
   /**
@@ -1274,8 +1333,6 @@ export class AgentRuntime {
 
   /** 本会话内被写/改过的文件（mentionPathKey 归一）：@ 去重占位对这些路径失效，必须重新注入。 */
   private mutatedPaths = new Map<string, Set<string>>();
-  /** 动态工具 schema 超预算只提示一次，避免每轮刷日志 */
-  private dynamicToolBudgetWarned = false;
   /** MCP 工具注册完成只等一次：就绪前不发首个模型请求，避免工具中途追加整段重算 */
   private mcpWaited = false;
   /** AGENTS.md 快照归属的会话 id；配合 instructionsSignature 判定是否需要重读 */
@@ -1391,6 +1448,8 @@ export class AgentRuntime {
     learning?: boolean;
     /** 供应商故障转移：缺省按 MEOWCODE_PROVIDER_FALLBACK，默认关闭；server 可实时切换 */
     providerFallback?: boolean;
+    /** 辅助任务（标题/记忆/学习/压缩/建议/commit/polish/审查）专用模型 id；缺省 null = 跟随主模型 */
+    auxProviderId?: string | null;
     /** 用户可见回复的语色：缺省普通；server 从设置/env 传入并支持热更新 */
     speechStyle?: SpeechStyle;
     /**
@@ -1412,6 +1471,7 @@ export class AgentRuntime {
   }) {
     this.providers = options.providers;
     this.providerId = options.providerId ?? options.providers[0]?.id ?? "";
+    this.auxProviderId = options.auxProviderId ?? null;
     this.sessionsDir = options.sessionsDir;
     this.rootSessionsDir = options.rootSessionsDir ?? options.sessionsDir;
     this.homeDir = options.homeDir ?? os.homedir();
@@ -1430,7 +1490,11 @@ export class AgentRuntime {
     this.injectInstructions = options.injectInstructions ?? true;
     this.instructionSettings = options.instructionSettings ?? {};
     this.builtinSkillsDir = options.builtinSkillsDir;
-    this.experimental = options.experimental ?? null;
+    // 默认值先铺底，再让显式传参覆盖：只有 false 能关掉流中只读执行
+    this.experimental = {
+      ...options.experimental,
+      midstreamToolExec: options.experimental?.midstreamToolExec ?? true,
+    };
     // 提示词行为开关：env/构造参数只做「显式覆写」，未指定的键保留默认值
     if (options.experimental?.promptSegments !== undefined) {
       this.promptFlags.promptSegments = options.experimental.promptSegments;
@@ -1926,7 +1990,7 @@ export class AgentRuntime {
     return {
       approved: false,
       output: decision.byHook
-        ? `Permission denied by hook: ${decision.reason ?? "PermissionRequest hook"}`
+        ? `Permission denied by hook: ${decision.reason ?? "PermissionRequest hook"}.${DENIAL_GUIDANCE}`
         : denialOutput(decision.decision),
     };
   }
@@ -2120,14 +2184,6 @@ export class AgentRuntime {
     const pluginTools = listDynamicToolDefinitions().filter((definition) =>
       this.toolAllowed(definition.function.name),
     );
-    // 动态工具 schema 已按 8k 预算裁剪（保名字、按档砍描述）；仍被裁剪说明 server 太多，
-    // 提示用户关掉不用的 —— 再往下砍就要丢语义了。
-    if (dynamicToolDefinitionsTrimmed() && !this.dynamicToolBudgetWarned) {
-      this.dynamicToolBudgetWarned = true;
-      console.error(
-        "[meowcode] dynamic tool schemas exceeded the 8k budget; overflow tools are deferred (call tool_search to surface them) — disable unused MCP servers to reduce the split",
-      );
-    }
     const combined = this.browserHost ? [...base, ...browser] : base;
     return [...combined, ...pluginTools];
   }
@@ -2480,7 +2536,6 @@ export class AgentRuntime {
     // 否则会把 compaction_quality 写进新会话，或让新会话继承旧会话的熔断。
     this.compactionQuality = null;
     this.localCompactionFailures = 0;
-    this.dynamicToolBudgetWarned = false;
     await this.refreshInstructions(session);
     // 插件 hook：session_start（观察）
     await runHook(
@@ -2558,7 +2613,6 @@ export class AgentRuntime {
     // 否则会把 compaction_quality 写进新会话，或让新会话继承旧会话的熔断。
     this.compactionQuality = null;
     this.localCompactionFailures = 0;
-    this.dynamicToolBudgetWarned = false;
     // 关闭上次进程退出时留下的孤儿回合，并恢复会话级审批模式/用量
     const recovery = await recoverSession(session);
     this.approvalMode = recovery.approvalMode;
@@ -3175,6 +3229,11 @@ export class AgentRuntime {
     return this.loopGuard.noteResult(session.id, tool, input, output);
   }
 
+  /** 循环硬阻断（第 9 次同参同输出起）：返回阻断文案，null = 放行执行。 */
+  private loopBlockNotice(session: SessionStore, tool: string, input: unknown): string | null {
+    return this.loopGuard.blockNotice(session.id, tool, input);
+  }
+
   /** 读取成功后登记「看过这一版、这一段」，供后续读区间短路。 */
   private async rememberReadRange(
     session: SessionStore,
@@ -3351,7 +3410,7 @@ export class AgentRuntime {
    */
   async suggestNextPrompt(): Promise<string | null> {
     const session = this.currentSession;
-    const provider = this.activeProviderOrNull();
+    const provider = this.auxProvider() ?? this.activeProviderOrNull();
     if (!session || !provider || this.isRunning || this.compactingSession) return null;
     if (this.chatMode === "plan" || this.pendingApprovalList.length > 0 || this.pendingAskDetails) {
       return null;
@@ -3449,6 +3508,8 @@ export class AgentRuntime {
     queueId?: string,
     images?: ToolImage[],
     documents?: ToolDocument[],
+    /** 直接插话模式：回合进行中时入队后立即中止当前回合，把这条提到队首马上执行 */
+    interrupt = false,
   ): Promise<void> {
     const session = this.currentSession;
     if (!session) throw new Error("No active session. Create a session first.");
@@ -3474,6 +3535,13 @@ export class AgentRuntime {
         ...(attachments ? { images: attachments } : {}),
         ...(documentAttachments ? { documents: documentAttachments } : {}),
       });
+      if (interrupt) {
+        try {
+          this.steerQueuedPrompt(id);
+        } catch {
+          // 回合恰好结束（turnAbort 已清）：消息留在队列按普通排队处理，不丢
+        }
+      }
       return;
     }
     await this.runPrompt(session, text, queueId, attachments, documentAttachments);
@@ -3827,6 +3895,10 @@ export class AgentRuntime {
       this.planNudgeAt = 0;
       this.noPlanNudged = false;
       this.turnHadMutations = false;
+      // [context] 余量提醒每个新回合重新武装：注入是 ephemeral（不落盘），
+      // 新回合的模型历史里没有上一回合那条，flags 不复位模型就永远收不到第二次提醒
+      this.contextNote80Done = false;
+      this.contextNote90Done = false;
       // 插件 hook：context_inject（往历史尾部追加上下文）。
       // 只走 context_note，不进系统提示 —— 否则请求前缀一变，prompt cache 整段作废。
       const injected = await runHook(
@@ -4099,7 +4171,7 @@ export class AgentRuntime {
    * 列表和头部继续显示回退文案，不影响主对话。
    */
   private spawnTitleGeneration(session: SessionStore, userMessage: string): void {
-    const provider = this.activeProvider();
+    const provider = this.auxProvider() ?? this.activeProvider();
     this.asyncTasks += 1;
     void generateSessionTitle({
       // 辅助请求缓存亲和（P1-4）：标题请求与会话绑定，Responses 协议命中前缀缓存
@@ -4171,7 +4243,7 @@ export class AgentRuntime {
     this.memoryCursors.set(session.id, messages.length);
     const workspace = session.cwd;
     if (!workspace) return;
-    const provider = this.activeProvider();
+    const provider = this.auxProvider() ?? this.activeProvider();
     this.asyncTasks += 1;
     this.memoryExtractionBusy = true;
     void (async () => {
@@ -4281,7 +4353,7 @@ export class AgentRuntime {
    */
   private async scheduleTurnLearning(session: SessionStore, trace: TurnTrace): Promise<void> {
     if (!this.learning || this.learningController.busy) return;
-    const provider = this.activeProvider();
+    const provider = this.auxProvider() ?? this.activeProvider();
     try {
       const result = await this.learningController.learnFromTurn({
         sessionId: session.id,
@@ -4316,7 +4388,7 @@ export class AgentRuntime {
     const target = session ?? this.currentSession;
     if (!target || !this.learning) return { applied: [] };
     this.learningController.setWorkspace(target.cwd);
-    const provider = this.activeProvider();
+    const provider = this.auxProvider() ?? this.activeProvider();
     const result = await this.learningController
       .consolidate({
         sessionId: target.id,
@@ -4375,7 +4447,7 @@ export class AgentRuntime {
     options: { signal?: AbortSignal } = {},
   ): Promise<string> {
     const session = this.currentSession;
-    const provider = this.activeProvider();
+    const provider = this.auxProvider() ?? this.activeProvider();
     return generateCommitMessage({
       provider: session
         ? this.applyCachePolicy(provider, session.id, "commit")
@@ -4392,7 +4464,7 @@ export class AgentRuntime {
    */
   async polishPrompt(text: string, options: { signal?: AbortSignal } = {}): Promise<string> {
     const session = this.currentSession;
-    const provider = this.activeProvider();
+    const provider = this.auxProvider() ?? this.activeProvider();
     return polishPrompt({
       provider: session
         ? this.applyCachePolicy(provider, session.id, "polish")
@@ -4772,15 +4844,20 @@ export class AgentRuntime {
         // 换档只改 reasoning_effort / budget_tokens，不动 system/tools，前缀缓存不受影响。
         if (turnProvider.thinkingBudget === undefined) {
           const mode = this.turnChatMode ?? this.chatMode;
+          // 没填档位时按模型目录兜底（认识的一律 medium，没有 medium 档的取最低档）。
+          // 模型商没有"查询默认思考强度"的接口，空着等于把耗时交给网关的默认值。
+          const configured = turnProvider.reasoningEffort;
           const policy = resolveThinkingPolicy({
-            effort: turnProvider.reasoningEffort,
+            effort:
+              configured ?? defaultEffortForModel(turnProvider.model, turnProvider.reasoningLevels),
             maxTokens,
             reasoningLevels: turnProvider.reasoningLevels,
             boost: mode === "plan" || mode === "goal",
             complexity: this.thinkingComplexity(),
           });
-          if (policy.effort && policy.effort !== turnProvider.reasoningEffort) {
-            requestProvider = { ...requestProvider, reasoningEffort: policy.effort };
+          const effort = policy.effort ?? configured;
+          if (effort && effort !== configured) {
+            requestProvider = { ...requestProvider, reasoningEffort: effort };
           }
         }
         if (incrementalOn && turnProvider.protocol === "openai-responses") {
@@ -5368,6 +5445,33 @@ export class AgentRuntime {
       messages,
     ) => {
       const injections: ChatMessage[] = [];
+      // 上下文余量感知（codex get_context_remaining 的注水替代）：模型自己不知道窗口
+      // 快满，不会主动收尾 —— 80/90 各提醒一次；压缩后占用回落，自然重新武装。
+      try {
+        const usage = this.getContextUsage();
+        if (usage.contextWindow && usage.contextWindow > 0) {
+          const percent = Math.round((usage.usedTokens / usage.contextWindow) * 100);
+          if (percent < 70) {
+            this.contextNote80Done = false;
+            this.contextNote90Done = false;
+          } else if (percent >= 90 && !this.contextNote90Done) {
+            this.contextNote90Done = true;
+            this.contextNote80Done = true;
+            injections.push({
+              role: "user",
+              content: `[context] ${percent}% of the context window is used. Finish the current step cleanly and wrap up; on overflow the harness compacts automatically and keeps a handoff summary.`,
+            });
+          } else if (percent >= 80 && !this.contextNote80Done) {
+            this.contextNote80Done = true;
+            injections.push({
+              role: "user",
+              content: `[context] ${percent}% of the context window is used. Avoid bulk reads; finish the current step before starting new ones.`,
+            });
+          }
+        }
+      } catch {
+        // 占用估算失败不阻断回合
+      }
       // 计划新鲜度提醒：所有会话生效（不只在治理模式）。模型连续做文件变更却不更新清单时，
       // 用户看到的 todolist 会卡在某一步；轮间提醒它把完成/开始的步骤同步过去。
       if (this.enableTaskTool) {
@@ -5667,7 +5771,7 @@ export class AgentRuntime {
     if (hookAsk) {
       const decision = await this.approveHookAsk(session, call, tool, input, turnId, hookReason);
       if (!decision.approved) {
-        const output = decision.output ?? "User denied this tool call.";
+        const output = decision.output ?? denialOutput(decision);
         this.emit({ type: "tool_output", sessionId: session.id, callId: call.id, output, truncated: false });
         this.emit({ type: "tool_finished", sessionId: session.id, callId: call.id, ok: false });
         return { role: "tool", content: output, tool_call_id: call.id, name: tool };
@@ -5676,6 +5780,13 @@ export class AgentRuntime {
 
     const allowOutsideWorkspace =
       (this.turnApprovalMode ?? this.approvalMode) === "full";
+    // 循环硬阻断：强提醒压不住的同参死循环不再执行（loop-guard.ts）
+    const loopBlock = this.loopBlockNotice(session, tool, input);
+    if (loopBlock) {
+      this.emit({ type: "tool_output", sessionId: session.id, callId: call.id, output: loopBlock, truncated: false });
+      this.emit({ type: "tool_finished", sessionId: session.id, callId: call.id, ok: false });
+      return { role: "tool", content: loopBlock, tool_call_id: call.id, name: tool };
+    }
     // 重复读短路：只读快路径同样生效
     if (tool === "read_file") {
       const stub = await this.repeatedReadStub(
@@ -5908,7 +6019,7 @@ export class AgentRuntime {
     if (hookAsk) {
       const decision = await this.approveHookAsk(session, call, "task", input, turnId, hookReason);
       if (!decision.approved) {
-        const output = decision.output ?? "User denied this tool call.";
+        const output = decision.output ?? denialOutput(decision);
         this.emit({ type: "tool_output", sessionId: session.id, callId: call.id, output, truncated: false });
         this.emit({ type: "tool_finished", sessionId: session.id, callId: call.id, ok: false });
         return { role: "tool", content: output, tool_call_id: call.id, name: "task" };
@@ -6318,6 +6429,7 @@ export class AgentRuntime {
         // 后台任务不跟随父回合 abort；用户可用单个 Agent 的停止按钮结束它。
         ...(background ? {} : { parentSignal: this.turnAbort?.signal }),
       });
+      live.completion = completion;
       this.startingSubagents = Math.max(0, this.startingSubagents - 1);
       return { agentId, description, background, completion };
     } catch (error) {
@@ -6367,18 +6479,7 @@ export class AgentRuntime {
         ctx.parentSignal?.aborted === true,
       );
       errorMessage = ctx.child.lastError ?? lastTurn?.error ?? undefined;
-      const messages = ctx.child.current?.messages ?? [];
-      for (let index = messages.length - 1; index >= 0; index -= 1) {
-        const message = messages[index];
-        if (
-          message.role === "assistant" &&
-          typeof message.content === "string" &&
-          message.content.trim()
-        ) {
-          report = message.content;
-          break;
-        }
-      }
+      report = finalAssistantReport(ctx.child.current?.messages ?? []);
       const totals = ctx.child.current?.usageTotals;
       if (totals?.hasUsage) {
         usage = {
@@ -6527,8 +6628,8 @@ export class AgentRuntime {
       if (ctx.background) {
         // 主回合不等待后台子 Agent：把报告放入父会话上下文，下一次父回合能看到。
         const notice = report
-          ? `Background subagent "${ctx.description}" ${status}:\n${clipText(report, 4000)}`
-          : `Background subagent "${ctx.description}" ${status}${errorMessage ? `: ${errorMessage}` : "."}`;
+          ? `Background subagent "${ctx.description}" ${status}:\n${clipText(report, 4000)}\n[agent id: ${ctx.agentId}]`
+          : `Background subagent "${ctx.description}" ${status}${errorMessage ? `: ${errorMessage}` : "."} [agent id: ${ctx.agentId}]`;
         await ctx.session.appendContextNote(notice, "subagent").catch(() => undefined);
         await ctx.session.flush().catch(() => undefined);
       }
@@ -6540,19 +6641,11 @@ export class AgentRuntime {
     }
 
     if (status === "completed") {
-      const parts: string[] = [];
-      if (report) parts.push(`Subagent report:\n${clipText(report, 4000)}`);
-      else parts.push("Subagent finished without a final report.");
-      if (childResult) parts.push(renderChildResult(childResult));
-      if (gateMessage) parts.push(`[workflow] ${gateMessage}`);
-      parts.push(
-        `[agent id: ${ctx.agentId}] Use this id with task mode "resume" to continue this subagent later.`,
-      );
+      const extraParts: string[] = [];
+      if (childResult) extraParts.push(renderChildResult(childResult));
+      if (gateMessage) extraParts.push(`[workflow] ${gateMessage}`);
       return {
-        output: parts.join("\n\n"),
-        ok: true,
-        status,
-        ...(usage ? { usage } : {}),
+        ...completedSubagentResult(ctx.agentId, report, usage, extraParts),
         ...(childResult ? { childResult } : {}),
       };
     }
@@ -6594,6 +6687,205 @@ export class AgentRuntime {
     return null;
   }
 
+  private async waitForSubagent(
+    session: SessionStore,
+    input: Record<string, unknown>,
+  ): Promise<SubagentTaskResult> {
+    const agentId = typeof input.agent_id === "string" ? input.agent_id.trim() : "";
+    if (!/^[0-9a-f-]{36}$/i.test(agentId)) {
+      return {
+        output: 'Tool call rejected: mode "wait" requires a valid agent_id.',
+        ok: false,
+        status: "failed",
+        error: "invalid agent_id",
+      };
+    }
+    const timeoutMs = clampSubagentWaitMs(input.timeout_ms);
+    const live = this.liveSubagents.get(agentId);
+    if (live) {
+      if (live.parentSessionId !== session.id) return this.subagentNotFound(agentId);
+      if (!live.background) return this.subagentNotBackground(agentId);
+      const signal = this.turnAbort?.signal;
+      if (signal?.aborted) return this.subagentWaitAborted(agentId);
+      const completion = live.completion;
+      if (!completion) {
+        return {
+          output: `Background subagent "${agentId}" is still starting. Retry task mode "wait" with this agent_id.`,
+          ok: true,
+          status: "running",
+        };
+      }
+      const startedAt = Date.now();
+      const outcome = await new Promise<"completed" | "timeout" | "aborted">((resolve) => {
+        let settled = false;
+        let timer: ReturnType<typeof setTimeout> | null = null;
+        const finish = (value: "completed" | "timeout" | "aborted"): void => {
+          if (settled) return;
+          settled = true;
+          if (timer !== null) clearTimeout(timer);
+          signal?.removeEventListener("abort", onAbort);
+          resolve(value);
+        };
+        const onAbort = (): void => finish("aborted");
+        timer = setTimeout(() => finish("timeout"), timeoutMs);
+        signal?.addEventListener("abort", onAbort, { once: true });
+        void completion.then(
+          () => finish("completed"),
+          () => finish("completed"),
+        );
+        if (signal?.aborted) onAbort();
+      });
+      if (outcome === "aborted") return this.subagentWaitAborted(agentId);
+      if (outcome === "timeout") {
+        const waited = Math.max(1, Math.round((Date.now() - startedAt) / 1000));
+        return {
+          output: `Background subagent "${agentId}" is still running after ${waited}s. Continue with other work, then call task mode "wait" with this agent_id again.`,
+          ok: true,
+          status: "running",
+        };
+      }
+    }
+    return this.readSubagentWaitResult(session, agentId);
+  }
+
+  private subagentNotFound(agentId: string): SubagentTaskResult {
+    return {
+      output: `Background subagent "${agentId}" was not found in this session.`,
+      ok: false,
+      status: "failed",
+      error: "subagent not found",
+    };
+  }
+
+  private subagentNotBackground(agentId: string): SubagentTaskResult {
+    return {
+      output: `Subagent "${agentId}" was not started in background; only background subagents can be waited on.`,
+      ok: false,
+      status: "failed",
+      error: "subagent is not background",
+    };
+  }
+
+  private subagentWaitAborted(agentId: string): SubagentTaskResult {
+    return {
+      output: `Waiting for background subagent "${agentId}" was aborted with the parent turn. The background subagent is still running; wait again in a later turn.`,
+      ok: false,
+      status: "aborted",
+      error: "parent turn aborted",
+    };
+  }
+
+  private async readSubagentWaitResult(
+    session: SessionStore,
+    agentId: string,
+  ): Promise<SubagentTaskResult> {
+    const summary = session.subagents.find((item) => item.agentId === agentId);
+    if (!summary) return this.subagentNotFound(agentId);
+    if (summary.background !== true) return this.subagentNotBackground(agentId);
+    if (summary.status === "running") {
+      if (this.liveSubagents.has(agentId)) {
+        return {
+          output: `Background subagent "${agentId}" is still running. Call task mode "wait" with this agent_id again when its result is needed.`,
+          ok: true,
+          status: "running",
+        };
+      }
+      return {
+        output: `Background subagent "${agentId}" was interrupted before a terminal result was saved. It will not resume automatically.`,
+        ok: false,
+        status: "interrupted",
+        error: "subagent interrupted",
+      };
+    }
+
+    let child: SessionStore;
+    try {
+      child = await this.loadOwnedSubagentStore(session, agentId);
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      if (summary.status === "completed") {
+        const result = completedSubagentResult(agentId, "", summary.usage);
+        return {
+          ...result,
+          ok: false,
+          output: `${result.output}\n\nSaved subagent transcript could not be read: ${detail}`,
+          error: detail,
+        };
+      }
+      return {
+        output: `Subagent ${summary.status}: ${summary.error ?? "unknown error"}\n\nSaved subagent transcript could not be read: ${detail}`,
+        ok: false,
+        status: summary.status,
+        ...(summary.error ? { error: summary.error } : { error: detail }),
+        ...(summary.usage ? { usage: summary.usage } : {}),
+      };
+    }
+    try {
+      const report = finalAssistantReport(child.messages);
+      if (summary.status === "completed") {
+        return completedSubagentResult(agentId, report, summary.usage);
+      }
+      if (summary.status === "aborted") {
+        return {
+          output: `Subagent aborted before completing the task${summary.error ? `: ${summary.error}` : "."}`,
+          ok: false,
+          status: "aborted",
+          ...(summary.error ? { error: summary.error } : {}),
+          ...(summary.usage ? { usage: summary.usage } : {}),
+        };
+      }
+      if (summary.status === "interrupted") {
+        return {
+          output: "Subagent interrupted before completing the task.",
+          ok: false,
+          status: "interrupted",
+          ...(summary.error ? { error: summary.error } : {}),
+          ...(summary.usage ? { usage: summary.usage } : {}),
+        };
+      }
+      return {
+        output: `Subagent failed: ${summary.error ?? report ?? "unknown error"}`,
+        ok: false,
+        status: "failed",
+        ...(summary.error ? { error: summary.error } : {}),
+        ...(summary.usage ? { usage: summary.usage } : {}),
+      };
+    } finally {
+      await child.close().catch(() => undefined);
+    }
+  }
+
+  private async loadOwnedSubagentStore(
+    session: SessionStore,
+    agentId: string,
+  ): Promise<SessionStore> {
+    if (!/^[0-9a-f-]{36}$/i.test(agentId)) throw new Error("Invalid subagent id.");
+    const parentSessionId = session.id;
+    const parentDir = path.join(this.sessionsDir, "subagents", parentSessionId);
+    const filePath = path.join(parentDir, `${agentId}.jsonl`);
+    const relative = path.relative(path.resolve(parentDir), path.resolve(filePath));
+    if (!relative || relative.startsWith("..") || path.isAbsolute(relative)) {
+      throw new Error("Invalid subagent path.");
+    }
+    let store: SessionStore;
+    try {
+      store = await SessionStore.load(filePath);
+    } catch {
+      throw new Error("Subagent not found.");
+    }
+    const header = store.entries[0];
+    if (
+      !header ||
+      header.type !== "session" ||
+      header.agentKind !== "subagent" ||
+      header.parentSessionId !== parentSessionId
+    ) {
+      await store.close().catch(() => undefined);
+      throw new Error("Subagent not found.");
+    }
+    return store;
+  }
+
   private async runSubagentTask(
     session: SessionStore,
     call: ToolCall,
@@ -6602,7 +6894,14 @@ export class AgentRuntime {
     const args = (input ?? {}) as Record<string, unknown>;
     const description = String(args.description ?? "").trim().slice(0, 100);
     const mode =
-      args.mode === "resume" ? "resume" : args.mode === "fork" ? "fork" : "spawn";
+      args.mode === "resume"
+        ? "resume"
+        : args.mode === "fork"
+          ? "fork"
+          : args.mode === "wait"
+            ? "wait"
+            : "spawn";
+    if (mode === "wait") return this.waitForSubagent(session, args);
     if (mode === "resume") {
       const agentId = String(args.agent_id ?? "").trim();
       if (!agentId) {
@@ -6682,7 +6981,7 @@ export class AgentRuntime {
       if (started.background) {
         void started.completion.catch(() => undefined);
         return {
-          output: `Subagent "${started.description}" started in background. Continue with other work; its completion will be reported separately. ${this.subagentStartsLeftNote()}`,
+          output: `Subagent "${started.description}" started in background. [agent id: ${started.agentId}] Continue with other work; its completion will be reported separately. When its result is needed, call task mode "wait" with this agent_id. ${this.subagentStartsLeftNote()}`,
           ok: true,
           status: "running",
         };
@@ -6712,6 +7011,8 @@ export class AgentRuntime {
       description: "Review changes",
       prompt,
       agent_type: "reviewer",
+      // 辅助模型：配置了辅助模型就让 reviewer 子代理整体跑在它上面（失效自动回落主模型）
+      ...(this.auxProvider() ? { provider: this.auxProviderId } : {}),
     };
     const call: ToolCall = {
       id: randomUUID(),
@@ -6806,30 +7107,12 @@ export class AgentRuntime {
     if (!session) throw new Error("No active session.");
     const text = message.trim();
     if (!text) throw new Error("Message must not be empty.");
-    if (!/^[0-9a-f-]{36}$/i.test(agentId)) throw new Error("Invalid subagent id.");
     if (this.liveSubagents.has(agentId)) throw new Error("Subagent is still running.");
     const parentSessionId = session.id;
-    const parentDir = path.join(this.sessionsDir, "subagents", parentSessionId);
-    const filePath = path.join(parentDir, `${agentId}.jsonl`);
-    const relative = path.relative(path.resolve(parentDir), path.resolve(filePath));
-    if (!relative || relative.startsWith("..") || path.isAbsolute(relative)) {
-      throw new Error("Invalid subagent path.");
-    }
-    let meta: SessionStore;
-    try {
-      meta = await SessionStore.load(filePath);
-    } catch {
-      throw new Error("Subagent not found.");
-    }
+    const meta = await this.loadOwnedSubagentStore(session, agentId);
+    const filePath = meta.filePath;
     const header = meta.entries[0];
-    if (
-      !header ||
-      header.type !== "session" ||
-      header.agentKind !== "subagent" ||
-      header.parentSessionId !== parentSessionId
-    ) {
-      throw new Error("Subagent not found.");
-    }
+    if (!header || header.type !== "session") throw new Error("Subagent not found.");
     const agentType = header.agentType ?? "general";
     const description = header.description ?? meta.title ?? "子 Agent";
     const callId = header.parentCallId ?? "";
@@ -6870,7 +7153,7 @@ export class AgentRuntime {
       await child.setApprovalMode(definitionFor(agentType).readOnly ? "read-only" : this.approvalMode);
       const startedAt = new Date().toISOString();
       const startedAtMs = Date.now();
-      this.liveSubagents.set(agentId, {
+      const live: LiveSubagent = {
         runtime: child,
         parentSessionId,
         callId,
@@ -6879,7 +7162,8 @@ export class AgentRuntime {
         background: options.background ?? true,
         startedAt,
         startedAtMs,
-      });
+      };
+      this.liveSubagents.set(agentId, live);
       await session.appendSubagent({
         agentId,
         callId,
@@ -6916,6 +7200,7 @@ export class AgentRuntime {
         startedAtMs,
         observations,
       });
+      live.completion = completion;
       if (options.wait) return completion;
       void completion.catch(() => undefined);
       return null;
@@ -6989,8 +7274,10 @@ export class AgentRuntime {
       const outputs = collectOldToolOutputs(messages, { keepRecentUnits: 2, minChars: 400 });
       if (outputs.length) {
         try {
+          // 辅助模型：纪要请求与 usage 落账一起换；主对话的投影/分档仍按主 provider
+          const digestProvider = this.auxProvider() ?? provider;
           const digests = await summarizeToolOutputs({
-            provider: this.applyCachePolicy(provider, session.id, "digest"),
+            provider: this.applyCachePolicy(digestProvider, session.id, "digest"),
             outputs,
             signal: this.turnAbort?.signal,
             onUsage: (usage) => {
@@ -6998,8 +7285,8 @@ export class AgentRuntime {
                 .appendUsage({
                   ...usage,
                   source: "compaction",
-                  providerId: provider.id,
-                  model: provider.model,
+                  providerId: digestProvider.id,
+                  model: digestProvider.model,
                 })
                 .catch(() => undefined);
             },
@@ -7180,11 +7467,14 @@ export class AgentRuntime {
       const messagesToSummarize = recent.length
         ? messages.slice(0, Math.max(0, messages.length - recent.length))
         : messages;
+      // 辅助模型：摘要请求（含投影与 usage 落账）换用辅助 provider；
+      // 保留多少逐字近期历史的分档决策仍按主 provider 的窗口算
+      const summaryProvider = this.auxProvider() ?? provider;
       const summary = await createCompactionSummary({
-        provider: this.applyCachePolicy(provider, session.id),
+        provider: this.applyCachePolicy(summaryProvider, session.id),
         // 复用路径发全量投影对话（与主请求前缀一致）；专用回退路径只发旧前缀
         messages,
-        summaryMessages: projectForRequest(messagesToSummarize, provider),
+        summaryMessages: projectForRequest(messagesToSummarize, summaryProvider),
         reusePrefix: true,
         systemMessages: this.systemMessages(),
         neutralizePersona: this.speechPersonaActive,
@@ -7201,8 +7491,8 @@ export class AgentRuntime {
               ...usage,
               source: "compaction",
               ...(turnId ? { turnId } : {}),
-              providerId: provider.id,
-              model: provider.model,
+              providerId: summaryProvider.id,
+              model: summaryProvider.model,
             })
             .catch(() => undefined);
         },
@@ -7414,6 +7704,11 @@ export class AgentRuntime {
     } else {
       await session.appendCompactionSummary(summary, keepRecentMessages);
     }
+    // 衔接语（codex summary_prefix 同款）：压缩后模型最常见的两个退化动作是
+    // 复述一遍已完成的进展、或提前收工等用户确认 —— 明说「接着干」。
+    await session.appendContextNote(
+      "Runtime context: the conversation was compacted into the handoff summary above. Continue the work seamlessly — do not recap finished steps, do not re-read files the summary already covers, and do not stop early.",
+    );
     // 摘要之后补一份计划快照：压缩把计划相关的工具历史截掉了，避免模型丢失当前计划
     const plan = session.currentPlan;
     if (plan?.steps.length) {
@@ -7571,6 +7866,8 @@ export class AgentRuntime {
     const effective = session.effectiveMessages;
     const prefixLength = Math.max(0, effective.length - recent.length);
     if (prefixLength <= 0) return;
+    // 辅助模型：预热摘要走辅助 provider（采用摘要只取文本，takeReadyWarmup 不校验 provider）
+    const summaryProvider = this.auxProvider() ?? provider;
 
     // 稳定快照：摘要输入取自当下落盘的历史，之后新增的消息由 keepRecentMessages 兜住
     const systems = this.systemMessages();
@@ -7578,12 +7875,12 @@ export class AgentRuntime {
     // 复用路径发与主请求逐字节一致的全量对话（主路径带滞回投影，这里同口径，
     // 否则摘要请求与主请求前缀字节不一致、读不回刚写入的缓存）；回退路径只发投影后的旧前缀
     const fullMessages = [...systems, ...projectForMainPath(effective)];
-    const summaryMessages = [...systems, ...projectForRequest(prefix, provider)];
+    const summaryMessages = [...systems, ...projectForRequest(prefix, summaryProvider)];
     const controller = new AbortController();
     const warmup: WarmupCompaction = {
       session,
-      providerId: provider.id,
-      model: provider.model,
+      providerId: summaryProvider.id,
+      model: summaryProvider.model,
       controller,
       prefixLength,
       messages: fullMessages,
@@ -7595,7 +7892,7 @@ export class AgentRuntime {
     warmup.task = (async () => {
       try {
         const summary = await createCompactionSummary({
-          provider: this.applyCachePolicy(provider, session.id),
+          provider: this.applyCachePolicy(summaryProvider, session.id),
           messages: fullMessages,
           summaryMessages,
           reusePrefix: true,
@@ -7614,8 +7911,8 @@ export class AgentRuntime {
                 ...usage2,
                 source: "compaction",
                 ...(turnId ? { turnId } : {}),
-                providerId: provider.id,
-                model: provider.model,
+                providerId: summaryProvider.id,
+                model: summaryProvider.model,
               })
               .catch(() => undefined);
           },
@@ -8047,7 +8344,7 @@ export class AgentRuntime {
         if (!approved) return reject(denialOutput(decision));
       }
     }
-    if (!approved) return reject("User denied this tool call.");
+    if (!approved) return reject(`${DENIAL_BASE}.${DENIAL_GUIDANCE}`);
 
     const reviewCaptures = WRITABLE_ROOT_TOOLS.has(tool)
       ? await captureBeforeAll(session.cwd, tool, args, allowOutsideWorkspace)
@@ -8353,7 +8650,7 @@ export class AgentRuntime {
       if (hookAsk) {
         const decision = await this.approveHookAsk(session, call, tool, input, turnId, hookReason);
         if (!decision.approved) {
-          const output = decision.output ?? "User denied this tool call.";
+          const output = decision.output ?? denialOutput(decision);
           await this.pushToolMessage(session, messages, {
             role: "tool",
             content: output,
@@ -8420,7 +8717,7 @@ export class AgentRuntime {
       if (hookAsk) {
         const decision = await this.approveHookAsk(session, call, tool, input, turnId, hookReason);
         if (!decision.approved) {
-          const output = decision.output ?? "User denied this tool call.";
+          const output = decision.output ?? denialOutput(decision);
           await this.pushToolMessage(session, messages, {
             role: "tool",
             content: output,
@@ -8749,7 +9046,7 @@ export class AgentRuntime {
             : {}),
       });
       if (hookDeniedReason) {
-        const output = `Permission denied by hook: ${hookDeniedReason}`;
+        const output = `Permission denied by hook: ${hookDeniedReason}.${DENIAL_GUIDANCE}`;
         await this.pushToolMessage(session, messages, {
           role: "tool",
           content: output,
@@ -8789,6 +9086,19 @@ export class AgentRuntime {
       });
     }
 
+    // 循环硬阻断：强提醒压不住的同参死循环不再执行（loop-guard.ts）
+    const loopBlock = this.loopBlockNotice(session, tool, input);
+    if (loopBlock) {
+      await this.pushToolMessage(session, messages, {
+        role: "tool",
+        content: loopBlock,
+        tool_call_id: call.id,
+        name: tool,
+      });
+      this.emit({ type: "tool_output", sessionId: session.id, callId: call.id, output: loopBlock, truncated: false });
+      this.emit({ type: "tool_finished", sessionId: session.id, callId: call.id, ok: false });
+      return;
+    }
     // 重复读短路：同一文件、同一区间、版本未变、上一次结果还在上下文里 → 不再重发全文
     if (tool === "read_file") {
       const stub = await this.repeatedReadStub(
@@ -9588,6 +9898,24 @@ export class AgentRuntime {
     return message.role === "user" && typeof message.content === "string"
       ? message.content
       : undefined;
+  }
+
+  /** 运行中切换辅助模型（PUT /config/aux-model）：null = 跟随主模型 */
+  setAuxProvider(providerId: string | null): void {
+    this.auxProviderId = providerId ?? null;
+  }
+
+  /**
+   * 辅助任务的 provider：配置了辅助模型且它在当前列表里仍启用时用它，否则回退主模型。
+   * 辅助调用都是 best-effort（fetchAttempts: 1），不做故障转移。
+   */
+  private auxProvider(): ProviderConfig | null {
+    if (!this.auxProviderId) return null;
+    return (
+      this.providers.find(
+        (item) => item.id === this.auxProviderId && item.enabled !== false,
+      ) ?? null
+    );
   }
 
   private activeProvider(): ProviderConfig {

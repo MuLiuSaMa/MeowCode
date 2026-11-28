@@ -176,7 +176,7 @@
     "deleteAll": "Alle löschen",
     "confirmDeleteAll": "Alle löschen?",
     "deleteAria": "{{name}} endgültig löschen",
-    "confirmDeleteAria": "Erneut klicken, um {{name}} endgültig zu löschen"
+    "confirmDeleteAria": "{{name}} endgültig löschen"
   },
   "about": {
     "loading": "Versionsinformationen werden gelesen …",
@@ -199,6 +199,12 @@
     "upToDate": "Sie haben bereits die neueste Version",
     "checkFailed": "Versionsprüfung fehlgeschlagen: {{error}}",
     "sponsorList": "Unterstützer (MeowCode, NexBox, OpenMD, LingTab)"
+  },
+  "confirm": {
+    "deleteTitle": "Löschen?",
+    "deleteMessage": "„{{name}}“ wird endgültig gelöscht.",
+    "clearTitle": "Alles löschen?",
+    "clearMessage": "Das entfernt alle Einträge und kann nicht rückgängig gemacht werden."
   },
   "actions": {
     "add": "Hinzufügen",
@@ -327,8 +333,8 @@
       "advanced": "Erweiterte Einstellungen",
       "advancedHint": "Denkintensität / Cache-TTL / Denkstufen / Authentifizierung und Anfrage-Anpassung — leer bedeutet Standardwerte",
       "reasoningEffort": "Denkintensität",
-      "reasoningEffortPlaceholder": "Leer = Anbieter-Standard",
       "reasoningEffortHint": "Wird als reasoning_effort gesendet",
+      "reasoningEffortRecommended": "Leer = {{level}} senden (Anbieter bieten keine API für den Standardwert)",
       "thinkingBudget": "Denkbudget",
       "thinkingBudgetPlaceholder": "Leer = folgt der Denkintensität",
       "thinkingBudgetHint": "thinking.budget_tokens; wird automatisch unter max_tokens begrenzt",
@@ -374,7 +380,13 @@
   "island": {
     "section": "AI 悬浮岛",
     "field": "启用悬浮岛",
-    "desc": "Eine Kapsel oben in der Bildschirmmitte zeigt alle laufenden Sitzungen; beim Überfahren klappt sie zu einem Mini-Chat auf, in dem du antworten oder eine Aufgabe stoppen kannst."
+    "desc": "Eine Kapsel oben in der Bildschirmmitte zeigt alle laufenden Sitzungen; beim Überfahren klappt sie zu einem Mini-Chat auf, in dem du antworten oder eine Aufgabe stoppen kannst.",
+    "model": {
+      "field": "Insel-Modell",
+      "desc": "Beim Senden einer Nachricht über die schwebende Insel wechselt die Zielsitzung zuerst zu diesem Modell (gilt für kommende Turns; laufende Turns bleiben unberührt, die Modellauswahl im Hauptfenster hat Vorrang); ohne Auswahl oder bei Nichtverfügbarkeit gilt das aktuelle Modell der Sitzung.",
+      "followMain": "Aktuellem Sitzungsmodell folgen",
+      "saveFailed": "Insel-Modell konnte nicht gespeichert werden"
+    }
   },
   "hooks": {
     "loading": "Hooks-Konfiguration wird geladen…",
@@ -489,7 +501,7 @@
     "noWorkspaceHint": "Regeln werden im Verzeichnis .meowcode/rules des Projekts gespeichert.",
     "clickToEdit": "Klicken, um diese Regel zu bearbeiten",
     "deleteAria": "Regel „{{name}}“ löschen",
-    "confirmDeleteAria": "Erneut klicken, um das Löschen der Regel „{{name}}“ zu bestätigen",
+    "confirmDeleteAria": "Regel „{{name}}“ löschen",
     "createTitle": "Neue Regel",
     "editTitle": "Regel „{{name}}“ bearbeiten",
     "editorDesc": "Regeln werden mit dem Projekt in den System-Prompt eingefügt. Markdown wird unterstützt.",
@@ -586,7 +598,7 @@
     "clearField": "Alles Gelernte löschen",
     "clearHint": "Löscht alle gelernten Skills, Regeln, Profilmerkmale und den Ergebnisverlauf – in diesem Projekt und projektübergreifend. Nicht umkehrbar.",
     "clearAction": "Alles löschen",
-    "clearConfirm": "Erneut klicken zum Bestätigen",
+    "clearConfirm": "Löschen",
     "cleared": "{{scopes}} Lernverzeichnisse geleert",
     "clearedNothing": "Nichts zu löschen",
     "clearFailed": "Löschen fehlgeschlagen"
@@ -595,6 +607,10 @@
     "viewTabs": {
       "field": "Ansichtswechsel",
       "desc": "Zeigt den schwebenden Wechsler „Chat / Verlauf“ über dem Hauptbereich. Bei leeren Unterhaltungen ausgeblendet."
+    },
+    "navPulse": {
+      "field": "Im Takt des Sounds",
+      "desc": "Die Konversations-Navigation atmet und leuchtet im Rhythmus der auf diesem Computer abgespielten Sounds (Windows)."
     },
     "section": "Allgemein",
     "desc": "Alltägliches Verhalten. Änderungen wirken sofort.",
@@ -610,6 +626,12 @@
       "confirmCost": "Dadurch werden bei jedem Zug zusätzliche Token verbraucht. Die Anfrage nutzt den Gesprächs-Cache und ist daher meist günstig, wird aber trotzdem berechnet.",
       "enable": "Aktivieren"
     },
+    "auxModel": {
+      "field": "Hilfsmodell",
+      "desc": "Titelgenerierung, KI-Überprüfung, Eingabevorschläge, Memory-Destillation, Lernen, Komprimierungszusammenfassungen, Commit-Messages und Prompt-Verfeinerung laufen auf diesem Modell, um Kosten zu sparen; ohne Auswahl oder bei Nichtverfügbarkeit gilt das Hauptmodell des Gesprächs.",
+      "followMain": "Hauptmodell folgen",
+      "saveFailed": "Hilfsmodell konnte nicht gespeichert werden"
+    },
     "providerFallback": {
       "field": "Anbieter-Failover",
       "desc": "Bei Zeitüberschreitung, Ratenlimit oder Serverfehler des Hauptanbieters wechselt dieser Turn automatisch zu einem anderen aktivierten Anbieter (max. 2 Wechsel).",
@@ -618,6 +640,18 @@
     "defaultPermission": {
       "field": "Standard-Berechtigungsmodus",
       "desc": "Tool-Berechtigung für neue Unterhaltungen. Bestehende Unterhaltungen behalten ihre eigene Auswahl."
+    },
+    "interjectMode": {
+      "field": "Einsprechweise",
+      "desc": "Verhalten beim Senden während einer laufenden Antwort.",
+      "options": {
+        "queue": "Einreihen",
+        "steer": "Sofort einsprechen"
+      },
+      "descs": {
+        "queue": "Nachricht reiht sich ein und wird nach dem aktuellen Durchgang gesendet.",
+        "steer": "Die laufende Antwort wird sofort angehalten und die Nachricht direkt gesendet."
+      }
     },
     "other": {
       "section": "Allgemein"

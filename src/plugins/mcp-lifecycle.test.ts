@@ -1,5 +1,11 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { listDynamicToolDefinitions, unregisterDynamicTool } from "../agent/tools.js";
+import {
+  deferredDynamicToolNames,
+  hasDynamicTool,
+  listDynamicToolDefinitions,
+  promoteDynamicTool,
+  unregisterDynamicTool,
+} from "../agent/tools.js";
 import { McpManager, type McpClientLike, type McpClientFactory } from "./mcp.js";
 
 /**
@@ -30,8 +36,12 @@ function fakeClient(tools: string[] = ["echo"]): McpClientLike & { closed: boole
 }
 
 afterEach(() => {
-  for (const definition of listDynamicToolDefinitions()) {
-    unregisterDynamicTool(definition.function.name);
+  const names = new Set([
+    ...listDynamicToolDefinitions().map((definition) => definition.function.name),
+    ...deferredDynamicToolNames(),
+  ]);
+  for (const name of names) {
+    unregisterDynamicTool(name);
   }
 });
 
@@ -48,6 +58,7 @@ describe("McpManager 生命周期串行化", () => {
 
     // 启动（后台）与重载同时发生
     await Promise.all([manager.start(servers), manager.restart(servers)]);
+    promoteDynamicTool("mcp__demo__echo");
 
     // 工具不重复注册，计数与实际一致
     const mcpTools = listDynamicToolDefinitions().filter((item) =>
@@ -83,7 +94,7 @@ describe("McpManager 生命周期串行化", () => {
 
 describe("McpManager diff 式 restart", () => {
   function hasTool(name: string): boolean {
-    return listDynamicToolDefinitions().some((item) => item.function.name === name);
+    return hasDynamicTool(name);
   }
 
   it("配置未变的 server 不拆不重连；被移除的才拆", async () => {

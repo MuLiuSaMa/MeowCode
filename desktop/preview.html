@@ -291,6 +291,8 @@
         },
       ];
 
+      // 预览桩：替代 preload 注入的 window.meow
+      window.meow = {
         async request(path) {
           if (path === "/session") return reply(SESSION);
           if (path === "/session/messages") {

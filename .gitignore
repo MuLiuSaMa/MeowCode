@@ -69,3 +69,5 @@ Thumbs.db
 dsh-superagent-prototype-main/
 /scripts/tmp-*.ts
 desktop/slider-preview.html
+/.screenshots/
+/.qoder-input-images/

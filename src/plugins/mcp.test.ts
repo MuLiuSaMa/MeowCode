@@ -4,7 +4,7 @@ import type { AddressInfo } from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { hasDynamicTool, isDynamicToolRequiringApproval, listDynamicToolDefinitions } from "../agent/tools.js";
+import { hasDynamicTool, isDynamicToolRequiringApproval, listDynamicToolDefinitions, promoteDynamicTool } from "../agent/tools.js";
 import {
   McpAuthRequiredError,
   McpManager,
@@ -73,6 +73,7 @@ describe("McpManager.start", () => {
     expect(hasDynamicTool("mcp__demo__echo")).toBe(true);
     expect(hasDynamicTool("mcp__demo__no_schema")).toBe(true);
     expect(isDynamicToolRequiringApproval("mcp__demo__echo")).toBe(false);
+    promoteDynamicTool("mcp__demo__echo");
     const def = listDynamicToolDefinitions().find((d) => d.function.name === "mcp__demo__echo");
     expect(def?.function.description).toBe("Echo a message");
     expect(def?.function.parameters.required).toEqual(["msg"]);

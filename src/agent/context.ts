@@ -492,6 +492,11 @@ export function isInjectedUserMessage(message: ChatMessage): boolean {
   return (
     isCompactionSummaryMessage(message) ||
     message.content.startsWith("Runtime context:") ||
+    // 轮间注入的提示（prepareNextTurn）：[plan]/[workflow]/[context] 都是宿主注入，
+    // 不能当成「最后一条真实用户消息」把其后所有单元强制保留（那会让裁剪失效）
+    message.content.startsWith("[plan]") ||
+    message.content.startsWith("[workflow]") ||
+    message.content.startsWith("[context]") ||
     message.content.startsWith("The user referenced these workspace files with @mentions.")
   );
 }

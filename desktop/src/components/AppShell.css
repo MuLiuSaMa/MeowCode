@@ -176,6 +176,30 @@
     opacity: 1;
   }
 }
+/*
+ * 壁纸模式下展开检查器不能动 opacity：.mc-inspwrap 是整块右侧面板的祖先，
+ * 淡入期间里面所有卡片玻璃只能糊到子树内部（看起来就是没模糊）。
+ * 只留宽度 / 外边距收放 —— 尺寸变化不产生背板根。
+ * 收起方向仍用原 keyframes（面板本来就在消失，终态 opacity:0 必须保留）。
+ */
+@keyframes mc-insp-expand-glass {
+  from {
+    width: 0;
+    margin-left: -8px;
+  }
+  to {
+    width: var(--inspector-w);
+    margin-left: 0;
+  }
+}
+:root[data-wallpaper="true"] .mc-inspwrap[data-animated="true"][data-collapsed="false"] {
+  animation-name: mc-insp-expand-glass;
+}
+@media (prefers-reduced-motion: reduce) {
+  .mc-inspwrap[data-animated="true"] {
+    animation: none;
+  }
+}
 .mc-panel--inspector {
   width: var(--inspector-w);
   flex-shrink: 0;
@@ -244,10 +268,17 @@
  * 输入框上方的悬浮胶囊（进度 / 文件改动 / 返回底部）不占文档流，会盖住消息流
  * 最后一行——压缩分隔线沉到列表末尾后正好撞上它。有胶囊时给流底部补一段留白，
  * 把内容整体上移一个胶囊的高度（原有 8px 留白 + 28px 胶囊 + 12px 悬浮间距）。
+ * 状态行可见时，额外留白改到状态行上方：正文仍为胶囊让位，状态行保持原来的低位。
  * 胶囊被关闭（dismissed）后不再渲染，留白自动消失。
  */
 .mc-chatflow:has(.mc-sessionpill) .mc-stream__list {
   padding-bottom: calc(8px + 28px + 12px);
+}
+.mc-chatflow:has(.mc-sessionpill):has(.mc-statusline) .mc-stream__list {
+  padding-bottom: 8px;
+}
+.mc-chatflow:has(.mc-sessionpill):has(.mc-statusline) .mc-stream__list > .mc-statusline {
+  margin-top: calc(18px + 28px + 12px);
 }
 
 /*

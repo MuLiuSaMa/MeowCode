@@ -148,7 +148,8 @@ export function AppBackground({ wallpaper }: { wallpaper: WallpaperSettings | nu
 
   /*
    * 图片壁纸的地址交给 CSS：消息流挂蒙版做文字淡出后，流内的毛玻璃只能糊到流子树内部，
-   * 全靠 .mc-streamwrap::before 复刻的壁纸副本才有东西可糊。视频副本走上面的
+   * 全靠 .mc-stream__bg::before 复刻的壁纸副本才有东西可糊（副本住在滚动容器内部，
+   * 合成滚动后玻璃才有背板可糊，见 MessageList.css 蒙版块注释）。视频副本走上面的
    * activeWallpaperVideo（DOM <video>，位图放不了）。跟的是当前展示层（轮播会换图）。
    */
   useEffect(() => {

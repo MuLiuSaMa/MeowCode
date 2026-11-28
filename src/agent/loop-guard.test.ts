@@ -235,3 +235,53 @@ describe("fully covered files", () => {
     expect(await guard.fullyCovered(cwd, messages, "a.ts", false)).toBe(false);
   });
 });
+
+describe("loop hard block", () => {
+  const INPUT = { path: "a.ts" };
+
+  it("does not block below the strong-remind threshold", () => {
+    const guard = new LoopGuard();
+    for (let index = 1; index < 8; index += 1) {
+      guard.noteResult("s1", "grep", INPUT, "same output");
+    }
+    expect(guard.blockNotice("s1", "grep", INPUT)).toBeNull();
+  });
+
+  it("blocks the 9th identical call after 8 identical results", () => {
+    const guard = new LoopGuard();
+    for (let index = 0; index < 8; index += 1) {
+      const note = guard.noteResult("s1", "grep", INPUT, "same output");
+      if (index === 7) expect(note).toContain("8+");
+    }
+    const block = guard.blockNotice("s1", "grep", INPUT);
+    expect(block).toContain("[meowcode] Blocked: grep");
+    expect(block).toContain("8 times in a row");
+  });
+
+  it("does not block when the output changed", () => {
+    const guard = new LoopGuard();
+    for (let index = 0; index < 8; index += 1) {
+      guard.noteResult("s1", "grep", INPUT, "same output");
+    }
+    // 输出变了（文件真的变了）：换键重新计数，不拦截
+    guard.noteResult("s1", "grep", INPUT, "different output");
+    expect(guard.blockNotice("s1", "grep", INPUT)).toBeNull();
+  });
+
+  it("does not block a different tool or changed arguments", () => {
+    const guard = new LoopGuard();
+    for (let index = 0; index < 8; index += 1) {
+      guard.noteResult("s1", "grep", INPUT, "same output");
+    }
+    expect(guard.blockNotice("s1", "glob", INPUT)).toBeNull();
+    expect(guard.blockNotice("s1", "grep", { path: "b.ts" })).toBeNull();
+  });
+
+  it("does not leak state across sessions", () => {
+    const guard = new LoopGuard();
+    for (let index = 0; index < 8; index += 1) {
+      guard.noteResult("s1", "grep", INPUT, "same output");
+    }
+    expect(guard.blockNotice("s2", "grep", INPUT)).toBeNull();
+  });
+});

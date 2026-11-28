@@ -50,12 +50,14 @@
 }
 
 .mc-usage__metric {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  /* 数值行吸收多余高度、标签行贴底：某一项数值折行时，五项标签仍保持同一基线 */
+  grid-template-rows: 1fr auto;
+  justify-items: center;
   align-items: center;
   gap: 6px;
   min-width: 0;
-  padding: 0 10px;
+  padding: 0 8px;
   text-align: center;
 }
 
@@ -64,12 +66,14 @@
 }
 
 .mc-usage__metricvalue {
-  font-size: 18px;
+  font-size: 17px;
   font-weight: var(--fw-semibold);
   color: var(--fg);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  /* 放不下时折行而不是裁成省略号；keep-all 保证「x 小时」「xx 分钟」各自不被拆开 */
+  white-space: normal;
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+  line-height: 1.3;
   max-width: 100%;
   font-variant-numeric: tabular-nums;
 }

@@ -79,7 +79,7 @@ export function resolveThinkingBudget(input: ThinkingBudgetInput = {}): number |
 }
 
 /**
- * 按 modes 升一档（plan/goal 需要更长的推理链）。显式预算不参与升档：
+ * 按 modes 升一档（仅复杂度信号使用）。显式预算不参与升档：
  * 用户手填的数字是精确意图，不该被模式悄悄改掉。
  */
 export function boostEffort(
@@ -91,6 +91,28 @@ export function boostEffort(
   const index = levels.indexOf(effort);
   if (index < 0) return effort;
   return levels[Math.min(levels.length - 1, index + steps)];
+}
+
+/**
+ * 模式档位的「地板」：plan/goal 只把低于 recommended 的抬上来，不往上顶。
+ *
+ * 对齐 Codex 的 plan preset（`ReasoningEffort::Medium`）：进入计划模式是换工作方式，
+ * 不是加码思考。旧实现是无条件 +1 档 —— 用户已经选 high 的会被顶到 max，
+ * 一轮多花几十秒，而计划模式本来只写一份文档。
+ *
+ * 档位表里没有 medium 的模型（DeepSeek / GLM 只认 low/high/max）原样返回：
+ * 硬抬到 high 等于把"别加码"变成"加码"，比不动更糟。
+ */
+export function floorEffort(
+  effort: string | undefined,
+  levels: string[] | undefined,
+  floor = "medium",
+): string | undefined {
+  if (!effort || !levels?.length) return effort;
+  const index = levels.indexOf(effort);
+  const floorIndex = levels.indexOf(floor);
+  if (index < 0 || floorIndex < 0) return effort;
+  return index < floorIndex ? floor : effort;
 }
 
 /**
@@ -136,30 +158,29 @@ export function complexityBoostSteps(complexity: ThinkingComplexity | undefined)
 }
 
 /**
- * 请求级思考策略：显式预算 > 复杂度/模式升档后的档位。
- * runtime 用它算升档结果，协议层只消费最终值。
+ * 请求级思考策略：显式预算 > 复杂度升档 > 模式地板 > 用户档位。
+ * runtime 用它算最终档位，协议层只消费最终值。
  */
 export function resolveThinkingPolicy(input: {
   effort?: string;
   explicit?: number;
   maxTokens?: number;
   reasoningLevels?: string[];
-  /** plan/goal 模式升档 */
+  /** plan/goal 模式：把低于 medium 的档位抬到 medium，不向上顶 */
   boost?: boolean;
   /**
    * 复杂度事实（#9）。显式预算仍然优先：用户手填的数字是精确意图。
-   * boost 与 complexity 取较大步数，不是相加——两套信号高度相关，
-   * 相加会让「plan 模式 + 4 条门禁」直接跳到 max。
+   * 复杂度先升档，模式地板只兜底不叠加——两者相加会把「plan + 4 条门禁」推到顶。
    */
   complexity?: ThinkingComplexity;
 }): { effort?: string; budget?: number } {
-  const modeSteps = input.boost ? 1 : 0;
-  const steps = Math.max(modeSteps, complexityBoostSteps(input.complexity));
+  const explicit = input.explicit !== undefined;
   // 显式预算不参与升档：用户手填的数字是精确意图
-  const applied = input.explicit === undefined && steps > 0;
-  const effort = applied
-    ? boostEffort(input.effort, input.reasoningLevels, steps)
-    : input.effort;
+  const boosted = explicit
+    ? input.effort
+    : boostEffort(input.effort, input.reasoningLevels, complexityBoostSteps(input.complexity));
+  const effort =
+    explicit || !input.boost ? boosted : floorEffort(boosted, input.reasoningLevels);
   const budget = resolveThinkingBudget({
     effort,
     explicit: input.explicit,

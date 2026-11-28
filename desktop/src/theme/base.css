@@ -300,7 +300,7 @@ img {
   .mc-statusline__dots i,
   .mc-splash__glow,
   .mc-ctxpop__dot,
-  .mc-convpanel__runningdot,
+  .mc-convpanel__statusdot,
   .mc-rail__updatebtn[data-kind="done"]::before,
   .island-dot,
   .island-chip__dot,
@@ -549,7 +549,7 @@ img {
   .mc-badge--running,
   .mc-tv__open,
   .mc-tv__row[data-kind="hunk"],
-  .mc-queued,
+  .mc-queuedlist,
   .mc-subagent__status,
   .mc-levels__chip,
   .mc-dataimport__badge,
@@ -585,6 +585,41 @@ img {
 /* inline 元素必须成为可采样背景的盒子，backdrop-filter 才会生效 */
 :root[data-wallpaper="true"] .mc-markdown :not(pre) > code {
   display: inline-block;
+}
+
+/*
+ * 弹窗面板内部的滚动列表卡片：面板本身已是毛玻璃（背板根），卡片只能糊到
+ * 「面板那张已经模糊过的底板」—— 二次 26px 模糊视觉上≈恒等，却让滚动期间
+ * 每帧都要为可见的 21~24 张卡片各做一次全尺寸重采样。只留底色。
+ */
+:root[data-wallpaper="true"] .mc-dialog__panel .mc-picker__item {
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+/*
+ * 服务商选择弹窗：把面板的玻璃从面板本体挪到不随内容滚动的 ::before 上
+ * （同 Composer.css 的「+」菜单做法）。面板本体挂 backdrop-filter 时，
+ * 它是随内容重绘的合成表面 —— 列表滚动的每一帧都要重算整块 26px 背景模糊；
+ * 挪到伪元素上，模糊层变成静态图层，滚动只位移列表。观感不变：
+ * 同一份底色、同一份模糊、同一条圆角。
+ */
+:root[data-wallpaper="true"] .mc-dialog__panel:has(.mc-picker__grid) {
+  position: relative;
+  background-color: transparent;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+:root[data-wallpaper="true"] .mc-dialog__panel:has(.mc-picker__grid)::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  corner-shape: inherit;
+  background-color: var(--wpg-glass);
+  -webkit-backdrop-filter: var(--wpg-filter);
+  backdrop-filter: var(--wpg-filter);
 }
 
 /* 文件胶囊放在亮壁纸回退时压暗的不够，正文里改用主文字色 */
@@ -629,4 +664,17 @@ img {
   background-color: var(--wpg-glass-chip);
   -webkit-backdrop-filter: var(--wpg-filter);
   backdrop-filter: var(--wpg-filter);
+}
+
+/*
+ * 壁纸模式下新消息不做淡入上浮：.mc-assistant 是正文里文件胶囊 / 代码块的祖先，
+ * 它一挂 opacity 动画，这些玻璃在动画期间就糊不到壁纸（用户明确不要这段动画）。
+ */
+:root[data-wallpaper="true"] .mc-assistant {
+  animation: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .mc-assistant {
+    animation: none;
+  }
 }

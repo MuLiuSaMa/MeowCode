@@ -7,6 +7,7 @@ import {
   hasDynamicTool,
   isDynamicToolRequiringApproval,
   listDynamicToolDefinitions,
+  promoteDynamicTool,
 } from "../agent/tools.js";
 import { PluginRegistry } from "./registry.js";
 import type { PluginManifest, PluginTool } from "./types.js";
@@ -27,6 +28,7 @@ describe("PluginRegistry.addTool", () => {
     const result = registry.addTool("p1", makeTool("my_tool"));
     expect(result.ok).toBe(true);
     expect(hasDynamicTool("my_tool")).toBe(true);
+    promoteDynamicTool("my_tool");
     expect(listDynamicToolDefinitions().map((d) => d.function.name)).toContain("my_tool");
     registry.unregisterAll();
     expect(hasDynamicTool("my_tool")).toBe(false);

@@ -128,24 +128,29 @@
   color: var(--fg);
 }
 
+/* 排队/恢复列表：连在一起的单容器，行间用细分隔线（不再每项一个圆角框） */
 .mc-queuedlist {
   display: flex;
   flex-direction: column;
-  gap: 6px;
   margin: 0 14px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  /* 与输入框同一条连续曲率（corner-shape 不继承，宿主逐处声明） */
+  corner-shape: superellipse(1.5);
+  background: var(--surface);
+  overflow: hidden;
 }
 
 .mc-queuedlist--recovered {
-  padding: 8px;
-  border: 1px dashed var(--border);
-  border-radius: var(--radius-md);
+  border-style: dashed;
   background: color-mix(in oklab, var(--surface) 55%, transparent);
 }
+
 
 .mc-queuedlist__head {
   font-size: var(--fs-xs);
   color: var(--fg-subtle);
-  padding: 0 2px;
+  padding: 6px 10px 2px;
 }
 
 /* 已引用的技能/插件 chip：输入框内正常文档流，多选时自动换行 */
@@ -219,11 +224,9 @@
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 6px 10px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  corner-shape: superellipse(1.5);
-  background: var(--surface);
+  padding: 7px 10px;
+  border: 0;
+  background: transparent;
 }
 
 /* 拖动把手：按住才开始整行拖拽，正文仍可正常选中 */
@@ -246,7 +249,7 @@
 }
 
 .mc-queued[data-drop] {
-  border-color: var(--accent);
+  background: var(--surface-hover);
 }
 
 .mc-queued[data-editing] .mc-queued__text {
@@ -332,6 +335,20 @@
   background: var(--surface-hover);
 }
 
+/* 「立即」按钮：描边胶囊（对齐设计稿），带向上箭头 */
+.mc-queued__action--steer {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  padding: 3px 8px;
+}
+
+.mc-queued__action--steer:hover {
+  background: var(--surface-hover);
+}
+
 .mc-queued__action--danger:hover {
   color: var(--danger);
 }
@@ -373,11 +390,19 @@
   display: inline-flex;
   align-items: center;
   gap: 8px;
+  max-width: 100%;
   padding: 3px 12px 3px 3px;
   margin-left: -6px;
+  border: 0;
   border-radius: var(--radius-full);
-  corner-shape: superellipse(1.5);
+  /* 胶囊端头必须是正圆：superellipse 会把两端压平，看起来像圆角矩形 */
+  corner-shape: round;
   background: transparent;
+  color: var(--fg);
+  font-family: inherit;
+  font-size: var(--fs-caption);
+  font-weight: var(--fw-medium);
+  cursor: pointer;
   transition: background-color var(--dur) var(--ease);
 }
 /* 只有鼠标真正落在项目胶囊上（或菜单展开）才亮，别把旁边 worktree 开关的悬停也算进来 */
@@ -386,7 +411,7 @@
   background: var(--surface-hover);
 }
 
-/* 项目图标：仅作标识，不可点击（切换项目点右侧名字）。
+/* 项目图标：随整个胶囊一起可点。
    注意：必须清掉 button/span 的默认 padding，否则内容区过窄，svg 会被 flex 压扁。 */
 .mc-composer__projicon {
   display: inline-flex;
@@ -400,17 +425,7 @@
 }
 
 .mc-composer__projname {
-  display: inline-flex;
-  align-items: center;
   min-width: 0;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  color: var(--fg);
-  font-family: inherit;
-  font-size: var(--fs-caption);
-  font-weight: var(--fw-medium);
-  cursor: pointer;
 }
 
 /* 工作区缺失时的回退按钮：与项目标签同位，点击打开目录选择器 */
@@ -422,7 +437,7 @@
   padding: 3px 10px;
   border: 0;
   border-radius: var(--radius-full);
-  corner-shape: superellipse(1.5);
+  corner-shape: round;
   background: transparent;
   color: var(--fg-subtle);
   font-family: inherit;
@@ -455,7 +470,7 @@
   padding: 3px 10px 3px 6px;
   border: 0;
   border-radius: var(--radius-full);
-  corner-shape: superellipse(1.5);
+  corner-shape: round;
   background: transparent;
   color: var(--fg-subtle);
   font-family: inherit;
@@ -494,7 +509,7 @@
   /* 用和项目胶囊相同的上下 3px 内边距撑高，两枚胶囊高度天然一致 */
   padding: 3px 10px 3px 6px;
   border-radius: var(--radius-full);
-  corner-shape: superellipse(1.5);
+  corner-shape: round;
   color: var(--fg-subtle);
   font-size: var(--fs-caption);
   font-weight: var(--fw-medium);

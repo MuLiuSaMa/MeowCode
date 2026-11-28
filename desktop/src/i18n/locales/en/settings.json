@@ -55,7 +55,13 @@
   "island": {
     "section": "AI Floating Island",
     "field": "Enable floating island",
-    "desc": "A capsule at the top center of your screen shows every running session; hover to expand it into a mini chat window where you can reply or stop a task."
+    "desc": "A capsule at the top center of your screen shows every running session; hover to expand it into a mini chat window where you can reply or stop a task.",
+    "model": {
+      "field": "Island model",
+      "desc": "Messages sent from the floating island switch the target session to this model first (applies to upcoming turns; the model picker in the main window can override it); falls back to the session's current model when empty or unavailable.",
+      "followMain": "Follow session model",
+      "saveFailed": "Failed to save the island model"
+    }
   },
   "close": {
     "section": "Window close behaviour",
@@ -126,7 +132,7 @@
     "noWorkspaceHint": "Rules are stored in the project's .meowcode/rules directory.",
     "clickToEdit": "Click to edit this rule",
     "deleteAria": "Delete rule \"{{name}}\"",
-    "confirmDeleteAria": "Click again to confirm deleting rule \"{{name}}\"",
+    "confirmDeleteAria": "Delete rule \"{{name}}\"",
     "createTitle": "New rule",
     "editTitle": "Edit rule \"{{name}}\"",
     "editorDesc": "Rules are injected into the system prompt with the project. Markdown is supported.",
@@ -252,7 +258,7 @@
     "deleteAll": "Delete all",
     "confirmDeleteAll": "Delete all?",
     "deleteAria": "Delete {{name}} permanently",
-    "confirmDeleteAria": "Click again to delete {{name}} permanently"
+    "confirmDeleteAria": "Delete {{name}} permanently"
   },
   "about": {
     "loading": "Reading version info…",
@@ -275,6 +281,12 @@
     "upToDate": "You're already on the latest version",
     "checkFailed": "Update check failed: {{error}}",
     "sponsorList": "Sponsors (MeowCode, NexBox, OpenMD, LingTab)"
+  },
+  "confirm": {
+    "deleteTitle": "Delete?",
+    "deleteMessage": "“{{name}}” will be deleted permanently.",
+    "clearTitle": "Delete everything?",
+    "clearMessage": "This removes all records and cannot be undone."
   },
   "actions": {
     "add": "Add",
@@ -403,8 +415,8 @@
       "advanced": "Advanced settings",
       "advancedHint": "Reasoning effort / cache TTL / reasoning levels / auth and request tweaks — leave empty for defaults",
       "reasoningEffort": "Reasoning effort",
-      "reasoningEffortPlaceholder": "Empty = provider default",
       "reasoningEffortHint": "Sent as reasoning_effort",
+      "reasoningEffortRecommended": "Empty = send {{level}} (providers expose no default-effort API)",
       "thinkingBudget": "Thinking budget",
       "thinkingBudgetPlaceholder": "Empty = follow the reasoning effort",
       "thinkingBudgetHint": "thinking.budget_tokens; automatically clamped below max_tokens",
@@ -586,7 +598,7 @@
     "clearField": "Clear everything learned",
     "clearHint": "Deletes every learned skill, guideline, profile trait and the outcome history — in this project and across projects. Cannot be undone.",
     "clearAction": "Clear all",
-    "clearConfirm": "Click again to confirm",
+    "clearConfirm": "Clear",
     "cleared": "Cleared {{scopes}} learning directories",
     "clearedNothing": "Nothing to clear",
     "clearFailed": "Could not clear learned items"
@@ -595,6 +607,10 @@
     "viewTabs": {
       "field": "View switcher",
       "desc": "Show the floating Chat / Trajectory switcher above the main area. Hidden for empty conversations."
+    },
+    "navPulse": {
+      "field": "Audio-reactive navigator",
+      "desc": "The message navigator breathes and glows with the sound playing on this computer (Windows)."
     },
     "section": "General",
     "desc": "Everyday behaviour. Changes apply immediately.",
@@ -610,6 +626,12 @@
       "confirmCost": "This uses additional tokens on every turn. The request reuses the conversation cache, so it is usually inexpensive, but it is still billed.",
       "enable": "Turn on"
     },
+    "auxModel": {
+      "field": "Auxiliary model",
+      "desc": "Title generation, AI review, input suggestions, memory distillation, learning, compaction summaries, commit messages and prompt polishing run on this model to save cost; they follow the main conversation model when empty or unavailable.",
+      "followMain": "Follow main model",
+      "saveFailed": "Failed to save the auxiliary model"
+    },
     "providerFallback": {
       "field": "Provider failover",
       "desc": "When the primary provider times out, is rate-limited, or returns a server error, this turn automatically switches to another enabled provider (up to 2 hops).",
@@ -618,6 +640,18 @@
     "defaultPermission": {
       "field": "Default permission mode",
       "desc": "Tool permission used for new conversations. Existing conversations keep their own choice."
+    },
+    "interjectMode": {
+      "field": "Mid-turn messages",
+      "desc": "What happens when you send a message while a reply is still running.",
+      "options": {
+        "queue": "Queue",
+        "steer": "Interrupt & send"
+      },
+      "descs": {
+        "queue": "The message joins the queue and is sent after the current turn finishes.",
+        "steer": "The running reply is stopped immediately and your message is sent right away."
+      }
     },
     "other": {
       "section": "General"

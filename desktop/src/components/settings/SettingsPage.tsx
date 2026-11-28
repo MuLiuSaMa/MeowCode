@@ -337,6 +337,8 @@ export function SettingsBody({
         onAnnouncementsChange={(value) => onSavePreferences({ announcements: value })}
         showViewTabs={preferences.showViewTabs ?? true}
         onShowViewTabsChange={(value) => onSavePreferences({ showViewTabs: value })}
+        navAudioPulse={preferences.navAudioPulse ?? false}
+        onNavAudioPulseChange={(value) => onSavePreferences({ navAudioPulse: value })}
         nextPromptSuggestions={preferences.nextPromptSuggestions ?? false}
         onNextPromptSuggestionsChange={(value) =>
           onSavePreferences({ nextPromptSuggestions: value })
@@ -345,6 +347,9 @@ export function SettingsBody({
         onDefaultPermissionModeChange={(value) =>
           onSavePreferences({ defaultPermissionMode: value })
         }
+        interjectMode={preferences.interjectMode ?? "queue"}
+        onInterjectModeChange={(value) => onSavePreferences({ interjectMode: value })}
+        providers={providers}
         onToast={onToast}
       />
     ),
@@ -383,6 +388,8 @@ export function SettingsBody({
       <IslandSection
         floatingIsland={preferences.floatingIsland ?? false}
         onFloatingIslandChange={(value) => onSavePreferences({ floatingIsland: value })}
+        providers={providers}
+        onToast={onToast}
       />
     ),
     worktree: (

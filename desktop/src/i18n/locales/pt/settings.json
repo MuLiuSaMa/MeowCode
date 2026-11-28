@@ -176,7 +176,7 @@
     "deleteAll": "Apagar tudo",
     "confirmDeleteAll": "Apagar tudo?",
     "deleteAria": "Apagar {{name}} definitivamente",
-    "confirmDeleteAria": "Clique de novo para apagar {{name}} definitivamente"
+    "confirmDeleteAria": "Apagar {{name}} definitivamente"
   },
   "about": {
     "loading": "Lendo as informações de versão…",
@@ -199,6 +199,12 @@
     "upToDate": "Você já está na versão mais recente",
     "checkFailed": "Falha ao verificar a versão: {{error}}",
     "sponsorList": "Apoiadores (MeowCode, NexBox, OpenMD, LingTab)"
+  },
+  "confirm": {
+    "deleteTitle": "Excluir?",
+    "deleteMessage": "“{{name}}” será excluído permanentemente.",
+    "clearTitle": "Excluir tudo?",
+    "clearMessage": "Isso remove todos os registros e não pode ser desfeito."
   },
   "actions": {
     "add": "Adicionar",
@@ -327,8 +333,8 @@
       "advanced": "Configurações avançadas",
       "advancedHint": "Esforço de raciocínio / TTL do cache / níveis de raciocínio / autenticação e personalização da requisição — em branco usa o padrão",
       "reasoningEffort": "Esforço de raciocínio",
-      "reasoningEffortPlaceholder": "Em branco = padrão do provedor",
       "reasoningEffortHint": "Enviado como reasoning_effort",
+      "reasoningEffortRecommended": "Vazio = enviar {{level}} (o provedor não expõe o nível padrão)",
       "thinkingBudget": "Orçamento de pensamento",
       "thinkingBudgetPlaceholder": "Em branco = segue o esforço de raciocínio",
       "thinkingBudgetHint": "thinking.budget_tokens; é ajustado automaticamente para ficar abaixo de max_tokens",
@@ -374,7 +380,13 @@
   "island": {
     "section": "AI 悬浮岛",
     "field": "启用悬浮岛",
-    "desc": "Uma cápsula no topo central da tela mostra todas as sessões em execução; passe o cursor para expandi-la em uma mini janela de chat e responder ou parar uma tarefa."
+    "desc": "Uma cápsula no topo central da tela mostra todas as sessões em execução; passe o cursor para expandi-la em uma mini janela de chat e responder ou parar uma tarefa.",
+    "model": {
+      "field": "Modelo da ilha",
+      "desc": "Mensagens enviadas da ilha flutuante mudam primeiro a sessão de destino para este modelo (vale para os próximos turnos; o turno em curso não é afetado, a troca de modelo na janela principal tem precedência); quando vazio ou indisponível, mantém o modelo atual da sessão.",
+      "followMain": "Seguir o modelo da sessão",
+      "saveFailed": "Falha ao salvar o modelo da ilha"
+    }
   },
   "hooks": {
     "loading": "Carregando a configuração de hooks…",
@@ -489,7 +501,7 @@
     "noWorkspaceHint": "As regras são armazenadas no diretório .meowcode/rules do projeto.",
     "clickToEdit": "Clique para editar esta regra",
     "deleteAria": "Excluir a regra \"{{name}}\"",
-    "confirmDeleteAria": "Clique novamente para confirmar a exclusão da regra \"{{name}}\"",
+    "confirmDeleteAria": "Excluir a regra \"{{name}}\"",
     "createTitle": "Nova regra",
     "editTitle": "Editar a regra \"{{name}}\"",
     "editorDesc": "As regras são injetadas no prompt do sistema com o projeto. Markdown é suportado.",
@@ -586,7 +598,7 @@
     "clearField": "Apagar tudo o que foi aprendido",
     "clearHint": "Exclui todas as habilidades, diretrizes, traços de perfil e o histórico de resultados, neste projeto e entre projetos. Não pode ser desfeito.",
     "clearAction": "Apagar tudo",
-    "clearConfirm": "Clique de novo para confirmar",
+    "clearConfirm": "Limpar",
     "cleared": "{{scopes}} diretórios de aprendizado esvaziados",
     "clearedNothing": "Nada a apagar",
     "clearFailed": "Não foi possível apagar"
@@ -595,6 +607,10 @@
     "viewTabs": {
       "field": "Seletor de vista",
       "desc": "Mostra o seletor flutuante «Conversa / Rastro» acima da área principal. Oculto em conversas vazias."
+    },
+    "navPulse": {
+      "field": "Navegador no ritmo do som",
+      "desc": "A barra de navegação respira e brilha no ritmo dos sons tocados neste computador (Windows)."
     },
     "section": "Geral",
     "desc": "Comportamento do dia a dia. As mudanças valem na hora.",
@@ -610,6 +626,12 @@
       "confirmCost": "Isso consome tokens extras a cada turno. A requisição reutiliza o cache da conversa, então costuma ser barata, mas ainda é cobrada.",
       "enable": "Ativar"
     },
+    "auxModel": {
+      "field": "Modelo auxiliar",
+      "desc": "A geração de títulos, a revisão por IA, as sugestões de entrada, a destilação de memória, o aprendizado, os resumos de compactação, as mensagens de commit e o polimento de prompts usam este modelo para economizar custo; quando vazio ou indisponível, seguem o modelo principal da conversa.",
+      "followMain": "Seguir o modelo principal",
+      "saveFailed": "Falha ao salvar o modelo auxiliar"
+    },
     "providerFallback": {
       "field": "Failover do provedor",
       "desc": "Quando o provedor principal expira, atinge limite de requisições ou retorna erro de servidor, este turno muda automaticamente para outro provedor habilitado (até 2 saltos).",
@@ -618,6 +640,18 @@
     "defaultPermission": {
       "field": "Modo de permissão padrão",
       "desc": "Permissão de ferramentas para novas conversas. As conversas existentes mantêm a própria escolha."
+    },
+    "interjectMode": {
+      "field": "Mensagens em andamento",
+      "desc": "O que acontece ao enviar uma mensagem enquanto uma resposta está em execução.",
+      "options": {
+        "queue": "Fila",
+        "steer": "Interromper e enviar"
+      },
+      "descs": {
+        "queue": "A mensagem entra na fila e é enviada após o turno atual terminar.",
+        "steer": "A resposta em execução é interrompida imediatamente e sua mensagem é enviada."
+      }
     },
     "other": {
       "section": "Geral"

@@ -1,4 +1,12 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  Fragment,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type PointerEvent as ReactPointerEvent,
+} from "react";
 import { useTranslation } from "react-i18next";
 import {
   LuArchive,
@@ -16,9 +24,13 @@ import {
   LuTrash2,
   LuX,
 } from "react-icons/lu";
-import type { SessionSummary } from "../api";
+import type { SessionSummary, TurnStatus } from "../api";
 import { PluginSlot } from "../plugins/PluginSlot";
-import { groupSessionsByProject } from "../conversation-groups";
+import {
+  PINNED_GROUP_ID,
+  groupSessionsByProject,
+  reorderConversationPaths,
+} from "../conversation-groups";
 import { formatDateTime, formatSessionStamp } from "../i18n/format";
 import { baseName } from "../util";
 import { Button } from "./ui/Button";
@@ -33,6 +45,18 @@ const SESSION_MENU_ESTIMATED_HEIGHT = 248;
 /** 项目「…」菜单的近似尺寸（5 项 + 3 分隔线） */
 const PROJECT_MENU_WIDTH = 196;
 const PROJECT_MENU_ESTIMATED_HEIGHT = 220;
+
+type CardPointerDrag = {
+  pointerId: number;
+  filePath: string;
+  cwd: string;
+  list: HTMLElement;
+  startX: number;
+  startY: number;
+  x: number;
+  y: number;
+  active: boolean;
+};
 
 function clampSessionMenuPoint(x: number, y: number): { x: number; y: number } {
   return {
@@ -153,11 +177,18 @@ export function ConversationPanel({
   currentSessionId,
   runningSessionIds,
   approvalSessionIds,
+  askSessionIds,
+  compactingSessionIds,
+  turnStatuses,
   workspace,
   archivedSessions,
   projectNames,
   pinnedProjects,
+  pinnedConversations,
+  conversationOrder,
   removedProjects,
+  collapsedProjects,
+  onToggleCollapsedProject,
   onNewChat,
   onNewChatInProject,
   onSwitchSession,
@@ -172,6 +203,8 @@ export function ConversationPanel({
   onArchiveProject,
   onRenameProject,
   onTogglePinProject,
+  onTogglePinConversation,
+  onReorderConversations,
   onRemoveProject,
   onOpenProject,
 }: {
@@ -181,6 +214,12 @@ export function ConversationPanel({
   runningSessionIds?: string[];
   /** 正在等待工具审批的会话 id（可多个）；圆点改用警示色 */
   approvalSessionIds?: string[];
+  /** 正在等待用户回答的会话 id（可多个） */
+  askSessionIds?: string[];
+  /** 正在压缩历史的会话 id（可多个） */
+  compactingSessionIds?: string[];
+  /** 各会话最近一次回合结果 */
+  turnStatuses?: Record<string, TurnStatus>;
   workspace?: string;
   /** 归档的会话文件路径（settings.json），主列表里隐藏 */
   archivedSessions: string[];
@@ -188,8 +227,15 @@ export function ConversationPanel({
   projectNames: Record<string, string>;
   /** 置顶的项目 cwd（顺序即置顶顺序） */
   pinnedProjects: string[];
+  /** 置顶对话的 filePath 列表（顺序即置顶顺序，新置顶的排最前） */
+  pinnedConversations: string[];
+  /** 项目内手动拖拽后的会话顺序 */
+  conversationOrder: Record<string, string[]>;
   /** 已移除（侧栏隐藏）的项目 cwd */
   removedProjects: string[];
+  /** 已折叠的项目 cwd */
+  collapsedProjects: ReadonlySet<string>;
+  onToggleCollapsedProject: (cwd: string) => void;
   onNewChat: () => void;
   /** 在指定项目里新开对话（当前项目直接新建，其他项目先切工作区） */
   onNewChatInProject: (cwd: string) => void;
@@ -209,12 +255,12 @@ export function ConversationPanel({
   onArchiveProject: (filePaths: string[]) => void;
   onRenameProject: (cwd: string, name: string) => void;
   onTogglePinProject: (cwd: string) => void;
+  onTogglePinConversation: (filePath: string) => void;
+  onReorderConversations: (cwd: string, filePaths: string[]) => void;
   onRemoveProject: (cwd: string) => void;
   onOpenProject: (cwd: string) => void;
 }) {
   const { t } = useTranslation("chat");
-  /** 折叠的项目 cwd 集合：点了文件夹行收起该组聊天，再点展开 */
-  const [collapsedProjects, setCollapsedProjects] = useState<ReadonlySet<string>>(() => new Set());
   /** 菜单展开的项目 cwd */
   const [menuFor, setMenuFor] = useState<string | null>(null);
   /** 项目菜单锚点：fixed 定位到「…」按钮下方并夹在窗口内，避免被面板滚动区裁切 */
@@ -237,6 +283,70 @@ export function ConversationPanel({
   const [selected, setSelected] = useState<ReadonlySet<string> | null>(null);
   /** 批量删除确认弹窗 */
   const [deletingSelected, setDeletingSelected] = useState(false);
+  const [dragging, setDragging] = useState<{ filePath: string; cwd: string } | null>(null);
+  const [dropTarget, setDropTarget] = useState<{
+    filePath: string;
+    position: "before" | "after";
+  } | null>(null);
+  const dropTargetRef = useRef<{ filePath: string; position: "before" | "after" } | null>(
+    null,
+  );
+  const pointerDragRef = useRef<CardPointerDrag | null>(null);
+  /** Chromium 拖拽后不会刷新 :hover，改由指针位置显式驱动行高亮 */
+  const [hoveredPath, setHoveredPath] = useState<string | null>(null);
+  const dropPointRef = useRef<{ x: number; y: number } | null>(null);
+  useEffect(() => {
+    if (dragging) return;
+    const point = dropPointRef.current;
+    if (!point) return;
+    dropPointRef.current = null;
+    const row = document
+      .elementFromPoint(point.x, point.y)
+      ?.closest<HTMLElement>(".mc-convpanel__itemrow");
+    setHoveredPath(row?.dataset.filePath ?? null);
+  }, [dragging]);
+  /** 拖拽重排的 FLIP 快照：松手前记录旧位置，提交后把卡片从旧位置滑到新位置 */
+  const flipPendingRef = useRef<{
+    list: HTMLElement;
+    tops: Map<string, number>;
+    draggedPath: string;
+  } | null>(null);
+  const flipAnimationsRef = useRef<Animation[]>([]);
+  useLayoutEffect(() => {
+    const pending = flipPendingRef.current;
+    if (!pending) return;
+    flipPendingRef.current = null;
+    for (const animation of flipAnimationsRef.current) animation.cancel();
+    flipAnimationsRef.current = [];
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const styles = getComputedStyle(pending.list);
+    const duration = Number.parseFloat(styles.getPropertyValue("--dur")) || 160;
+    const easing =
+      styles.getPropertyValue("--ease").trim() || "cubic-bezier(0.2, 0, 0.2, 1)";
+    const animations: Animation[] = [];
+    pending.list.querySelectorAll<HTMLElement>(".mc-convpanel__itemrow").forEach((row) => {
+      const path = row.dataset.filePath;
+      if (!path || path === pending.draggedPath) return;
+      const first = pending.tops.get(path);
+      if (first === undefined) return;
+      const delta = first - row.offsetTop;
+      if (Math.abs(delta) < 1) return;
+      animations.push(
+        row.animate(
+          [{ transform: `translateY(${delta}px)` }, { transform: "translateY(0)" }],
+          { duration, easing },
+        ),
+      );
+    });
+    flipAnimationsRef.current = animations;
+  });
+  useEffect(() => {
+    if (!dragging) return;
+    document.body.classList.add("mc-convpanel-dragging");
+    return () => document.body.classList.remove("mc-convpanel-dragging");
+  }, [dragging]);
+
+  const suppressItemClickRef = useRef(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const sessionMenuRef = useRef<HTMLDivElement>(null);
 
@@ -258,6 +368,149 @@ export function ConversationPanel({
       document.removeEventListener("keydown", onKeyDown);
     };
   }, [menuFor]);
+
+  const setCardDropTarget = (
+    next: { filePath: string; position: "before" | "after" } | null,
+  ) => {
+    const current = dropTargetRef.current;
+    if (current?.filePath === next?.filePath && current?.position === next?.position) return;
+    dropTargetRef.current = next;
+    setDropTarget(next);
+  };
+
+  const updateCardDropTarget = (drag: CardPointerDrag) => {
+    const listRect = drag.list.getBoundingClientRect();
+    if (
+      drag.x < listRect.left ||
+      drag.x > listRect.right ||
+      drag.y < listRect.top ||
+      drag.y > listRect.bottom
+    ) {
+      setCardDropTarget(null);
+      return;
+    }
+    const rows = Array.from(
+      drag.list.querySelectorAll<HTMLElement>(".mc-convpanel__itemrow"),
+    ).filter((row) => row.dataset.filePath && row.dataset.filePath !== drag.filePath);
+    let next: { filePath: string; position: "before" | "after" } | null = null;
+    for (const row of rows) {
+      const filePath = row.dataset.filePath;
+      if (!filePath) continue;
+      const rect = row.getBoundingClientRect();
+      if (drag.y < rect.top + rect.height / 2) {
+        next = { filePath, position: "before" };
+        break;
+      }
+      next = { filePath, position: "after" };
+    }
+    setCardDropTarget(next);
+  };
+
+  const startCardPointerDrag = (
+    event: ReactPointerEvent<HTMLButtonElement>,
+    filePath: string,
+    cwd: string,
+  ) => {
+    if (selected || event.button !== 0 || pointerDragRef.current) return;
+    const list = event.currentTarget.closest<HTMLElement>(".mc-convpanel__items");
+    if (!list) return;
+    pointerDragRef.current = {
+      pointerId: event.pointerId,
+      filePath,
+      cwd,
+      list,
+      startX: event.clientX,
+      startY: event.clientY,
+      x: event.clientX,
+      y: event.clientY,
+      active: false,
+    };
+    event.currentTarget.setPointerCapture(event.pointerId);
+  };
+
+  const moveCardPointerDrag = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    const drag = pointerDragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    drag.x = event.clientX;
+    drag.y = event.clientY;
+    if (!drag.active) {
+      if (Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY) < 5) return;
+      drag.active = true;
+      for (const animation of flipAnimationsRef.current) animation.cancel();
+      flipAnimationsRef.current = [];
+      setHoveredPath(null);
+      setDragging({ filePath: drag.filePath, cwd: drag.cwd });
+    }
+    event.preventDefault();
+    updateCardDropTarget(drag);
+  };
+
+  const finishCardPointerDrag = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    const drag = pointerDragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    pointerDragRef.current = null;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    if (!drag.active) {
+      setCardDropTarget(null);
+      return;
+    }
+    event.preventDefault();
+    const target = dropTargetRef.current;
+    setCardDropTarget(null);
+    setDragging(null);
+    setHoveredPath(null);
+    dropPointRef.current = { x: event.clientX, y: event.clientY };
+    suppressItemClickRef.current = true;
+    window.setTimeout(() => {
+      suppressItemClickRef.current = false;
+    }, 0);
+    const active = document.activeElement;
+    if (active instanceof HTMLElement && active.closest(".mc-convpanel__item")) {
+      active.blur();
+    }
+    if (!target) return;
+    const rows = Array.from(
+      drag.list.querySelectorAll<HTMLElement>(".mc-convpanel__itemrow"),
+    );
+    const tops = new Map<string, number>();
+    const current: string[] = [];
+    for (const row of rows) {
+      const filePath = row.dataset.filePath;
+      if (!filePath) continue;
+      tops.set(filePath, row.offsetTop);
+      current.push(filePath);
+    }
+    flipPendingRef.current = { list: drag.list, tops, draggedPath: drag.filePath };
+    const next = reorderConversationPaths(
+      current,
+      drag.filePath,
+      target.filePath,
+      target.position,
+    );
+    if (next.some((filePath, index) => filePath !== current[index])) {
+      onReorderConversations(drag.cwd, next);
+    }
+  };
+
+  const cancelCardPointerDrag = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    const drag = pointerDragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    pointerDragRef.current = null;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    if (drag.active) {
+      suppressItemClickRef.current = true;
+      window.setTimeout(() => {
+        suppressItemClickRef.current = false;
+      }, 0);
+    }
+    setCardDropTarget(null);
+    setDragging(null);
+    setHoveredPath(null);
+  };
 
   // 会话行菜单：点外部 / Esc 关闭；点菜单按钮本身交给 onClick 切换，避免先关后开
   useEffect(() => {
@@ -332,15 +585,6 @@ export function ConversationPanel({
 
   const displayName = (cwd: string) => projectNames[cwd]?.trim() || baseName(cwd);
 
-  /** 折叠 / 展开某个项目分组 */
-  const toggleCollapsed = (cwd: string) =>
-    setCollapsedProjects((current) => {
-      const next = new Set(current);
-      if (next.has(cwd)) next.delete(cwd);
-      else next.add(cwd);
-      return next;
-    });
-
   // 按工作区（cwd）分组，对应参考图里的「项目」；当前工作区永远在列（可能是「暂无聊天」）。
   // 空会话（没发过消息）不进列表，发过消息才显示。排序规则见 conversation-groups.ts。
   const groups = useMemo(
@@ -351,9 +595,22 @@ export function ConversationPanel({
         archivedSessions,
         removedProjects,
         pinnedProjects,
+        pinnedConversations,
+        conversationOrder,
       }),
-    [sessions, archivedSessions, workspace, removedProjects, pinnedProjects],
+    [
+      sessions,
+      archivedSessions,
+      workspace,
+      removedProjects,
+      pinnedProjects,
+      pinnedConversations,
+      conversationOrder,
+    ],
   );
+
+  // 「置顶」伪分组永远排在第一位（conversation-groups.ts 保证）；「项目」标题插在它之后
+  const pinnedGroup = groups.find((group) => group.cwd === PINNED_GROUP_ID) ?? null;
 
   // 多选：以列表里**当前可见**的会话为准 —— 归档/删除后勾选自动收敛，不会误操作已消失的条目
   const selectableItems = groups.flatMap((group) => group.items);
@@ -366,7 +623,9 @@ export function ConversationPanel({
   const selectedRunning = selectedItems.some(
     (session) =>
       (runningSessionIds ?? []).includes(session.id) ||
-      (approvalSessionIds ?? []).includes(session.id),
+      (approvalSessionIds ?? []).includes(session.id) ||
+      (askSessionIds ?? []).includes(session.id) ||
+      (compactingSessionIds ?? []).includes(session.id),
   );
 
   const toggleSelected = (filePath: string) =>
@@ -447,22 +706,28 @@ export function ConversationPanel({
           <p className="mc-convpanel__empty">{t("conversation.empty")}</p>
         ) : (
           <>
-            <p className="mc-convpanel__section">{t("conversation.projects")}</p>
-            {groups.map((group) => {
+            {groups.map((group, groupIndex) => {
+              const isPinnedZone = group.cwd === PINNED_GROUP_ID;
               const collapsedNow = collapsedProjects.has(group.cwd);
               const items = group.items;
               const pinned = pinnedProjects.includes(group.cwd);
               return (
-                <div className="mc-convpanel__group" key={group.cwd}>
+                <Fragment key={group.cwd}>
+                  {/* 「项目」标题插在第一个项目分组之前，让「置顶」栏浮在所有项目之上 */}
+                  {groupIndex === (pinnedGroup ? 1 : 0) ? (
+                    <p className="mc-convpanel__section">{t("conversation.projects")}</p>
+                  ) : null}
+                <div className="mc-convpanel__group">
                   <div
                     className="mc-convpanel__grouprow"
                     data-active={group.cwd === workspace}
                     data-menu={menuFor === group.cwd}
+                    data-pinned={isPinnedZone ? "true" : undefined}
                     onClick={(event) => {
                       // 只有点空白处才折叠；按钮（操作菜单 / 新建）和菜单本体不触发
                       if (menuFor === group.cwd) return;
                       if ((event.target as HTMLElement).closest("button")) return;
-                      toggleCollapsed(group.cwd);
+                      onToggleCollapsedProject(group.cwd);
                     }}
                   >
                     <button
@@ -473,15 +738,22 @@ export function ConversationPanel({
                       title={
                         collapsedNow ? t("conversation.expandProject") : t("conversation.collapseProject")
                       }
-                      onClick={() => toggleCollapsed(group.cwd)}
+                      onClick={() => onToggleCollapsedProject(group.cwd)}
                     >
                       <LuChevronDown size={13} className="mc-convpanel__chevron" />
-                      <LuFolder size={14} className="mc-convpanel__folder" />
-                      <span className="mc-truncate">{displayName(group.cwd)}</span>
+                      {isPinnedZone ? (
+                        <LuPin size={14} className="mc-convpanel__folder" />
+                      ) : (
+                        <LuFolder size={14} className="mc-convpanel__folder" />
+                      )}
+                      <span className="mc-truncate">
+                        {isPinnedZone ? t("conversation.pinned") : displayName(group.cwd)}
+                      </span>
                       {collapsedNow && group.items.length > 0 ? (
                         <span className="mc-convpanel__groupcount">{group.items.length}</span>
                       ) : null}
                     </button>
+                    {isPinnedZone ? null : (
                     <span className="mc-convpanel__groupactions">
                       <button
                         type="button"
@@ -516,8 +788,9 @@ export function ConversationPanel({
                         <LuSquarePen size={13} />
                       </button>
                     </span>
+                    )}
 
-                    {menuFor === group.cwd ? (
+                    {!isPinnedZone && menuFor === group.cwd ? (
                       <div
                         className="mc-convpanel__menu"
                         data-context={projectMenuAnchor ? "true" : undefined}
@@ -608,29 +881,104 @@ export function ConversationPanel({
                   ) : (
                     <div className="mc-convpanel__collapse" data-open={!collapsedNow} aria-hidden={collapsedNow} inert={collapsedNow ? true : undefined}>
                     <div className="mc-convpanel__collapse-inner">
-                    <ul className="mc-convpanel__items">
+                    <ul
+                      className="mc-convpanel__items"
+                      onPointerMove={(event) => {
+                        if (dragging || pointerDragRef.current?.active) return;
+                        const row =
+                          event.target instanceof Element
+                            ? event.target.closest<HTMLElement>(".mc-convpanel__itemrow")
+                            : null;
+                        const path = row?.dataset.filePath ?? null;
+                        setHoveredPath((current) => (current === path ? current : path));
+                      }}
+                      onPointerLeave={() => setHoveredPath(null)}
+                    >
                       {items.map((session) => {
                         const waitingApproval = (approvalSessionIds ?? []).includes(session.id);
-                        const running = (runningSessionIds ?? []).includes(session.id) || waitingApproval;
+                        const waitingAnswer = (askSessionIds ?? []).includes(session.id);
+                        const compactingNow = (compactingSessionIds ?? []).includes(session.id);
+                        const running =
+                          (runningSessionIds ?? []).includes(session.id) ||
+                          waitingApproval ||
+                          waitingAnswer ||
+                          compactingNow;
+                        const terminalStatus = turnStatuses?.[session.id];
+                        const status = waitingApproval
+                          ? "approval"
+                          : waitingAnswer
+                            ? "ask"
+                            : compactingNow
+                              ? "compacting"
+                              : (runningSessionIds ?? []).includes(session.id)
+                                ? "running"
+                                : terminalStatus;
+                        const terminalLabel = terminalStatus
+                          ? terminalStatus === "completed"
+                            ? t("panel:runStatus.completed")
+                            : terminalStatus === "aborted"
+                              ? t("panel:runStatus.aborted")
+                              : terminalStatus === "interrupted"
+                                ? t("panel:runStatus.interrupted")
+                                : t("panel:runStatus.failed")
+                          : null;
+                        const statusLabel = waitingApproval
+                          ? t("conversation.waitingApproval")
+                          : waitingAnswer
+                            ? t("status.waitingAnswer")
+                            : compactingNow
+                              ? t("status.compacting")
+                              : (runningSessionIds ?? []).includes(session.id)
+                                ? t("conversation.generating")
+                                : terminalLabel;
+                        const activeAt = session.updatedAt ?? session.createdAt;
+                        // 置顶伪分组没有真实 cwd：tooltip 退回会话自身的工作区
+                        const rowCwd = isPinnedZone
+                          ? (session.worktree?.sourceCwd ?? session.cwd)
+                          : group.cwd;
+                        const isPinnedConversation = pinnedConversations.includes(session.filePath);
                         return (
                           <li
                             key={session.filePath}
                             className="mc-convpanel__itemrow"
+                            data-file-path={session.filePath}
+                            data-hover={hoveredPath === session.filePath ? "true" : undefined}
                             data-menu-open={sessionMenuFor === session.filePath ? "true" : undefined}
                             data-selecting={selected ? "true" : undefined}
+                            data-dragging={dragging?.filePath === session.filePath ? "true" : undefined}
+                            data-drop={
+                              dropTarget?.filePath === session.filePath ? dropTarget.position : undefined
+                            }
                           >
                             <button
                               type="button"
                               className="mc-convpanel__item"
+                              onPointerDown={(event) => {
+                                // 置顶栏不支持拖拽重排：顺序由置顶先后决定
+                                if (isPinnedZone) return;
+                                startCardPointerDrag(event, session.filePath, group.cwd);
+                              }}
+                              onPointerMove={moveCardPointerDrag}
+                              onPointerUp={finishCardPointerDrag}
+                              onPointerCancel={cancelCardPointerDrag}
+                              onLostPointerCapture={cancelCardPointerDrag}
                               data-active={session.id === currentSessionId}
                               data-running={running}
                               data-selecting={selected ? "true" : undefined}
                               data-selected={selected?.has(session.filePath) ? "true" : undefined}
                               aria-pressed={selected ? selected.has(session.filePath) : undefined}
-                              title={`${group.cwd}${
-                                session.worktree ? ` · ${session.worktree.branch}` : ""
-                              } · ${formatDateTime(new Date(session.createdAt))}`}
+                              title={
+                                hoveredPath === session.filePath
+                                  ? `${rowCwd}${
+                                      session.worktree ? ` · ${session.worktree.branch}` : ""
+                                    } · ${formatDateTime(new Date(activeAt))}`
+                                  : undefined
+                              }
                               onClick={() => {
+                                if (suppressItemClickRef.current) {
+                                  suppressItemClickRef.current = false;
+                                  return;
+                                }
                                 // 多选模式下点行 = 勾选 / 取消，不切会话
                                 if (selected) {
                                   toggleSelected(session.filePath);
@@ -655,21 +1003,13 @@ export function ConversationPanel({
                                   checked={selected.has(session.filePath)}
                                 />
                               ) : null}
-                              {running ? (
+                              {status ? (
                                 <span
-                                  className="mc-convpanel__runningdot"
-                                  data-approval={waitingApproval}
+                                  className="mc-convpanel__statusdot"
+                                  data-state={status}
                                   role="status"
-                                  aria-label={
-                                    waitingApproval
-                                      ? t("conversation.waitingApproval")
-                                      : t("conversation.generating")
-                                  }
-                                  title={
-                                    waitingApproval
-                                      ? t("conversation.waitingApproval")
-                                      : t("conversation.generating")
-                                  }
+                                  aria-label={statusLabel ?? undefined}
+                                  title={statusLabel ?? undefined}
                                 />
                               ) : null}
                               <span className="mc-convpanel__itemtitle">
@@ -686,7 +1026,7 @@ export function ConversationPanel({
                                 </span>
                               ) : null}
                               <span className="mc-convpanel__itemtime">
-                                {formatSessionStamp(new Date(session.createdAt))}
+                                {formatSessionStamp(new Date(activeAt))}
                               </span>
                             </button>
                             <button
@@ -753,6 +1093,24 @@ export function ConversationPanel({
                                     <div className="mc-convpanel__menusep" />
                                   </>
                                 ) : null}
+                                <button
+                                  type="button"
+                                  role="menuitem"
+                                  className="mc-convpanel__menuitem"
+                                  onClick={() => {
+                                    onTogglePinConversation(session.filePath);
+                                    setSessionMenuFor(null);
+                                  }}
+                                >
+                                  {isPinnedConversation ? (
+                                    <LuPinOff size={14} />
+                                  ) : (
+                                    <LuPin size={14} />
+                                  )}
+                                  {isPinnedConversation
+                                    ? t("conversation.unpin")
+                                    : t("conversation.pin")}
+                                </button>
                                 <button
                                   type="button"
                                   role="menuitem"
@@ -839,6 +1197,7 @@ export function ConversationPanel({
                     </div>
                   )}
                 </div>
+                </Fragment>
               );
             })}
           </>

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { LuBrain, LuPlus, LuTrash2 } from "react-icons/lu";
 import {
@@ -14,6 +14,7 @@ import {
 } from "../../api";
 import { formatDate } from "../../i18n/format";
 import { Button } from "../ui/Button";
+import { ConfirmDialog } from "../ui/ConfirmDialog";
 import { Dialog } from "../ui/Dialog";
 import { Spinner } from "../ui/Spinner";
 import { TextField } from "../ui/TextField";
@@ -66,12 +67,10 @@ export function MemorySection({
   const [editor, setEditor] = useState<Editor | null>(null);
   const [saving, setSaving] = useState(false);
   const [nameError, setNameError] = useState<string | null>(null);
-  const [confirming, setConfirming] = useState<{ scope: MemoryScopeId; name: string } | null>(null);
-  const confirmTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  /** 全部删除：每个 scope 独立二次确认，4 秒后自动复位 */
-  const [confirmingClear, setConfirmingClear] = useState<MemoryScopeId | null>(null);
+  /** 删除单条 / 清空某个 scope：都走确认弹窗 */
+  const [pendingDelete, setPendingDelete] = useState<{ scope: MemoryScopeId; name: string } | null>(null);
+  const [pendingClear, setPendingClear] = useState<MemoryScopeId | null>(null);
   const [clearingScope, setClearingScope] = useState<MemoryScopeId | null>(null);
-  const clearTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   /** 记忆总开关：null = 还没从服务端拿到当前值 */
   const [memoryOn, setMemoryOn] = useState<boolean | null>(null);
 
@@ -122,14 +121,6 @@ export function MemorySection({
     }
   };
 
-  useEffect(
-    () => () => {
-      if (confirmTimer.current) clearTimeout(confirmTimer.current);
-      if (clearTimer.current) clearTimeout(clearTimer.current);
-    },
-    [],
-  );
-
   const openCreate = (scope: MemoryScopeId) => {
     setNameError(null);
     setEditor({ scope, name: "", nameLocked: false, content: frontmatterTemplate() });
@@ -168,15 +159,6 @@ export function MemorySection({
   };
 
   const remove = async (scope: MemoryScopeId, name: string) => {
-    if (confirmTimer.current) clearTimeout(confirmTimer.current);
-    if (clearTimer.current) clearTimeout(clearTimer.current);
-    setConfirmingClear(null);
-    if (!confirming || confirming.scope !== scope || confirming.name !== name) {
-      setConfirming({ scope, name });
-      confirmTimer.current = setTimeout(() => setConfirming(null), 4000);
-      return;
-    }
-    setConfirming(null);
     try {
       await deleteMemoryFile(scope, name, workspace ?? undefined);
       onToast(t("memory.deleted", { scope: scopeLabel(scope), name }));
@@ -187,17 +169,6 @@ export function MemorySection({
   };
 
   const clearAll = async (scope: MemoryScopeId) => {
-    if (clearTimer.current) clearTimeout(clearTimer.current);
-    if (confirmingClear !== scope) {
-      if (confirmTimer.current) clearTimeout(confirmTimer.current);
-      setConfirming(null);
-      setConfirmingClear(scope);
-      clearTimer.current = setTimeout(() => setConfirmingClear(null), 4000);
-      return;
-    }
-    setConfirmingClear(null);
-    if (confirmTimer.current) clearTimeout(confirmTimer.current);
-    setConfirming(null);
     setClearingScope(scope);
     try {
       await clearAllMemories(scope, workspace ?? undefined);
@@ -218,12 +189,12 @@ export function MemorySection({
         items.length ? (
           <Button
             size="sm"
-            variant={confirmingClear === scope ? "danger" : "outline"}
+            variant="outline"
             icon={<LuTrash2 size={13} />}
             disabled={clearingScope === scope}
-            onClick={() => void clearAll(scope)}
+            onClick={() => setPendingClear(scope)}
           >
-            {confirmingClear === scope ? t("memory.clearConfirm") : t("memory.clearAction")}
+            {t("memory.clearAction")}
           </Button>
         ) : undefined
       }
@@ -249,8 +220,6 @@ export function MemorySection({
         ) : (
           <ul className="mc-memory__list">
             {items.map((item) => {
-              const isConfirming =
-                confirming?.scope === scope && confirming.name === item.name;
               return (
                 <li key={item.name} className="mc-memory__row">
                   <button
@@ -265,16 +234,12 @@ export function MemorySection({
                   </button>
                   <Button
                     size="sm"
-                    variant={isConfirming ? "danger" : "ghost"}
+                    variant="ghost"
                     className="mc-memory__delete"
-                    aria-label={
-                      isConfirming
-                        ? t("memory.confirmDeleteAria", { name: item.name })
-                        : t("memory.deleteAria", { name: item.name })
-                    }
-                    onClick={() => void remove(scope, item.name)}
+                    aria-label={t("memory.deleteAria", { name: item.name })}
+                    onClick={() => setPendingDelete({ scope, name: item.name })}
                   >
-                    {isConfirming ? t("actions.confirmDelete") : <LuTrash2 size={14} />}
+                    <LuTrash2 size={14} />
                   </Button>
                 </li>
               );
@@ -356,6 +321,30 @@ export function MemorySection({
           </>
         ) : null}
       </Dialog>
+
+      <ConfirmDialog
+        open={pendingDelete !== null}
+        title={t("confirm.deleteTitle")}
+        message={t("confirm.deleteMessage", { name: pendingDelete?.name ?? "" })}
+        onCancel={() => setPendingDelete(null)}
+        onConfirm={() => {
+          const target = pendingDelete;
+          setPendingDelete(null);
+          if (target) void remove(target.scope, target.name);
+        }}
+      />
+
+      <ConfirmDialog
+        open={pendingClear !== null}
+        title={t("confirm.clearTitle")}
+        message={t("confirm.clearMessage")}
+        onCancel={() => setPendingClear(null)}
+        onConfirm={() => {
+          const scope = pendingClear;
+          setPendingClear(null);
+          if (scope) void clearAll(scope);
+        }}
+      />
     </div>
   );
 }

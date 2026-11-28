@@ -18,12 +18,14 @@
   overflow-anchor: none;
   /* 提示合成器优先按滚动优化（不强行提升图层，避免文字层化后的模糊与显存开销） */
   will-change: scroll-position;
-  padding: 14px 20px 8px;
+  /* 右内边距 = 视觉边距 20px − 滚动条槽位 12px：槽位在 padding 之外预留，
+     12 + 8 正好凑成与左缘、与下方输入框一致的 20px 边距——否则消息列比输入框
+     窄 12px（右缘不齐），宽屏下整列还会相对输入框左偏 6px */
+  padding: 14px 8px 8px 20px;
 }
-/* 壁纸模式下不要给滚动容器留持久合成层，否则正文玻璃会被隔离在空背板里。 */
-:root[data-wallpaper="true"] .mc-stream {
-  will-change: auto;
-}
+/* 壁纸模式下的滚动容器同样常驻合成层（沿用基础规则的 will-change: scroll-position）：
+   壁纸副本已搬进滚动容器内部（.mc-stream__bg），玻璃在滚动子树内就有背板可糊，
+   合成层不会再把玻璃隔离成空背板 —— 滚动得以留在合成器线程上。 */
 .mc-stream__inner {
   max-width: var(--content-max);
   margin: 0 auto;
@@ -228,14 +230,30 @@
  * 壁纸保持原样，不新增任何可见图层。蒙版必须挂在 .mc-streamwrap（非滚动包裹层）上：
  * 挂在滚动容器 .mc-stream 自身上，Chromium 合成滚动会把 mask 整个丢掉不渲染。
  * 但 mask 祖先会把子树变成「毛玻璃背板根」—— 里面所有 backdrop-filter 只能糊到子树内部，
- * 所以流里同时放一套壁纸副本（::before 位图复刻 AppBackground 的媒体层 / .mc-stream__bgvideo
- * 视频副本 / ::after 复刻内容面板的压暗层，都钉在内容之下）：卡片玻璃糊的是副本，
- * 配方与糊到真壁纸一致；副本在淡出区跟着 mask 一起隐去，漏出来的就是流背后真实的
- * 壁纸 + 面板压暗，衔接处天衣无缝。
+ * 所以流里同时放一套壁纸副本（.mc-stream__bg::before 位图复刻 AppBackground 的媒体层 /
+ * .mc-stream__bgvideo 视频副本 / .mc-stream__bg::after 复刻内容面板的压暗层，都钉在内容之下）：
+ * 卡片玻璃糊的是副本，配方与糊到真壁纸一致；副本在淡出区跟着 mask 一起隐去，漏出来的就是
+ * 流背后真实的壁纸 + 面板压暗，衔接处天衣无缝。
+ *
+ * 副本容器必须住在滚动容器 .mc-stream 内部：滚动容器走合成（will-change: scroll-position，
+ * 滚动才能上合成器线程）之后它就成了玻璃的背板根——副本留在外层，玻璃糊到的就是空背板。
+ * 搬进来以后合成滚动与玻璃两全：滚动不再每帧主线程重栅格化 + 重采样（壁纸模式此前
+ * 滚动卡顿的根源，NexBox 同款毛玻璃流畅正是没有这层主线程瓶颈），模糊由 GPU 的
+ * render pass 每帧应用，主线程只剩内容本身的合成滚动。
  */
 :root[data-wallpaper="true"] .mc-streamwrap {
   -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 32px), transparent);
   mask-image: linear-gradient(to bottom, #000 calc(100% - 32px), transparent);
+}
+
+/* 副本容器：fixed 钉满视口（与真壁纸逐像素对齐的取景盒），整体垫到滚动内容之下。
+   fixed + 非 auto z-index 自带 stacking context，::before/::after/视频副本都封在它内部，
+   合成滚动后的玻璃只在滚动子树内取景也能糊到整套副本 */
+:root[data-wallpaper="true"] .mc-stream__bg {
+  position: fixed;
+  inset: 0;
+  z-index: -2;
+  pointer-events: none;
 }
 
 /*
@@ -247,22 +265,17 @@
   -webkit-mask-image: none;
   mask-image: none;
 }
-:root[data-wallpaper="true"] .mc-chatflow[data-empty="true"] .mc-streamwrap::before,
-:root[data-wallpaper="true"] .mc-chatflow[data-empty="true"] .mc-streamwrap::after {
-  content: none;
-}
-:root[data-wallpaper="true"] .mc-chatflow[data-empty="true"] .mc-stream__bgvideo {
+:root[data-wallpaper="true"] .mc-chatflow[data-empty="true"] .mc-stream__bg {
   display: none;
 }
 
-/* 位图壁纸副本：fixed 钉满视口，参数与 mc-appbg__media 一一对应（cover / 透明度 / 滤镜 / 1.04 放大），
+/* 位图壁纸副本：容器已钉满视口，铺满容器即可。参数与 mc-appbg__media 一一对应（cover / 透明度 / 滤镜 / 1.04 放大），
    保证与真壁纸逐像素对齐。蒙版根之内，专供各玻璃的 backdrop-filter 糊。
    视频壁纸放不了位图，这层让位给 .mc-stream__bgvideo（变量也不会被赋值） */
-:root[data-wallpaper="true"]:not([data-wallpaper-video="true"]) .mc-streamwrap::before {
+:root[data-wallpaper="true"]:not([data-wallpaper-video="true"]) .mc-stream__bg::before {
   content: "";
-  position: fixed;
+  position: absolute;
   inset: 0;
-  z-index: -2;
   pointer-events: none;
   background-color: var(--bg);
   background-image:
@@ -275,11 +288,10 @@
   transform: var(--wallpaper-transform, none);
 }
 
-/* 视频壁纸副本（MessageList 渲染的 <video>）：与 mc-appbg__media 同一套配方，强制静音 */
+/* 视频壁纸副本（MessageList 渲染的 <video>）：铺满副本容器，与 mc-appbg__media 同一套配方，强制静音 */
 :root[data-wallpaper="true"] .mc-stream__bgvideo {
-  position: fixed;
+  position: absolute;
   inset: 0;
-  z-index: -2;
   pointer-events: none;
   opacity: var(--wallpaper-opacity, 1);
   filter: var(--wallpaper-filter, none);
@@ -305,43 +317,21 @@
 
 /* 面板压暗副本：玻璃原本能糊到内容面板那层半透明压暗，蒙版根把它隔在了根外，
    这里在壁纸副本之上补回同一层配方，玻璃观感维持不变 */
-:root[data-wallpaper="true"] .mc-streamwrap::after {
+:root[data-wallpaper="true"] .mc-stream__bg::after {
   content: "";
-  position: fixed;
+  position: absolute;
   inset: 0;
-  z-index: -1;
   pointer-events: none;
   background: color-mix(in srgb, var(--bg) calc(var(--wallpaper-ui, 0.72) * 100%), transparent);
 }
 
 /*
- * 滚动期间的降载：滚动时每一帧都要给可见玻璃重新采样壁纸背景，是掉帧的
- * 大头。用户滚动（wheel / 拖滚动条 / 返回底部）时由 MessageList 给容器挂
- * data-scrolling，流内的毛玻璃暂时只留底色、不糊背景，水墨层暂停动画；
- * 停下 140ms 后自动摘掉，玻璃与墨迹恢复原样。
+ * 滚动期间卡片玻璃全程保持，观感与静止时逐像素一致（用户明确要求）。
+ * 滚动本身走合成器线程（基础规则 will-change: scroll-position，壁纸模式经
+ * .mc-stream__bg 副本容器内置后也不再需要关玻璃降载），模糊由 GPU render
+ * pass 每帧应用。data-scrolling 只负责暂停水墨动画——那是滚动期间唯一
+ * 还在主线程跑的动画。
  */
-:root[data-wallpaper="true"] .mc-stream[data-scrolling="true"] * {
-  -webkit-backdrop-filter: none !important;
-  backdrop-filter: none !important;
-}
 .mc-stream[data-scrolling="true"] .mc-ink {
   animation-play-state: paused;
-}
-/* 滚动期间把滚动容器提升为合成层，让滚动跑在合成器线程（玻璃此时已关，
-   不会踩到「持久合成层把正文玻璃隔离在空背板」的坑）；停下即撤 */
-.mc-stream[data-scrolling="true"],
-:root[data-wallpaper="true"] .mc-stream[data-scrolling="true"] {
-  will-change: scroll-position;
-}
-
-/*
- * 吸底跟随期间的回合状态行（思考中 / 正在压缩…）：只在页面连续下滚时
- * 用 sticky 钉在滚动区底部。否则正文每长一行，它会被先推下去再随动画带回来，
- * 看起来一直在上下跳。跟随一停（内容暂停 / 用户接管）MessageList 会摘掉
- * data-follow，它自动回到正常流内位置。
- */
-.mc-stream[data-follow="true"] .mc-statusline {
-  position: sticky;
-  /* 由 MessageList 在开始跟随前量出真实底部间距（--status-stick） */
-  bottom: var(--status-stick, 16px);
 }

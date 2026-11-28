@@ -207,11 +207,13 @@ export function presentTool(item: TimelineTool, status: ToolStatus, t: TFunction
       };
     case "task": {
       const description = textArg(args, "description");
+      const waiting = args.mode === "wait";
+      const chip = description || (waiting ? textArg(args, "agent_id") : "");
       return {
-        label: t("tool.task"),
-        chip: description || undefined,
-        chipTitle: description || undefined,
-        note: failedNote,
+        label: t(waiting ? "tool.taskWait" : "tool.task"),
+        chip: chip || undefined,
+        chipTitle: chip || undefined,
+        note: waiting && status === "running" ? t("tool.view.waitingOutput") : failedNote,
       };
     }
     case "web_search": {

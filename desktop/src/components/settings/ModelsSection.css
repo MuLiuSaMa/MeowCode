@@ -138,6 +138,24 @@
   overflow-y: auto;
   /* 滚动条出现时不再挤掉卡片宽度 */
   scrollbar-gutter: stable;
+  /*
+   * 滚动性能：让 grid 自己成为合成器滚动层 —— 滚动只做位移，
+   * 不再每帧对移动中的 65 张卡片重做 superellipse 非矩形裁剪 + 重绘
+   * （同 AppShell.css:31-37 记录的 107→70fps 问题）。
+   * scroll-position 不建立层叠上下文 / 包含块（与 transform 不同），定位语义不变。
+   */
+  will-change: scroll-position;
+  /* 布局/样式失效只落在 grid 内部，不外溢触发弹窗面板整块重排重绘。
+     刻意不含 paint：paint containment 会让元素成为背板根，壁纸模式下卡片玻璃会被永久摘掉。 */
+  contain: layout style;
+  /* 滚到底不把滚轮链给（高度固定、本来不滚的）弹窗面板，少一次无效滚动与事件 */
+  overscroll-behavior: contain;
+}
+/* 滚动期间卡片 hover 过渡改瞬切：指针压在列表上滚动时，卡片逐张从光标下经过，
+   每张都会开局一次 160ms 底色过渡，滚动时等于连环重绘。悬停变色本身保留，
+   只是不做淡入 —— 运动中不可辨（data-scrolling 由 ProviderPickerDialog 打点）。 */
+.mc-picker__grid[data-scrolling="true"] .mc-picker__item {
+  transition: none;
 }
 .mc-picker__item {
   display: flex;

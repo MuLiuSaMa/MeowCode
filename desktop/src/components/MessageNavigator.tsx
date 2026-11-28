@@ -3,6 +3,7 @@ import type { RefObject } from "react";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 import type { TimelineMessage } from "../api";
+import { BAND_COUNT, subscribeAudioLevel } from "../audio-level";
 import { formatNumber } from "../i18n/format";
 import { parseUserMessage } from "../user-references";
 import "./MessageNavigator.css";
@@ -36,6 +37,10 @@ export function MessageNavigator({
 }) {
   const [activeIndex, setActiveIndex] = useState(0);
   const { t } = useTranslation("shell");
+  /** 律动电平直接写每根刻度的 CSS 变量，每帧一次，不经过 React 渲染 */
+  const navRef = useRef<HTMLElement | null>(null);
+  /** 当前刻度元素列表：消息增删时刷新，频段按刻度序均摊映射 */
+  const ticksRef = useRef<HTMLElement[]>([]);
   const topsRef = useRef<number[]>([]);
   const messagesRef = useRef(messages);
   messagesRef.current = messages;
@@ -135,8 +140,42 @@ export function MessageNavigator({
     [scrollRef],
   );
 
+  // 律动：把 24 个频段按刻度序均摊映射（刻度少时跨频段采样），逐帧写宽度变量
+  useEffect(() => {
+    ticksRef.current = navRef.current
+      ? Array.from(navRef.current.querySelectorAll<HTMLElement>(".mc-nav__tick"))
+      : [];
+  }, [messages]);
+
+  // 随声音律动：订阅共享采集的频段（设置里开着且有采集时才回调），
+  // 每根刻度一根一根变长变短跳动；用户偏好减弱动效时整条保持原样
+  useEffect(() => {
+    const el = navRef.current;
+    if (!el) return;
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    return subscribeAudioLevel(
+      (bands) => {
+        const ticks = ticksRef.current;
+        const count = ticks.length;
+        for (let i = 0; i < count; i++) {
+          const band =
+            count === 1 ? BAND_COUNT >> 1 : Math.round((i * (BAND_COUNT - 1)) / (count - 1));
+          ticks[i].style.setProperty("--tick-level", bands[band].toFixed(3));
+        }
+      },
+      (active) => {
+        if (active) {
+          el.setAttribute("data-pulse", "true");
+        } else {
+          el.removeAttribute("data-pulse");
+          for (const tick of ticksRef.current) tick.style.removeProperty("--tick-level");
+        }
+      },
+    );
+  }, []);
+
   return (
-    <nav className="mc-nav" aria-label={t("messageNav.aria")}>
+    <nav ref={navRef} className="mc-nav" aria-label={t("messageNav.aria")}>
       <div className="mc-nav__list">
         {messages.map((message, index) => (
           <button
